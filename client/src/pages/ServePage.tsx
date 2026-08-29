@@ -1194,10 +1194,25 @@ export default function ServePage() {
     }
   }, [optimization.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
-    // Could update the job's address — for now just close and refresh
-    refreshJobs();
-  }, [refreshJobs]);
+  const handleSkipTraceAddToRoute = useCallback(async (addr: ServeSkipAddress) => {
+    if (!skipTraceJob) return;
+    try {
+      await apiFetch(`/process-server/${skipTraceJob.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          recipient_address: addr.address,
+          recipient_city: addr.city,
+          recipient_state: addr.state,
+          recipient_zip: addr.zip,
+        }),
+      });
+      addToast('Serve job address updated from skip trace', 'success');
+      refreshJobs();
+      setSkipTraceJob(null);
+    } catch {
+      addToast('Could not update job address', 'error');
+    }
+  }, [skipTraceJob, refreshJobs, addToast]);
 
   // ── Create / Edit Job ──────────────────────────────────────────────
 

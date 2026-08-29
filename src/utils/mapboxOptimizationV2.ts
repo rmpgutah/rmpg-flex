@@ -147,7 +147,14 @@ function parseTimeWindow(
   const m = normalized.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
   if (!m) return null;
   const day = denverYmdFromIso(shiftStartIso);
-  return { earliest: `${day}T${m[1]}:00-06:00`, latest: `${day}T${m[2]}:00-06:00` };
+  const earliest = `${day}T${m[1]}:00-06:00`;
+  const latest = `${day}T${m[2]}:00-06:00`;
+  const shiftMs = Date.parse(shiftStartIso);
+  const latestMs = Date.parse(latest);
+  // Morning 08:00–12:00 is already over at a 18:15 start — do not hand Mapbox
+  // a window that forces 08:00 tomorrow.
+  if (Number.isFinite(shiftMs) && Number.isFinite(latestMs) && latestMs <= shiftMs) return null;
+  return { earliest, latest };
 }
 
 /** Worker-side token for Optimization V2. sk.* is allowed here — this never

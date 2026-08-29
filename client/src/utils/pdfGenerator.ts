@@ -34,7 +34,7 @@ import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
   getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
-  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
+  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget, getPrintTarget,
 } from './pdfTokens';
 import { brandingFromSystemSettings } from './brandConfig';
 
@@ -2770,6 +2770,11 @@ export function addAttachmentsSection(
  * Page break with continuation header on new pages.
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
+  // Recipient-facing Notice of Attempt is a one-sheet door notice — never
+  // spill onto a second page (which would print a mostly-blank CONTINUED
+  // sheet on the PJ-700 roll). Compression tiers handle overflow instead.
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) return y;
+
   const pageHeight = doc.internal.pageSize.getHeight();
   // Bottom reserve: footer height + safe print zone + BARCODE CLEARANCE.
   // Barcode is placed at y ∈ [pageH-20, pageH-12], so content must stop
@@ -2851,6 +2856,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
 /** Page break handler for drawFormSection — forces a page break with continuation header */
 export function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) {
+    return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0) + LAYOUT.HEADER_HEIGHT;
+  }
   // Force a page break by passing a Y beyond the page
   return checkPageBreak(doc, doc.internal.pageSize.getHeight(), 1);
 }

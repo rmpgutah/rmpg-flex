@@ -96,5 +96,10 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
     (filled as any).property_name = c.property_address;
   }
 
+  const snap = filled.weather_snapshot;
+  if (snap && !filled.weather_conditions) {
+    filled.weather_conditions = snap.scene_category || snap.condition || filled.weather_conditions;
+  }
+
   return filled;
 }

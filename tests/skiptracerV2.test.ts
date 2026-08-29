@@ -6,6 +6,7 @@ import {
   buildEnrichmentSeed,
   parseVehicleQuery,
   detectSearchTypeFromParams,
+  historyQueryFromParams,
 } from '../src/utils/skiptracerV2/search';
 
 describe('skiptracerV2 search helpers', () => {
@@ -67,7 +68,23 @@ describe('skiptracerV2 search helpers', () => {
   it('builds an enrichment seed for address searches', () => {
     const seed = buildEnrichmentSeed(parseSearchParams(new URLSearchParams('q=123+Main+St')));
     expect(seed?.address).toBe('123 Main St');
-    expect(seed?.first_name).toBe('ADDRESS');
+    expect(seed?.first_name).toBe('');
+    expect(seed?.last_name).toBe('');
+  });
+
+  it('reconstructs history query from stored params', () => {
+    expect(historyQueryFromParams({ q: 'Karl Allen Turley', firstName: 'Karl', lastName: 'Turley' }))
+      .toBe('Karl Allen Turley');
+    expect(historyQueryFromParams({ firstName: 'Jane', lastName: 'Doe' })).toBe('Jane Doe');
+  });
+
+  it('maps three-part names in enrichment records', () => {
+    const profile = enrichedRecordToProfile({
+      name: 'Karl Allen Turley',
+      addresses: [], phones: [], emails: [], source: 'fbi_wanted',
+    }, 'fbi_wanted', 'UNCONFIRMED');
+    expect(profile.firstName).toBe('Karl');
+    expect(profile.lastName).toBe('Turley');
   });
 
   it('builds an enrichment seed from name query params', () => {
@@ -83,6 +100,15 @@ describe('skiptracerV2 search helpers', () => {
       address: undefined,
       ssn_last4: undefined,
     });
+  });
+
+  it('includes optional address seed on name searches', () => {
+    const seed = buildEnrichmentSeed(parseSearchParams(
+      new URLSearchParams('q=John+Smith&address=123+Main+St&city=SLC&state=UT'),
+    ));
+    expect(seed?.address).toBe('123 Main St');
+    expect(seed?.first_name).toBe('John');
+    expect(seed?.city).toBe('SLC');
   });
 
   it('maps enrichment records into dossier profiles', () => {

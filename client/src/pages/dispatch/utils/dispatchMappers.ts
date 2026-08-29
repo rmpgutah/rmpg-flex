@@ -176,6 +176,16 @@ export function mapDbCall(row: any): CallForService {
     scene_safety: row.scene_safety || undefined,
     weather_conditions: row.weather_conditions || undefined,
     lighting_conditions: row.lighting_conditions || undefined,
+    weather_snapshot: (() => {
+      const raw = row.weather_snapshot;
+      if (!raw) return undefined;
+      if (typeof raw === 'object') return raw;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return undefined; }
+      }
+      return undefined;
+    })(),
+    weather_manual: !!row.weather_manual,
     // Flags
     alcohol_involved: !!row.alcohol_involved,
     drugs_involved: !!row.drugs_involved,

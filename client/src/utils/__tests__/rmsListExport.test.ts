@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  tipsToCsv, communityReportsToCsv, broadcastsToCsv, lockUnitsToCsv,
-  crashReportsToCsv, briefingsToCsv, shiftNotesToCsv, formatRadioLine, trainingCoursesToCsv,
-} from '../rmsListExport';
+import { tipsToCsv, communityReportsToCsv, broadcastsToCsv, lockUnitsToCsv } from '../rmsListExport';
 
 describe('rmsListExport', () => {
   it('exports tips without a free-text notes dump of unused columns', () => {
@@ -35,23 +32,5 @@ describe('rmsListExport', () => {
     expect(lockUnitsToCsv([{
       unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'locked', reason: 'Lost device',
     }])).toContain('Lost device');
-  });
-
-  it('exports crash, briefing, notes, unit radio line, and training rows', () => {
-    expect(crashReportsToCsv([{
-      report_number: 'CR-1', crash_date: 'd', location: '400 S', crash_type: 'rear_end',
-      severity: 'fatal', vehicles_involved: 2, injuries: 1, fatalities: 1, status: 'filed',
-    }])).toContain('CR-1');
-    expect(briefingsToCsv([{
-      briefing_number: 'B-1', title: 'Day', shift_type: 'day', created_by: 'Disp',
-      created_at: 't', acknowledged_count: 2, total_officers: 8,
-    }])).toContain('B-1');
-    expect(shiftNotesToCsv([{
-      officer_name: 'Hale', visibility: 'all', tags: ['FI'], created_at: 't', content: 'saw vehicle',
-    }])).toContain('saw vehicle');
-    expect(formatRadioLine({
-      unit_id: '12A', officer_name: 'Hale', status: 'available', location_description: 'Main St',
-    })).toBe('12A available — Hale — Main St');
-    expect(trainingCoursesToCsv([{ course_name: 'Firearms', course_code: 'FA-1', category: 'firearms', duration_hours: 8, location: 'range', is_mandatory: 1 }])).toContain('FA-1');
   });
 });

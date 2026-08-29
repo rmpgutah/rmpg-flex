@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
@@ -20,6 +20,7 @@ import {
   SERVE_DOCUMENT_TYPE_LABELS,
   SERVE_DOCUMENT_TYPES,
 } from '../../utils/serveAttemptFileMeta';
+import { useNavTrip } from '../../context/NavTripContext';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -156,6 +157,22 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Map the app-wide GPS tracker fix into modal state, or null when no fix yet. */
+function gpsFromTracker(tracker: {
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+} | null | undefined): GpsState | null {
+  if (!tracker || tracker.latitude == null || tracker.longitude == null) return null;
+  return {
+    latitude: tracker.latitude,
+    longitude: tracker.longitude,
+    accuracy: tracker.accuracy != null ? Math.round(tracker.accuracy) : null,
+    loading: false,
+    error: null,
+  };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeAttemptModal({
@@ -165,6 +182,10 @@ export default function ServeAttemptModal({
   onSubmit,
   onGenerateAffidavit,
 }: ServeAttemptModalProps) {
+  const navTrip = useNavTrip();
+  const liveGpsRef = useRef(navTrip?.gps);
+  liveGpsRef.current = navTrip?.gps;
+
   const [step, setStep] = useState(0);
 
   // Step 1 — GPS
@@ -173,6 +194,7 @@ export default function ServeAttemptModal({
     loading: true, error: null,
   });
   const [gpsRetryCount, setGpsRetryCount] = useState(0);
+  const acquireGenRef = useRef(0);
 
   // Text/dropdown fields — draft-persisted so an in-progress attempt survives
   // a lost connection, accidental close, or device switch (photos/signature/
@@ -243,19 +265,47 @@ export default function ServeAttemptModal({
   // ─── GPS Acquisition ────────────────────────────────────────────────
 
   const acquireGps = useCallback((retryIndex = 0) => {
-    setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
-    if (!navigator.geolocation) {
-      setGps(prev => ({ ...prev, loading: false, error: 'Geolocation not available' }));
+    const gen = ++acquireGenRef.current;
+    const fromTracker = gpsFromTracker(liveGpsRef.current);
+    // Toughbook internal GPS feeds useGpsTracking, not navigator.geolocation —
+    // re-use the live tracker fix instead of waiting 27s for a Chromium timeout.
+    if (retryIndex === 0 && fromTracker) {
+      setGps(fromTracker);
       return;
     }
-    // First attempt: high-accuracy GPS (best for outdoor/vehicle at service address).
-    // Retries: low-accuracy IP/WiFi fix — resolves in <2s on desktop/indoor where
-    // the GPS chip times out. Accepts a 60s cached position so it returns immediately
-    // if the browser already has a recent fix from another tab.
-    const highAccuracy = retryIndex === 0;
+
+    setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
+    if (!navigator.geolocation) {
+      const fallback = gpsFromTracker(liveGpsRef.current);
+      setGps(fallback ?? { latitude: null, longitude: null, accuracy: null, loading: false, error: 'Geolocation not available' });
+      return;
+    }
+
+    let settled = false;
+    const finish = (next: GpsState) => {
+      if (settled || gen !== acquireGenRef.current) return;
+      settled = true;
+      window.clearTimeout(watchdogId);
+      setGps(next);
+    };
+
+    const watchdogId = window.setTimeout(() => {
+      const fallback = gpsFromTracker(liveGpsRef.current);
+      finish(fallback ?? {
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        loading: false,
+        error: 'Timeout expired',
+      });
+    }, 12000);
+
+    // Browser fallback when the tracker has no fix yet. Low accuracy + generous
+    // maximumAge — high-accuracy getCurrentPosition hangs on desktop/Toughbook
+    // while the hardware reader is already owned by useGpsTracking.
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setGps({
+        finish({
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: Math.round(pos.coords.accuracy),
@@ -264,12 +314,19 @@ export default function ServeAttemptModal({
         });
       },
       (err) => {
-        setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
+        const fallback = gpsFromTracker(liveGpsRef.current);
+        finish(fallback ?? {
+          latitude: null,
+          longitude: null,
+          accuracy: null,
+          loading: false,
+          error: err?.message || 'GPS error',
+        });
       },
       {
-        enableHighAccuracy: highAccuracy,
-        timeout: highAccuracy ? 27000 : 10000,
-        maximumAge: highAccuracy ? 3000 : 60000,
+        enableHighAccuracy: false,
+        timeout: retryIndex === 0 ? 8000 : 10000,
+        maximumAge: 60000,
       },
     );
   }, []);
@@ -288,9 +345,18 @@ export default function ServeAttemptModal({
       setSubmitting(false);
       setSubmitResult(null);
       setTimeout(() => snapshot(), 0);
+    } else {
+      acquireGenRef.current += 1;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, acquireGps]);
+
+  // Adopt a tracker fix as soon as it arrives while the modal is waiting.
+  useEffect(() => {
+    if (!isOpen || !gps.loading) return;
+    const fromTracker = gpsFromTracker(navTrip?.gps);
+    if (fromTracker) setGps(fromTracker);
+  }, [isOpen, gps.loading, navTrip?.gps?.latitude, navTrip?.gps?.longitude, navTrip?.gps?.accuracy]);
 
   // ─── Picker context ────────────────────────────────────────────────
   // Which top-level PS categories are surfaced for the current attempt

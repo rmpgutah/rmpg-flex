@@ -1,6 +1,7 @@
 import type { EnrichmentSeed, EnrichedRecord, EnrichmentResponse } from '../enrichment/types';
 import { runEnrichmentSearch } from '../enrichment/runSearch';
 import { ENRICHMENT_SOURCE_CATEGORIES, OPEN_SOURCE_ENRICHMENT_SOURCES } from '../enrichment/catalog';
+import { splitPersonName } from '../enrichment/sources/http';
 import { query, queryFirst } from '../db';
 import { mapSkipTracerRecordsToProfiles, normalizeResponse } from '../personIntel/adapters/skiptracer';
 import { enrichVehicleRecord, type EnrichEnv } from '../vehicleEnrichment/enrichChain';
@@ -51,6 +52,8 @@ export interface V2SearchParams {
   ssn_last4?: string;
   city?: string;
   state?: string;
+  /** Optional address seed for enrichment property sources during a name search. */
+  address?: string;
   /** microbilt = local + open-source enrichment; rapidapi = RapidAPI; all = everything */
   engine: 'microbilt' | 'rapidapi' | 'all';
   categories: string[];
@@ -123,15 +126,13 @@ export function enrichedRecordToProfile(
   sourceKey: string,
   matchTier: 'CONFIRMED' | 'UNCONFIRMED',
 ): V2Profile {
-  const parts = (rec.name ?? '').trim().split(/\s+/);
-  const firstName = parts[0] || undefined;
-  const lastName = parts.length > 1 ? parts.slice(1).join(' ') : undefined;
+  const { first, last } = splitPersonName('', '', rec.name ?? '');
   const confirmed = matchTier === 'CONFIRMED';
   return {
     id: `${sourceKey}-${crypto.randomUUID()}`,
     fullName: rec.name,
-    firstName,
-    lastName,
+    firstName: first || undefined,
+    lastName: last || undefined,
     dob: rec.dob,
     ssn_last4: rec.ssn_last4,
     matchTier,
@@ -448,7 +449,7 @@ async function searchVehicleEnrichment(
 async function searchRapidApi(db: D1Database, params: V2SearchParams): Promise<{ profiles: V2Profile[]; error?: string }> {
   const apiKey = await getRapidApiKey(db);
   if (!apiKey) return { profiles: [], error: 'not_configured' };
-  if (!(await isSourceEnabled(db, 'rapidapi_skiptrace'))) return { profiles: [] };
+  if (!(await isSourceEnabled(db, 'rapidapi_skiptrace'))) return { profiles: [], error: 'disabled' };
 
   const host = (await getConfigValue(db, 'skiptracer_api_host'))
     ?? 'skip-tracing-api-people-search-lookup.p.rapidapi.com';
@@ -467,24 +468,37 @@ async function searchRapidApi(db: D1Database, params: V2SearchParams): Promise<{
     path = '/api/person/reverse';
     urlParams.set('address', q);
   } else {
-    const first = params.firstName || q.split(/\s+/)[0] || '';
-    const last = params.lastName || q.split(/\s+/).slice(1).join(' ') || '';
+    // "Karl Allen Turley" → firstName=Karl, lastName=Turley (not "Allen Turley").
+    const parts = [params.firstName, params.lastName].filter(Boolean).join(' ').trim()
+      || q;
+    const tokens = parts.split(/\s+/).filter(Boolean);
+    const first = tokens[0] || '';
+    const last = tokens.length > 1 ? tokens[tokens.length - 1] : '';
     urlParams.set('firstName', first);
     urlParams.set('lastName', last);
+    if (params.city) urlParams.set('city', params.city);
+    if (params.state) urlParams.set('state', params.state);
+    if (params.dob) urlParams.set('dob', params.dob);
   }
 
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     const res = await fetch(`https://${host}${path}?${urlParams}`, {
       headers: {
         'X-RapidAPI-Key': apiKey,
         'X-RapidAPI-Host': host,
+        Accept: 'application/json',
+        'User-Agent': 'RMPG-Flex/1.0 (Cloudflare Workers; sworn LE)',
       },
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) return { profiles: [], error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const snippet = body.replace(/\s+/g, ' ').slice(0, 120);
+      return { profiles: [], error: `HTTP ${res.status}${snippet ? `: ${snippet}` : ''}` };
+    }
     const data = await res.json() as Record<string, unknown>;
     const records = normalizeResponse(data);
     const mapped = mapSkipTracerRecordsToProfiles(records);
@@ -517,16 +531,20 @@ export function buildEnrichmentSeed(params: V2SearchParams): EnrichmentSeed | nu
 
   if (searchType === 'address') {
     return {
-      first_name: params.firstName || 'ADDRESS',
-      last_name: params.lastName || 'LOOKUP',
+      first_name: '',
+      last_name: '',
       city: params.city,
       state: params.state,
       address: q,
     };
   }
 
-  const first = params.firstName || q.split(/\s+/)[0] || '';
-  const last = params.lastName || q.split(/\s+/).slice(1).join(' ') || '';
+  // Prefer explicit first/last; otherwise split "Karl Allen Turley" → Karl / Turley.
+  const tokens = [params.firstName, params.lastName].filter(Boolean).join(' ').trim().split(/\s+/).filter(Boolean);
+  const qTokens = q.split(/\s+/).filter(Boolean);
+  const parts = tokens.length >= 2 ? tokens : qTokens;
+  const first = parts[0] || '';
+  const last = parts.length > 1 ? parts[parts.length - 1] : '';
   if (!first && !last) return null;
   return {
     first_name: first,
@@ -534,6 +552,7 @@ export function buildEnrichmentSeed(params: V2SearchParams): EnrichmentSeed | nu
     dob: params.dob,
     city: params.city,
     state: params.state,
+    address: params.address,
     phone: searchType === 'phone' ? q : undefined,
     email: searchType === 'email' ? q : undefined,
     ssn_last4: params.ssn_last4,
@@ -640,6 +659,8 @@ export async function runSkipTracerSearch(
     const rapid = await searchRapidApi(db, params);
     if (rapid.error === 'not_configured') {
       sourcesFailed.push({ name: 'rapidapi_skiptrace', error: 'not_configured' });
+    } else if (rapid.error === 'disabled') {
+      sourcesFailed.push({ name: 'rapidapi_skiptrace', error: 'disabled' });
     } else if (rapid.error) {
       sourcesFailed.push({ name: 'rapidapi_skiptrace', error: rapid.error });
     } else if (rapid.profiles.length) {
@@ -699,6 +720,7 @@ export function parseSearchParams(searchParams: URLSearchParams): V2SearchParams
     ssn_last4: searchParams.get('ssn_last4') ?? undefined,
     city: searchParams.get('city') ?? undefined,
     state: searchParams.get('state') ?? undefined,
+    address: searchParams.get('address') ?? undefined,
     engine,
     categories: categoriesRaw ? categoriesRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
   };
@@ -706,4 +728,16 @@ export function parseSearchParams(searchParams: URLSearchParams): V2SearchParams
 
 export function detectSearchTypeFromParams(params: V2SearchParams): string {
   return detectSearchType(params.q, params);
+}
+
+/** Reconstruct a display/re-run query from stored history JSON. */
+export function historyQueryFromParams(params: Record<string, unknown>): string {
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
+  if (q) return q;
+  for (const key of ['name', 'phone', 'email', 'address'] as const) {
+    const legacy = params[key];
+    if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  }
+  const parts = [params.firstName, params.lastName].filter(v => typeof v === 'string' && v.trim()).join(' ');
+  return parts.trim();
 }

@@ -452,6 +452,12 @@ DIAL_CONNECT_WEBHOOK_URL = "https://dialer.rmpgutah.us/api/webhooks/flex/cfs-sta
 # Spec: docs/superpowers/specs/2026-06-22-nationwide-sor-nsopw-design.md
 NSOPW_ENABLED = "1"
 
+# Microsoft 365 / Azure AD app registration (optional — Admin → Email tab
+# also stores encrypted copies in D1). Set client id + tenant as plain vars;
+# client secret via `wrangler secret put MS_EMAIL_CLIENT_SECRET`.
+# MS_EMAIL_CLIENT_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# MS_EMAIL_TENANT_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)
 # GOOGLE_MAPS_API_KEY
@@ -459,7 +465,7 @@ NSOPW_ENABLED = "1"
 #  - FLEETIO_API_KEY         Fleet.io API key (Token-style; app.fleetio.com/settings/api_keys)
 #  - FLEETIO_ACCOUNT_TOKEN   Fleet.io Account-Token (per-account; same settings page)
 #  - FLEETIO_WEBHOOK_SECRET  Fleet.io webhook signing secret (PR 4; set when webhooks are wired)
-#  - DIALER_OIDC_CLIENT_SECRET  Dialer OIDC client secret (paired with DIALER_OIDC_CLIENT_ID above; used by src/routes/ssoAuth.ts's token exchange)
+#  - MS_EMAIL_CLIENT_SECRET   Azure AD client secret (paired with MS_EMAIL_CLIENT_ID / MS_EMAIL_TENANT_ID vars above)
 
 # Scheduled cron triggers.
 # Utah warrant smoke poll runs every 4h, matching the legacy server's

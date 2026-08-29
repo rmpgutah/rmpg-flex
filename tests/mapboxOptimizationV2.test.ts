@@ -89,11 +89,20 @@ describe('buildServeRunProblem', () => {
       id: 20, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
       time_window: 'morning',
     };
-    const doc = buildServeRunProblem([morning], officer, '2026-08-28T20:30:00.000Z', SHIFT_END);
+    const doc = buildServeRunProblem([morning], officer, '2026-08-28T14:00:00.000Z', SHIFT_END);
     const tw = doc.services[0].service_times![0];
     expect(tw.type).toBe('soft');
     expect(tw.earliest).toBe('2026-08-28T06:00:00-06:00');
     expect(tw.latest).toBe('2026-08-28T12:00:00-06:00');
+  });
+
+  it('omits a morning window when the shift starts after noon', () => {
+    const morning: ServeStop = {
+      id: 22, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
+      time_window: 'morning',
+    };
+    const doc = buildServeRunProblem([morning], officer, '2026-08-29T00:15:00.000Z', SHIFT_END);
+    expect(doc.services[0].service_times).toBeUndefined();
   });
 
   it('omits anytime windows', () => {

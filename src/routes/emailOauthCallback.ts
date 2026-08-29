@@ -14,7 +14,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { emailOauthRedirectUri, workerAppOrigin } from '../utils/appOrigin';
+import { exchangeAuthorizationCode, oauthRedirectCandidates, workerAppOrigin } from '../utils/appOrigin';
 
 const oauth = new Hono<Env>();
 
@@ -76,26 +76,21 @@ oauth.get('/callback', async (c) => {
     if (!cfg[KEYS.clientId] || !cfg[KEYS.clientSecret] || !cfg[KEYS.tenantId]) {
       return back('error', 'Credentials were cleared mid-flow — re-enter and retry');
     }
-    const tokenRes = await fetch(
-      `https://login.microsoftonline.com/${encodeURIComponent(cfg[KEYS.tenantId])}/oauth2/v2.0/token`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: cfg[KEYS.clientId],
-          client_secret: cfg[KEYS.clientSecret],
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: emailOauthRedirectUri(c.env),
-        }),
+    const exchanged = await exchangeAuthorizationCode({
+      tokenUrl: `https://login.microsoftonline.com/${encodeURIComponent(cfg[KEYS.tenantId])}/oauth2/v2.0/token`,
+      params: {
+        client_id: cfg[KEYS.clientId],
+        client_secret: cfg[KEYS.clientSecret],
+        grant_type: 'authorization_code',
+        code,
       },
-    );
-    if (!tokenRes.ok) {
-      const detail = await tokenRes.text();
-      console.error('[EmailOAuth] token exchange failed:', tokenRes.status, detail);
-      return back('error', `Token exchange failed (HTTP ${tokenRes.status})`);
+      redirectUris: oauthRedirectCandidates(c.env, '/api/email-oauth/callback', c.req.url),
+    });
+    if (!exchanged.ok) {
+      console.error('[EmailOAuth] token exchange failed:', exchanged.status, exchanged.body);
+      return back('error', `Token exchange failed (HTTP ${exchanged.status})`);
     }
-    const tok = await tokenRes.json<{ access_token: string; refresh_token?: string }>();
+    const tok = JSON.parse(exchanged.body) as { access_token: string; refresh_token?: string };
     if (!tok.refresh_token) {
       return back('error', 'No refresh_token returned — ensure offline_access is in the requested scopes');
     }

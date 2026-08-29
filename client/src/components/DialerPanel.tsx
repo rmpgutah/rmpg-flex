@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
-import { PhoneCall, X } from 'lucide-react';
-import IconButton from './IconButton';
+import { ExternalLink, PhoneCall, X } from 'lucide-react';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
+/** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
+ *  and cannot register the dispatcher Twilio Client the IVR actually Dials. */
+export const DIALER_APP_URL = `${DIALER_ORIGIN}/dialer`;
+export const DIALER_WINDOW_NAME = 'rmpg-dial-connect';
 export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
-export const DIALER_IFRAME_ALLOW = 'microphone; autoplay; clipboard-write';
+export const DIALER_IFRAME_ALLOW = 'microphone *; autoplay *; clipboard-write';
+export const DIALER_PANEL_WIDTH_PX = 900;
+export const DIALER_PANEL_HEIGHT_PX = 680;
+export const DIALER_PANEL_WIDTH = `${DIALER_PANEL_WIDTH_PX}px`;
+export const DIALER_PANEL_HEIGHT = `${DIALER_PANEL_HEIGHT_PX}px`;
 
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
@@ -25,7 +32,21 @@ function isDialConnectMessage(data: unknown): data is DialConnectMessage {
   );
 }
 
-/** Best-effort E.164 for US/NANP numbers Flex stores in person/job records. */
+/** Always-on viewport box. Never 0×0 / opacity 0 — that freezes Twilio Voice. */
+export function dialerIframeHostStyle(): CSSProperties {
+  return {
+    position: 'fixed',
+    left: 16,
+    bottom: 16,
+    width: DIALER_PANEL_WIDTH,
+    height: DIALER_PANEL_HEIGHT,
+    maxWidth: 'calc(100vw - 32px)',
+    maxHeight: 'calc(100vh - 96px)',
+    overflow: 'hidden',
+    zIndex: 9998,
+  };
+}
+
 export function normalizeDialTarget(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
@@ -33,6 +54,57 @@ export function normalizeDialTarget(raw: string): string {
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   if (digits.length === 10) return `+1${digits}`;
   return digits ? `+${digits}` : '';
+}
+
+let dialerWindow: Window | null = null;
+
+/** Named top-level `/dialer` (no feature-string popup chrome — less likely to be blocked). */
+export function openDialerWindow(): Window | null {
+  if (typeof window === 'undefined') return null;
+  if (dialerWindow && !dialerWindow.closed) {
+    dialerWindow.focus();
+    return dialerWindow;
+  }
+  dialerWindow = window.open(DIALER_APP_URL, DIALER_WINDOW_NAME);
+  return dialerWindow;
+}
+
+export function postToDialerWindow(data: Record<string, unknown>): void {
+  const target = openDialerWindow();
+  target?.postMessage(data, DIALER_ORIGIN);
+}
+
+export function resetDialerWindowForTests(): void {
+  /* iframe is queried from the document; nothing to reset */
+}
+
+function parkIframe(iframe: HTMLIFrameElement): void {
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    width: '1px',
+    height: '1px',
+    opacity: '0',
+    pointerEvents: 'none',
+    bottom: '0px',
+    left: '0px',
+    top: 'auto',
+    zIndex: '0',
+  });
+}
+
+function dockIframe(iframe: HTMLIFrameElement, host: HTMLElement): void {
+  const r = host.getBoundingClientRect();
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    top: `${r.top}px`,
+    left: `${r.left}px`,
+    width: `${Math.max(r.width, 1)}px`,
+    height: `${Math.max(r.height, 1)}px`,
+    opacity: '1',
+    pointerEvents: 'auto',
+    bottom: 'auto',
+    zIndex: '40',
+  });
 }
 
 interface Toast {
@@ -49,11 +121,34 @@ interface DialerPanelProps {
 let _toastId = 0;
 
 export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
-  const [collapsed, setCollapsed] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [connected, setConnected] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const lastSeenRef = useRef(0);
+  const [lastSeen, setLastSeen] = useState(0);
+  const [poppedOut, setPoppedOut] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeSrcRef = useRef(DIALER_APP_URL);
+  const popupRef = useRef<Window | null>(null);
+
+  const dockDialer = useCallback(() => {
+    try {
+      popupRef.current?.close();
+    } catch {
+      /* cross-origin close is best-effort */
+    }
+    popupRef.current = null;
+    setPoppedOut(false);
+  }, []);
+
+  const onDialerPage = location.pathname === DIALER_CONNECT_PATH;
+
+  const openDialerInApp = useCallback(() => {
+    if (location.pathname !== DIALER_CONNECT_PATH) {
+      navigate(DIALER_CONNECT_PATH);
+    }
+  }, [location.pathname, navigate]);
 
   const addToast = useCallback((kind: Toast['kind'], message: string) => {
     const id = ++_toastId;
@@ -61,49 +156,45 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_DURATION_MS);
   }, []);
 
+  const postPlaceCall = useCallback((to: string) => {
+    const payload = { source: 'rmpg-flex', type: 'place_call', to };
+    const frame = iframeRef.current?.contentWindow;
+    if (frame && !poppedOut) {
+      frame.postMessage(payload, DIALER_ORIGIN);
+      return;
+    }
+    postToDialerWindow(payload);
+  }, [poppedOut]);
+
   const placeOutboundCall = useCallback((raw: string) => {
     const to = normalizeDialTarget(raw);
     if (!to) return;
-    flushSync(() => setCollapsed(false));
-    iframeRef.current?.contentWindow?.postMessage(
-      { source: 'rmpg-flex', type: 'place_call', to },
-      DIALER_ORIGIN,
-    );
-  }, []);
+    postPlaceCall(to);
+  }, [postPlaceCall]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
       if (event.origin !== DIALER_ORIGIN) return;
       if (!isDialConnectMessage(event.data)) return;
 
-      lastSeenRef.current = Date.now();
-
       const message = event.data;
-      // flushSync: this fires from a native `message` listener, outside React's
-      // event system, so React 18+ automatic batching would otherwise defer the
-      // DOM update to a later microtask. Callers (and tests) that dispatch a
-      // message and immediately assert on the panel's state need it applied
-      // synchronously.
       flushSync(() => {
+        setLastSeen(Date.now());
         setConnected(true);
         if (message.type === 'call_status' && message.status === 'ringing') {
-          setCollapsed(false);
+          addToast('ringing', `Inbound call from ${message.from ?? 'unknown number'}`);
         } else if (message.type === 'duress_alert') {
-          setCollapsed(false);
+          addToast('duress', `Duress alert: ${message.dispatcherName}`);
         }
       });
 
       if (message.type === 'call_status' && message.status === 'ringing') {
-        const msg = `Inbound call from ${message.from ?? 'unknown number'}`;
-        addToast('ringing', msg);
-        onRinging?.(msg);
+        onRinging?.(`Inbound call from ${message.from ?? 'unknown number'}`);
       } else if (message.type === 'duress_alert') {
-        const msg = `Duress alert: ${message.dispatcherName}`;
-        addToast('duress', msg);
-        onDuress?.(msg);
+        onDuress?.(`Duress alert: ${message.dispatcherName}`);
       }
     },
-    [onRinging, onDuress, addToast],
+    [onRinging, onDuress, addToast, openDialerInApp],
   );
 
   useEffect(() => {
@@ -113,17 +204,14 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (lastSeenRef.current === 0) return;
-      if (Date.now() - lastSeenRef.current >= HEARTBEAT_TIMEOUT_MS) {
+      if (lastSeen === 0) return;
+      if (Date.now() - lastSeen >= HEARTBEAT_TIMEOUT_MS) {
         flushSync(() => setConnected(false));
       }
     }, HEARTBEAT_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [lastSeen]);
 
-  // tel: links in Records / Serve / Skip Tracer should place the call in
-  // Dial Connect instead of opening the OS phone handler. Dial Connect
-  // listens for {source:'rmpg-flex', type:'place_call', to} on the embed.
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
       const el = event.target;
@@ -149,79 +237,164 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     return () => window.removeEventListener(DIALER_PLACE_CALL_EVENT, onPlace);
   }, [placeOutboundCall]);
 
+  useLayoutEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const sync = () => {
+      const host = onDialerPage ? document.getElementById(DIALER_HOST_ID) : null;
+      if (host) dockIframe(iframe, host);
+      else parkIframe(iframe);
+    };
+
+    sync();
+    window.addEventListener('resize', sync);
+    const host = onDialerPage ? document.getElementById(DIALER_HOST_ID) : null;
+    const ro = typeof ResizeObserver !== 'undefined' && host ? new ResizeObserver(sync) : null;
+    if (host && ro) ro.observe(host);
+    return () => {
+      window.removeEventListener('resize', sync);
+      ro?.disconnect();
+    };
+  }, [onDialerPage]);
+
   return (
     <div className="fixed bottom-4 left-4 z-[9998] flex flex-col items-start">
+      <iframe
+        ref={iframeRef}
+        src={DIALER_APP_URL}
+        title="Dial Connect"
+        allow="microphone; camera; autoplay; clipboard-write"
+        className="border-0 bg-surface-base"
+        style={{ position: 'fixed', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none' }}
+      />
+
       {toasts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1.5 items-start">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className="flex items-center gap-2 px-3 py-2 border shadow-lg text-[11px] font-semibold uppercase tracking-wide max-w-[320px]"
-              style={{
-                background: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--surface-raised)',
-                borderColor: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--sev-ok)',
-                color: toast.kind === 'duress' ? '#fff' : 'var(--text-primary)',
-              }}
-            >
-              <PhoneCall className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className="truncate">{toast.message}</span>
-              <button
-                type="button"
-                aria-label="Dismiss notification"
-                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-                className="ml-auto flex-shrink-0 opacity-70 hover:opacity-100"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+          {toasts.map((toast) => {
+            const toastClass =
+              'flex items-center gap-2 px-3 py-2 border shadow-lg text-[11px] font-semibold uppercase tracking-wide max-w-[320px]';
+            const toastStyle = {
+              background: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--surface-raised)',
+              borderColor: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--sev-ok)',
+              color: toast.kind === 'duress' ? '#fff' : 'var(--text-primary)',
+            } as const;
+            const body = (
+              <>
+                <PhoneCall className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{toast.message}</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Dismiss notification"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+                  }}
+                  className="ml-auto flex-shrink-0 opacity-70 hover:opacity-100"
+                >
+                  <X className="w-3 h-3" />
+                </span>
+              </>
+            );
+            // While the CAD iframe holds the Twilio Client, a named-window
+            // <a> would register a second Client and dump inbound to VM.
+            if (poppedOut) {
+              return (
+                <a
+                  key={toast.id}
+                  href={DIALER_APP_URL}
+                  target={DIALER_WINDOW_NAME}
+                  rel="opener"
+                  className={toastClass}
+                  style={toastStyle}
+                >
+                  {body}
+                </a>
+              );
+            }
+            return (
+              <div key={toast.id} role="status" className={toastClass} style={toastStyle}>
+                {body}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div
-        style={{
-          width: collapsed ? 0 : 'min(900px, calc(100vw - 32px))',
-          height: collapsed ? 0 : 'min(680px, calc(100vh - 96px))',
-          overflow: 'hidden',
-          transition: 'width 0.2s ease, height 0.2s ease',
-        }}
-        className="bg-surface-raised border border-border-subtle shadow-lg mb-2"
-      >
-        <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle">
-          <span className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap">
+      {!poppedOut && (
+        <div
+          data-dialer-iframe-host=""
+          style={dialerIframeHostStyle()}
+          className="bg-surface-raised border border-border-subtle shadow-lg"
+        >
+          <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle">
+            <span className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap">
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ background: connected ? 'var(--sev-ok)' : 'var(--text-muted)' }}
+              />
+              Dialer {connected ? 'Connected' : 'Sign in to answer'}
+            </span>
+            <a
+                href={DIALER_APP_URL}
+                target={DIALER_WINDOW_NAME}
+                rel="opener"
+                aria-label="Pop out Dial Connect"
+                title="Opens Dial Connect in its own window and unloads the CAD iframe so only one Twilio Client is registered"
+                className="inline-flex p-0.5 opacity-80 hover:opacity-100"
+                onClick={() => {
+                  popupRef.current = window.open('', DIALER_WINDOW_NAME);
+                  setPoppedOut(true);
+                }}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+          </div>
+          <iframe
+            ref={iframeRef}
+            title="Dial Connect"
+            src={iframeSrcRef.current}
+            className="w-full border-0"
+            style={{ height: 'calc(100% - 28px)' }}
+            allow={DIALER_IFRAME_ALLOW}
+            loading="eager"
+          />
+        </div>
+      )}
+
+      {poppedOut && (
+        <div className="flex items-center gap-2">
+          <a
+            href={DIALER_APP_URL}
+            target={DIALER_WINDOW_NAME}
+            rel="opener"
+            className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5"
+            aria-label={`Open dialer (${connected ? 'connected' : 'disconnected'})`}
+            title="Keep the Dial Connect window open to answer inbound. Click to focus it."
+          >
+            <PhoneCall className="w-3.5 h-3.5" />
+            Dialer
             <span
-              className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+              className="inline-block w-1.5 h-1.5 rounded-full"
               style={{ background: connected ? 'var(--sev-ok)' : 'var(--text-muted)' }}
             />
-            Dialer {connected ? 'Connected' : 'Disconnected'}
-          </span>
-          <IconButton aria-label="Collapse dialer panel" onClick={() => setCollapsed(true)}>
-            <X className="w-3.5 h-3.5" />
-          </IconButton>
+          </a>
+          <button
+            type="button"
+            onClick={dockDialer}
+            className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-rmpg-300 hover:text-white"
+          >
+            Back in CAD
+          </button>
         </div>
-        <iframe
-          ref={iframeRef}
-          title="Dial Connect"
-          src={`${DIALER_ORIGIN}/dialer-embed`}
-          className="w-full border-0"
-          style={{ height: 'calc(100% - 28px)' }}
-          allow={DIALER_IFRAME_ALLOW}
-        />
-      </div>
-      {collapsed && (
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5"
-          aria-label={`Open dialer (${connected ? 'connected' : 'disconnected'})`}
-        >
-          <PhoneCall className="w-3.5 h-3.5" />
-          Dialer
-          <span
-            className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ background: connected ? 'var(--sev-ok)' : 'var(--text-muted)' }}
-          />
-        </button>
       )}
     </div>
   );

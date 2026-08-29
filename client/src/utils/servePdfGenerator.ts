@@ -819,6 +819,140 @@ export interface NoticeOfAttemptOptions {
   printTarget?: PrintTarget;
 }
 
+/** Compression tiers for the one-page Notice of Attempt layout contract. */
+interface NoticeCompressTier {
+  gapScale: number;
+  proseOffset: number;
+  maxNoteChars: number;
+  gpsNoteChars: number;
+  maxAttempts: number;
+  sigRowH: number;
+  statusBandH: number;
+  disclaimerBandH: number;
+  /** Subject panels + instrument title spacing — off for the relaxed tier. */
+  useTightLayout: boolean;
+  sectionPad: number;
+  disclaimerClearance: number;
+  stepGapScale: number;
+  /** Drop Section IV on the tightest tier — saves ~35 mm. */
+  omitWhatToDoNext?: boolean;
+  /** Shorter numbered guidance when space is tight but Section IV remains. */
+  useAbbreviatedSteps?: boolean;
+}
+
+const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
+  {
+    gapScale: 0.78,
+    proseOffset: -0.5,
+    maxNoteChars: 90,
+    gpsNoteChars: 58,
+    maxAttempts: 6,
+    sigRowH: 17,
+    statusBandH: 6.3,
+    disclaimerBandH: 8,
+    useTightLayout: false,
+    sectionPad: 2,
+    disclaimerClearance: 3,
+    stepGapScale: 1,
+  },
+  {
+    gapScale: 0.66,
+    proseOffset: -1,
+    maxNoteChars: 80,
+    gpsNoteChars: 52,
+    maxAttempts: 5,
+    sigRowH: 15,
+    statusBandH: 6,
+    disclaimerBandH: 7.5,
+    useTightLayout: true,
+    sectionPad: 1.5,
+    disclaimerClearance: 2.5,
+    stepGapScale: 0.8,
+  },
+  {
+    gapScale: 0.54,
+    proseOffset: -1.5,
+    maxNoteChars: 68,
+    gpsNoteChars: 44,
+    maxAttempts: 4,
+    sigRowH: 13,
+    statusBandH: 5.6,
+    disclaimerBandH: 7,
+    useTightLayout: true,
+    sectionPad: 1.2,
+    disclaimerClearance: 2.2,
+    stepGapScale: 0.6,
+    useAbbreviatedSteps: true,
+  },
+  {
+    gapScale: 0.46,
+    proseOffset: -2,
+    maxNoteChars: 52,
+    gpsNoteChars: 36,
+    maxAttempts: 3,
+    sigRowH: 11,
+    statusBandH: 5.2,
+    disclaimerBandH: 6.5,
+    useTightLayout: true,
+    sectionPad: 1,
+    disclaimerClearance: 2,
+    stepGapScale: 0.45,
+    omitWhatToDoNext: true,
+  },
+];
+
+/** Subject-facing verify QR — one constant for layout reservation + render. */
+const NOTICE_QR_SIZE_MM = 14;
+const NOTICE_QR_LABEL_H_MM = 3;
+const NOTICE_QR_PIXEL_WIDTH = 128;
+
+/** Top of the subject-facing QR block — flowing content must stay above this. */
+function noticeQrZoneTop(pageH: number): number {
+  const FOOTER_ACCENT_Y = pageH - 11;
+  return FOOTER_ACCENT_Y - 2 - NOTICE_QR_LABEL_H_MM - NOTICE_QR_SIZE_MM - 2;
+}
+
+/** Pick a starting tier from payload shape so typical jobs render relaxed. */
+function estimateNoticeCompressTier(data: NoticeOfAttemptData): number {
+  let score = 0;
+  score += Math.max(0, data.attempts.length - 1);
+  score += data.attempts.filter((a) => a.gpsLat != null && a.gpsLng != null).length >= 2 ? 1 : 0;
+  score += data.signature ? 2 : 0;
+  if ((data.nextAttemptNote?.length ?? 0) > 72) score += 1;
+  if ((data.recipientAddress?.length ?? 0) > 58) score += 1;
+  if ((data.recipientName?.length ?? 0) > 48) score += 1;
+  const hiringLen = (data.attorneyName?.length ?? 0) + (data.clientName?.length ?? 0);
+  if (hiringLen > 65) score += 1;
+  if ((data.documentType?.length ?? 0) > 42) score += 1;
+  if (score >= 7) return 2;
+  if (score >= 3) return 1;
+  return 0;
+}
+
+/** Shorter Section IV copy for compressed tiers — same meaning, fewer lines. */
+function noticeGuidanceSteps(
+  compress: NoticeCompressTier,
+  company: string,
+  phoneCue: string,
+  headerRef: string,
+): string[] {
+  if (compress.omitWhatToDoNext) return [];
+  if (compress.useAbbreviatedSteps) {
+    return [
+      `Call ${company} ${phoneCue} to schedule delivery and avoid further visits here.`,
+      `Confirm this notice using AGENCY REF # ${headerRef || 'above'} when you call.`,
+      `Read delivered documents promptly — this notice does not extend legal deadlines.`,
+      `Without contact, further attempts may occur here or at other locations tied to you.`,
+    ];
+  }
+  return [
+    `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
+    'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
+    'Read the underlying documents once delivered. The papers we have been engaged to deliver may contain time-sensitive deadlines. This notice does NOT extend, waive, or otherwise affect those deadlines.',
+    'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
+  ];
+}
+
 /**
  * Stamp the display zone onto a printed attempt time.
  *
@@ -871,18 +1005,25 @@ export function withZone(time: string): string {
   return /\b(MT|MST|MDT)\b/.test(t) ? t : `${t} MT`;
 }
 
-export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options: NoticeOfAttemptOptions = {}): Promise<jsPDF> {
+export async function generateNoticeOfAttempt(
+  data: NoticeOfAttemptData,
+  options: NoticeOfAttemptOptions = {},
+  compressTier?: number,
+): Promise<jsPDF> {
+  const startTier = compressTier ?? estimateNoticeCompressTier(data);
+  const compress = NOTICE_COMPRESS_TIERS[Math.min(startTier, NOTICE_COMPRESS_TIERS.length - 1)];
+  const ng = (n: number) => n * compress.gapScale;
+
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Defensive reset: a prior render that threw after setting tightLayout=true
-  // would leave it set, causing this render to silently use compact spacing.
-  // A stale true here is the only way the notice gets tight spacing without
-  // actually being in a tight-fit scenario.
-  tightLayout = false;
+  // Relaxed tier keeps full panel spacing; tighter tiers borrow the Civil
+  // Process Record's compressed subject-panel rhythm.
+  tightLayout = compress.useTightLayout;
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  (doc as { __singlePageOnly?: boolean }).__singlePageOnly = true;
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'mobile');
   setActiveFormKey('');
@@ -939,7 +1080,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // cannot be mistaken for the tinted advisory band further down.
   {
     const n = data.attempts.length;
-    const bandH = 6.4;
+    const bandH = compress.statusBandH;
     // Drawn on the RAIL (getRailX/getRailWidth), not lx/ffw — every other
     // full-bleed block on this page (section header bars, the I(a)/I(b)
     // panels, the signature block) shares that same left/right edge. This
@@ -959,7 +1100,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       `SERVICE NOT COMPLETED  ·  ${n} ATTEMPT${n === 1 ? '' : 'S'} MADE AT THIS ADDRESS`,
       doc.internal.pageSize.getWidth() / 2, y + bandH / 2 + 1.5, { align: 'center' },
     );
-    y += bandH + SPACING.SM;
+    y += bandH + ng(SPACING.SM);
   }
 
   // ── Article I — who this concerns, and under what case ──
@@ -981,7 +1122,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
 
   y = checkPageBreak(doc, y, 30);
   {
-    const gutter = SPACING.MD;
+    const gutter = ng(SPACING.MD);
     // Panels sized from the rail and drawn from the rail. Sized from
     // getContentWidth but drawn from getLeftX, the pair ran a millimetre past
     // the right rail every section bar sits on.
@@ -1011,17 +1152,17 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       data.recipientName, 'Person named in the process', recipientRows, panelH);
     const bEnd = drawSubjectPanel(doc, railX + panelW + gutter, startY, panelW, 'I(b).  Case Information',
       data.courtName, 'Court in which the matter is pending', caseRows, panelH);
-    y = Math.max(aEnd, bEnd) + SPACING.LG;
+    y = Math.max(aEnd, bEnd) + ng(SPACING.LG);
   }
 
   // ── Attempt Record ──
   // One-page constraint: this notice is left at a door / mailed, so it must fit
   // a single sheet. Show only the most recent attempts (the Affidavit of
   // Non-Service carries the full history) and clamp note length.
-  const MAX_NOTICE_ATTEMPTS = 6;
-  const MAX_NOTE_CHARS = 90;
+  const MAX_NOTICE_ATTEMPTS = compress.maxAttempts;
+  const MAX_NOTE_CHARS = compress.maxNoteChars;
   /** Combined note+GPS budget for a row that carries coordinates. */
-  const GPS_ROW_NOTE_CHARS = 58;
+  const GPS_ROW_NOTE_CHARS = compress.gpsNoteChars;
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
@@ -1070,6 +1211,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       // wrap and costs a full extra line per row no matter how the characters
       // are divided. Half of live attempts carry GPS, so this is the common
       // case, not the edge one.
+      // Budget the note against the GPS suffix rather than clamping it in
+      // isolation — half of live attempts carry GPS, so this is the common case.
       const gpsSuffix = gps ? ` · GPS ${gps}` : '';
       const cellBudget = gps ? GPS_ROW_NOTE_CHARS : MAX_NOTE_CHARS;
       const noteBudget = Math.max(12, cellBudget - gpsSuffix.length);
@@ -1104,24 +1247,16 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // coordinates themselves -- the substantive fact -- are unchanged in the
     // rows above.
     void anyGps;
-    y += SPACING.SM;
+    y += ng(SPACING.SM);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-    // Extra clearance before the next section's header bar — the table's own
-    // last-row separator line sits right on top of closeAutoSection's gold
-    // border (SECTION_BOTTOM_PAD + SECTION_GAP is only ~1.1mm), so without
-    // this the two lines read as a doubled rule crammed against the
-    // "IMPORTANT NOTICE" header bar below (2026-07-13 visual fix).
-    y += SPACING.SM;
+    y += ng(SPACING.SM);
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
-  // 55 mm reservation covers lead-band + body + next-attempt + spacing at
-  // 7 pt prose. Break BEFORE opening the section so the IMPORTANT NOTICE
-  // header isn't orphaned at the bottom of one page with content on the next.
   y = checkPageBreak(doc, y, 55);
   {
     const sec = openAutoSection(doc, 'III. Important Notice — Attempted Service of Legal Documents', y);
-    y = sec.contentY + 2;
+    y = sec.contentY + compress.sectionPad;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -1134,7 +1269,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // up looking like the lead had drifted to the bottom of the page.
     // A solid 8 mm gray band with the bold caps line centered inside it is
     // unambiguous: the lead is PART of the section, not after it.
-    const bandH = 8;
+    const bandH = compress.disclaimerBandH;
     const bandY = y;
     // Light gray FILL only — no outline. The earlier design used a black
     // outline rect, but the band's BOTTOM outline rule (at bandY + bandH)
@@ -1159,18 +1294,9 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // ~2.5mm cap height then reached back UP into the gray fill, rendering
     // "Rocky Mountain Protective Group..." partially on top of the band's
     // last few pixels. 3mm clears the ascender with a hair of daylight left.
-    y = bandY + bandH + 3.0;
+    y = bandY + bandH + compress.disclaimerClearance;
 
-    // ── Body prose in mixed case ──
-    // ALL CAPS body text reads as shouting on a notice the subject must
-    // ACTUALLY read. Police-form ALL-CAPS convention belongs on field
-    // labels and table cells; the prose paragraphs here opt out via
-    // preserveCase so the document reads as a professional legal notice
-    // rather than a 1990s warrant printout. (The lead band above stays
-    // caps deliberately — emphasis, not body.)
-    // 7 pt keeps the two-paragraph block ~10 mm shorter than 8 pt while
-    // remaining legible — critical for fitting all content on one page.
-    const NOTICE_FONT = FONT.SIZE_FIELD_VALUE - 1;
+    const NOTICE_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
     const noticeText =
       `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
       'identified above to you in connection with the referenced case. As shown in the record of ' +
@@ -1183,7 +1309,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       'right, or obligation arising from the underlying legal matter. Process service is performed ' +
       'pursuant to Utah Rule of Civil Procedure 4 and Utah Code § 78B-8-302.';
     y = addWrappedText(doc, noticeText, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
-    y += SPACING.XS;
+    y += ng(SPACING.XS);
 
     if (data.nextAttemptNote) {
       // Reformatted from an inline accent-barred sentence into a boxed
@@ -1212,7 +1338,6 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
         boxW - padX * 2,
       );
       const boxH = headerH + padY + noteLines.length * lineH + padY;
-      y = checkPageBreak(doc, y, boxH + SPACING.SM);
 
       // Outer border
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -1235,68 +1360,50 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       doc.text(noteLines, boxX + padX, cy);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-      y += boxH + SPACING.SM;
+      y += boxH + ng(SPACING.SM);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── What To Do Next (recipient guidance) ──
-  // Most recipients reading a "Notice of Attempt to Serve" have never seen
-  // one before. The disclaimer block answers "what is this?"; this block
-  // answers "what do I actually do now?" with three concrete numbered
-  // actions. Helps prevent the two most common operator headaches: a
-  // recipient ignoring the notice (and getting served at work) or
-  // assuming it's a scam.
-  y = checkPageBreak(doc, y, 30);
-  {
-    const sec = openAutoSection(doc, 'IV. What To Do Next', y);
-    y = sec.contentY + 2;
-    const company = data.serverCompany || 'Rocky Mountain Protective Group';
-    const phoneCue = data.serverPhone
-      ? `at ${data.serverPhone}`
-      : 'at the number printed on this notice';
-    // 7 pt keeps the four-step block ~12 mm shorter than 8 pt.
-    const STEP_FONT = FONT.SIZE_FIELD_VALUE - 1;
-    const steps: string[] = [
-      `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
-      'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
-      'Read the underlying documents once delivered. The papers we have been engaged to deliver may contain time-sensitive deadlines. This notice does NOT extend, waive, or otherwise affect those deadlines.',
-      'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
-    ];
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(STEP_FONT);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    steps.forEach((step, i) => {
-      // Number prefix in bold, body in normal — readable hierarchy.
-      const numLabel = `${i + 1}.`;
-      doc.setFont(PDF_VALUE_FONT, 'bold');
-      doc.text(numLabel, lx, y);
-      const numW = doc.getTextWidth(numLabel) + 2;
+  if (!compress.omitWhatToDoNext) {
+    y = checkPageBreak(doc, y, 30);
+    {
+      const sec = openAutoSection(doc, 'IV. What To Do Next', y);
+      y = sec.contentY + compress.sectionPad;
+      const company = data.serverCompany || 'Rocky Mountain Protective Group';
+      const phoneCue = data.serverPhone
+        ? `at ${data.serverPhone}`
+        : 'at the number printed on this notice';
+      const STEP_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
+      const steps = noticeGuidanceSteps(compress, company, phoneCue, headerRef);
       doc.setFont(PDF_VALUE_FONT, 'normal');
-      y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
-      y += SPACING.XS;
-    });
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+      doc.setFontSize(STEP_FONT);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      steps.forEach((step, i) => {
+        const numLabel = `${i + 1}.`;
+        doc.setFont(PDF_VALUE_FONT, 'bold');
+        doc.text(numLabel, lx, y);
+        const numW = doc.getTextWidth(numLabel) + 2;
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
+        y += ng(SPACING.XS) * compress.stepGapScale;
+      });
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
   //
-  // Reserve the certification line WITH the block: a signature that lands on
-  // its own sheet, separated from the sentence it certifies, is worse than no
-  // signature at all on a roll-printed instrument.
-  //
-  // Reserve the height ACTUALLY drawn, not the SIGNATURE_BOX_H default. That
-  // constant is 24mm, sized for the 12/8 rows a desk-printed affidavit uses;
-  // this block draws 4.5 role + 9 signature + 7 info = 20.5mm. Reserving the
-  // default forced a page break the real content did not need -- the content
-  // fit with room to spare and still landed on sheet two.
-  //
-  // 18mm gives a wet-signature line with room to write; 9mm was too tight
-  // for a real pen signature on a PJ-700 thermal print.
-  const SIG_ROW_H = 18;
+  // Reserve signature + contact + footer citation together. A bare
+  // checkPageBreak on the footer alone exiled the QR onto a second sheet
+  // carrying nothing but a CONTINUED banner (live PDF 2026-08-29).
+  const SIG_ROW_H = compress.sigRowH;
   const SIG_INFO_H = 7;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
-  y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
+  const contactH = data.serverPhone ? 8 : 0;
+  const footerCiteH = 9;
+  y = checkPageBreak(doc, y, sigBlockH + contactH + footerCiteH + ng(SPACING.LG));
 
   // Certification is worded against the ATTEMPT RECORD, not against service:
   // this instrument exists precisely because service did NOT occur, so an
@@ -1315,20 +1422,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     badgeNumber: data.serverBadge,
     certification,
   },
-  // Signature row trimmed from the 12mm default to 9mm. The default is
-  // sized for a wet signature on a full desk-printed affidavit; on this
-  // notice the row is mostly white, and the millimetres buy the
-  // certification sentence above it without touching any content. Still
-  // ample for the captured signature image, which fits to sigRowH - 3.5.
   // Info row trimmed alongside it: three short values, one line each.
   SIG_ROW_H, SIG_INFO_H);
-  y += SPACING.SM;
+  y += ng(SPACING.SM);
 
   // ── Contact line (recipient-facing call-to-action) ──
-  // Centered bold line immediately after the signature so the person at
-  // the door can call without looking up the agency number.
   if (data.serverPhone) {
-    y = checkPageBreak(doc, y, 8);
     const pageWidth = doc.internal.pageSize.getWidth();
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
@@ -1336,17 +1435,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     doc.text(`To arrange delivery, contact ${company}: ${data.serverPhone}`,
       pageWidth / 2, y + 3, { align: 'center' });
-    y += 8;
+    y += 7;
   }
-  y += SPACING.XS;
+  y += ng(SPACING.XS) * 0.5;
 
-  // ── Footer legal text ──
-  // Bumped from FONT.SIZE_FOOTER_SECONDARY (5pt) to 6.5pt and given a thin
-  // rule above it — at 5pt this citation read as a stray caption rather
-  // than the statutory authority line it is. Sentence case retained
-  // throughout (only the proper nouns/section symbol are capitalized) so it
-  // reads as a legal citation, not a shouted disclaimer.
-  y = checkPageBreak(doc, y, 9);
+  // ── Footer legal text ── (rides with signature block — no separate break)
   const footerCiteWidth = doc.internal.pageSize.getWidth();
   // Rule spans the RAIL (getRailX/getRailWidth), matching every other
   // full-bleed rule on the page — was lx/ffw, inset 1mm on both sides.
@@ -1362,27 +1455,40 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   );
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
+  // One-page contract: if content still runs past the QR/footer band, retry
+  // at the next compression tier rather than accepting overlap or a spill.
+  const pageH = doc.internal.pageSize.getHeight();
+  const qrTop = noticeQrZoneTop(pageH);
+  if (y > qrTop && startTier < NOTICE_COMPRESS_TIERS.length - 1) {
+    tightLayout = false;
+    return generateNoticeOfAttempt(data, options, startTier + 1);
+  }
+
+  (doc as { __noticeLayout?: { tier: number; contentBottomY: number; qrZoneTop: number } }).__noticeLayout = {
+    tier: startTier,
+    contentBottomY: y,
+    qrZoneTop: qrTop,
+  };
+
   // ── Subject-facing QR code ──
   try {
     const verifyUrl = `https://rmpgutah.us/verify?ref=${encodeURIComponent(headerRef)}`;
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 1,
-      width: 200,
+      width: NOTICE_QR_PIXEL_WIDTH,
     });
-    const QR_SIZE = 22;
     const qrX = getRailX();
     const pageH = doc.internal.pageSize.getHeight();
     // addPageFooter places the accent line at pageH - 11 (SAFE_PRINT_EDGE_BOTTOM=8, offset=3).
-    // Keep the "Scan to verify" label (3.5mm) + 2mm gap entirely above that line.
+    // Keep the "Scan to verify" label + 2mm gap entirely above that line.
     const FOOTER_ACCENT_Y = pageH - 11;
-    const QR_LABEL_H = 3.5;
-    const qrY = FOOTER_ACCENT_Y - 2 - QR_LABEL_H - QR_SIZE;
-    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, QR_SIZE, QR_SIZE);
+    const qrY = FOOTER_ACCENT_Y - 2 - NOTICE_QR_LABEL_H_MM - NOTICE_QR_SIZE_MM;
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, NOTICE_QR_SIZE_MM, NOTICE_QR_SIZE_MM);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('Scan to verify', qrX + QR_SIZE / 2, qrY + QR_SIZE + 2.5, { align: 'center' });
+    doc.text('Scan to verify', qrX + NOTICE_QR_SIZE_MM / 2, qrY + NOTICE_QR_SIZE_MM + 2, { align: 'center' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   } catch {
     // best-effort
@@ -1402,6 +1508,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   finalizePoliceReport(doc, {
     barcode: { disabled: true },
   });
+
+  // Hard one-page contract: retry at the next compression tier if ANY code
+  // path added a continuation page (checkPageBreak miss, stale bundle, etc.).
+  if (doc.getNumberOfPages() > 1 && startTier < NOTICE_COMPRESS_TIERS.length - 1) {
+    tightLayout = false;
+    return generateNoticeOfAttempt(data, options, startTier + 1);
+  }
 
   return doc;
 }

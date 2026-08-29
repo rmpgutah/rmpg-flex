@@ -91,7 +91,9 @@ jobs:
     name: Client tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # maxWorkers:1 + forks is required to avoid OOM on the 7 GB runner, but
+    # makes the suite wall-clock ~35–40 min. 30 was cancelling healthy green runs.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

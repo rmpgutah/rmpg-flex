@@ -25,6 +25,16 @@ import { INPUT_BADGE_COLORS, CATEGORY_COLORS, ENGINE_COLORS, SECTION_COLORS, STA
 import { useEnrichment } from '../../hooks/useEnrichment';
 import type { EnrichmentSeed, SourceResult } from '../../hooks/useEnrichment';
 
+function historyQueryFromParams(params: Record<string, unknown>): string {
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
+  if (q) return q;
+  for (const key of ['name', 'phone', 'email', 'address'] as const) {
+    const legacy = params[key];
+    if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  }
+  return [params.firstName, params.lastName].filter(v => typeof v === 'string' && v.trim()).join(' ').trim();
+}
+
 // ─── Types ───────────────────────────────────────────────────
 
 interface SourceInfo {
@@ -394,6 +404,9 @@ export default function SkipTracerV2Page() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [selected, setSelected] = useState<Profile | null>(null);
+  const ALL_CATEGORIES = ['people', 'court', 'property', 'business', 'osint', 'registry'] as const;
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [searchEngine, setSearchEngine] = useState<'all' | 'microbilt' | 'rapidapi'>('all');
 
   // Sources
   const [sources, setSources] = useState<SourceInfo[]>([]);
@@ -415,9 +428,6 @@ export default function SkipTracerV2Page() {
   // Save dossier
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Search engine selection
-  const [searchEngine, setSearchEngine] = useState<'microbilt' | 'rapidapi' | 'all'>('all');
 
   // Load sources on mount
   useEffect(() => {
@@ -471,9 +481,19 @@ export default function SkipTracerV2Page() {
 
   // ─── Search ───────────────────────────────────────────────
 
-  const handleSearch = useCallback(async (overrideQuery?: string) => {
+  const handleSearch = useCallback(async (
+    overrideQuery?: string,
+    opts?: {
+      advanced?: Record<string, string>;
+      engine?: 'all' | 'microbilt' | 'rapidapi';
+      categories?: Set<string>;
+    },
+  ) => {
     const q = (overrideQuery ?? query).trim();
-    const hasAdvanced = Object.values(advancedFields).some(v => v.trim());
+    const fields = opts?.advanced ?? advancedFields;
+    const engine = opts?.engine ?? searchEngine;
+    const cats = opts?.categories ?? selectedCategories;
+    const hasAdvanced = Object.values(fields).some(v => v.trim());
     if (!q && !hasAdvanced) return;
 
     setLoading(true);
@@ -484,13 +504,13 @@ export default function SkipTracerV2Page() {
     try {
       const params = new URLSearchParams();
       if (q) params.set('q', q);
-      for (const [key, val] of Object.entries(advancedFields)) {
+      for (const [key, val] of Object.entries(fields)) {
         if (val.trim()) params.set(key, val.trim());
       }
-      if (selectedCategories.size > 0) {
-        params.set('categories', Array.from(selectedCategories).join(','));
+      if (cats.size > 0) {
+        params.set('categories', Array.from(cats).join(','));
       }
-      params.set('engine', searchEngine);
+      params.set('engine', engine);
       const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
       setResult(data);
       if (data.profiles?.length === 1) setSelected(data.profiles[0]);
@@ -499,7 +519,7 @@ export default function SkipTracerV2Page() {
     } finally {
       setLoading(false);
     }
-  }, [query, advancedFields, searchEngine]);
+  }, [query, advancedFields, searchEngine, selectedCategories]);
 
   const searchAssociate = useCallback((name: string) => {
     setQuery(name);
@@ -564,15 +584,39 @@ export default function SkipTracerV2Page() {
 
   const rerunSearch = useCallback((item: SearchHistory) => {
     try {
-      const params = JSON.parse(item.query_params);
-      const q = params.name || params.phone || params.email || params.address || '';
+      const params = JSON.parse(item.query_params) as Record<string, unknown>;
+      const q = historyQueryFromParams(params);
+      const nextAdvanced: Record<string, string> = {
+        firstName: String(params.firstName ?? ''),
+        lastName: String(params.lastName ?? ''),
+        dob: String(params.dob ?? ''),
+        city: String(params.city ?? ''),
+        state: String(params.state ?? ''),
+        ssn_last4: String(params.ssn_last4 ?? ''),
+        address: String(params.address ?? ''),
+      };
+      const nextEngine = (typeof params.engine === 'string'
+        && ['all', 'microbilt', 'rapidapi'].includes(params.engine))
+        ? params.engine as 'all' | 'microbilt' | 'rapidapi'
+        : searchEngine;
+      const nextCats = Array.isArray(params.categories)
+        ? new Set(params.categories.filter((c): c is string => typeof c === 'string'))
+        : selectedCategories;
+
+      setAdvancedFields(prev => ({ ...prev, ...nextAdvanced }));
+      setSearchEngine(nextEngine);
+      setSelectedCategories(nextCats);
       if (q) {
         setQuery(q);
         setActiveTab('search');
-        setTimeout(() => handleSearch(q), 0);
+        setTimeout(() => handleSearch(q, {
+          advanced: nextAdvanced,
+          engine: nextEngine,
+          categories: nextCats,
+        }), 0);
       }
     } catch { /* silent */ }
-  }, [handleSearch]);
+  }, [handleSearch, searchEngine, selectedCategories]);
 
   const inputType = detectInputType(query);
 
@@ -642,9 +686,6 @@ export default function SkipTracerV2Page() {
   }, [batchText]);
 
   // ─── Source Category Filters ─────────────────────────────
-
-  const ALL_CATEGORIES = ['people', 'court', 'property', 'business', 'osint', 'registry'] as const;
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
   const toggleCategory = useCallback((cat: string) => {
     setSelectedCategories(prev => {
@@ -741,13 +782,17 @@ export default function SkipTracerV2Page() {
 
   // ─── Enrichment ─────────────────────────────────────────
 
-  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, error: enrichError, reset: enrichReset } = useEnrichment();
 
   const enrichSeed = useCallback((): EnrichmentSeed | null => {
     if (!selected) return null;
+    const full = selected.fullName || [selected.firstName, selected.middleName, selected.lastName].filter(Boolean).join(' ');
+    const tokens = full.trim().split(/\s+/).filter(Boolean);
+    const first = tokens[0] || selected.firstName || '';
+    const last = tokens.length > 1 ? tokens[tokens.length - 1] : (selected.lastName || '');
     return {
-      first_name: selected.firstName ?? '',
-      last_name:  selected.lastName  ?? '',
+      first_name: first,
+      last_name:  last,
       dob:        selected.dob        ?? undefined,
       city:       selected.city       ?? undefined,
       state:      selected.state      ?? undefined,
@@ -818,8 +863,8 @@ export default function SkipTracerV2Page() {
   const buildHistoryMenu = useCallback((h: SearchHistory): ContextMenuItem[] => {
     let queryDisplay = '';
     try {
-      const params = JSON.parse(h.query_params);
-      queryDisplay = params.name || params.phone || params.email || params.address || h.query_params;
+      const params = JSON.parse(h.query_params) as Record<string, unknown>;
+      queryDisplay = historyQueryFromParams(params) || h.query_params;
     } catch { queryDisplay = h.query_params; }
     return [
       m.action('Re-run search', () => rerunSearch(h), { icon: <RefreshCw size={12} /> }),
@@ -1176,7 +1221,7 @@ export default function SkipTracerV2Page() {
             </div>
             {result.sourcesFailed && result.sourcesFailed.length > 0 && (
               <div className="text-amber-600">
-                {result.sourcesFailed.length} failed: {result.sourcesFailed.map(f => f.name).join(', ')}
+                {result.sourcesFailed.length} failed: {result.sourcesFailed.map(f => `${f.name}${f.error ? ` (${f.error})` : ''}`).join(', ')}
               </div>
             )}
           </div>
@@ -1325,7 +1370,7 @@ export default function SkipTracerV2Page() {
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { const s = enrichSeed(); if (s) enrichSearch(s); }}
+                  onClick={() => { const s = enrichSeed(); if (s) enrichSearch(s, { refresh: Boolean(enrichResult) }); }}
                   disabled={enrichLoading || !selected}
                   className="px-2 py-1 text-[10px] font-medium rounded bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors"
                 >
@@ -1344,7 +1389,9 @@ export default function SkipTracerV2Page() {
                   {enrichResult.sources.map((s: SourceResult) => {
                     const label = s.source.replace(/_/g, ' ').toUpperCase();
                     const status = !s.ok
-                      ? <span className="text-red-400">(error)</span>
+                      ? s.error === 'not_configured'
+                        ? <span className="text-text-secondary">(not configured)</span>
+                        : <span className="text-red-400" title={s.error}>(error)</span>
                       : s.records.length === 0
                       ? <span className="text-text-secondary">(0 hits)</span>
                       : <span className="text-green-400">({s.records.length} hit{s.records.length !== 1 ? 's' : ''})</span>;
@@ -1418,7 +1465,11 @@ export default function SkipTracerV2Page() {
               </div>
             )}
 
-            {!enrichResult && !enrichLoading && (
+            {enrichError && (
+              <p className="px-3 py-2 text-[10px] text-red-400">{enrichError}</p>
+            )}
+
+            {!enrichResult && !enrichLoading && !enrichError && (
               <p className="px-3 py-2 text-[9px] text-text-secondary">Click "Enrich from open sources" to run open-source intelligence search.</p>
             )}
           </div>
@@ -1907,8 +1958,8 @@ export default function SkipTracerV2Page() {
           {history.map(h => {
             let queryDisplay = '';
             try {
-              const params = JSON.parse(h.query_params);
-              queryDisplay = params.name || params.phone || params.email || params.address || JSON.stringify(params);
+              const params = JSON.parse(h.query_params) as Record<string, unknown>;
+              queryDisplay = historyQueryFromParams(params) || JSON.stringify(params);
             } catch { queryDisplay = h.query_params; }
 
             const badgeType = h.search_type === 'name' ? 'Name' : h.search_type === 'phone' ? 'Phone' : h.search_type === 'email' ? 'Email' : 'Address';
