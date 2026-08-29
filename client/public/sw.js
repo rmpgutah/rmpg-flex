@@ -3,6 +3,10 @@
 // Provides offline caching for static assets and API GET responses.
 // API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
+// v1107: Serve page crash + SW FetchEvent rejections. Never take ownership of
+//        cross-origin requests (Cloudflare beacon, Mapbox events, dialer
+//        iframe). Every respondWith chain must settle — a rejected promise
+//        becomes "The FetchEvent for <url> resulted in a network error".
 // v1106: Login navigations must not become an empty 503 Offline when the
 //        document URL has a query string (`/login?return=%2F`) that missed
 //        the precached `/` shell. Match ignoreSearch and always stash `/`.
@@ -266,6 +270,19 @@ function fetchWithRetry(request, opts) {
   );
 }
 
+// A promise given to event.respondWith must never reject. Network errors,
+// cache failures, and blocked third-party hosts otherwise surface as
+// "Uncaught (in promise) TypeError: Failed to fetch" on the FetchEvent.
+function settleFetch(promise, fallback) {
+  return Promise.resolve(promise).catch(function () {
+    return fallback || new Response('', { status: 503, statusText: 'Offline' });
+  });
+}
+
+function safeRespond(event, promise) {
+  event.respondWith(settleFetch(promise));
+}
+
 // Install — pre-cache core shell, immediately activate.
 // cache.addAll is ATOMIC — if ANY single file fails (one sound file on spotty
 // cellular), NOTHING gets cached, including index.html. Use individual puts so
@@ -514,12 +531,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Cross-origin: never fetch() on the worker's behalf. Operator networks
+  // (DNS sinkhole / ad block / managed challenge) routinely block the
+  // Cloudflare beacon, Mapbox telemetry, and the dialer iframe. Owning those
+  // requests turns a silent block into "The FetchEvent for <url> resulted in
+  // a network error response: the promise was rejected".
+  if (url.origin !== self.location.origin) {
+    if (TELEMETRY_HOSTS.includes(url.hostname)) {
+      safeRespond(event, new Response(null, { status: 204 }));
+    }
+    return;
+  }
+
   // Cloudflare Web Analytics is injected with integrity="sha512-…". Taking
   // ownership (204 or fetch()) either fails SRI or, when the network is
-  // down, rejects the FetchEvent ("the promise was rejected" +
-  // Uncaught TypeError: Failed to fetch in sw.js). Let the browser handle
-  // the blocked beacon; the navigation handler strips the <script> tag
-  // so subsequent loads never request it.
+  // down, rejects the FetchEvent. Let the browser handle the blocked beacon;
+  // the navigation handler strips the <script> tag so subsequent loads never
+  // request it. (Redundant with the origin check above; kept as a named
+  // guard if Pages ever same-origin-proxies the beacon.)
   if (url.hostname === 'static.cloudflareinsights.com') {
     return;
   }
@@ -538,7 +567,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (TELEMETRY_HOSTS.includes(url.hostname)) {
-    event.respondWith(new Response(null, { status: 204 }));
+    safeRespond(event,new Response(null, { status: 204 }));
     return;
   }
 
@@ -553,7 +582,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api') &&
     !API_NO_CACHE.some((prefix) => url.pathname.startsWith(prefix))
   ) {
-    event.respondWith(
+    safeRespond(event,
       fetchWithRetry(event.request)
         .then((response) => {
           if (response.ok) {
@@ -593,7 +622,7 @@ self.addEventListener('fetch', (event) => {
   // index.html from a previous deploy (the SW cache is the offline fallback,
   // not the HTTP cache).
   if (event.request.mode === 'navigate') {
-    event.respondWith(
+    safeRespond(event,
       fetchWithRetry(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.ok) {
@@ -653,7 +682,7 @@ self.addEventListener('fetch', (event) => {
 
     if (isHashedAsset) {
       // Cache-first — return immediately if we have it, only hit network on miss.
-      event.respondWith(
+      safeRespond(event,
         cacheMatch(event.request).then((cached) => {
           if (cached) return cached;
           return fetchWithRetry(event.request)
@@ -686,7 +715,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Non-hashed JS/CSS → network first
-    event.respondWith(
+    safeRespond(event,
       fetchWithRetry(event.request)
         .then((response) => {
           // Same poison guard as the hashed branch — never cache/return HTML
@@ -715,7 +744,7 @@ self.addEventListener('fetch', (event) => {
   // (true offline, first visit), return an empty FeatureCollection so the map
   // renders without overlays rather than logging a 503 console error.
   if (url.pathname.startsWith('/geojson/') && url.pathname.endsWith('.geojson')) {
-    event.respondWith(
+    safeRespond(event,
       cacheMatch(event.request).then((cached) => {
         var networkFetch = fetchWithRetry(event.request)
           .then((response) => {
@@ -738,7 +767,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Images, fonts, etc. — cache first (these rarely change for same filename)
-  event.respondWith(
+  safeRespond(event,
     cacheMatch(event.request).then((cached) => {
       if (cached) return cached;
       return fetchWithRetry(event.request)

@@ -86,6 +86,10 @@ function asBool(v: unknown): boolean {
   return v === true || v === 1 || v === '1' || v === 'true';
 }
 
+export function ensureServeJobOps(ops?: Partial<ServeJobOps> | null): ServeJobOps {
+  return { ...EMPTY_SERVE_JOB_OPS, ...(ops ?? {}) };
+}
+
 export function parseServeJobMeta(parsedData?: string | null): ServeJobMeta {
   let pd: Record<string, unknown> = {};
   if (typeof parsedData === 'string' && parsedData.trim()) {
@@ -127,7 +131,7 @@ export function parseServeJobMeta(parsedData?: string | null): ServeJobMeta {
     venueLabel,
     firedIds: fired,
     windows,
-    ops: {
+    ops: ensureServeJobOps({
       documents_to_serve: typeof opsRaw.documents_to_serve === 'string' ? opsRaw.documents_to_serve : '',
       venue_kind: typeof opsRaw.venue_kind === 'string' ? opsRaw.venue_kind : '',
       gate_code: typeof opsRaw.gate_code === 'string' ? opsRaw.gate_code : '',
@@ -142,6 +146,6 @@ export function parseServeJobMeta(parsedData?: string | null): ServeJobMeta {
       no_sunday: asBool(opsRaw.no_sunday),
       no_saturday: asBool(opsRaw.no_saturday),
       sub_service_first: asBool(opsRaw.sub_service_first),
-    },
+    }),
   };
 }
