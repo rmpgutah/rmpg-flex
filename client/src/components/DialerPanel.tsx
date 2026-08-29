@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
+import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 /** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
@@ -75,36 +77,7 @@ export function postToDialerWindow(data: Record<string, unknown>): void {
 }
 
 export function resetDialerWindowForTests(): void {
-  /* iframe is queried from the document; nothing to reset */
-}
-
-function parkIframe(iframe: HTMLIFrameElement): void {
-  Object.assign(iframe.style, {
-    position: 'fixed',
-    width: '1px',
-    height: '1px',
-    opacity: '0',
-    pointerEvents: 'none',
-    bottom: '0px',
-    left: '0px',
-    top: 'auto',
-    zIndex: '0',
-  });
-}
-
-function dockIframe(iframe: HTMLIFrameElement, host: HTMLElement): void {
-  const r = host.getBoundingClientRect();
-  Object.assign(iframe.style, {
-    position: 'fixed',
-    top: `${r.top}px`,
-    left: `${r.left}px`,
-    width: `${Math.max(r.width, 1)}px`,
-    height: `${Math.max(r.height, 1)}px`,
-    opacity: '1',
-    pointerEvents: 'auto',
-    bottom: 'auto',
-    zIndex: '40',
-  });
+  dialerWindow = null;
 }
 
 interface Toast {
@@ -123,14 +96,22 @@ let _toastId = 0;
 export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [connected, setConnected] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [lastSeen, setLastSeen] = useState(0);
   const [poppedOut, setPoppedOut] = useState(false);
+  const [pageDock, setPageDock] = useState<CSSProperties | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const iframeSrcRef = useRef(DIALER_APP_URL);
   const popupRef = useRef<Window | null>(null);
+
+  const onDialerPage = location.pathname === DIALER_CONNECT_PATH;
+
+  const openDialerInApp = useCallback(() => {
+    if (location.pathname !== DIALER_CONNECT_PATH) {
+      navigate(DIALER_CONNECT_PATH);
+    }
+  }, [location.pathname, navigate]);
 
   const dockDialer = useCallback(() => {
     try {
@@ -140,15 +121,8 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     }
     popupRef.current = null;
     setPoppedOut(false);
-  }, []);
-
-  const onDialerPage = location.pathname === DIALER_CONNECT_PATH;
-
-  const openDialerInApp = useCallback(() => {
-    if (location.pathname !== DIALER_CONNECT_PATH) {
-      navigate(DIALER_CONNECT_PATH);
-    }
-  }, [location.pathname, navigate]);
+    openDialerInApp();
+  }, [openDialerInApp]);
 
   const addToast = useCallback((kind: Toast['kind'], message: string) => {
     const id = ++_toastId;
@@ -170,7 +144,8 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     const to = normalizeDialTarget(raw);
     if (!to) return;
     postPlaceCall(to);
-  }, [postPlaceCall]);
+    if (!poppedOut) openDialerInApp();
+  }, [postPlaceCall, poppedOut, openDialerInApp]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -189,12 +164,14 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       });
 
       if (message.type === 'call_status' && message.status === 'ringing') {
+        if (!poppedOut) openDialerInApp();
         onRinging?.(`Inbound call from ${message.from ?? 'unknown number'}`);
       } else if (message.type === 'duress_alert') {
+        if (!poppedOut) openDialerInApp();
         onDuress?.(`Duress alert: ${message.dispatcherName}`);
       }
     },
-    [onRinging, onDuress, addToast, openDialerInApp],
+    [onRinging, onDuress, addToast, openDialerInApp, poppedOut],
   );
 
   useEffect(() => {
@@ -238,18 +215,30 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   }, [placeOutboundCall]);
 
   useLayoutEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
+    if (!onDialerPage) {
+      setPageDock(null);
+      return;
+    }
     const sync = () => {
-      const host = onDialerPage ? document.getElementById(DIALER_HOST_ID) : null;
-      if (host) dockIframe(iframe, host);
-      else parkIframe(iframe);
+      const host = document.getElementById(DIALER_HOST_ID);
+      if (!host) {
+        setPageDock(null);
+        return;
+      }
+      const r = host.getBoundingClientRect();
+      setPageDock({
+        position: 'fixed',
+        top: r.top,
+        left: r.left,
+        width: Math.max(r.width, 320),
+        height: Math.max(r.height, 240),
+        overflow: 'hidden',
+        zIndex: 40,
+      });
     };
-
     sync();
     window.addEventListener('resize', sync);
-    const host = onDialerPage ? document.getElementById(DIALER_HOST_ID) : null;
+    const host = document.getElementById(DIALER_HOST_ID);
     const ro = typeof ResizeObserver !== 'undefined' && host ? new ResizeObserver(sync) : null;
     if (host && ro) ro.observe(host);
     return () => {
@@ -258,17 +247,10 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     };
   }, [onDialerPage]);
 
+  const hostStyle = pageDock ?? dialerIframeHostStyle();
+
   return (
     <div className="fixed bottom-4 left-4 z-[9998] flex flex-col items-start">
-      <iframe
-        ref={iframeRef}
-        src={DIALER_APP_URL}
-        title="Dial Connect"
-        allow="microphone; camera; autoplay; clipboard-write"
-        className="border-0 bg-surface-base"
-        style={{ position: 'fixed', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none' }}
-      />
-
       {toasts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1.5 items-start">
           {toasts.map((toast) => {
@@ -304,8 +286,6 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
                 </span>
               </>
             );
-            // While the CAD iframe holds the Twilio Client, a named-window
-            // <a> would register a second Client and dump inbound to VM.
             if (poppedOut) {
               return (
                 <a
@@ -321,9 +301,15 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
               );
             }
             return (
-              <div key={toast.id} role="status" className={toastClass} style={toastStyle}>
+              <button
+                key={toast.id}
+                type="button"
+                className={`${toastClass} text-left`}
+                style={toastStyle}
+                onClick={() => openDialerInApp()}
+              >
                 {body}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -332,7 +318,8 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       {!poppedOut && (
         <div
           data-dialer-iframe-host=""
-          style={dialerIframeHostStyle()}
+          data-testid="dialer-iframe-host"
+          style={hostStyle}
           className="bg-surface-raised border border-border-subtle shadow-lg"
         >
           <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle">
