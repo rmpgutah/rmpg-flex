@@ -1,11 +1,11 @@
 // ============================================================
 // Process-server stop timing: dwell ranges + next-attempt windows
 // ============================================================
-// Onsite time is a range, not a single guess:
-//   residential house  10–15 min
-//   apartment/complex  12–15 min
-//   business           15–20 min
-// Learned averages from serve_dwell_times are clamped into that range.
+// Onsite time is knock + paperwork + attempt log, not knock-only.
+// Old 10–20 min caps systematically under-planned real PSO visits (30–45+ min
+// on scene) and jammed the rest of the day's route. Learned averages from
+// serve_dwell_times are clamped into these ranges so outliers (forgotten app)
+// cannot blow a shift, but a real 35-minute apartment visit is plannable.
 //
 // Visit windows come from, in order:
 //   1. serve_attempt_schedules next slot (logged after a failed attempt)
@@ -22,9 +22,9 @@ export interface ServeHhMmWindow {
 }
 
 export const DWELL_RANGE_S: Record<DefendantType, { min: number; max: number; default: number }> = {
-  individual: { min: 10 * 60, max: 15 * 60, default: 12 * 60 },
-  apartment: { min: 12 * 60, max: 15 * 60, default: 13 * 60 },
-  business: { min: 15 * 60, max: 20 * 60, default: 18 * 60 },
+  individual: { min: 8 * 60, max: 40 * 60, default: 18 * 60 },
+  apartment: { min: 10 * 60, max: 45 * 60, default: 20 * 60 },
+  business: { min: 12 * 60, max: 45 * 60, default: 22 * 60 },
 };
 
 export function clampDwellSeconds(type: DefendantType, learnedSeconds?: number | null): number {
