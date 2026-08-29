@@ -158,4 +158,15 @@ describe('DockToggleRow accessibility and density', () => {
     render(<DockToggleRow item={noIcon} />);
     expect(screen.getByRole('switch', { name: /weather radar/i })).toBeInTheDocument();
   });
+
+  it('stars a layer without toggling visibility', () => {
+    const onToggle = vi.fn();
+    const onToggleFavorite = vi.fn();
+    render(<DockToggleRow item={{
+      id: 'traffic', label: 'Live Traffic', active: false, onToggle, onToggleFavorite, favorite: false,
+    }} />);
+    fireEvent.click(screen.getByLabelText(/favorite live traffic/i));
+    expect(onToggleFavorite).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
 });

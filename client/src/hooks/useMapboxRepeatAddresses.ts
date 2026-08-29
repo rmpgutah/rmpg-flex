@@ -77,9 +77,9 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
       source: SOURCE_ID,
       paint: {
         'circle-radius': ['get', 'radius'],
-        'circle-color': '#d4a017',
+        'circle-color': '#c3ccd6',
         'circle-opacity': 0.45,
-        'circle-stroke-color': '#d4a017',
+        'circle-stroke-color': '#c3ccd6',
         'circle-stroke-width': 1.5,
         'circle-stroke-opacity': 0.8,
       },

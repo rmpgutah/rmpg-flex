@@ -23,9 +23,14 @@ export interface MapLeftDockProps {
   sections: MapLeftDockSection[];
 }
 
-export default function MapLeftDock({ sections }: MapLeftDockProps) {
+export function LayersDockBody({ sections }: MapLeftDockProps) {
   const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
+
+  const favorites = useMemo(
+    () => sections.flatMap((s) => s.items).filter((i) => i.favorite),
+    [sections],
+  );
 
   const visible = useMemo(() => {
     if (!needle) return sections;
@@ -47,10 +52,7 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
   );
 
   return (
-    <div className="relative z-20 h-full w-[220px] bg-surface-raised/95 border-r border-border-default backdrop-blur-sm flex flex-col overflow-y-auto">
-      <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-brand-gold-500 border-b border-border-default">
-        LAYERS
-      </div>
+    <>
       <div className="px-2 py-1.5 border-b border-border-subtle">
         <div className="flex items-center justify-between gap-2 mb-1">
           <span className="text-[10px] text-fg-muted">{active.length} on</span>
@@ -64,6 +66,13 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
           className="w-full px-2 py-1 text-[11px] bg-surface-overlay border border-border-subtle rounded text-fg-primary placeholder:text-fg-muted"
         />
       </div>
+      {!needle && favorites.length > 0 && (
+        <DockSection title="Favorites" collapsible={false}>
+          {favorites.map((item) => (
+            <DockToggleRow key={`fav-${item.id}`} item={item} />
+          ))}
+        </DockSection>
+      )}
       {visible.map((section) => (
         <DockSection
           key={section.title}
@@ -81,6 +90,17 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
       {needle && visible.length === 0 && (
         <div className="px-3 py-2 text-[10px] text-rmpg-500">No layers match “{query.trim()}”.</div>
       )}
+    </>
+  );
+}
+
+export default function MapLeftDock({ sections }: MapLeftDockProps) {
+  return (
+    <div className="relative z-20 h-full w-[220px] bg-surface-raised/95 border-r border-border-default backdrop-blur-sm flex flex-col overflow-y-auto">
+      <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-brand-gold-500 border-b border-border-default">
+        LAYERS
+      </div>
+      <LayersDockBody sections={sections} />
     </div>
   );
 }

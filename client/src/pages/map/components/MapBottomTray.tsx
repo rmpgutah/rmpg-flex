@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import DockSection, { DockToggleRow } from './DockSection';
 import MapRosterDock, { type MapRosterDockProps } from './MapRosterDock';
-import type { MapLeftDockSection } from './MapLeftDock';
+import { LayersDockBody, type MapLeftDockSection } from './MapLeftDock';
 import type { MapRightDockSection } from './MapRightDock';
 
 type TrayTab = 'roster' | 'layers' | 'info' | null;
@@ -35,11 +35,7 @@ export default function MapBottomTray({ rosterProps, leftSections, rightSections
           {activeTab === 'roster' && (
             <MapRosterDock {...rosterProps} open onOpenChange={() => setActiveTab(null)} />
           )}
-          {activeTab === 'layers' && leftSections.map((section) => (
-            <DockSection key={section.title} title={section.title} collapsible={section.collapsible}>
-              {section.items.map((item) => <DockToggleRow key={item.id} item={item} />)}
-            </DockSection>
-          ))}
+          {activeTab === 'layers' && <LayersDockBody sections={leftSections} />}
           {activeTab === 'info' && rightSections.map((section) => (
             <DockSection key={section.title} title={section.title}>
               {section.items.map((item) => <DockToggleRow key={item.id} item={item} />)}
@@ -51,21 +47,21 @@ export default function MapBottomTray({ rosterProps, leftSections, rightSections
         <button
           type="button"
           onClick={() => selectTab('roster')}
-          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${activeTab === 'roster' ? 'text-brand-gold-500' : 'text-rmpg-400'}`}
+          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${activeTab === 'roster' ? 'text-rmpg-100' : 'text-rmpg-400'}`}
         >
           Roster
         </button>
         <button
           type="button"
           onClick={() => selectTab('layers')}
-          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors border-l border-border-subtle ${activeTab === 'layers' ? 'text-brand-gold-500' : 'text-rmpg-400'}`}
+          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors border-l border-border-subtle ${activeTab === 'layers' ? 'text-rmpg-100' : 'text-rmpg-400'}`}
         >
           Layers
         </button>
         <button
           type="button"
           onClick={() => selectTab('info')}
-          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors border-l border-border-subtle ${activeTab === 'info' ? 'text-brand-gold-500' : 'text-rmpg-400'}`}
+          className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors border-l border-border-subtle ${activeTab === 'info' ? 'text-rmpg-100' : 'text-rmpg-400'}`}
         >
           Info & Tools
         </button>
