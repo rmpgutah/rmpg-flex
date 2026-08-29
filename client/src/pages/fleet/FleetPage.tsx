@@ -42,6 +42,7 @@ import type {
 } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import type { FleetViewMode } from './fleetConstants';
+import { downloadTextFile, fleetListToCsv } from '../../utils/rmsListExport';
 
 // ============================================================
 // RMPG Flex — Fleet Vehicle Management Page
@@ -390,6 +391,18 @@ export default function FleetPage() {
               <Activity className="w-3 h-3" /> Sync Health
             </button>
           )}
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={filtered.length === 0}
+            onClick={() => downloadTextFile('fleet.csv', fleetListToCsv(filtered.map((v) => ({
+              unit: v.vehicle_number,
+              status: v.status,
+              make: v.make ?? '',
+              model: v.model ?? '',
+              plate: v.plate_number ?? '',
+            }))))}
+          >CSV</button>
           <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>

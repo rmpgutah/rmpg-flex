@@ -18,6 +18,8 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
+import { downloadTextFile, ipedCasesToCsv } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -178,6 +180,7 @@ export default function IpedPage() {
 
   // Refs
   const hashSearchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(hashSearchInputRef);
   const deepLinkRef = useRef(false);
 
   // ── Fetch Functions ───────────────────────────────────────
@@ -490,6 +493,17 @@ export default function IpedPage() {
           >
             <RefreshCw size={14} />
           </button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={jobs.length === 0}
+            onClick={() => downloadTextFile('iped-jobs.csv', ipedCasesToCsv(jobs.map((j) => ({
+              case_number: String(j.id),
+              status: j.status,
+              device_type: j.job_type,
+              created_at: j.created_at,
+            }))))}
+          >CSV</button>
           {canManage && (
             <button type="button"
               onClick={() => setShowNewJob(true)}
@@ -505,7 +519,7 @@ export default function IpedPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" className="toolbar-btn ml-auto" onClick={() => { void fetchJobs(); }}>Retry</button>
         </div>
       )}
 

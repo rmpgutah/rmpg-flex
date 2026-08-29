@@ -13,6 +13,8 @@ import {
   communityTipsSafeToCsv, darListToCsv, bodyCamerasToCsv, loginHistoryToCsv, cdocResultsToCsv,
   inboxNotificationsToCsv, codeViolationsToCsv, fiCardsToCsv, courtDocketToCsv, kbHitsToCsv,
   historyTimelineToCsv, dashcamListToCsv, plateSummaryToCsv, towOrdersToCsv,
+  docsLibraryToCsv, tasksToCsv, trespassOrdersToCsv, uofReportsToCsv, nationalWarrantsToCsv,
+  auditLogsToCsv, evidencePropertyToCsv, specialOpsEquipmentToCsv, connectionSeedsToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -130,6 +132,19 @@ describe('rmsListExport', () => {
     expect(dashcamListToCsv([{ id: 1, classification: 'routine', source: 'upload', recorded_at: 't', case_number: '26-1' }])).not.toContain('officer');
     expect(towOrdersToCsv([{ tow_number: 'TOW-1', status: 'ordered', vehicle_plate: 'ABC123', tow_reason: 'parking' }])).not.toContain('phone');
     expect(plateSummaryToCsv([{ plate: 'XYZ', reads: 3, last_seen: 't', ever_hit: 1 }])).toContain('XYZ');
+    expect(trespassOrdersToCsv([{
+      order_number: 'TO-1', order_type: 'ban', status: 'active', location: '400 S',
+    }])).not.toContain('subject');
+    expect(uofReportsToCsv([{ id: 1, incident_number: '26-9', force_type: 'taser', status: 'pending', created_at: 't' }])).not.toContain('narrative');
+    expect(nationalWarrantsToCsv([{ id: 'W-9', state: 'UT', warrant_type: 'arrest', status: 'active' }])).not.toContain('name');
+    expect(nationalWarrantsToCsv([{ id: 'W-9', state: 'UT', warrant_type: 'arrest', status: 'active' }])).not.toContain('dob');
+    expect(auditLogsToCsv([{ action: 'login', entity_type: 'user', entity_id: '3', created_at: 't', badge_number: '42' }])).not.toContain('ip');
+    expect(auditLogsToCsv([{ action: 'login', entity_type: 'user', entity_id: '3', created_at: 't' }])).not.toContain('details');
+    expect(evidencePropertyToCsv([{ evidence_number: 'EV-1', type: 'weapon', status: 'in_storage' }])).not.toContain('owner');
+    expect(specialOpsEquipmentToCsv([{ equipment_type: 'rifle', serial_number: 'SN9', condition: 'ready' }])).not.toContain('assigned');
+    expect(connectionSeedsToCsv([{ type: 'person', id: 4 }])).not.toContain('label');
+    expect(docsLibraryToCsv([{ id: 1, title: 'SOP', status: 'draft' }])).not.toContain('owner');
+    expect(tasksToCsv([{ id: 2, task_title: 'Brief', status: 'pending', priority: 'high' }])).not.toContain('notes');
   });
 
   it('exports crash reports, briefings, shift notes, and training courses', () => {
