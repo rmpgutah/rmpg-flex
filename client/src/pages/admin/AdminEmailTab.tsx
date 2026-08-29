@@ -229,9 +229,9 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           {' '}with this redirect URI (each user connects their own mailbox from the Email page):{' '}
           <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://rmpgutah.us/api/email/connect/callback</code>
           . Credentials can also be set via Worker env (
-          <code className="text-rmpg-300">MS_EMAIL_CLIENT_ID</code>,{' '}
-          <code className="text-rmpg-300">MS_EMAIL_CLIENT_SECRET</code>,{' '}
-          <code className="text-rmpg-300">MS_EMAIL_TENANT_ID</code>
+          <code className="text-fg-muted">MS_EMAIL_CLIENT_ID</code>,{' '}
+          <code className="text-fg-muted">MS_EMAIL_CLIENT_SECRET</code>,{' '}
+          <code className="text-fg-muted">MS_EMAIL_TENANT_ID</code>
           ) — env bindings take precedence over values saved here.
         </p>
 
