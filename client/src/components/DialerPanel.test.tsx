@@ -241,7 +241,8 @@ describe('DialerPanel', () => {
         expect.objectContaining({ method: 'POST' }),
       );
     });
-    const body = JSON.parse((vi.mocked(apiFetch).mock.calls.at(-1)?.[1] as { body: string }).body);
+    const last = vi.mocked(apiFetch).mock.calls[vi.mocked(apiFetch).mock.calls.length - 1];
+    const body = JSON.parse((last?.[1] as { body: string }).body);
     expect(body.recordingSid).toBe('REabcd1234');
     expect(body.transcript).toBe('Need an officer');
   });

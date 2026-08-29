@@ -4,6 +4,7 @@ import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { openDialConnectCallPdf, formatCallDuration } from '../utils/dialConnectCallPdf';
+import { parseTimestamp } from '../utils/dateUtils';
 import { DIAL_RECORDING_READY_EVENT } from './dialerConnect';
 
 export interface DialConnectRecordingSummary {
@@ -35,7 +36,7 @@ function fmtMt(input: string | null): string {
       timeZone: 'America/Denver',
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date(input));
+    }).format(parseTimestamp(input));
   } catch {
     return input;
   }
