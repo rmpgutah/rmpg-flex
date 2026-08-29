@@ -27,7 +27,24 @@ type DialConnectMessage =
   | { source: 'dial-connect'; type: 'duress_alert'; dispatcherName: string; timestamp: string }
   | { source: 'dial-connect'; type: 'heartbeat' }
   | { source: 'dial-connect'; type: 'voicemail'; callSid?: string; from?: string; to?: string; transcript?: string; recordingUrl?: string; durationSeconds?: number }
-  | { source: 'dial-connect'; type: 'recording_ready'; callSid?: string; call_sid?: string; recordingSid?: string; recording_sid?: string; recordingUrl?: string; from?: string; to?: string; direction?: string; startedAt?: string; endedAt?: string; durationSeconds?: number; dispatcherName?: string; transcript?: string; segments?: unknown }
+  | {
+      source: 'dial-connect';
+      type: 'recording_ready';
+      callSid?: string;
+      call_sid?: string;
+      recordingSid?: string;
+      recording_sid?: string;
+      recordingUrl?: string;
+      from?: string;
+      to?: string;
+      direction?: string;
+      startedAt?: string;
+      endedAt?: string;
+      durationSeconds?: number;
+      dispatcherName?: string;
+      transcript?: string;
+      segments?: unknown;
+    }
   | { source: 'dial-connect'; type: 'transcript_ready'; callSid: string; transcript: string };
 
 const INGEST_STATUSES = new Set(['completed', 'missed', 'failed', 'voicemail', 'busy']);

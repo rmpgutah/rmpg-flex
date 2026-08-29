@@ -10,9 +10,8 @@ function csvRows(header: string[], rows: unknown[][]): string {
   return [header.join(','), ...rows.map((r) => r.map(cell).join(','))].join('\n');
 }
 
-/** Concrete page row types lack an index signature; read fields loosely. */
-function rec(r: object): Record<string, unknown> {
-  return r as Record<string, unknown>;
+function yesNo(v: unknown): string {
+  return v === true || v === 1 || v === '1' || v === 'yes' ? 'yes' : 'no';
 }
 
 export function tipsToCsv(rows: Array<{
@@ -92,10 +91,7 @@ export function crashReportsToCsv(rows: Array<{
 }>): string {
   return csvRows(
     ['report', 'date', 'location', 'type', 'severity', 'vehicles', 'injuries', 'fatalities', 'status', 'officer'],
-    rows.map((r) => [
-      r.report_number, r.crash_date, r.location, r.crash_type, r.severity,
-      r.vehicles_involved, r.injuries, r.fatalities, r.status, r.investigating_officer ?? '',
-    ]),
+    rows.map((r) => [r.report_number, r.crash_date, r.location, r.crash_type, r.severity, r.vehicles_involved, r.injuries, r.fatalities, r.status, r.investigating_officer ?? '']),
   );
 }
 
@@ -107,10 +103,14 @@ export function briefingsToCsv(rows: Array<{
   created_at: string;
   acknowledged_count: number;
   total_officers: number;
+  shift_date?: string;
 }>): string {
   return csvRows(
-    ['number', 'title', 'shift', 'created_at', 'created_by', 'acked', 'officers'],
-    rows.map((r) => [r.briefing_number, r.title, r.shift_type, r.created_at, r.created_by, r.acknowledged_count, r.total_officers]),
+    ['number', 'title', 'shift', 'shift_date', 'author', 'created_at', 'acked', 'roster'],
+    rows.map((r) => [
+      r.briefing_number, r.title, r.shift_type, r.shift_date ?? '', r.created_by,
+      r.created_at, r.acknowledged_count, r.total_officers,
+    ]),
   );
 }
 
@@ -119,12 +119,12 @@ export function shiftNotesToCsv(rows: Array<{
   visibility: string;
   tags: string[];
   content: string;
-  shift_date?: string;
   created_at?: string;
+  shift_date?: string;
 }>): string {
   return csvRows(
-    ['shift_date', 'created_at', 'officer', 'visibility', 'tags', 'content'],
-    rows.map((r) => [r.shift_date ?? '', r.created_at ?? '', r.officer_name, r.visibility, (r.tags ?? []).join('|'), r.content]),
+    ['shift_date', 'officer', 'visibility', 'tags', 'content', 'created_at'],
+    rows.map((r) => [r.shift_date ?? '', r.officer_name, r.visibility, (r.tags ?? []).join('|'), r.content, r.created_at ?? '']),
   );
 }
 
@@ -136,14 +136,14 @@ export function formatRadioLine(u: {
   location_description?: string | null;
   current_call_number?: string | null;
 }): string {
-  if (u.location_description && !u.badge) {
-    const where = u.current_call_number ? `call ${u.current_call_number}` : u.location_description.trim();
-    return `${u.unit_id} ${u.status} — ${u.officer_name} — ${where}`;
+  if (u.badge) {
+    const call = u.current_call_number ? ` ${u.current_call_number}` : '';
+    return `${u.unit_id} ${u.officer_name} #${u.badge} ${u.status}${call}`.replace(/\s+/g, ' ').trim();
   }
-  const badge = u.badge ? ` #${u.badge}` : '';
-  const call = u.current_call_number ? ` ${u.current_call_number}` : '';
-  const loc = u.location_description ? ` @ ${u.location_description}` : '';
-  return `${u.unit_id} ${u.officer_name}${badge} ${u.status}${call}${loc}`.replace(/\s+/g, ' ').trim();
+  const where = u.current_call_number
+    ? `call ${u.current_call_number}`
+    : (u.location_description?.trim() || 'no location');
+  return `${u.unit_id} ${u.status} — ${u.officer_name} — ${where}`;
 }
 
 export function unitsBoardToCsv(rows: Array<{
@@ -157,7 +157,10 @@ export function unitsBoardToCsv(rows: Array<{
 }>): string {
   return csvRows(
     ['unit', 'officer', 'badge', 'status', 'role', 'call', 'location'],
-    rows.map((r) => [r.unit_id, r.officer_name, r.badge ?? '', r.status, r.role ?? '', r.current_call_number ?? '', r.location_description ?? '']),
+    rows.map((r) => [
+      r.unit_id, r.officer_name, r.badge, r.status, r.role ?? '',
+      r.current_call_number ?? '', r.location_description ?? '',
+    ]),
   );
 }
 
@@ -169,235 +172,294 @@ export function unitsBoardToTsv(rows: Array<{
   current_call_number?: string | null;
   location_description?: string | null;
 }>): string {
-  const header = ['unit', 'officer', 'badge', 'status', 'call', 'location'].join('\t');
-  return [header, ...rows.map((r) => [
-    r.unit_id, r.officer_name, r.badge ?? '', r.status, r.current_call_number ?? '', r.location_description ?? '',
-  ].join('\t'))].join('\n');
+  return [
+    'unit\tofficer\tbadge\tstatus\tcall\tlocation',
+    ...rows.map((r) => [
+      r.unit_id, r.officer_name, r.badge ?? '', r.status,
+      r.current_call_number ?? '', r.location_description ?? '',
+    ].join('\t')),
+  ].join('\n');
 }
 
-export function trainingCoursesToCsv(rows: object[]): string {
+export function trainingCoursesToCsv(rows: Array<{
+  course_name?: string;
+  course_code?: string;
+  category?: string;
+  duration_hours?: string | number;
+  hours?: string | number;
+  location?: string;
+  is_mandatory?: number | boolean;
+  mandatory?: number | boolean;
+}>): string {
   return csvRows(
     ['name', 'code', 'category', 'hours', 'location', 'mandatory'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [
-        r.course_name ?? '', r.course_code ?? '', r.category ?? '',
-        r.hours ?? r.duration_hours ?? r.credit_hours ?? '',
-        r.location ?? '',
-        r.mandatory || r.is_mandatory ? 'yes' : 'no',
-      ];
-    }),
+    rows.map((r) => [
+      r.course_name ?? '',
+      r.course_code ?? '',
+      r.category ?? '',
+      r.duration_hours ?? r.hours ?? '',
+      r.location ?? '',
+      (r.is_mandatory || r.mandatory) ? 'yes' : 'no',
+    ]),
   );
 }
 
 export function fileListingToCsv(rows: Array<{ name: string; size: number; modified: string; path: string }>): string {
-  return csvRows(['name', 'size', 'modified', 'path'], rows.map((r) => [r.name, r.size, r.modified, r.path]));
-}
-
-export function agendaToCsv(rows: object[]): string {
   return csvRows(
-    ['source', 'title', 'date'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.source ?? '', r.title ?? '', r.date ?? r.start ?? ''];
-    }),
+    ['name', 'size', 'modified', 'path'],
+    rows.map((r) => [r.name, r.size, r.modified, r.path]),
   );
 }
 
-export function qaReviewsToCsv(rows: object[]): string {
+export function agendaToCsv(rows: Array<{
+  source: string;
+  title: string;
+  date: string;
+  start?: string | null;
+  end?: string | null;
+  subtitle?: string | null;
+  status?: string | null;
+}>): string {
   return csvRows(
-    ['id', 'type', 'findings', 'score'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.id ?? '', r.review_type ?? r.type ?? '', r.findings ?? '', r.score ?? r.review_score ?? ''];
-    }),
+    ['date', 'source', 'title', 'start', 'end', 'status'],
+    rows.map((r) => [r.date, r.source, r.title, r.start ?? '', r.end ?? '', r.status ?? '']),
   );
 }
 
-export function assetsToCsv(rows: object[]): string {
+export function qaReviewsToCsv(rows: Array<Record<string, unknown>>): string {
   return csvRows(
-    ['tag', 'serial', 'status', 'type'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.asset_tag ?? r.tag ?? '', r.serial_number ?? r.serial ?? '', r.status ?? '', r.asset_type ?? r.type ?? ''];
-    }),
+    ['id', 'review_type', 'findings', 'score', 'status'],
+    rows.map((r) => [r.id ?? '', r.review_type ?? '', r.findings ?? '', r.review_score ?? r.score ?? '', r.status ?? '']),
   );
 }
 
-export function errorLogsToCsv(rows: object[]): string {
+export function assetsToCsv(rows: Array<Record<string, unknown>>): string {
   return csvRows(
-    ['created_at', 'severity', 'category', 'message', 'trace_id'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.created_at ?? '', r.severity ?? '', r.category ?? '', r.message ?? '', r.trace_id ?? ''];
-    }),
+    ['asset_tag', 'serial', 'status', 'type', 'assigned'],
+    rows.map((r) => [r.asset_tag ?? '', r.serial_number ?? '', r.status ?? '', r.asset_type ?? r.type ?? '', r.assigned_to_name ?? r.assigned_to ?? '']),
   );
 }
 
-export function recordingsToCsv(rows: object[]): string {
+export function errorLogsToCsv(rows: Array<{
+  created_at: string;
+  severity: string;
+  category: string;
+  message: string;
+  trace_id?: string;
+  source?: string;
+  status_code?: number;
+}>): string {
   return csvRows(
-    ['id', 'started_at', 'duration_sec', 'status', 'location', 'notes'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.id ?? '', r.started_at ?? '', r.duration_sec ?? '', r.status ?? '', r.location_text ?? r.location ?? '', r.notes ?? ''];
-    }),
+    ['created_at', 'severity', 'category', 'message', 'trace_id', 'source'],
+    rows.map((r) => [r.created_at, r.severity, r.category, r.message, r.trace_id ?? '', r.source ?? '']),
   );
 }
 
-export function modulesToCsv(rows: object[]): string {
-  return csvRows(['path', 'label'], rows.map((row) => {
-    const r = rec(row);
-    return [r.path ?? '', r.label ?? ''];
-  }));
+export function recordingsToCsv(rows: Array<{
+  id: number;
+  started_at: string;
+  duration_sec: number;
+  status: string;
+  location_text?: string | null;
+  notes?: string | null;
+}>): string {
+  return csvRows(
+    ['id', 'started_at', 'duration_sec', 'status', 'location'],
+    rows.map((r) => [r.id, r.started_at, r.duration_sec, r.status, r.location_text ?? '']),
+  );
 }
 
-export function mutualAidToCsv(rows: object[]): string {
+export function modulesToCsv(rows: Array<{ path: string; label: string; description?: string }>): string {
+  return csvRows(
+    ['path', 'label', 'description'],
+    rows.map((r) => [r.path, r.label, r.description ?? '']),
+  );
+}
+
+export function mutualAidToCsv(rows: Array<{
+  callNumber: string;
+  nature: string;
+  location: string;
+  requestingAgency: string;
+  assistingAgencies: string[];
+  units?: string[];
+}>): string {
   return csvRows(
     ['call', 'nature', 'location', 'requesting', 'assisting'],
-    rows.map((row) => {
-      const r = rec(row);
-      const agencies = Array.isArray(r.assistingAgencies) ? r.assistingAgencies.map(String) : [];
-      return [r.callNumber ?? '', r.nature ?? '', r.location ?? '', r.requestingAgency ?? '', agencies.join('|')];
-    }),
+    rows.map((r) => [r.callNumber, r.nature, r.location, r.requestingAgency, (r.assistingAgencies ?? []).join('|')]),
   );
 }
 
-export function plateHistoryToCsv(rows: object[]): string {
+export function plateHistoryToCsv(rows: Array<{ plate: string; state: string; ts?: number }>): string {
   return csvRows(
-    ['plate', 'state', 'ts'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.plate ?? r.plate_number ?? '', r.state ?? r.plate_state ?? '', r.ts ?? r.created_at ?? ''];
+    ['plate', 'state', 'checked_at'],
+    rows.map((r) => {
+      let checked = '';
+      if (typeof r.ts === 'number') {
+        checked = new Date(r.ts).toISOString(); // new-date-ok — Unix epoch ms from local plate history
+      }
+      return [r.plate, r.state, checked];
     }),
   );
 }
 
-export function jailBookingsToCsv(rows: object[]): string {
+export function jailBookingsToCsv(rows: Array<{
+  full_name: string;
+  booking_date?: string | null;
+  charges?: string | null;
+  county?: string | null;
+  entry_source?: string;
+}>): string {
   return csvRows(
-    ['name', 'booking_date', 'charges', 'county'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.full_name ?? r.name ?? '', r.booking_date ?? '', r.charges ?? '', r.county ?? ''];
-    }),
+    ['name', 'booking_date', 'charges', 'county', 'source'],
+    rows.map((r) => [r.full_name, r.booking_date ?? '', r.charges ?? '', r.county ?? '', r.entry_source ?? '']),
   );
 }
 
-export function jailSourcesToCsv(rows: object[]): string {
+export function jailSourcesToCsv(rows: Array<{
+  source_key: string;
+  display_name: string;
+  county?: string | null;
+  kind?: string;
+  status?: string;
+  last_status?: string | null;
+  row_count?: number;
+}>): string {
   return csvRows(
-    ['source', 'status', 'last_sync'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.source ?? r.name ?? '', r.status ?? '', r.last_sync ?? r.updated_at ?? ''];
-    }),
+    ['source', 'name', 'county', 'kind', 'status', 'rows'],
+    rows.map((r) => [r.source_key, r.display_name, r.county ?? '', r.kind ?? '', r.status ?? '', r.row_count ?? '']),
   );
 }
 
-export function partnersToCsv(rows: object[]): string {
+export function partnersToCsv(rows: Array<{
+  agency_name: string;
+  agency_type?: string;
+  jurisdiction?: string;
+  data_share_level: string;
+  status?: string;
+}>): string {
   return csvRows(
-    ['agency', 'share_level'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.agency_name ?? r.name ?? '', r.data_share_level ?? r.share_level ?? ''];
-    }),
+    ['agency', 'type', 'jurisdiction', 'data_share', 'status'],
+    rows.map((r) => [r.agency_name, r.agency_type ?? '', r.jurisdiction ?? '', r.data_share_level, r.status ?? '']),
   );
 }
 
-export function recruitmentPipelineToCsv(rows: object[]): string {
+export function recruitmentPipelineToCsv(rows: Array<{
+  candidate_name: string;
+  position: string;
+  stage: string;
+  applied_date: string;
+}>): string {
   return csvRows(
-    ['name', 'position', 'stage', 'applied_date'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.candidate_name ?? '', r.position ?? '', r.stage ?? '', r.applied_date ?? ''];
-    }),
+    ['candidate', 'position', 'stage', 'applied'],
+    rows.map((r) => [r.candidate_name, r.position, r.stage, r.applied_date]),
   );
 }
 
-export function invoicesToCsv(rows: object[]): string {
+export function invoicesToCsv(rows: Array<{
+  invoice_number?: string;
+  status?: string;
+  total_amount?: number;
+  paid_amount?: number;
+  due_date?: string | null;
+}>): string {
   return csvRows(
-    ['number', 'status', 'total', 'paid'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.invoice_number ?? '', r.status ?? '', r.total_amount ?? '', r.paid_amount ?? ''];
-    }),
+    ['invoice', 'status', 'total', 'paid', 'due'],
+    rows.map((r) => [r.invoice_number ?? '', r.status ?? '', r.total_amount ?? '', r.paid_amount ?? '', r.due_date ?? '']),
   );
 }
 
-export function accreditationsToCsv(rows: object[]): string {
+export function accreditationsToCsv(rows: Array<{
+  officer_name: string;
+  badge_number?: string;
+  type: string;
+  issuing_body?: string;
+  certificate_number?: string;
+  expiration_date?: string;
+  status?: string;
+}>): string {
   return csvRows(
-    ['name', 'status', 'expires'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.name ?? r.title ?? '', r.status ?? '', r.expires_at ?? r.expiration_date ?? ''];
-    }),
+    ['officer', 'badge', 'type', 'issuer', 'certificate', 'expires', 'status'],
+    rows.map((r) => [r.officer_name, r.badge_number ?? '', r.type, r.issuing_body ?? '', r.certificate_number ?? '', r.expiration_date ?? '', r.status ?? '']),
   );
 }
 
-export function riskAssessmentsToCsv(rows: object[]): string {
+export function riskAssessmentsToCsv(rows: Array<{
+  assessment_number?: string;
+  entity_type: string;
+  risk_level: string;
+  risk_category?: string;
+  status?: string;
+  assessed_date?: string;
+}>): string {
   return csvRows(
-    ['id', 'title', 'level', 'status'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.id ?? '', r.title ?? r.name ?? '', r.level ?? r.risk_level ?? '', r.status ?? ''];
-    }),
+    ['number', 'entity', 'level', 'category', 'status', 'assessed'],
+    rows.map((r) => [r.assessment_number ?? '', r.entity_type, r.risk_level, r.risk_category ?? '', r.status ?? '', r.assessed_date ?? '']),
   );
 }
 
-export function updateHistoryToCsv(rows: object[]): string {
+export function updateHistoryToCsv(rows: Array<{ version: string; date: string; notes?: string }>): string {
   return csvRows(
-    ['version', 'status', 'applied_at'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.version ?? r.name ?? '', r.status ?? '', r.applied_at ?? r.created_at ?? ''];
-    }),
+    ['version', 'date', 'notes'],
+    rows.map((r) => [r.version, r.date, r.notes ?? '']),
   );
 }
 
-export function shiftsToCsv(rows: object[]): string {
+export function shiftsToCsv(rows: Array<{
+  id: number;
+  date: string;
+  start_time?: string;
+  end_time?: string;
+  location?: string;
+  status?: string;
+}>): string {
   return csvRows(
-    ['date', 'start', 'end', 'location', 'status'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.date ?? '', r.start_time ?? '', r.end_time ?? '', r.location ?? '', r.status ?? ''];
-    }),
+    ['id', 'date', 'start', 'end', 'location', 'status'],
+    rows.map((r) => [r.id, r.date, r.start_time ?? '', r.end_time ?? '', r.location ?? '', r.status ?? '']),
   );
 }
 
-export function sessionsToCsv(rows: object[]): string {
+export function timelineToCsv(rows: Array<{
+  type: string;
+  timestamp: string;
+  label: string;
+  detail?: string;
+}>): string {
   return csvRows(
-    ['id', 'user', 'started_at', 'ip'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.id ?? '', r.username ?? r.user ?? '', r.started_at ?? '', r.ip ?? r.ip_address ?? ''];
-    }),
+    ['timestamp', 'type', 'label', 'detail'],
+    rows.map((r) => [r.timestamp, r.type, r.label, r.detail ?? '']),
   );
 }
 
-export function pingResultsToCsv(rows: object[]): string {
+export function pingResultsToCsv(rows: Array<{ attempt: number; latencyMs: number; ok: boolean }>): string {
   return csvRows(
     ['attempt', 'latency_ms', 'ok'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.attempt ?? '', r.latencyMs ?? r.latency_ms ?? '', r.ok ? 'yes' : 'no'];
-    }),
+    rows.map((r) => [r.attempt, r.latencyMs, r.ok ? 'yes' : 'no']),
   );
 }
 
-export function networkIfacesToCsv(rows: object[]): string {
+export function networkIfacesToCsv(rows: Array<{
+  name: string;
+  ipv4?: string;
+  ipv6?: string;
+  mac?: string;
+  status?: string;
+}>): string {
   return csvRows(
     ['name', 'ipv4', 'ipv6', 'mac', 'status'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.name ?? '', r.ipv4 ?? '', r.ipv6 ?? '', r.mac ?? '', r.status ?? ''];
-    }),
+    rows.map((r) => [r.name, r.ipv4 ?? '', r.ipv6 ?? '', r.mac ?? '', r.status ?? '']),
   );
 }
 
-export function timelineToCsv(rows: object[]): string {
+export function sessionsToCsv(rows: Array<{
+  id: number;
+  user_id: number;
+  username: string;
+  role: string;
+  last_active?: string;
+}>): string {
   return csvRows(
-    ['time', 'label', 'detail'],
-    rows.map((row) => {
-      const r = rec(row);
-      return [r.time ?? r.created_at ?? '', r.label ?? r.title ?? '', r.detail ?? r.description ?? ''];
-    }),
+    ['id', 'user_id', 'username', 'role', 'last_active'],
+    rows.map((r) => [r.id, r.user_id, r.username, r.role, r.last_active ?? '']),
   );
 }
