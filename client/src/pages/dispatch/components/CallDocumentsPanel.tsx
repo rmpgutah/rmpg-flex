@@ -74,7 +74,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
         ) : items.length === 0 ? (
           <div className="text-fg-muted text-[10px] py-6 text-center">No documents linked to this call.</div>
         ) : items.map((d) => (
-          <div key={d.id} className="group flex items-center gap-2 text-xs px-2 py-1.5 rounded-sm hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
+          <div key={d.id} className="group flex items-center gap-2 text-xs px-2 py-1.5 rounded-sm hover:bg-surface-raised" style={{ borderLeft: '2px solid var(--border-default)' }}>
             <FileText className="w-3 h-3 text-fg-muted shrink-0" />
             <button type="button" className="flex-1 min-w-0 truncate text-left text-rmpg-200 hover:text-rmpg-100" onClick={() => setOpenId(d.id)}>{d.title}</button>
             <span className={`text-[8px] uppercase ${d.status === 'finalized' ? 'text-[color:var(--field-label-color)]' : 'text-fg-muted'}`}>{toDisplayLabel(d.status)}</span>
@@ -98,7 +98,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
             </div>
             <div className="max-h-[300px] overflow-y-auto space-y-1">
               {results.map((d) => (
-                <button key={d.id} type="button" className="w-full flex items-center gap-2 text-xs px-2 py-1 rounded-sm hover:bg-[#18181820] text-left" onClick={() => attach(d.id)}>
+                <button key={d.id} type="button" className="w-full flex items-center gap-2 text-xs px-2 py-1 rounded-sm hover:bg-surface-raised text-left" onClick={() => attach(d.id)}>
                   <FileText className="w-3 h-3 text-fg-muted" />
                   <span className="flex-1 min-w-0 truncate text-rmpg-200">{d.title}</span>
                   <span className="text-[8px] text-fg-muted">{toDisplayLabel(d.status)}</span>

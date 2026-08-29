@@ -232,9 +232,9 @@ export default function AssetsPage() {
             className="input-dark text-[11px]"
             style={{ height: 28, padding: '0 8px', width: 180 }}
             placeholder="Search assets..."
+            aria-label="Search assets"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search assets"
           />
           <select aria-label="Filter by type" className="select-dark text-[11px]" style={{ height: 28 }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
             <option value="ALL">All types</option>

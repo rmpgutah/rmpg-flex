@@ -6,6 +6,7 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { useToast } from './ToastProvider';
 import ConfirmDialog from './ConfirmDialog';
+import PromptDialog from './PromptDialog';
 import { safeTimeStr } from '../utils/dateUtils';
 import { playTone } from '../utils/dispatchTones';
 
@@ -74,6 +75,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const [ownPanicId, setOwnPanicId] = useState<number | null>(null);
   const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
   const [forceDeactivateOpen, setForceDeactivateOpen] = useState(false);
+  const [notesKind, setNotesKind] = useState<'false-alarm' | 'code4' | null>(null);
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -327,7 +329,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   // False alarm (supervisor+ only)
   const markFalseAlarm = useCallback(() => {
     if (!incomingAlert?.panic_id) return;
-    setNotesText('');
     setNotesKind('false-alarm');
   }, [incomingAlert?.panic_id]);
 
@@ -337,7 +338,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   // path). Clears the alert row + the unit's EMERGENCY overlay fleet-wide.
   const resolveCode4 = useCallback(() => {
     if (!incomingAlert?.panic_id) return;
-    setNotesText('');
     setNotesKind('code4');
   }, [incomingAlert?.panic_id]);
 
@@ -362,11 +362,11 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     }
   }, [incomingAlert?.panic_id, addToast]);
 
-  const submitPanicNotes = useCallback(async () => {
+  const submitPanicNotes = useCallback(async (raw: string) => {
     const panicId = incomingAlert?.panic_id;
     if (!panicId || !notesKind) return;
     const kind = notesKind;
-    const notes = notesText.trim();
+    const notes = raw.trim();
     setNotesKind(null);
     try {
       if (kind === 'false-alarm') {
@@ -387,7 +387,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       console.error(kind === 'false-alarm' ? 'Failed to mark false alarm:' : 'Failed to resolve panic:', err);
       addToast(kind === 'false-alarm' ? 'Failed to mark false alarm' : 'Failed to resolve panic', 'error', 5000);
     }
-  }, [incomingAlert?.panic_id, notesKind, notesText, addToast]);
+  }, [incomingAlert?.panic_id, notesKind, addToast]);
 
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
@@ -704,6 +704,20 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
         message="Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles."
         confirmLabel="Deactivate"
         confirmVariant="danger"
+      />
+      <PromptDialog
+        isOpen={notesKind != null}
+        onClose={() => setNotesKind(null)}
+        onSubmit={(value) => { void submitPanicNotes(value); }}
+        title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — Resolve'}
+        message={notesKind === 'false-alarm'
+          ? 'Optional notes for the false-alarm record. This clears the panic for all consoles.'
+          : 'Optional notes for the Code 4 resolution. This clears the emergency for all consoles.'}
+        label="Notes"
+        defaultValue=""
+        allowEmpty
+        confirmLabel={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Resolve'}
+        placeholder="Optional notes"
       />
     </>
   );

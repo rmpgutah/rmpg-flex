@@ -227,6 +227,7 @@ export default function SchedulerPage() {
         <div className="relative">
           <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-muted" />
           <input value={textQuery} onChange={(e) => setTextQuery(e.target.value)} placeholder="Search titles…"
+            aria-label="Search schedule titles"
             className="w-36 bg-surface-base border border-rmpg-700 rounded pl-6 pr-2 py-[3px] text-[10px] text-rmpg-100" />
         </div>
         <button type="button" disabled={visible.length === 0}

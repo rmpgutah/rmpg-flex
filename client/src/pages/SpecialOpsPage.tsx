@@ -449,9 +449,9 @@ export default function SpecialOpsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search... (/)"
+          aria-label="Search special operations"
           className="input-dark text-xs ml-auto"
           style={{ width: 160, height: 26 }}
-          aria-label="Search special ops records"
         />
       </div>
 

@@ -323,6 +323,7 @@ export default function ModuleDirectoryPage() {
                   }
                 }}
                 placeholder="Search modules by name, path, or description… (N to focus, Esc to clear)"
+                aria-label="Search modules by name, path, or description"
                 className="w-full pl-9 pr-3 py-2 text-[11px] bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 transition-colors"
                 autoFocus
               />

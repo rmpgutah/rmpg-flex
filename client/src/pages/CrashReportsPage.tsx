@@ -205,6 +205,7 @@ export default function CrashReportsPage() {
             ref={searchRef}
             type="text"
             placeholder="Search report #, location… (/ to focus)"
+            aria-label="Search crash reports by number or location"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none"

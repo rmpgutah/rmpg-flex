@@ -207,6 +207,7 @@ export default function TipsPage() {
           <input
             type="text"
             placeholder="Search tracking #, description..."
+            aria-label="Search tips by tracking number or description"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none"
