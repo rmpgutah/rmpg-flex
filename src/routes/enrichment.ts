@@ -43,6 +43,27 @@ async function sourceConfigured(
     case 'numverify':
       return Boolean((env.NUMVERIFY_API_KEY as string | undefined)?.trim())
         || Boolean(await configValue(db, 'numverify_api_key'));
+    case 'usa_people_search':
+      return Boolean((env.USA_PEOPLE_SEARCH_RAPIDAPI_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'usa_people_search_rapidapi_key'))
+        || Boolean(await configValue(db, 'skiptracer_rapidapi_key'))
+        || Boolean(await configValue(db, 'plate_check_rapidapi_key'));
+    case 'hunter':
+      return Boolean((env.HUNTER_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'hunter_io_api_key'))
+        || Boolean(await configValue(db, 'hunter_api_key'));
+    case 'pdl':
+      return Boolean((env.PDL_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'pdl_api_key'));
+    case 'apollo':
+      return Boolean((env.APOLLO_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'apollo_api_key'));
+    case 'hibp':
+      return Boolean((env.HIBP_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'hibp_api_key'))
+        || Boolean(await configValue(db, 'have_i_been_pwned_key'));
+    case 'courtlistener':
+      return true;
     default:
       // NSOPW has local DB fallback; other open sources need no keys.
       return true;
@@ -70,8 +91,9 @@ enrichment.post('/search', async (c) => {
   const last  = (body.last_name  ?? '').trim();
   const address = (body.address ?? '').trim();
   const phone = (body.phone ?? '').trim();
-  if ((!first || !last) && !address && !phone) {
-    return c.json({ error: 'first_name and last_name required (or address/phone for property/phone lookup)' }, 400);
+  const email = (body.email ?? '').trim();
+  if ((!first || !last) && !address && !phone && !email) {
+    return c.json({ error: 'first_name and last_name required (or address/phone/email for reverse lookup)' }, 400);
   }
 
   const seed: EnrichmentSeed = {
@@ -80,9 +102,9 @@ enrichment.post('/search', async (c) => {
     dob:        normalizeDob(body.dob ?? null) ?? undefined,
     city:       body.city,
     state:      body.state,
-    address:    body.address,
-    phone:      body.phone,
-    email:      body.email,
+    address:    address || undefined,
+    phone:      phone || undefined,
+    email:      email || undefined,
     dl_number:  body.dl_number,
     ssn_last4:  body.ssn_last4,
   };
