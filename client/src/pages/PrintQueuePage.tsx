@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Printer, RefreshCw, X, Pause, Play, Trash2 } from 'lucide-react';
 import { parseTimestamp } from '../utils/dateUtils';
 import { filterByQuery, jobsToCsv } from '../utils/queueWorkbench';
 import { downloadTextFile } from '../utils/intelHitExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 interface PrintJob {
   id: string;
@@ -63,9 +64,13 @@ export default function PrintQueuePage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [jobQuery, setJobQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PrintJob['status'] | 'all'>('all');
+  const [printError, setPrintError] = useState(false);
+  const jobSearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(jobSearchRef);
 
   const loadQueue = useCallback(() => {
     setLoading(true);
+    setPrintError(false);
     try {
       const raw = electron?.getPrintQueue?.();
       if (raw === undefined) {
@@ -76,6 +81,7 @@ export default function PrintQueuePage() {
       setLastRefresh(new Date());
     } catch {
       setJobs(STATIC_SAMPLE);
+      setPrintError(true);
     } finally {
       setLoading(false);
     }
@@ -255,8 +261,9 @@ export default function PrintQueuePage() {
         <div style={{ flexGrow: 1 }} />
         <button
           type="button"
+          className="toolbar-btn"
           onClick={() => downloadTextFile('print-queue.csv', jobsToCsv(visibleJobs))}
-          style={{ fontSize: 9, color: 'var(--text-secondary)', padding: '3px 8px', border: '1px solid var(--border-subtle)', background: 'var(--surface-raised)', borderRadius: 2 }}
+          style={{ fontSize: 9, color: 'var(--text-secondary)', padding: '3px 8px' }}
         >
           CSV
         </button>
@@ -282,9 +289,10 @@ export default function PrintQueuePage() {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' as const }}>
         <input
+          ref={jobSearchRef}
           value={jobQuery}
           onChange={(e) => setJobQuery(e.target.value)}
-          placeholder="Filter jobs…"
+          placeholder="Filter jobs… (/)"
           aria-label="Filter print jobs"
           style={{ flex: 1, minWidth: 140, fontSize: 11, padding: '4px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)' }}
         />
@@ -300,6 +308,13 @@ export default function PrintQueuePage() {
         ))}
       </div>
 
+      {printError && (
+        <div style={{ fontSize: 11, color: 'var(--sev-critical)', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Failed to load print queue.</span>
+          <button type="button" className="toolbar-btn" onClick={loadQueue}>Retry</button>
+        </div>
+      )}
+
       {/* Job list */}
       {jobs.length === 0 ? (
         <div style={{
@@ -313,6 +328,10 @@ export default function PrintQueuePage() {
         }}>
           <Printer style={{ width: 28, height: 28, opacity: 0.4 }} />
           <span style={{ fontSize: 10 }}>No print jobs</span>
+        </div>
+      ) : visibleJobs.length === 0 ? (
+        <div style={{ fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center', padding: 24 }}>
+          No print jobs match the current filter
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
