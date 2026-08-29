@@ -1898,7 +1898,8 @@ export default function Layout() {
       />
 
       {/* Dialer — always-on /dialer iframe (authenticated Twilio Client).
-          Pop-out unloads the iframe and opens a named Dial Connect window. */}
+          Dispatch → Dialer Connect docks it into the CAD page. Pop-out unloads
+          the iframe and opens a named Dial Connect window. */}
       <DialerPanel />
 
     </div>
