@@ -1893,9 +1893,8 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
-      {/* Dialer — persistent system-wide floating panel (bottom-left).
-          Toasts for ringing/duress are self-contained inside DialerPanel
-          so they appear regardless of which page the user is on. */}
+      {/* Dialer — chip opens Dial Connect in a first-party window (not the
+          cookieless /dialer-embed iframe, which cannot answer inbound). */}
       <DialerPanel />
 
     </div>
