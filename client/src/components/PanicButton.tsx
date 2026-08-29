@@ -74,8 +74,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const [ownPanicId, setOwnPanicId] = useState<number | null>(null);
   const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
   const [forceDeactivateOpen, setForceDeactivateOpen] = useState(false);
-  const [notesKind, setNotesKind] = useState<'false-alarm' | 'code4' | null>(null);
-  const [notesText, setNotesText] = useState('');
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -706,27 +704,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
         message="Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles."
         confirmLabel="Deactivate"
         confirmVariant="danger"
-      />
-      <ConfirmDialog
-        isOpen={notesKind != null}
-        onClose={() => setNotesKind(null)}
-        onConfirm={() => { void submitPanicNotes(); }}
-        title={notesKind === 'code4' ? 'Code 4 — resolve' : 'Mark false alarm'}
-        message={notesKind === 'code4'
-          ? 'Optional resolution notes. Clearing this panic notifies all consoles that the officer is Code 4.'
-          : 'Optional notes for this false-alarm classification.'}
-        confirmLabel={notesKind === 'code4' ? 'Resolve' : 'Mark false alarm'}
-        confirmVariant={notesKind === 'code4' ? 'default' : 'warning'}
-        details={
-          <textarea
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            rows={3}
-            className="input-dark text-[12px] w-full mt-1"
-            aria-label="Panic notes"
-            placeholder="Notes (optional)"
-          />
-        }
       />
     </>
   );

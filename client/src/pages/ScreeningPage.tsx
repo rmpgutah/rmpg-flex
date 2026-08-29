@@ -179,8 +179,8 @@ export function ScreeningWorkspace() {
               onKeyDown={(e) => { if (e.key === 'Enter') search(); }}
               className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]"
             />
-            <input placeholder="Forename" aria-label="Forename" value={forename} onChange={(e) => setForename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]" />
-            <input placeholder="Nationality" aria-label="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]" />
+            <input placeholder="Forename" value={forename} onChange={(e) => setForename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]" />
+            <input placeholder="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]" />
             <button type="button" onClick={search} className="px-3 py-1 border border-brand-500 text-brand-400 text-[11px]">SEARCH</button>
           </div>
           {sourceError && <div className="text-red-400 text-[11px]">{sourceError}</div>}
