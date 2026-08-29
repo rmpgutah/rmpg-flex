@@ -612,6 +612,7 @@ export default function MenuBar({
           { type: 'action', path: '/geo-data-viewer', label: 'Geo Data Viewer', icon: Map, action: () => navigate('/geo-data-viewer') },
           { type: 'separator' },
           { type: 'action', path: '/communications', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', path: '/dialer-connect', label: 'Dial Connect', icon: Phone, action: () => navigate('/dialer-connect') },
           { type: 'action', path: '/radio', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
           { type: 'action', path: '/email', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           ...(isFeatureEnabled('/patrol') ? [{ type: 'action' as const, path: '/patrol', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') }] : []),
@@ -861,6 +862,7 @@ export default function MenuBar({
         icon: MessageSquare,
         items: [
           { type: 'action', path: '/communications', label: 'Communications Center', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', path: '/dialer-connect', label: 'Dial Connect', icon: Phone, action: () => navigate('/dialer-connect') },
           { type: 'action', path: '/radio', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
           { type: 'action', path: '/email', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           { type: 'separator' },
