@@ -10,6 +10,10 @@ function csvRows(header: string[], rows: unknown[][]): string {
   return [header.join(','), ...rows.map((r) => r.map(cell).join(','))].join('\n');
 }
 
+function yesNo(v: unknown): string {
+  return v === true || v === 1 || v === '1' || v === 'yes' ? 'yes' : 'no';
+}
+
 export function tipsToCsv(rows: Array<{
   tracking_number: string;
   tip_type: string;
@@ -99,10 +103,14 @@ export function briefingsToCsv(rows: Array<{
   created_at: string;
   acknowledged_count: number;
   total_officers: number;
+  shift_date?: string;
 }>): string {
   return csvRows(
-    ['number', 'title', 'shift', 'author', 'created_at', 'acked', 'roster'],
-    rows.map((r) => [r.briefing_number, r.title, r.shift_type, r.created_by, r.created_at, r.acknowledged_count, r.total_officers]),
+    ['number', 'title', 'shift', 'shift_date', 'author', 'created_at', 'acked', 'roster'],
+    rows.map((r) => [
+      r.briefing_number, r.title, r.shift_type, r.shift_date ?? '', r.created_by,
+      r.created_at, r.acknowledged_count, r.total_officers,
+    ]),
   );
 }
 
@@ -128,6 +136,10 @@ export function formatRadioLine(u: {
   location_description?: string | null;
   current_call_number?: string | null;
 }): string {
+  if (u.badge) {
+    const call = u.current_call_number ? ` ${u.current_call_number}` : '';
+    return `${u.unit_id} ${u.officer_name} #${u.badge} ${u.status}${call}`.replace(/\s+/g, ' ').trim();
+  }
   const where = u.current_call_number
     ? `call ${u.current_call_number}`
     : (u.location_description?.trim() || 'no location');
@@ -145,7 +157,10 @@ export function unitsBoardToCsv(rows: Array<{
 }>): string {
   return csvRows(
     ['unit', 'officer', 'badge', 'status', 'role', 'call', 'location'],
-    rows.map((r) => [r.unit_id, r.officer_name, r.badge, r.status, r.role ?? '', r.current_call_number ?? '', r.location_description ?? '']),
+    rows.map((r) => [
+      r.unit_id, r.officer_name, r.badge, r.status, r.role ?? '',
+      r.current_call_number ?? '', r.location_description ?? '',
+    ]),
   );
 }
 
@@ -157,7 +172,13 @@ export function unitsBoardToTsv(rows: Array<{
   current_call_number?: string | null;
   location_description?: string | null;
 }>): string {
-  return ['unit\tofficer\tstatus\tcall', ...rows.map((r) => [r.unit_id, r.officer_name, r.status, r.current_call_number ?? ''].join('\t'))].join('\n');
+  return [
+    'unit\tofficer\tbadge\tstatus\tcall\tlocation',
+    ...rows.map((r) => [
+      r.unit_id, r.officer_name, r.badge ?? '', r.status,
+      r.current_call_number ?? '', r.location_description ?? '',
+    ].join('\t')),
+  ].join('\n');
 }
 
 export function trainingCoursesToCsv(rows: Array<{
