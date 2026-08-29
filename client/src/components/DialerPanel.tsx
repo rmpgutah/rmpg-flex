@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { DIAL_RECORDING_READY_EVENT, DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 /** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
@@ -27,7 +27,24 @@ type DialConnectMessage =
   | { source: 'dial-connect'; type: 'duress_alert'; dispatcherName: string; timestamp: string }
   | { source: 'dial-connect'; type: 'heartbeat' }
   | { source: 'dial-connect'; type: 'voicemail'; callSid?: string; from?: string; to?: string; transcript?: string; recordingUrl?: string; durationSeconds?: number }
-  | { source: 'dial-connect'; type: 'recording_ready'; callSid: string; recordingUrl?: string }
+  | {
+      source: 'dial-connect';
+      type: 'recording_ready';
+      callSid?: string;
+      call_sid?: string;
+      recordingUrl?: string;
+      recordingSid?: string;
+      recording_sid?: string;
+      from?: string;
+      to?: string;
+      direction?: string;
+      startedAt?: string;
+      endedAt?: string;
+      durationSeconds?: number;
+      dispatcherName?: string;
+      transcript?: string;
+      segments?: unknown;
+    }
   | { source: 'dial-connect'; type: 'transcript_ready'; callSid: string; transcript: string };
 
 const INGEST_STATUSES = new Set(['completed', 'missed', 'failed', 'voicemail', 'busy']);
@@ -242,33 +259,34 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           recordingUrl: 'recordingUrl' in message ? message.recordingUrl : undefined,
           transcript: 'transcript' in message ? message.transcript : undefined,
         });
+        if (message.type === 'recording_ready') {
+          const recordingSid = message.recordingSid || message.recording_sid;
+          if (recordingSid) {
+            void apiFetch('/dial-connect-recordings', {
+              method: 'POST',
+              body: JSON.stringify({
+                recordingSid,
+                callSid: message.callSid || message.call_sid,
+                from: message.from,
+                to: message.to,
+                direction: message.direction,
+                startedAt: message.startedAt,
+                endedAt: message.endedAt,
+                durationSeconds: message.durationSeconds,
+                dispatcherName: message.dispatcherName,
+                transcript: message.transcript,
+                segments: message.segments,
+              }),
+            }).then(() => {
+              window.dispatchEvent(new CustomEvent(DIAL_RECORDING_READY_EVENT));
+            }).catch(() => {
+              /* ingest is best-effort; Dial Connect API-key POST is the durable path */
+            });
+          }
+        }
       } else if (message.type === 'duress_alert') {
         if (!poppedOut) revealDialer();
         onDuress?.(`Duress alert: ${message.dispatcherName}`);
-      } else if (message.type === 'recording_ready') {
-        const recordingSid = message.recordingSid || message.recording_sid;
-        if (recordingSid) {
-          void apiFetch('/dial-connect-recordings', {
-            method: 'POST',
-            body: JSON.stringify({
-              recordingSid,
-              callSid: message.callSid || message.call_sid,
-              from: message.from,
-              to: message.to,
-              direction: message.direction,
-              startedAt: message.startedAt,
-              endedAt: message.endedAt,
-              durationSeconds: message.durationSeconds,
-              dispatcherName: message.dispatcherName,
-              transcript: message.transcript,
-              segments: message.segments,
-            }),
-          }).then(() => {
-            window.dispatchEvent(new CustomEvent(DIAL_RECORDING_READY_EVENT));
-          }).catch(() => {
-            /* ingest is best-effort; Dial Connect API-key POST is the durable path */
-          });
-        }
       }
     },
     [onRinging, onDuress, addToast, revealDialer, poppedOut],
