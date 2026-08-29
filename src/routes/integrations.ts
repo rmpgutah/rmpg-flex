@@ -16,8 +16,6 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { sha256Hex } from '../utils/apiKeys';
 import { requireApiKeyScope } from '../middleware/apiKeyAuth';
-import { log } from '../utils/logger';
-import { parseDialConnectRecordingIngest, upsertDialConnectRecording } from '../utils/dialConnectRecordings';
 
 const integrations = new Hono<Env>();
 
@@ -480,34 +478,6 @@ integrations.get('/calls-for-service', requireApiKeyScope('service_request_read'
   } catch (err) {
     console.error('[Integrations] Lookup calls-for-service failed:', err);
     return c.json({ error: 'Failed to look up calls for service' }, 500);
-  }
-});
-
-// ── Dial Connect → recordings + transcripts ─────────────────
-// POST /api/integrations/dial-connect-recordings
-//
-// Same auth model as the CFS push: JWT bypass + requireApiKeyScope('service_request').
-// Existing Dial Connect keys already carry that scope, so recordings start landing
-// as soon as Dial Connect POSTs — no new key issuance required.
-integrations.post('/dial-connect-recordings', requireApiKeyScope('service_request'), async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = parseDialConnectRecordingIngest(body);
-  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
-  const authHeader = c.req.header('Authorization');
-  const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
-  try {
-    const result = await upsertDialConnectRecording({
-      db: getDb(c.env),
-      uploads: c.env.UPLOADS,
-      env: c.env,
-      ingest: parsed.value,
-      source: 'dial_connect',
-      audioFetchBearer: bearer,
-    });
-    return c.json({ ok: true, ...result }, result.created ? 201 : 200);
-  } catch (err) {
-    log.error('Dial Connect recording ingest failed', { recordingSid: parsed.value.recordingSid }, err);
-    return c.json({ error: 'Failed to store recording' }, 500);
   }
 });
 

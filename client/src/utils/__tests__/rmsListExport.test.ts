@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  tipsToCsv, communityReportsToCsv, broadcastsToCsv, lockUnitsToCsv,
+  tipsToCsv, communityReportsToCsv,
   crashReportsToCsv, briefingsToCsv, shiftNotesToCsv, trainingCoursesToCsv,
   fileListingToCsv, formatRadioLine, unitsBoardToCsv, unitsBoardToTsv,
   agendaToCsv, qaReviewsToCsv, assetsToCsv, errorLogsToCsv, recordingsToCsv,
@@ -89,7 +89,7 @@ describe('rmsListExport', () => {
       .toContain('Firearms');
     expect(fileListingToCsv([{ name: 'a.log', size: 12, modified: 't', path: '/logs/a.log' }])).toContain('a.log');
     expect(formatRadioLine({ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }))
-      .toBe('U1 Hale #12 available');
+      .toBe('U1 available — Hale — no location');
     expect(unitsBoardToCsv([{ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }])).toContain('U1');
     expect(unitsBoardToTsv([{ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }])).toContain('\t');
   });
