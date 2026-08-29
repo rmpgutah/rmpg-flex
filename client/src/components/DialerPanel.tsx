@@ -5,7 +5,7 @@ import IconButton from './IconButton';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
-export const DIALER_IFRAME_ALLOW = "microphone *; autoplay *; clipboard-write";
+export const DIALER_IFRAME_ALLOW = 'microphone; autoplay; clipboard-write';
 export const DIALER_PANEL_WIDTH_PX = 900;
 export const DIALER_PANEL_HEIGHT_PX = 680;
 export const DIALER_PANEL_WIDTH = `${DIALER_PANEL_WIDTH_PX}px`;
@@ -32,29 +32,27 @@ function isDialConnectMessage(data: unknown): data is DialConnectMessage {
 /**
  * Host box for the Dial Connect iframe.
  *
- * Geometry (position + size) MUST be identical when collapsed and expanded.
- * Chromium reloads a cross-origin iframe when its containing block changes
- * (0×0 → 900×680, or position:fixed → in-flow). A reload drops Twilio Voice
- * Device registration mid-invite: the dispatcher sees the inbound (IVR
- * webhook / first ring), then the call disappears and PSTN fails over to
- * voicemail as soon as the call tree Dials the Client.
- *
- * Collapse is opacity + pointer-events only. Keep a trace of opacity so
- * Chrome still treats the frame as painted for getUserMedia.
+ * Collapsed must stay a real viewport-sized box. Sizing it to 0×0 (or
+ * display:none) lets Chromium freeze the cross-origin iframe, which drops
+ * Twilio Voice Device registration. PSTN then fails over to voicemail
+ * immediately, and the ring UI only appears after the iframe thaws.
  */
 export function dialerIframeHostStyle(collapsed: boolean): CSSProperties {
-  return {
-    position: 'fixed',
-    left: 16,
-    bottom: 16,
+  const size: CSSProperties = {
     width: DIALER_PANEL_WIDTH,
     height: DIALER_PANEL_HEIGHT,
     maxWidth: 'calc(100vw - 32px)',
     maxHeight: 'calc(100vh - 96px)',
     overflow: 'hidden',
-    opacity: collapsed ? 0.01 : 1,
-    pointerEvents: collapsed ? 'none' : 'auto',
-    zIndex: 9998,
+  };
+  if (!collapsed) return size;
+  return {
+    ...size,
+    position: 'fixed',
+    left: 16,
+    bottom: 16,
+    opacity: 0,
+    pointerEvents: 'none',
   };
 }
 
@@ -219,7 +217,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         className={
           collapsed
             ? undefined
-            : 'bg-surface-raised border border-border-subtle shadow-lg'
+            : 'bg-surface-raised border border-border-subtle shadow-lg mb-2'
         }
       >
         <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle">

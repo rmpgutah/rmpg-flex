@@ -252,6 +252,7 @@ describe('same-day windows at a 6pm start', () => {
     );
     expect(formatEtaDenver(arrivals.get(2)!, '2026-08-28')).not.toMatch(/\+1d/);
     expect(formatEtaDenver(arrivals.get(3)!, '2026-08-28')).not.toMatch(/\+1d/);
-    expect(totalDurationMinutes).toBeLessThan(180);
+    expect(totalDurationMinutes).toBeLessThan(90);
+    expect(formatEtaDenver(arrivals.get(2)!, '2026-08-28')).toMatch(/PM/);
   });
 });
