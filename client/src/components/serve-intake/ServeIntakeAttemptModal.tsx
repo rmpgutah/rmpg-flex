@@ -21,10 +21,11 @@
 // route exists. For now, notes carry that information.
 // ============================================================
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, MapPin, Send, CheckCircle, AlertTriangle, Loader2, Clock } from 'lucide-react';
 import IconButton from '../IconButton';
 import { useFormDraft } from '../../hooks/useFormDraft';
+import { useNavTrip } from '../../context/NavTripContext';
 import {
   type AttemptResult,
   type AttemptWindow,
@@ -107,21 +108,79 @@ export default function ServeIntakeAttemptModal({
   const [submittedWindow, setSubmittedWindow] = useState<AttemptWindow | null>(null);
   const [serverResp, setServerResp] = useState<{ id: number; attempt_number: number; queue_status: string } | null>(null);
 
-  // Auto-acquire GPS when the modal opens — most attempts are logged
-  // while standing at the address, so GPS is useful telemetry.
+  // Auto-acquire GPS when the modal opens — prefer the app-wide tracker
+  // (Toughbook internal GPS) over navigator.geolocation.getCurrentPosition.
+  const navTrip = useNavTrip();
+  const liveGpsRef = useRef(navTrip?.gps);
+  liveGpsRef.current = navTrip?.gps;
+
   useEffect(() => {
     if (!isOpen) return;
+    const fromTracker = liveGpsRef.current;
+    if (fromTracker?.latitude != null && fromTracker?.longitude != null) {
+      setGps({
+        lat: fromTracker.latitude,
+        lng: fromTracker.longitude,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+
     setGps((s) => ({ ...s, loading: true, error: null }));
     if (!('geolocation' in navigator)) {
       setGps({ lat: null, lng: null, loading: false, error: 'Geolocation not available.' });
       return;
     }
+
+    let settled = false;
+    const finish = (next: typeof gps) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(watchdogId);
+      setGps(next);
+    };
+
+    const watchdogId = window.setTimeout(() => {
+      const t = liveGpsRef.current;
+      if (t?.latitude != null && t?.longitude != null) {
+        finish({ lat: t.latitude, lng: t.longitude, loading: false, error: null });
+        return;
+      }
+      finish({ lat: null, lng: null, loading: false, error: 'Timeout expired' });
+    }, 12000);
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, loading: false, error: null }),
-      (err) => setGps({ lat: null, lng: null, loading: false, error: err.message }),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+      (pos) => finish({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        loading: false,
+        error: null,
+      }),
+      () => {
+        const t = liveGpsRef.current;
+        if (t?.latitude != null && t?.longitude != null) {
+          finish({ lat: t.latitude, lng: t.longitude, loading: false, error: null });
+          return;
+        }
+        finish({ lat: null, lng: null, loading: false, error: 'GPS unavailable' });
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
     );
+
+    return () => {
+      settled = true;
+      window.clearTimeout(watchdogId);
+    };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !gps.loading) return;
+    const t = navTrip?.gps;
+    if (t?.latitude != null && t?.longitude != null) {
+      setGps({ lat: t.latitude, lng: t.longitude, loading: false, error: null });
+    }
+  }, [isOpen, gps.loading, navTrip?.gps?.latitude, navTrip?.gps?.longitude]);
 
   const handleSubmit = useCallback(async () => {
     if (!result) return;
