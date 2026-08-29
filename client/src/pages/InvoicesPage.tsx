@@ -50,6 +50,8 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { invoicesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -212,6 +214,8 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | ''>(() => (searchParams.get('status') as InvoiceStatus) || '');
   const [filterClientId, setFilterClientId] = useState(() => searchParams.get('client_id') || '');
   const [dateFrom, setDateFrom] = useState('');
@@ -1121,8 +1125,9 @@ export default function InvoicesPage() {
                 <div className="flex-1 relative">
                   <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                   <input id="ff-invoicespage-14"
+                    ref={searchRef}
                     type="text"
-                    placeholder="Search invoices..." aria-label="Search invoices..."
+                    placeholder="Search invoices... (/)" aria-label="Search invoices..."
                     value={searchQuery}
                     onChange={e => handleSearchChange(e.target.value)}
                     className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm pl-7 pr-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
@@ -1223,6 +1228,19 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={invoices.length === 0}
+            onClick={() => downloadTextFile('invoices.csv', invoicesToCsv(invoices.map((inv) => ({
+              invoice_number: inv.invoice_number,
+              status: inv.status,
+              due_date: inv.due_date,
+              issue_date: inv.issue_date,
+              total_amount: inv.total,
+              paid_amount: inv.amount_paid,
+            }))))}
+          >CSV</button>
           <IconButton onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-100 p-1 transition-colors" title="Refresh" aria-label="Refresh">
             <RefreshCw size={12} />
           </IconButton>
@@ -1243,8 +1261,9 @@ export default function InvoicesPage() {
         <div className="relative flex-1 max-w-xs">
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
           <input id="ff-invoicespage-16"
+            ref={searchRef}
             type="text"
-            placeholder="Search..." aria-label="Search..."
+            placeholder="Search... (/)" aria-label="Search..."
             value={searchQuery}
             onChange={e => handleSearchChange(e.target.value)}
             className="w-full bg-surface-base border border-rmpg-700 rounded-sm pl-6 pr-2 py-1 text-[11px] text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
@@ -1293,6 +1312,7 @@ export default function InvoicesPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle size={12} /> {error}
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchInvoices(); }}>Retry</button>
           <IconButton onClick={() => setError('')} className="ml-auto text-red-400 hover:text-rmpg-100" aria-label="Dismiss error"><X size={12} /></IconButton>
         </div>
       )}

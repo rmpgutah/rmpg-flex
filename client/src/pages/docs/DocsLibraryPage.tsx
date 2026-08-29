@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { FileText, Plus, Search, Loader2 } from 'lucide-react';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import DocumentEditor from './DocumentEditor';
@@ -6,22 +6,30 @@ import { docsApi } from './useDocuments';
 import type { DocListItem } from '../../types';
 import { useToast } from '../../components/ToastProvider';
 import { toDisplayLabel } from '../../utils/formatters';
+import { useSlashFocus } from '../../hooks/useSlashFocus';
+import { docsLibraryToCsv, downloadTextFile } from '../../utils/rmsListExport';
 
 export default function DocsLibraryPage() {
   const { addToast } = useToast();
   const [items, setItems] = useState<DocListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [mine, setMine] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'' | 'draft' | 'finalized'>('');
   const [openId, setOpenId] = useState<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       setItems(await docsApi.list({ q: q || undefined, mine, status: statusFilter || undefined }));
     } catch (e) {
-      addToast(e instanceof Error ? e.message : 'Failed to load documents', 'error');
+      const msg = e instanceof Error ? e.message : 'Failed to load documents';
+      setLoadError(msg);
+      addToast(msg, 'error');
     } finally { setLoading(false); }
   }, [q, mine, statusFilter, addToast]);
 
@@ -36,12 +44,32 @@ export default function DocsLibraryPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <PanelTitleBar title="DOCUMENTS LIBRARY" icon={FileText} />
+      <PanelTitleBar title="DOCUMENTS LIBRARY" icon={FileText}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={items.length === 0}
+          onClick={() => downloadTextFile('docs-library.csv', docsLibraryToCsv(items.map((d) => ({
+            id: d.id,
+            title: d.title,
+            status: d.status,
+            revision: d.revision,
+            updated_at: d.updated_at,
+          }))))}
+        >CSV</button>
+      </PanelTitleBar>
+
+      {loadError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>{loadError}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void refresh(); }}>Retry</button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-          <input className="input-dark w-full text-xs pl-7" placeholder="Search titles…" value={q}
+          <input ref={searchRef} className="input-dark w-full text-xs pl-7" placeholder="Search titles… (/)" value={q}
             onChange={(e) => setQ(e.target.value)} />
         </div>
         <label className="flex items-center gap-1 text-[10px] text-[#888]">
@@ -60,7 +88,9 @@ export default function DocsLibraryPage() {
       {loading ? (
         <div className="flex items-center text-[#888] text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>
       ) : items.length === 0 ? (
-        <div className="text-rmpg-500 text-xs py-8 text-center">No documents. Create one to get started.</div>
+        <div className="text-rmpg-500 text-xs py-8 text-center">
+          {(q || mine || statusFilter) ? 'No documents match this filter' : 'No documents. Create one to get started.'}
+        </div>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>

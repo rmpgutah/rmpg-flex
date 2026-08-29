@@ -25,6 +25,8 @@ import { openPlateCapturePdf, type PlateCaptureForPdf } from '../utils/plateCapt
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { plateSightingsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -132,6 +134,7 @@ export default function PlateLogPage() {
   const [result, setResult] = useState<SightResult | null>(null);
   const [recent, setRecent] = useState<Sighting[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [scan, setScan] = useState<AlprResult | null>(null);
@@ -151,6 +154,7 @@ export default function PlateLogPage() {
   const [confirmBulk, setConfirmBulk] = useState<'confirm' | 'reject' | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const plateInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(plateInputRef);
   // Ref for the scan tile — used to scroll into view after a deep-link load.
   const scanTileRef = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -172,9 +176,13 @@ export default function PlateLogPage() {
 
   const loadRecent = () => {
     setRecentLoading(true);
+    setRecentError(null);
     apiFetch<Sighting[]>('/intel/sightings?limit=15')
       .then((r) => setRecent(Array.isArray(r) ? r : []))
-      .catch(() => setRecent([]))
+      .catch((err) => {
+        setRecent([]);
+        setRecentError(err instanceof Error ? err.message : 'Failed to load sightings');
+      })
       .finally(() => setRecentLoading(false));
   };
   const loadReview = () => {
@@ -469,7 +477,20 @@ export default function PlateLogPage() {
 
   return (
     <div className="p-4 space-y-4 max-w-xl mx-auto">
-      <PanelTitleBar title="PLATE LOG" icon={Car} />
+      <PanelTitleBar title="PLATE LOG" icon={Car}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={filteredRecent.length === 0}
+          onClick={() => downloadTextFile('plate-sightings.csv', plateSightingsToCsv(filteredRecent.map((s) => ({
+            plate: s.plate,
+            location_text: s.location_text,
+            created_at: s.created_at,
+            state: s.state,
+            confidence: s.confidence,
+          }))))}
+        >CSV</button>
+      </PanelTitleBar>
 
       {/* View toggle: live scan/manual vs. the ALPR capture gallery */}
       <div className="flex items-center gap-1">
@@ -587,7 +608,7 @@ export default function PlateLogPage() {
         value={plate}
         onChange={(e) => setPlate(e.target.value.toUpperCase())}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="PLATE"
+        placeholder="PLATE (/)"
         aria-label="Plate number (press N anywhere on the page to focus this field)"
         className="w-full bg-surface-overlay border border-border-default px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-brand-gold-500 outline-none uppercase"
       />
@@ -720,6 +741,12 @@ export default function PlateLogPage() {
 
         {showMap && <div className="p-1.5 border-b border-border-default"><SightingsMap sightings={mapSightings} height={220} onPick={setDossierPlate} /></div>}
 
+        {recentError && (
+          <div className="p-2 text-[11px] text-red-400 flex items-center justify-between">
+            <span>{recentError}</span>
+            <button type="button" className="toolbar-btn" onClick={() => { loadRecent(); }}>Retry</button>
+          </div>
+        )}
         {recentLoading && (
           <div className="p-2 text-[11px] text-rmpg-400">Loading sightings…</div>
         )}
