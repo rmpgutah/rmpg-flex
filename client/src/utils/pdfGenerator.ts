@@ -2770,6 +2770,11 @@ export function addAttachmentsSection(
  * Page break with continuation header on new pages.
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
+  // Recipient-facing Notice of Attempt is a one-sheet door notice — never
+  // spill onto a second page (which would print a mostly-blank CONTINUED
+  // sheet on the PJ-700 roll). Compression tiers handle overflow instead.
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) return y;
+
   const pageHeight = doc.internal.pageSize.getHeight();
   // Bottom reserve: footer height + safe print zone + BARCODE CLEARANCE.
   // Barcode is placed at y ∈ [pageH-20, pageH-12], so content must stop
