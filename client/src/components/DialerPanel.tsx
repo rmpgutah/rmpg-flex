@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { PhoneCall, X } from 'lucide-react';
 import IconButton from './IconButton';
@@ -6,6 +6,10 @@ import IconButton from './IconButton';
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
 export const DIALER_IFRAME_ALLOW = 'microphone; autoplay; clipboard-write';
+export const DIALER_PANEL_WIDTH_PX = 900;
+export const DIALER_PANEL_HEIGHT_PX = 680;
+export const DIALER_PANEL_WIDTH = `${DIALER_PANEL_WIDTH_PX}px`;
+export const DIALER_PANEL_HEIGHT = `${DIALER_PANEL_HEIGHT_PX}px`;
 
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
@@ -23,6 +27,33 @@ function isDialConnectMessage(data: unknown): data is DialConnectMessage {
     (data as { source?: unknown }).source === 'dial-connect' &&
     typeof (data as { type?: unknown }).type === 'string'
   );
+}
+
+/**
+ * Host box for the Dial Connect iframe.
+ *
+ * Collapsed must stay a real viewport-sized box. Sizing it to 0×0 (or
+ * display:none) lets Chromium freeze the cross-origin iframe, which drops
+ * Twilio Voice Device registration. PSTN then fails over to voicemail
+ * immediately, and the ring UI only appears after the iframe thaws.
+ */
+export function dialerIframeHostStyle(collapsed: boolean): CSSProperties {
+  const size: CSSProperties = {
+    width: DIALER_PANEL_WIDTH,
+    height: DIALER_PANEL_HEIGHT,
+    maxWidth: 'calc(100vw - 32px)',
+    maxHeight: 'calc(100vh - 96px)',
+    overflow: 'hidden',
+  };
+  if (!collapsed) return size;
+  return {
+    ...size,
+    position: 'fixed',
+    left: 16,
+    bottom: 16,
+    opacity: 0,
+    pointerEvents: 'none',
+  };
 }
 
 /** Best-effort E.164 for US/NANP numbers Flex stores in person/job records. */
@@ -179,13 +210,14 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       )}
 
       <div
-        style={{
-          width: collapsed ? 0 : 'min(900px, calc(100vw - 32px))',
-          height: collapsed ? 0 : 'min(680px, calc(100vh - 96px))',
-          overflow: 'hidden',
-          transition: 'width 0.2s ease, height 0.2s ease',
-        }}
-        className="bg-surface-raised border border-border-subtle shadow-lg mb-2"
+        data-dialer-iframe-host=""
+        data-collapsed={collapsed ? 'true' : 'false'}
+        style={dialerIframeHostStyle(collapsed)}
+        className={
+          collapsed
+            ? undefined
+            : 'bg-surface-raised border border-border-subtle shadow-lg mb-2'
+        }
       >
         <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle">
           <span className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap">
@@ -206,6 +238,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           className="w-full border-0"
           style={{ height: 'calc(100% - 28px)' }}
           allow={DIALER_IFRAME_ALLOW}
+          loading="eager"
         />
       </div>
       {collapsed && (

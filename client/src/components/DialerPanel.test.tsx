@@ -4,6 +4,9 @@ import DialerPanel, {
   DIALER_ORIGIN,
   DIALER_PLACE_CALL_EVENT,
   DIALER_IFRAME_ALLOW,
+  DIALER_PANEL_WIDTH,
+  DIALER_PANEL_HEIGHT,
+  dialerIframeHostStyle,
   normalizeDialTarget,
 } from './DialerPanel';
 
@@ -29,6 +32,45 @@ describe('DialerPanel', () => {
   test('renders collapsed by default, disconnected', () => {
     render(<DialerPanel />);
     expect(screen.getByLabelText('Open dialer (disconnected)')).toBeInTheDocument();
+  });
+
+  test('parks the iframe at a viewport-sized box while collapsed (never 0×0)', () => {
+    expect(dialerIframeHostStyle(true)).toEqual({
+      width: DIALER_PANEL_WIDTH,
+      height: DIALER_PANEL_HEIGHT,
+      maxWidth: 'calc(100vw - 32px)',
+      maxHeight: 'calc(100vh - 96px)',
+      overflow: 'hidden',
+      position: 'fixed',
+      left: 16,
+      bottom: 16,
+      opacity: 0,
+      pointerEvents: 'none',
+    });
+    expect(dialerIframeHostStyle(false)).toEqual({
+      width: DIALER_PANEL_WIDTH,
+      height: DIALER_PANEL_HEIGHT,
+      maxWidth: 'calc(100vw - 32px)',
+      maxHeight: 'calc(100vh - 96px)',
+      overflow: 'hidden',
+    });
+    render(<DialerPanel />);
+    const host = document.querySelector('[data-dialer-iframe-host]') as HTMLElement;
+    expect(host).toHaveAttribute('data-collapsed', 'true');
+    expect(host.style.width).toBe(DIALER_PANEL_WIDTH);
+    expect(host.style.height).toBe(DIALER_PANEL_HEIGHT);
+    expect(host.style.opacity).toBe('0');
+    expect(screen.getByTitle('Dial Connect')).toHaveAttribute('loading', 'eager');
+  });
+
+  test('expanded panel drops the parked styles so the iframe is interactive', () => {
+    render(<DialerPanel />);
+    fireEvent.click(screen.getByLabelText('Open dialer (disconnected)'));
+    const host = document.querySelector('[data-dialer-iframe-host]') as HTMLElement;
+    expect(host).toHaveAttribute('data-collapsed', 'false');
+    expect(host.style.opacity).toBe('');
+    expect(host.style.pointerEvents).toBe('');
+    expect(host.style.position).toBe('');
   });
 
   test('keeps the Dial Connect iframe mounted even without a heartbeat', () => {
