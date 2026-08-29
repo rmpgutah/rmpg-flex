@@ -22,6 +22,16 @@ vi.mock('../../../hooks/useApi', () => ({
   authedImageUrl: (u: string) => u,
 }));
 
+function mockApiFetchDefault() {
+  apiFetchMock.mockImplementation(async (path: unknown) => {
+    if (typeof path === 'string' && path.includes('/file-folders')) {
+      return { queue_id: 88, intake: [], folders: [] };
+    }
+    return {};
+  });
+}
+mockApiFetchDefault();
+
 import EditServeAttemptModal from '../EditServeAttemptModal';
 
 const attempt = {
@@ -59,6 +69,7 @@ function renderModal() {
 describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
   beforeEach(() => {
     apiFetchMock.mockClear();
+    mockApiFetchDefault();
     localStorage.clear();
   });
 
@@ -99,6 +110,7 @@ describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
 describe('EditServeAttemptModal — scroll containment', () => {
   beforeEach(() => {
     apiFetchMock.mockClear();
+    mockApiFetchDefault();
     localStorage.clear();
   });
 

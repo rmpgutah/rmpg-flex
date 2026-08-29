@@ -1283,16 +1283,28 @@ sv.put('/:id', async (c) => {
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
 
-  // Backfill geocode when recipient_address is updated but coords are not
+  // Re-geocode when recipient_address is updated but coords are not explicitly set.
+  // Clear stale pins when geocode fails so the map does not keep the old location.
   if ('recipient_address' in body && body.recipient_lat === undefined && body.recipient_lng === undefined
       && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
-    const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
+    const fullLine = [
+      body.recipient_address,
+      body.recipient_city,
+      body.recipient_state,
+      body.recipient_zip,
+    ].filter(v => typeof v === 'string' && v.trim()).join(', ');
+    const coords = await geocodeAddress(c.env, fullLine || body.recipient_address).catch(() => null);
     if (coords) {
       sets.push('recipient_lat = ?', 'recipient_lng = ?');
       args.push(coords.lat, coords.lng);
       if (await columnExists(getDb(c.env), 'serve_queue', 'geocode_source')) {
         sets.push('geocode_source = ?');
         args.push(coords.geocodeSource);
+      }
+    } else {
+      sets.push('recipient_lat = NULL', 'recipient_lng = NULL');
+      if (await columnExists(getDb(c.env), 'serve_queue', 'geocode_source')) {
+        sets.push('geocode_source = NULL');
       }
     }
   }

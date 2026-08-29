@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Radio, Users, AlertTriangle, Shield, Activity, Clock, Phone, MapPin, Maximize,
   Minimize, ShieldAlert, TrendingUp, Loader2,
@@ -56,8 +56,11 @@ export default function CommandCenterPage() {
 
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activePanel] = useState<PanelId>(initialPanel);
+  const [activePanel, setActivePanel] = useState<PanelId>(initialPanel);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [callQuery, setCallQuery] = useState('');
+  const [unitFilter, setUnitFilter] = useState('');
+  const navigate = useNavigate();
 
   // Strip deep-link param after first mount
   useEffect(() => {
@@ -165,7 +168,39 @@ export default function CommandCenterPage() {
               {isFullscreen ? <Minimize style={{ width: 12, height: 12 }} /> : <Maximize style={{ width: 12, height: 12 }} />}
             </button>
           )}
+          <button type="button" onClick={fetchData} className="toolbar-btn text-[9px] font-mono text-brand-400">REFRESH</button>
         </div>
+      </div>
+
+      <div className="flex gap-1 px-2 py-1 bg-surface-base border-b border-rmpg-700/50">
+        {VALID_PANELS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setActivePanel(p)}
+            className="text-[8px] px-2 py-0.5 uppercase tracking-wide rounded-[2px] border border-border-subtle"
+            style={{
+              background: activePanel === p ? 'var(--brand-400)' : 'transparent',
+              color: activePanel === p ? 'var(--surface-base)' : 'var(--text-secondary)',
+            }}
+          >
+            {p}
+          </button>
+        ))}
+        <input
+          value={callQuery}
+          onChange={(e) => setCallQuery(e.target.value)}
+          placeholder="Filter calls…"
+          aria-label="Filter active calls"
+          className="ml-auto text-[10px] px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-[2px] text-rmpg-100 w-40"
+        />
+        <input
+          value={unitFilter}
+          onChange={(e) => setUnitFilter(e.target.value)}
+          placeholder="Filter units…"
+          aria-label="Filter units"
+          className="text-[10px] px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-[2px] text-rmpg-100 w-32"
+        />
       </div>
 
       {/* Main Grid */}
@@ -283,7 +318,13 @@ export default function CommandCenterPage() {
               {(data.active_calls?.length ?? 0) === 0 ? (
                 <div className="text-center text-rmpg-500 text-xs py-8 font-mono">No active calls</div>
               ) : (
-                (data.active_calls ?? []).map((call: any) => {
+                (data.active_calls ?? [])
+                  .filter((call: any) => {
+                    if (!callQuery.trim()) return true;
+                    const hay = `${call.call_number} ${call.location_address ?? call.address ?? ''} ${call.call_type ?? ''} ${call.incident_type ?? ''}`.toLowerCase();
+                    return hay.includes(callQuery.trim().toLowerCase());
+                  })
+                  .map((call: any) => {
                   const priorityDot =
                     call.priority === 'P1' ? 'rgb(var(--sev-critical-rgb))'
                     : call.priority === 'P2' ? 'rgb(var(--sev-warn-rgb))'
@@ -292,7 +333,11 @@ export default function CommandCenterPage() {
                   return (
                     <div
                       key={call.id}
-                      className="flex items-center gap-2 px-2 py-1.5 panel-beveled"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/dispatch?call_id=${call.id}`)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/dispatch?call_id=${call.id}`); }}
+                      className="flex items-center gap-2 px-2 py-1.5 panel-beveled cursor-pointer"
                       style={{
                         borderLeft: `3px solid ${priorityDot}`,
                         background: call.priority === 'P1'
@@ -348,7 +393,13 @@ export default function CommandCenterPage() {
                 <div className="text-center text-rmpg-500 text-xs py-4 font-mono">No units online</div>
               ) : (
                 <div className="grid grid-cols-3 gap-1">
-                  {(data.units ?? []).map((unit: any) => {
+                  {(data.units ?? [])
+                    .filter((unit: any) => {
+                      if (!unitFilter.trim()) return true;
+                      const hay = `${unit.call_sign ?? ''} ${unit.unit_number ?? ''} ${unit.status ?? ''}`.toLowerCase();
+                      return hay.includes(unitFilter.trim().toLowerCase());
+                    })
+                    .map((unit: any) => {
                     const tok = UNIT_STATUS_TOK[unit.status] ?? UNIT_STATUS_TOK.off_duty;
                     // API returns unit_number; call_sign is a display alias some rows carry
                     const callSign = unit.call_sign ?? unit.unit_number ?? '—';

@@ -1897,7 +1897,8 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
-      {/* Dialer — persistent /dialer iframe docks into Dispatch → Dialer Connect. */}
+      {/* Dialer — always-on /dialer iframe (authenticated Twilio Client).
+          Pop-out unloads the iframe and opens a named Dial Connect window. */}
       <DialerPanel />
 
     </div>

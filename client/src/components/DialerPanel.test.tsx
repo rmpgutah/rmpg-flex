@@ -5,9 +5,13 @@ import { MemoryRouter, useLocation } from 'react-router';
 import DialerPanel, {
   DIALER_ORIGIN,
   DIALER_APP_URL,
-  DIALER_CONNECT_PATH,
-  DIALER_HOST_ID,
+  DIALER_WINDOW_NAME,
   DIALER_PLACE_CALL_EVENT,
+  DIALER_IFRAME_ALLOW,
+  DIALER_PANEL_WIDTH,
+  DIALER_PANEL_HEIGHT,
+  dialerIframeHostStyle,
+  openDialerWindow,
   resetDialerWindowForTests,
   normalizeDialTarget,
 } from './DialerPanel';
@@ -59,22 +63,49 @@ describe('normalizeDialTarget', () => {
   });
 });
 
+describe('dialerIframeHostStyle', () => {
+  test('keeps a full viewport box (never 0×0 / hidden)', () => {
+    const style = dialerIframeHostStyle();
+    expect(style.width).toBe(DIALER_PANEL_WIDTH);
+    expect(style.height).toBe(DIALER_PANEL_HEIGHT);
+    expect(style.position).toBe('fixed');
+    expect(style.opacity).toBeUndefined();
+  });
+});
+
 describe('DialerPanel', () => {
-  test('keeps a persistent authenticated /dialer iframe (not cookieless /dialer-embed)', () => {
-    renderPanel();
-    const iframe = document.querySelector('iframe[title="Dial Connect"]') as HTMLIFrameElement;
-    expect(iframe).toBeTruthy();
-    expect(iframe.src).toBe(DIALER_APP_URL);
-    expect(DIALER_APP_URL.includes('dialer-embed')).toBe(false);
+  test('mounts the authenticated /dialer iframe, not cookieless /dialer-embed', () => {
+    render(<DialerPanel />);
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    expect(iframe.getAttribute('src')).toBe(DIALER_APP_URL);
+    expect(iframe.getAttribute('src')).not.toContain('dialer-embed');
+    expect(iframe).toHaveAttribute('allow', DIALER_IFRAME_ALLOW);
+    expect(iframe).toHaveAttribute('loading', 'eager');
+  });
+
+  test('Pop out unloads the iframe and exposes a named-window link', () => {
+    vi.stubGlobal('open', vi.fn(() => ({ closed: false, close: vi.fn(), focus: vi.fn() })));
+    render(<DialerPanel />);
+    fireEvent.click(screen.getByLabelText('Pop out Dial Connect'));
+    expect(screen.queryByTitle('Dial Connect')).not.toBeInTheDocument();
+    const chip = screen.getByLabelText('Open dialer (disconnected)');
+    expect(chip.tagName).toBe('A');
+    expect(chip).toHaveAttribute('href', DIALER_APP_URL);
+    expect(chip).toHaveAttribute('target', DIALER_WINDOW_NAME);
+    expect(chip).toHaveAttribute('rel', 'opener');
+    fireEvent.click(screen.getByRole('button', { name: /back in cad/i }));
+    expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
   });
 
   test('Open dialer navigates to the in-app Dialer Connect page', () => {
     const open = vi.fn();
     vi.stubGlobal('open', open);
-    renderPanel();
-    fireEvent.click(screen.getByLabelText('Open dialer (disconnected)'));
-    expect(screen.getByTestId('loc')).toHaveTextContent(DIALER_CONNECT_PATH);
-    expect(open).not.toHaveBeenCalled();
+
+    openDialerWindow();
+    openDialerWindow();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(DIALER_APP_URL, DIALER_WINDOW_NAME);
+    expect(popup.focus).toHaveBeenCalledTimes(1);
   });
 
   test('ignores messages from a non-Dial-Connect origin', () => {
@@ -94,7 +125,7 @@ describe('DialerPanel', () => {
     expect(onRinging).not.toHaveBeenCalled();
   });
 
-  test('a ringing call_status opens Dialer Connect in-app and fires onRinging', () => {
+  test('a ringing call_status fires onRinging and does not script-open a popup', () => {
     const open = vi.fn();
     vi.stubGlobal('open', open);
     const onRinging = vi.fn();
@@ -107,8 +138,9 @@ describe('DialerPanel', () => {
       from: '+18015551234',
     });
     expect(onRinging).toHaveBeenCalledWith('Inbound call from +18015551234');
-    expect(screen.getByTestId('loc')).toHaveTextContent(DIALER_CONNECT_PATH);
     expect(open).not.toHaveBeenCalled();
+    expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
+    expect(screen.getByText(/Inbound call from \+18015551234/i).closest('a')).toBeNull();
   });
 
   test('a ringing call_status with no From falls back to "unknown number"', () => {
@@ -125,7 +157,7 @@ describe('DialerPanel', () => {
     expect(onRinging).not.toHaveBeenCalled();
   });
 
-  test('duress_alert opens Dialer Connect in-app and fires onDuress', () => {
+  test('duress_alert fires onDuress', () => {
     const onDuress = vi.fn();
     renderPanel(<DialerPanel onDuress={onDuress} />);
     postDialConnectMessage({
@@ -138,19 +170,24 @@ describe('DialerPanel', () => {
     expect(screen.getByTestId('loc')).toHaveTextContent(DIALER_CONNECT_PATH);
   });
 
-  test('any dial-connect message marks the chip connected, and it reverts after the heartbeat timeout', () => {
+  test('any dial-connect message marks connected, and it reverts after the heartbeat timeout', () => {
     vi.useFakeTimers();
     renderPanel();
     postDialConnectMessage({ source: 'dial-connect', type: 'heartbeat' });
-    expect(screen.getByLabelText('Open dialer (connected)')).toBeInTheDocument();
+    expect(screen.getByText(/Dialer Connected/i)).toBeInTheDocument();
 
     vi.advanceTimersByTime(46_000);
-    expect(screen.getByLabelText('Open dialer (disconnected)')).toBeInTheDocument();
+    expect(screen.getByText(/Dialer Sign in to answer/i)).toBeInTheDocument();
   });
 
-  test('tel: clicks post place_call to the iframe and open the in-app page', () => {
-    renderPanel();
-    const postMessage = stubIframePostMessage();
+  test('tel: clicks post place_call to the iframe, not a new window', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    render(<DialerPanel />);
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
+
     const link = document.createElement('a');
     link.href = 'tel:8015550100';
     document.body.appendChild(link);
@@ -159,13 +196,15 @@ describe('DialerPanel', () => {
       { source: 'rmpg-flex', type: 'place_call', to: '+18015550100' },
       DIALER_ORIGIN,
     );
-    expect(screen.getByTestId('loc')).toHaveTextContent(DIALER_CONNECT_PATH);
+    expect(open).not.toHaveBeenCalled();
     link.remove();
   });
 
-  test('rmpg-flex:place-call window event posts to the Dialer iframe', () => {
-    renderPanel();
-    const postMessage = stubIframePostMessage();
+  test('rmpg-flex:place-call posts to the iframe while embedded', () => {
+    render(<DialerPanel />);
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
     window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: '+18015559999' } }));
     expect(postMessage).toHaveBeenCalledWith(
       { source: 'rmpg-flex', type: 'place_call', to: '+18015559999' },

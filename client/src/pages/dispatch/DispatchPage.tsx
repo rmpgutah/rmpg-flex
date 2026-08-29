@@ -106,6 +106,7 @@ import {
   WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS,
   SCENE_SAFETY_OPTIONS, DIRECTION_OPTIONS,
 } from '../../utils/callOptions';
+import { CfsWeatherStrip, WeatherQuickChips } from '../../components/CfsWeatherStrip';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
@@ -352,6 +353,7 @@ function buildCallEditBody(
     scene_safety: ed.scene_safety,
     weather_conditions: ed.weather_conditions,
     lighting_conditions: ed.lighting_conditions,
+    weather_manual: ed.weather_manual ? 1 : 0,
     alcohol_involved: ed.alcohol_involved,
     drugs_involved: ed.drugs_involved,
     domestic_violence: ed.domestic_violence,
@@ -2343,6 +2345,7 @@ export default function DispatchPage() {
         scene_safety: callData.scene_safety || null,
         weather_conditions: callData.weather_conditions || null,
         lighting_conditions: callData.lighting_conditions || null,
+        weather_manual: callData.weather_manual ? 1 : 0,
         alcohol_involved: callData.alcohol_involved ?? false,
         drugs_involved: callData.drugs_involved ?? false,
         domestic_violence: callData.domestic_violence ?? false,
@@ -2533,6 +2536,7 @@ export default function DispatchPage() {
       scene_safety: selectedCallForEdit.scene_safety || '',
       weather_conditions: selectedCallForEdit.weather_conditions || '',
       lighting_conditions: selectedCallForEdit.lighting_conditions || '',
+      weather_manual: !!selectedCallForEdit.weather_manual,
       alcohol_involved: !!selectedCallForEdit.alcohol_involved,
       drugs_involved: !!selectedCallForEdit.drugs_involved,
       domestic_violence: !!selectedCallForEdit.domestic_violence,
@@ -5161,13 +5165,17 @@ export default function DispatchPage() {
                           <span className="text-rmpg-300">X-St: {selectedCall.cross_street}</span>
                         </p>
                       )}
-                      {/* Weather at call location — officer safety indicator */}
-                      {!isEditing && selectedCall.weather_conditions && (
-                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
-                          <Thermometer style={{ width: 10, height: 10 }} />
-                          <span className="text-rmpg-300">{toDisplayLabel(selectedCall.weather_conditions)}</span>
-                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {toDisplayLabel(selectedCall.lighting_conditions)}</span>}
-                        </p>
+                      {/* Weather at call location — stamped at dispatch / entry time */}
+                      {!isEditing && (selectedCall.weather_snapshot || selectedCall.weather_conditions) && (
+                        <div className="ml-5 mt-1">
+                          <CfsWeatherStrip
+                            snapshot={selectedCall.weather_snapshot}
+                            conditions={selectedCall.weather_conditions}
+                          />
+                          {selectedCall.lighting_conditions && (
+                            <span className="text-[10px] text-rmpg-400">Lighting: {toDisplayLabel(selectedCall.lighting_conditions)}</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div>
@@ -6286,7 +6294,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
+                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.weather_snapshot || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
@@ -6304,9 +6312,15 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Weather</label>
-                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => { updateEditField('weather_conditions', e.target.value); updateEditField('weather_manual', true); }}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
+                            <div className="mt-1">
+                              <WeatherQuickChips
+                                value={editData.weather_conditions}
+                                onSelect={(v) => { updateEditField('weather_conditions', v); updateEditField('weather_manual', true); }}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Lighting</label>
@@ -6356,8 +6370,13 @@ export default function DispatchPage() {
                       );
                     })() : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
+                        {selectedCall.weather_snapshot && (
+                          <div className="basis-full">
+                            <CfsWeatherStrip snapshot={selectedCall.weather_snapshot} conditions={selectedCall.weather_conditions} />
+                          </div>
+                        )}
                         {selectedCall.scene_safety && <span className="text-rmpg-200"><span className="text-rmpg-400">Scene:</span> {selectedCall.scene_safety}</span>}
-                        {selectedCall.weather_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Weather:</span> {selectedCall.weather_conditions}</span>}
+                        {!selectedCall.weather_snapshot && selectedCall.weather_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Weather:</span> {selectedCall.weather_conditions}</span>}
                         {selectedCall.lighting_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Lighting:</span> {selectedCall.lighting_conditions}</span>}
                         {selectedCall.alcohol_involved && <span className="text-amber-400 font-semibold">ALCOHOL</span>}
                         {selectedCall.drugs_involved && <span className="text-red-400 font-semibold">DRUGS</span>}
