@@ -1638,16 +1638,14 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     return c.json({ error: 'Not assigned to this job' }, 403);
   }
 
-  const actorId = Number(body.officer_id) || user?.id || null;
+  const actorId = user?.id ?? null;
   if (user?.role === 'officer' && actorId) {
-    const unit = await queryFirst<{ id: number }>(db, `SELECT id FROM units WHERE officer_id = ? LIMIT 1`, actorId).catch(() => null);
-    if (unit) {
-      const duty = await requireOnDutyForServe(db, actorId);
-      if (!duty.on_duty) {
-        return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
-      }
+    const duty = await requireOnDutyForServe(db, actorId);
+    if (!duty.on_duty) {
+      return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
     }
   }
+  const attemptOfficerId = user?.role === 'officer' ? user.id : (body.officer_id ?? user?.id ?? null);
 
   // Structured PS code (PS/15.05 etc.) is the new source of truth. When
   // supplied, it derives both the legacy `result` enum (for the existing
@@ -1688,7 +1686,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
            latitude, longitude, notes, attempt_type, photo_ids, signature_data,
            attempt_at
          ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+        id, nextNum, attemptOfficerId, result, psCode,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
@@ -1701,7 +1699,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
            latitude, longitude, notes, attempt_type, photo_ids, signature_data,
            attempt_at
          ) VALUES (?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+        id, nextNum, attemptOfficerId, result,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
@@ -1710,7 +1708,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
 
   const loggedAttemptId = Number(ins.meta.last_row_id) || 0;
   if (loggedAttemptId > 0) {
-    await linkServeAttemptToShift(db, loggedAttemptId, actorId).catch(() => {});
+    await linkServeAttemptToShift(db, loggedAttemptId, attemptOfficerId != null ? Number(attemptOfficerId) : null).catch(() => {});
     const catalogItems: CatalogFileInput[] = [];
     const photoIds = Array.isArray(body.photo_ids)
       ? body.photo_ids.filter((fid: unknown) => typeof fid === 'string' && fid.length > 0)
@@ -2011,19 +2009,19 @@ sv.post('/:id/substitute-service', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number; role?: string } | undefined;
   const db = getDb(c.env);
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null }>(
-    db, 'SELECT attempt_count, max_attempts, call_id FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null; officer_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, call_id, officer_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+  if (user?.role === 'officer' && queue.officer_id != null && queue.officer_id !== user.id) {
+    return c.json({ error: 'Not assigned to this job' }, 403);
+  }
   const nextNum = (queue.attempt_count ?? 0) + 1;
-  const officerForAttempt = body.officer_id ?? user?.id ?? null;
+  const officerForAttempt = user?.id ?? body.officer_id ?? null;
   if (user?.role === 'officer' && officerForAttempt) {
-    const unit = await queryFirst<{ id: number }>(db, `SELECT id FROM units WHERE officer_id = ? LIMIT 1`, Number(officerForAttempt)).catch(() => null);
-    if (unit) {
-      const duty = await requireOnDutyForServe(db, Number(officerForAttempt));
-      if (!duty.on_duty) {
-        return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
-      }
+    const duty = await requireOnDutyForServe(db, Number(officerForAttempt));
+    if (!duty.on_duty) {
+      return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
     }
   }
   // No `status` column on live serve_attempts (see logAttempt note above).
@@ -2034,7 +2032,7 @@ sv.post('/:id/substitute-service', async (c) => {
        latitude, longitude, notes, attempt_type, photo_ids, signature_data,
        attempt_at
      ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?, COALESCE(?, datetime('now')))`,
-    id, nextNum, body.officer_id ?? user?.id ?? null,
+    id, nextNum, officerForAttempt,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type, JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
     deviceAttemptAt(body.attempt_at),

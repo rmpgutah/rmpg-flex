@@ -279,8 +279,12 @@ duty.post('/start', requireRole('officer', 'dispatcher', 'supervisor', 'manager'
     const officerId = resolveOfficerId(c, body.officer_id);
     if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
 
-    if (await officerOnApprovedLeave(db, officerId) && c.req.query('override_leave') !== '1' && body.override_leave !== 1) {
-      return c.json({ error: 'Approved leave covers today — cannot start a field shift', code: 'ON_LEAVE' }, 409);
+    if (await officerOnApprovedLeave(db, officerId)) {
+      const role = (c.get('user') as { role?: string } | undefined)?.role ?? '';
+      const canOverride = ON_BEHALF_ROLES.has(role);
+      if (!canOverride || (c.req.query('override_leave') !== '1' && body.override_leave !== 1)) {
+        return c.json({ error: 'Approved leave covers today — cannot start a field shift', code: 'ON_LEAVE' }, 409);
+      }
     }
 
     const unit = body.unit_id != null ? await unitById(db, Number(body.unit_id)) : await officerUnit(db, officerId);
@@ -519,8 +523,12 @@ duty.post('/swap-vehicle', requireRole('officer', 'dispatcher', 'supervisor', 'm
     if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'vehicle_id required', code: 'NEEDS_VEHICLE' }, 400);
     const vehicle = await vehicleById(db, vehicleId);
     if (!vehicle) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (vehicle.status !== 'in_service') return c.json({ error: `Vehicle ${vehicle.vehicle_number ?? vehicle.id} is ${vehicle.status}, not in service`, code: 'VEHICLE_NOT_IN_SERVICE' }, 409);
     const unit = await officerUnit(db, officerId);
     if (!unit) return c.json({ error: 'No unit assigned', code: 'NO_UNIT' }, 409);
+    if (vehicle.assigned_unit_id && vehicle.assigned_unit_id !== unit.id) {
+      return c.json({ error: 'That vehicle is already assigned to another unit', code: 'VEHICLE_TAKEN' }, 409);
+    }
     const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
     await assignUnitVehicle(db, unit.id, unit.call_sign, officer?.full_name ?? null, vehicle.id, vehicle.vehicle_number);
     await execute(db, `UPDATE time_entries SET vehicle_id = ? WHERE id = ?`, vehicle.id, entry.id);
@@ -551,7 +559,7 @@ duty.post('/force-end', requireRole('admin', 'manager', 'supervisor', 'dispatche
       `INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at)
        VALUES (?, ?, ?, 'clock_out', ?, ?, ?, datetime('now'))`,
       entry.id, actor?.id ?? null, actor?.full_name ?? null, null, stamp.utc, reason,
-    ).catch(() => {});
+    );
     const unit = await officerUnit(db, officerId);
     if (unit) {
       await execute(db, `UPDATE units SET status = 'off_duty', last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);

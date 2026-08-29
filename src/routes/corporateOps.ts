@@ -117,12 +117,24 @@ corporateOps.get('/runs', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
+const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
+const HR_PAYROLL_KINDS = new Set(['payroll_clock_sync', 'attendance_tardy', 'nightly_bundle']);
+
 corporateOps.post('/runs', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = (c.get('user') as { id?: number } | undefined)?.id ?? null;
+    const user = c.get('user') as { id?: number; role?: string } | undefined;
+    const userId = user?.id ?? null;
     const body = await c.req.json<{ kind?: string; day?: string }>().catch(() => ({} as { kind?: string; day?: string }));
-    const kind = (body.kind || 'nightly_bundle').trim();
+    const kind = (body.kind || '').trim();
+    const allowed = new Set([
+      'mileage_reconcile', 'attendance_tardy', 'shift_unattended', 'stale_open_shifts',
+      'serve_duty_gaps', 'fleet_service_due', 'payroll_clock_sync', 'nightly_bundle',
+    ]);
+    if (!allowed.has(kind)) return c.json({ error: 'Unknown workflow kind', code: 'UNKNOWN_KIND' }, 400);
+    if (HR_PAYROLL_KINDS.has(kind) && !(WRITE_ROLES as readonly string[]).includes(user?.role ?? '')) {
+      return c.json({ error: 'Insufficient permissions for this workflow', code: 'HR_WORKFLOW_FORBIDDEN' }, 403);
+    }
     const day = typeof body.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.day) ? body.day : denverToday();
     const env = { ALERT_HUB: c.env.ALERT_HUB };
     let result: unknown;
@@ -153,7 +165,6 @@ corporateOps.post('/runs', requireRole(...READ_ROLES), async (c) => {
         break;
       }
       case 'nightly_bundle':
-      default:
         result = await runNightlyBundle(db, userId, 'manual', env);
         break;
     }

@@ -122,8 +122,8 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
     on_leave_today: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='approved' AND date('now') BETWEEN date(start_date) AND date(end_date)"),
     pending_approvals: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='pending'"),
     clocked_in_now: await n("SELECT COUNT(*) n FROM time_entries WHERE clock_out IS NULL"),
-    scheduled_today: await n(`SELECT COUNT(*) n FROM schedules WHERE shift_date = '${denverToday()}' AND status != 'cancelled'`),
-    unattended_today: await n(`SELECT COUNT(*) n FROM schedules s WHERE s.shift_date = '${denverToday()}' AND s.status != 'cancelled' AND NOT EXISTS (SELECT 1 FROM time_entries te WHERE te.officer_id = s.officer_id AND (date(te.clock_in) = s.shift_date OR date(te.clock_in_local) = s.shift_date))`),
+    scheduled_today: (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) n FROM schedules WHERE shift_date = ? AND status != 'cancelled'`, denverToday()).catch(() => ({ n: 0 })))?.n ?? 0,
+    unattended_today: (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) n FROM schedules s WHERE s.shift_date = ? AND s.status != 'cancelled' AND NOT EXISTS (SELECT 1 FROM time_entries te WHERE te.officer_id = s.officer_id AND (date(te.clock_in) = s.shift_date OR date(te.clock_in_local) = s.shift_date))`, denverToday()).catch(() => ({ n: 0 })))?.n ?? 0,
     // These were hardcoded 0 with a comment saying they'd stay that way "until
     // those tables land" — but officer_certifications, training_courses and
     // training_enrollments all exist on live. Same stale-comment trap as the

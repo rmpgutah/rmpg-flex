@@ -927,8 +927,10 @@ personnel.post('/time/start-break', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
     const entry = await queryFirst<{ id: number; status: string }>(db,
       `SELECT id, status FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
@@ -952,8 +954,10 @@ personnel.post('/time/end-break', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
     const entry = await queryFirst<{ id: number; break_start: string | null; break_minutes: number }>(db,
       `SELECT id, break_start, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
