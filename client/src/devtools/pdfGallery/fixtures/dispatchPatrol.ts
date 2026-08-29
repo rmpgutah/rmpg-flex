@@ -7,7 +7,7 @@ import type { PatrolTrackingReportData } from '../../../utils/patrolTrackingPdfG
 import type { NavBriefingArgs } from '../../../utils/navBriefingPdf';
 import type { NavTrip } from '../../../types';
 import type { MapSituationReportData } from '../../../utils/mapSituationReportPdf';
-import type { DialConnectCallPdfInput } from '../../../utils/dialConnectCallPdf';
+import type { DialerRecordPdfInput } from '../../../utils/dialerCallRecordPdf';
 import type { ShiftPlan, AreaAssignment } from '../../../hooks/useShiftPlanning';
 import type { PdfFixture } from '../types';
 
@@ -796,52 +796,55 @@ export const mapSituationReportFixtures: PdfFixture<MapSituationReportData>[] = 
   },
 ];
 
-export const dialConnectCallFixtures: PdfFixture<DialConnectCallPdfInput>[] = [
+export const dialerCallRecordFixtures: PdfFixture<DialerRecordPdfInput>[] = [
   {
     variant: 'typical',
-    label: 'Inbound dispatch call with segmented transcription',
+    label: 'Inbound dispatch call with transcription and recording on file',
     input: {
-      recordingSid: 'RE4417abcd1234',
-      callSid: 'CAab12cd34ef56',
-      fromNumber: '+18015550100',
-      toNumber: '+18015550999',
-      direction: 'inbound',
-      startedAt: '2026-08-12T15:04:00Z',
-      endedAt: '2026-08-12T15:07:22Z',
-      durationSeconds: 202,
-      dispatcherName: 'Dana Whitlock',
-      hasAudio: true,
       exportedBy: 'Marcus Reyes',
-      segments: [
-        { speaker: 'Caller', start: 0, text: 'I need an officer at 1400 S State Street, someone is refusing to leave the store.' },
-        { speaker: 'Dispatcher', start: 18, text: 'Copy, I am starting a call for service now. Stay on the line.' },
-      ],
+      record: {
+        id: 4417,
+        kind: 'call',
+        call_sid: 'CAab12cd34ef56',
+        from_number: '+18015550100',
+        to_number: '+18015550999',
+        direction: 'inbound',
+        status: 'completed',
+        started_at: '2026-08-12T15:04:00Z',
+        ended_at: '2026-08-12T15:07:22Z',
+        duration_seconds: 202,
+        agent_name: 'Dana Whitlock',
+        transcript: 'Caller: I need an officer at 1400 S State Street.\nDispatcher: Copy, starting a call for service.',
+        recording_r2_key: 'dialer-connect/call/4417/1',
+      },
     },
   },
   {
     variant: 'empty',
     label: 'Identifiers only, no transcription or audio',
     input: {
-      recordingSid: 'REempty0001',
-      hasAudio: false,
+      record: { id: 1, kind: 'call' },
     },
   },
   {
     variant: 'maximal',
     label: 'Long transcription spanning pages',
     input: {
-      recordingSid: 'REmaximal0001',
-      callSid: 'CAmaximal0001',
-      fromNumber: '+18015550100',
-      toNumber: '+18015550999',
-      direction: 'outbound',
-      startedAt: '2026-08-12T23:59:00Z',
-      endedAt: '2026-08-13T00:12:00Z',
-      durationSeconds: 780,
-      dispatcherName: MAXIMAL_NAME,
-      hasAudio: true,
       exportedBy: MAXIMAL_NAME,
-      transcript: MAXIMAL_NARRATIVE,
+      record: {
+        id: 9001,
+        kind: 'call',
+        call_sid: 'CAmaximal0001',
+        from_number: '+18015550100',
+        to_number: '+18015550999',
+        direction: 'outbound',
+        started_at: '2026-08-12T23:59:00Z',
+        ended_at: '2026-08-13T00:12:00Z',
+        duration_seconds: 780,
+        agent_name: MAXIMAL_NAME,
+        transcript: MAXIMAL_NARRATIVE,
+        recording_r2_key: 'dialer-connect/call/9001/1',
+      },
     },
   },
 ];
