@@ -22,5 +22,6 @@ describe('DialerConnectPage', () => {
     render(<DialerConnectPage />);
     const host = screen.getByTestId('dialer-connect-host');
     expect(host).toHaveAttribute('id', DIALER_HOST_ID);
+    expect(screen.getByTestId('dialer-connect-recordings')).toBeInTheDocument();
   });
 });

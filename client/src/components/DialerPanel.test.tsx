@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import DialerPanel, {
   DIALER_ORIGIN,
@@ -17,6 +17,11 @@ import DialerPanel, {
   normalizeDialTarget,
 } from './DialerPanel';
 import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { apiFetch } from '../hooks/useApi';
+
+vi.mock('../hooks/useApi', () => ({
+  apiFetch: vi.fn().mockResolvedValue({ ok: true, id: 1, created: true }),
+}));
 
 vi.mock('../hooks/useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue({}),
@@ -47,6 +52,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   resetDialerWindowForTests();
+  vi.mocked(apiFetch).mockClear();
 });
 
 describe('normalizeDialTarget', () => {
@@ -250,5 +256,26 @@ describe('DialerPanel', () => {
     expect(host.style.width).not.toBe('1px');
     expect(host.style.opacity).toBe('');
     expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
+  });
+
+  test('recording_ready posts the transcript into Flex', async () => {
+    renderPanel();
+    postDialConnectMessage({
+      source: 'dial-connect',
+      type: 'recording_ready',
+      recordingSid: 'REabcd1234',
+      transcript: 'Need an officer',
+      from: '+18015550100',
+    });
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/dial-connect-recordings',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    const last = vi.mocked(apiFetch).mock.calls[vi.mocked(apiFetch).mock.calls.length - 1];
+    const body = JSON.parse((last?.[1] as { body: string }).body);
+    expect(body.recordingSid).toBe('REabcd1234');
+    expect(body.transcript).toBe('Need an officer');
   });
 });

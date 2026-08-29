@@ -117,10 +117,10 @@ describe('POST /api/enrichment/search', () => {
     expect(res.status).toBe(400);
   });
 
-  it('GET /sources returns open-source enrichment sources', async () => {
+  it('GET /sources returns the enrichment catalog', async () => {
     const app = appWithUser(testUser);
     const res = await app.fetch(new Request('https://example.com/api/enrichment/sources'), env);
-    const json = await res.json() as any[];
+    const json = await res.json() as Array<{ key: string; open_source: boolean }>;
     expect(res.status).toBe(200);
     expect(json).toHaveLength(OPEN_SOURCE_ENRICHMENT_SOURCES.length);
     expect(json.filter(s => s.open_source === true)).toHaveLength(

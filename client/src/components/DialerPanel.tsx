@@ -245,6 +245,30 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       } else if (message.type === 'duress_alert') {
         if (!poppedOut) revealDialer();
         onDuress?.(`Duress alert: ${message.dispatcherName}`);
+      } else if (message.type === 'recording_ready') {
+        const recordingSid = message.recordingSid || message.recording_sid;
+        if (recordingSid) {
+          void apiFetch('/dial-connect-recordings', {
+            method: 'POST',
+            body: JSON.stringify({
+              recordingSid,
+              callSid: message.callSid || message.call_sid,
+              from: message.from,
+              to: message.to,
+              direction: message.direction,
+              startedAt: message.startedAt,
+              endedAt: message.endedAt,
+              durationSeconds: message.durationSeconds,
+              dispatcherName: message.dispatcherName,
+              transcript: message.transcript,
+              segments: message.segments,
+            }),
+          }).then(() => {
+            window.dispatchEvent(new CustomEvent(DIAL_RECORDING_READY_EVENT));
+          }).catch(() => {
+            /* ingest is best-effort; Dial Connect API-key POST is the durable path */
+          });
+        }
       }
     },
     [onRinging, onDuress, addToast, revealDialer, poppedOut],
