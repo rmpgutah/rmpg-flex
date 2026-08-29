@@ -22,6 +22,8 @@ import {
   relinkServeJobForRedispatch,
   restoreServeJobAfterUndoRedispatch,
 } from '../../utils/psoServeCrosslink';
+import { stampCallWeather } from '../../utils/cfsWeatherStamp';
+import { parseWeatherSnapshot } from '../../utils/cfsWeather';
 const calls = new Hono<Env>();
 
 // ── Atomic call-number sequence (C2) ──────────────────────────────────────
@@ -77,6 +79,7 @@ export const LIST_VIEW_COLUMNS = [
   // them risks `no such column` 500s on prod if the patch was never applied.
   // Re-add once a migration backfills them.
   'weapons_involved', 'injuries_reported', 'domestic_violence',
+  'weather_conditions',
   // Mileage + overdue
   'starting_mileage', 'ending_mileage', 'overdue_notified',
 ] as const;
@@ -300,14 +303,24 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // the display layer reads naive strings as UTC and would render them ~6h
     // off (see the utcNow() note in dispatch/extensions.ts).
     cols.push('call_number', 'dispatcher_id', 'created_at', 'updated_at');
-    vals.push('?', '?', "datetime('now')", "datetime('now')");
-    bindParams.push(callNumber, userId);
+    const createdAtRaw = typeof body.created_at === 'string' ? body.created_at.trim() : '';
+    if (createdAtRaw && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(createdAtRaw)) {
+      vals.push('?', '?', '?', "datetime('now')");
+      bindParams.push(callNumber, userId, createdAtRaw.replace('T', ' ').slice(0, 19));
+    } else {
+      vals.push('?', '?', "datetime('now')", "datetime('now')");
+      bindParams.push(callNumber, userId);
+    }
 
     // Same whitelist applies on create as on edit. Use the
     // UPDATABLE_CALL_COLUMNS_BASE set so any column writable later is
     // writable on insert. Skip immutable cols (id, call_number,
     // created_at, dispatcher_id — set above).
-    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id', 'status']);
+    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id']);
+    const VALID_CREATE_STATUSES = new Set(['pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived']);
+    if (body.status == null || !VALID_CREATE_STATUSES.has(String(body.status))) {
+      skipOnCreate.add('status');
+    }
     for (const [key, val] of Object.entries(body)) {
       if (skipOnCreate.has(key)) continue;
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
@@ -420,6 +433,28 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
 
       // Background geocoding — best-effort, never blocks the response.
       // Two paths: forward (address → coords) and reverse (coords → address).
+      const stampAfterCreate = async (lat: number | null, lng: number | null, at: string | null) => {
+        try {
+          await stampCallWeather(db, {
+            callId,
+            lat,
+            lng,
+            at,
+            existingConditions: (body.weather_conditions as string) || null,
+            existingLighting: (body.lighting_conditions as string) || null,
+            weatherManual: body.weather_manual === 1 || body.weather_manual === true || body.weather_manual === '1',
+            overwriteConditions: false,
+          });
+        } catch { /* best-effort */ }
+      };
+
+      const createdAtForWeather = createdAtRaw || null;
+      const hasCoordsNow = body.latitude != null && body.longitude != null &&
+        Number.isFinite(Number(body.latitude)) && Number.isFinite(Number(body.longitude));
+      if (hasCoordsNow) {
+        c.executionCtx.waitUntil(stampAfterCreate(Number(body.latitude), Number(body.longitude), createdAtForWeather));
+      }
+
       import('../geocode').then(async (geo) => {
         try {
           const addr = body.location_address as string | undefined;
@@ -432,6 +467,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
             const coords = await geo.geocodeAddress(c.env, addr!.trim());
             if (coords) {
               await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, callId);
+              await stampAfterCreate(coords.lat, coords.lng, createdAtForWeather);
             }
           } else if (!hasAddr && hasCoords) {
             // Reverse geocode: coordinates provided but no address — populate address
@@ -877,6 +913,8 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // missing from both column sets so every area_code/area_name edit was
   // silently dropped into the skipped[] bucket and never written
   'area_code', 'area_name',
+  // Live/historical scene weather snapshot (migration 0271)
+  'weather_snapshot', 'weather_manual',
 ]);
 
 // PUT /dispatch/calls/:id - Update call
@@ -978,7 +1016,46 @@ calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
       }).catch(() => {});
     }
 
-    return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
+    const timeChanged = 'created_at' in body || 'dispatched_at' in body;
+    const coordsChanged = 'latitude' in body || 'longitude' in body;
+    if (timeChanged || coordsChanged) {
+      const lat = Number((updatedBase as any)?.latitude ?? existing.latitude);
+      const lng = Number((updatedBase as any)?.longitude ?? existing.longitude);
+      const at = String((updatedBase as any)?.created_at || body.created_at || existing.created_at || '');
+      const existingManual = Number((updatedExt as any)?.weather_manual) === 1;
+      const snap = await stampCallWeather(db, {
+        callId: parseInt(String(id), 10),
+        lat: Number.isFinite(lat) ? lat : null,
+        lng: Number.isFinite(lng) ? lng : null,
+        at,
+        existingConditions: String((updatedBase as any)?.weather_conditions || ''),
+        existingLighting: String((updatedBase as any)?.lighting_conditions || ''),
+        weatherManual: existingManual && !timeChanged,
+        overwriteConditions: timeChanged,
+      });
+      if (snap) {
+        if (!updatedExt) {
+          // stamp creates the ext row; merge into the response even if the
+          // pre-stamp SELECT missed it.
+        }
+        const extOut = { ...(updatedExt || {}), weather_snapshot: JSON.stringify(snap) };
+        if (timeChanged && updatedBase) {
+          updatedBase.weather_conditions = snap.scene_category;
+          if (snap.lighting) updatedBase.lighting_conditions = snap.lighting;
+        }
+        return c.json({
+          ...(updatedBase || {}),
+          ...extOut,
+          weather_snapshot: snap,
+        });
+      }
+    }
+
+    return c.json({
+      ...(updatedBase || {}),
+      ...(updatedExt || {}),
+      weather_snapshot: parseWeatherSnapshot((updatedExt as any)?.weather_snapshot) ?? (updatedExt as any)?.weather_snapshot,
+    });
   } catch (err) {
     log.error('PUT /dispatch/calls/:id failed', { id: c.req.param('id') }, err as Error);
     return dbErrorResponse(c, err, 'Failed to update call');

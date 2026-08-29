@@ -279,6 +279,20 @@ weather.get('/', async (c) => {
   return c.json({ ...payload, cached: false });
 });
 
+// CFS scene snapshot used by NewCallModal + dispatch timeline edits.
+// `at` (optional ISO / D1 UTC timestamp) selects live vs historical hourly.
+weather.get('/cfs', async (c) => {
+  const lat = parseCoord(c.req.query('lat'), 90);
+  const lng = parseCoord(c.req.query('lng'), 180) ?? parseCoord(c.req.query('lon'), 180);
+  if (lat == null || lng == null) {
+    return c.json({ ok: false, error: 'lat and lng are required' }, 400);
+  }
+  const { fetchCfsWeather } = await import('../utils/cfsWeather');
+  const snap = await fetchCfsWeather({ lat, lng, at: c.req.query('at') ?? null });
+  if (!snap) return c.json({ ok: false, error: 'weather_unavailable' }, 503);
+  return c.json({ ok: true, ...snap });
+});
+
 // ── Severe-weather alerts (NWS) ─────────────────────────────
 //
 // Two caches with deliberately different lifetimes:
