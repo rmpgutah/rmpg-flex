@@ -105,6 +105,21 @@ describe('ServeJobCard urgency chrome', () => {
     renderCard(makeJob({ status: 'pending', urgency_tier: 'standard' }));
     expect(screen.queryByText('STANDARD')).toBeNull();
   });
+
+  it('shows venue overlay from parsed_data on the card', () => {
+    renderCard(makeJob({
+      parsed_data: JSON.stringify({
+        _intake: {
+          address_class: { klass: 'corporate', confirmed: true },
+          venue: 'medical_hospice',
+          output_tree: { venue_label: 'Medical / Hospice', fired_ids: ['venue.medical_hospice'] },
+        },
+        _ops: { no_sunday: true },
+      }),
+    }));
+    expect(screen.getByText('Medical / Hospice')).toBeTruthy();
+    expect(screen.getByText('NO SUN')).toBeTruthy();
+  });
 });
 
 // ── Diligence panel visibility ────────────────────────────────────────────
