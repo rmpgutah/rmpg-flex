@@ -74,6 +74,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const [ownPanicId, setOwnPanicId] = useState<number | null>(null);
   const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
   const [forceDeactivateOpen, setForceDeactivateOpen] = useState(false);
+  const [notesKind, setNotesKind] = useState<'false-alarm' | 'code4' | null>(null);
+  const [notesText, setNotesText] = useState('');
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -704,6 +706,25 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
         message="Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles."
         confirmLabel="Deactivate"
         confirmVariant="danger"
+      />
+      <ConfirmDialog
+        isOpen={notesKind !== null}
+        onClose={() => setNotesKind(null)}
+        onConfirm={() => { void submitPanicNotes(); }}
+        title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — Resolve'}
+        message={notesKind === 'false-alarm' ? 'Enter false alarm notes:' : 'Code 4 — resolution notes:'}
+        details={(
+          <textarea
+            aria-label={notesKind === 'false-alarm' ? 'False alarm notes' : 'Resolution notes'}
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            rows={3}
+            className="w-full px-2 py-1.5 text-xs bg-surface-overlay border border-border-default text-fg-primary placeholder:text-fg-muted"
+            placeholder="Optional notes"
+          />
+        )}
+        confirmLabel={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Resolve'}
+        confirmVariant={notesKind === 'false-alarm' ? 'warning' : 'default'}
       />
     </>
   );
