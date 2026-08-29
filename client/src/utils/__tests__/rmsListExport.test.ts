@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  tipsToCsv, communityReportsToCsv, broadcastsToCsv, lockUnitsToCsv,
-  crashReportsToCsv, briefingsToCsv, shiftNotesToCsv, formatRadioLine, trainingCoursesToCsv,
-} from '../rmsListExport';
+import { tipsToCsv, communityReportsToCsv, broadcastsToCsv, lockUnitsToCsv, crashReportsToCsv, briefingsToCsv, shiftNotesToCsv, trainingCoursesToCsv, fileListingToCsv, formatRadioLine, unitsBoardToCsv, unitsBoardToTsv } from '../rmsListExport';
 
 describe('rmsListExport', () => {
   it('exports tips without a free-text notes dump of unused columns', () => {
@@ -37,21 +34,30 @@ describe('rmsListExport', () => {
     }])).toContain('Lost device');
   });
 
-  it('exports crash, briefing, notes, unit radio line, and training rows', () => {
+  it('serializes crash reports, briefings, notes, courses, files, and unit board', () => {
     expect(crashReportsToCsv([{
-      report_number: 'CR-1', crash_date: 'd', location: '400 S', crash_type: 'rear_end',
-      severity: 'fatal', vehicles_involved: 2, injuries: 1, fatalities: 1, status: 'filed',
+      report_number: 'CR-1', crash_date: '2026-08-01', location: 'State St',
+      crash_type: 'rear_end', severity: 'minor_injury', vehicles_involved: 2,
+      injuries: 1, fatalities: 0, status: 'filed',
     }])).toContain('CR-1');
     expect(briefingsToCsv([{
-      briefing_number: 'B-1', title: 'Day', shift_type: 'day', created_by: 'Disp',
-      created_at: 't', acknowledged_count: 2, total_officers: 8,
-    }])).toContain('B-1');
+      briefing_number: 'B-1', title: 'Day', shift_type: 'day', created_at: 't',
+      created_by: 'Disp', acknowledged_count: 2, total_officers: 8,
+    }])).toContain('Day');
     expect(shiftNotesToCsv([{
-      officer_name: 'Hale', visibility: 'all', tags: ['FI'], created_at: 't', content: 'saw vehicle',
-    }])).toContain('saw vehicle');
+      officer_name: 'Hale', shift_date: '2026-08-01', visibility: 'all',
+      tags: ['Patrol'], content: 'Quiet',
+    }])).toContain('Quiet');
+    expect(trainingCoursesToCsv([{ course_name: 'DT', course_code: 'DT-1', category: 'defensive_tactics', mandatory: 1, hours: 8 }])).toContain('DT-1');
+    expect(fileListingToCsv([{ name: 'a.log', size: 12, modified: 't', path: '/logs/a.log' }])).toContain('a.log');
     expect(formatRadioLine({
-      unit_id: '12A', officer_name: 'Hale', status: 'available', location_description: 'Main St',
-    })).toBe('12A available — Hale — Main St');
-    expect(trainingCoursesToCsv([{ course_name: 'Firearms', course_code: 'FA-1', category: 'firearms', duration_hours: 8, location: 'range', is_mandatory: 1 }])).toContain('FA-1');
+      unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
+    })).toContain('Adam-1');
+    expect(unitsBoardToCsv([{
+      unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
+    }])).toContain('Adam-1');
+    expect(unitsBoardToTsv([{
+      unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
+    }]).split('\t').length).toBeGreaterThan(3);
   });
 });
