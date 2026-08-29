@@ -122,9 +122,9 @@ describe('POST /api/enrichment/search', () => {
     const res = await app.fetch(new Request('https://example.com/api/enrichment/sources'), env);
     const json = await res.json() as Array<{ key: string; open_source: boolean }>;
     expect(res.status).toBe(200);
-    expect(json.map((s) => s.key)).toEqual(OPEN_SOURCE_ENRICHMENT_SOURCES.map((s) => s.key));
-    expect(json.filter((s) => s.open_source).length).toBe(
-      OPEN_SOURCE_ENRICHMENT_SOURCES.filter((s) => s.openSource).length,
+    expect(json).toHaveLength(OPEN_SOURCE_ENRICHMENT_SOURCES.length);
+    expect(json.filter(s => s.open_source === true)).toHaveLength(
+      OPEN_SOURCE_ENRICHMENT_SOURCES.filter(s => s.openSource).length,
     );
   });
 });

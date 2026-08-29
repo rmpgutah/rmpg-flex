@@ -4,8 +4,17 @@ import DialerConnectPage from './DialerConnectPage';
 import { DIALER_HOST_ID } from '../components/dialerConnect';
 
 vi.mock('../hooks/useApi', () => ({
-  apiFetch: vi.fn().mockResolvedValue([]),
+  apiFetch: vi.fn().mockResolvedValue({ data: [] }),
   apiFetchBlob: vi.fn(),
+  apiPostForm: vi.fn(),
+}));
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 1, role: 'dispatcher', full_name: 'Test User', username: 'test' } }),
+}));
+
+vi.mock('../components/ToastProvider', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
 }));
 
 describe('DialerConnectPage', () => {

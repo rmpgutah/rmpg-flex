@@ -2763,8 +2763,21 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         }
         return '';
       })();
-      if (locType) {
-        y = addFieldPair(doc, 'Serve Location Type', locType, lx, y, ffw);
+      const venueType = (() => {
+        const notes = Array.isArray(data.notes) ? data.notes : [];
+        for (const n of notes) {
+          const t = String((n as { text?: string; content?: string }).text || (n as { content?: string }).content || '');
+          const m = t.match(/Venue overlay:\s*([^\n*]+)/i);
+          if (m) return m[1].trim();
+        }
+        return '';
+      })();
+      if (locType || venueType) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Serve Location Type', value: locType },
+          { label: 'Venue Overlay', value: venueType },
+          { label: 'Ops Playbook', value: Array.isArray(data.notes) && data.notes.some((n) => /^OPS$/i.test(String((n as { author?: string }).author || ''))) ? 'Filed' : '' },
+        ], y);
       }
       if (data.deadline) {
         y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
@@ -3411,7 +3424,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // on CFS26-00100).
       const authorRaw = (n.author || '').trim();
       const upper = authorRaw.toUpperCase();
-      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR)$/i.test(authorRaw)
+      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR|OPS)$/i.test(authorRaw)
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
@@ -3419,6 +3432,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [38, 62, 110]
         : upper === 'NCIC' || upper === 'ALERT' ? [90, 32, 32]
         : upper === 'OFFICER SAFETY' ? [90, 32, 32]
+        : upper === 'OPS' ? [26, 47, 92]
         : upper === 'OCR' ? [55, 60, 72]
         : !isSystemTag ? [70, 75, 85]
         : [45, 55, 70];

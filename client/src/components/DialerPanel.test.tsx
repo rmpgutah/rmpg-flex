@@ -11,6 +11,7 @@ import DialerPanel, {
   DIALER_PANEL_WIDTH,
   DIALER_PANEL_HEIGHT,
   dialerIframeHostStyle,
+  dialerIframeParkStyle,
   openDialerWindow,
   resetDialerWindowForTests,
   normalizeDialTarget,
@@ -20,6 +21,10 @@ import { apiFetch } from '../hooks/useApi';
 
 vi.mock('../hooks/useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue({ ok: true, id: 1, created: true }),
+}));
+
+vi.mock('../hooks/useApi', () => ({
+  apiFetch: vi.fn().mockResolvedValue({}),
 }));
 
 function LocationProbe() {
@@ -69,6 +74,17 @@ describe('dialerIframeHostStyle', () => {
   });
 });
 
+describe('dialerIframeParkStyle', () => {
+  test('keeps a full box off-screen (never 0×0 / hidden)', () => {
+    const style = dialerIframeParkStyle();
+    expect(style.width).toBe(DIALER_PANEL_WIDTH);
+    expect(style.height).toBe(DIALER_PANEL_HEIGHT);
+    expect(style.position).toBe('fixed');
+    expect(Number(String(style.left).replace('px', ''))).toBeLessThan(0);
+    expect(style.opacity).toBeUndefined();
+  });
+});
+
 describe('DialerPanel', () => {
   test('mounts the authenticated /dialer iframe, not cookieless /dialer-embed', () => {
     renderPanel();
@@ -77,6 +93,22 @@ describe('DialerPanel', () => {
     expect(iframe.getAttribute('src')).not.toContain('dialer-embed');
     expect(iframe).toHaveAttribute('allow', DIALER_IFRAME_ALLOW);
     expect(iframe).toHaveAttribute('loading', 'eager');
+  });
+
+  test('Close hides the CAD window without unloading the iframe', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Close Dial Connect'));
+    expect(open).not.toHaveBeenCalled();
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    expect(iframe).toBeInTheDocument();
+    const host = screen.getByTestId('dialer-iframe-host');
+    expect(host.style.width).toBe(DIALER_PANEL_WIDTH);
+    expect(host.style.height).toBe(DIALER_PANEL_HEIGHT);
+    expect(Number(host.style.left.replace('px', ''))).toBeLessThan(0);
+    fireEvent.click(screen.getByLabelText('Show Dial Connect'));
+    expect(Number(screen.getByTestId('dialer-iframe-host').style.left.replace('px', '') || '16')).toBeGreaterThanOrEqual(0);
   });
 
   test('Pop out unloads the iframe and exposes a named-window link', () => {

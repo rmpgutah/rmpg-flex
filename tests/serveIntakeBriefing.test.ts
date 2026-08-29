@@ -224,9 +224,9 @@ describe('briefing decomposition (spec §3.3)', () => {
     ],
   };
 
-  it('emits six notes, one per topic', () => {
+  it('emits seven notes, one per topic including the OPS playbook', () => {
     const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
-    expect(b.notes).toHaveLength(6);
+    expect(b.notes).toHaveLength(7);
   });
 
   it('the safety note comes first so it sits at the top of the feed', () => {
@@ -237,7 +237,7 @@ describe('briefing decomposition (spec §3.3)', () => {
   it('assigns the documented author tags in order', () => {
     const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
     expect(b.notes.map((n) => n.author)).toEqual([
-      'OFFICER SAFETY', 'INTAKE', 'DISPATCH', 'DISPATCH', 'DISPATCH', 'DISPATCH',
+      'OFFICER SAFETY', 'INTAKE', 'OPS', 'DISPATCH', 'DISPATCH', 'DISPATCH', 'DISPATCH',
     ]);
   });
 
