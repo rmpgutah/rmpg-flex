@@ -11,6 +11,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useInteractionRecorder } from '../hooks/useInteractionRecorder';
 import { parseTimestamp } from '../utils/dateUtils';
+import { recordingsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 interface Recording {
   id: number; started_at: string; duration_sec: number; chunk_count: number;
@@ -34,6 +36,9 @@ export default function InteractionRecorderPage() {
 
   const [list, setList] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [listQuery, setListQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -47,9 +52,13 @@ export default function InteractionRecorderPage() {
 
   const load = () => {
     setLoading(true);
+    setLoadError(null);
     apiFetch<Recording[]>('/intel/recordings?limit=25')
       .then((r) => setList(Array.isArray(r) ? r : []))
-      .catch(() => setList([]))
+      .catch((err) => {
+        setList([]);
+        setLoadError(err instanceof Error ? err.message : 'Failed to load recordings');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -160,6 +169,14 @@ export default function InteractionRecorderPage() {
     }
   };
 
+  const q = listQuery.trim().toLowerCase();
+  const visibleList = list.filter((r) => {
+    if (statusFilter !== 'ALL' && r.status !== statusFilter) return false;
+    if (!q) return true;
+    return String(r.id).includes(q) || (r.location_text || '').toLowerCase().includes(q) || (r.notes || '').toLowerCase().includes(q);
+  });
+  const statuses = Array.from(new Set(list.map((r) => r.status).filter(Boolean)));
+
   return (
     <div className="p-4 space-y-4 max-w-xl mx-auto">
       <PanelTitleBar title="INTERACTION RECORDER" icon={Mic} />
@@ -205,7 +222,28 @@ export default function InteractionRecorderPage() {
       </div>
 
       <div className="bg-surface-base border border-border-default">
-        <div className="px-2 py-[3px] text-[9px] font-semibold text-brand-400 border-b border-border-default">RECORDINGS</div>
+        <div className="px-2 py-[3px] text-[9px] font-semibold border-b border-border-default flex items-center gap-2 flex-wrap" style={{ color: 'var(--panel-header-color)' }}>
+          <span>RECORDINGS</span>
+          <input
+            value={listQuery}
+            onChange={(e) => setListQuery(e.target.value)}
+            placeholder="Search location / notes…"
+            aria-label="Search recordings"
+            className="ml-auto bg-surface-overlay border border-border-default px-2 py-[2px] text-[10px] text-rmpg-200 outline-none"
+            style={{ width: 140 }}
+          />
+          <select aria-label="Filter by status" className="bg-surface-overlay border border-border-default text-[10px] text-rmpg-200" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="ALL">All statuses</option>
+            {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button type="button" className="text-[9px] border border-border-default px-2 py-[1px]" disabled={visibleList.length === 0} onClick={() => downloadTextFile('recordings.csv', recordingsToCsv(visibleList))}>CSV</button>
+        </div>
+        {loadError && (
+          <div className="px-2 py-2 text-[11px] text-red-300 flex items-center justify-between">
+            <span>{loadError}</span>
+            <button type="button" className="text-[9px] border border-border-default px-2" onClick={load}>Retry</button>
+          </div>
+        )}
 
         {/* Empty states: loading / no-data */}
         {loading && (
@@ -213,18 +251,22 @@ export default function InteractionRecorderPage() {
             <Loader2 className="w-3 h-3 animate-spin" /> Loading…
           </div>
         )}
-        {!loading && list.length === 0 && (
+        {!loading && list.length === 0 && !loadError && (
           <div className="p-6 flex flex-col items-center gap-2 text-[11px] text-rmpg-400">
             <Radio className="w-6 h-6 opacity-30" />
             <span>No recordings yet. Press <kbd className="border border-border-default px-1">N</kbd> or tap START RECORDING above.</span>
           </div>
         )}
+        {!loading && list.length > 0 && visibleList.length === 0 && (
+          <div className="p-4 text-center text-[11px] text-rmpg-400">No recordings match the search or status filter.</div>
+        )}
 
-        {!loading && list.map((r) => (
+        {!loading && visibleList.map((r) => (
           <div key={r.id} id={`recording-row-${r.id}`} className="px-2 py-[2px] text-[11px] flex items-center gap-2 border-b border-border-default last:border-b-0">
             <span className="text-rmpg-200 w-32 shrink-0">{fmtStarted(r.started_at)}</span>
             <span className="text-rmpg-400 min-w-0 flex-1 truncate">{r.location_text || r.notes || ''}</span>
             <span className="text-rmpg-400">{fmt(r.duration_sec || 0)}</span>
+            <button type="button" onClick={() => void copyToClipboard(String(r.id))} className="text-[9px] text-rmpg-200 border border-border-default px-2 py-[1px]" aria-label={`Copy recording ${r.id}`}>ID</button>
             <button onClick={() => play(r)} disabled={!r.chunk_count || playing === r.id}
               className="text-[9px] text-brand-400 border border-border-default px-2 py-[1px] disabled:opacity-40">
               {playing === r.id ? 'PLAYING…' : 'PLAY'}

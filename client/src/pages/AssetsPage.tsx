@@ -9,6 +9,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { Package, Wrench, Crosshair, Dog, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { assetsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 export default function AssetsPage() {
   const m = useMenuActions();
@@ -26,6 +27,8 @@ export default function AssetsPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const { addToast } = useToast();
 
   // Role gates — mirror the server's requireRole calls:
@@ -155,19 +158,21 @@ export default function AssetsPage() {
 
   // ── Filtered view (search bar) ───────────────────────────────────
   const q = search.trim().toLowerCase();
-  const filteredAssets = q
-    ? assets.filter(
-        (a) =>
-          (a.asset_tag || '').toLowerCase().includes(q) ||
-          (a.asset_type || '').toLowerCase().includes(q) ||
-          (a.make || '').toLowerCase().includes(q) ||
-          (a.model || '').toLowerCase().includes(q) ||
-          (a.serial_number || '').toLowerCase().includes(q) ||
-          (a.status || '').toLowerCase().includes(q),
-      )
-    : assets;
+  const filteredAssets = assets.filter((a) => {
+    if (typeFilter !== 'ALL' && a.asset_type !== typeFilter) return false;
+    if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
+    if (!q) return true;
+    return (
+      (a.asset_tag || '').toLowerCase().includes(q) ||
+      (a.asset_type || '').toLowerCase().includes(q) ||
+      (a.make || '').toLowerCase().includes(q) ||
+      (a.model || '').toLowerCase().includes(q) ||
+      (a.serial_number || '').toLowerCase().includes(q) ||
+      (a.status || '').toLowerCase().includes(q)
+    );
+  });
 
-  const hasSearch = q.length > 0;
+  const hasSearch = q.length > 0 || typeFilter !== 'ALL' || statusFilter !== 'ALL';
 
   const columns = [
     { key: 'asset_tag', label: 'Tag' },
@@ -217,11 +222,12 @@ export default function AssetsPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="ASSET MANAGEMENT" icon={Package}>
         {error && (
-          <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">
-            {error}
+          <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3 flex items-center justify-between" role="alert">
+            <span>{error}</span>
+            <button type="button" className="toolbar-btn" style={{ height: 26 }} onClick={() => { setLoading(true); fetchData().finally(() => setLoading(false)); }}>Retry</button>
           </div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             className="input-dark text-[11px]"
             style={{ height: 28, padding: '0 8px', width: 180 }}
@@ -230,6 +236,27 @@ export default function AssetsPage() {
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search assets"
           />
+          <select aria-label="Filter by type" className="select-dark text-[11px]" style={{ height: 28 }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="ALL">All types</option>
+            {['weapon', 'body_camera', 'radio', 'taser', 'computer', 'vehicle_accessory', 'uniform', 'ppe', 'k9_equipment', 'other'].map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select aria-label="Filter by status" className="select-dark text-[11px]" style={{ height: 28 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="ALL">All statuses</option>
+            {['available', 'issued', 'maintenance', 'retired', 'lost'].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="toolbar-btn"
+            style={{ height: 28, padding: '0 10px' }}
+            disabled={filteredAssets.length === 0}
+            onClick={() => downloadTextFile('assets.csv', assetsToCsv(filteredAssets))}
+          >
+            CSV
+          </button>
           {canCreate && (
             <button
               onClick={openNew}
@@ -266,6 +293,7 @@ export default function AssetsPage() {
             ? [m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }), m.separator()]
             : []),
           m.copyId((row as any).id),
+          m.copy('Copy serial', (row as any).serial_number ?? ''),
           ...(canDelete
             ? [m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> })]
             : []),
