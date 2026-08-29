@@ -11,6 +11,7 @@ const baseProps = {
   legendOpen: false, onToggleLegend: vi.fn(),
   onSnapshot: vi.fn(),
   onExportImage: vi.fn(),
+  onCopyImage: vi.fn(),
 };
 
 describe('MapTopToolbar', () => {
@@ -21,6 +22,7 @@ describe('MapTopToolbar', () => {
     expect(screen.getByLabelText(/minimap/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bookmarks/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/capture snapshot/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/copy map image/i)).toBeInTheDocument();
   });
 
   it('calls onToggleScale when the scale button is clicked', () => {

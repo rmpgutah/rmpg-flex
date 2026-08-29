@@ -180,7 +180,7 @@ export function DockToggleRow({ item }: { item: DockToggleItem }) {
       {item.error ? (
         <AlertCircle className="w-3 h-3 shrink-0" style={{ color: 'var(--sev-critical)' }} />
       ) : (
-        item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--brand-gold)' }} />
+        item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--accent-silver-400)' }} />
       )}
     </button>
   );

@@ -71,14 +71,15 @@ export function buildDockSections(
         };
       });
     const osm = group.startsWith('OSM');
+    const bulk = osm || group === 'Administrative Boundaries';
     return {
       title: group,
       collapsible: NON_COLLAPSIBLE_GROUPS.has(group) ? false : undefined,
       defaultOpen: osm ? false : undefined,
-      onEnableAll: osm && items.length
+      onEnableAll: bulk && items.length
         ? () => { for (const i of items) if (!i.active) i.onToggle(); }
         : undefined,
-      onDisableAll: osm && items.length
+      onDisableAll: bulk && items.length
         ? () => { for (const i of items) if (i.active) i.onToggle(); }
         : undefined,
       items,

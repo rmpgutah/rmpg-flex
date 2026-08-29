@@ -12,7 +12,57 @@ import mapboxgl from 'mapbox-gl';
 /** Utilitarian CAD ink — not field-label gold. */
 export const PRINT_WATERMARK_INK = '#c3ccd6';
 
-// ── Hook ──────────────────────────────────────────────────
+export function formatPrintStamp(now = new Date()): string {
+  return now.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }) + ' MT';
+}
+
+export function stampMapWatermark(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  line: string,
+): void {
+  ctx.fillStyle = 'rgba(0 0 0 / 0.7)';
+  ctx.fillRect(0, height - 28, width, 28);
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.fillStyle = PRINT_WATERMARK_INK;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText(line, 10, height - 14);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#888';
+  ctx.fillText('OFFICIAL USE ONLY', width - 10, height - 14);
+  ctx.textAlign = 'left';
+}
+
+function compositeMapCanvas(
+  map: mapboxgl.Map,
+  includeWatermark: boolean,
+): HTMLCanvasElement {
+  const canvas = map.getCanvas();
+  const { width, height } = canvas;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = width;
+  offscreen.height = height;
+  const ctx = offscreen.getContext('2d')!;
+  ctx.drawImage(canvas, 0, 0);
+  if (includeWatermark) {
+    const center = map.getCenter();
+    const zoom = map.getZoom().toFixed(1);
+    const line = `RMPG FLEX  ${formatPrintStamp()}  ${center.lat.toFixed(5)},${center.lng.toFixed(5)}  Z${zoom}`;
+    stampMapWatermark(ctx, width, height, line);
+  }
+  return offscreen;
+}
 
 export function useMapPrintExport(
   map: mapboxgl.Map | null,
@@ -30,47 +80,9 @@ export function useMapPrintExport(
 
     setExporting(true);
     try {
-      // Force a render to ensure canvas is current
       map.triggerRepaint();
       await new Promise(r => setTimeout(r, 100));
-
-      const canvas = map.getCanvas();
-      const { width, height } = canvas;
-
-      // Create offscreen canvas for watermark
-      const offscreen = document.createElement('canvas');
-      offscreen.width = width;
-      offscreen.height = height;
-      const ctx = offscreen.getContext('2d')!;
-
-      // Draw map
-      ctx.drawImage(canvas, 0, 0);
-
-      // Add watermark
-      if (options?.includeWatermark !== false) {
-        const center = map.getCenter();
-        const zoom = map.getZoom().toFixed(1);
-        const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
-        const watermark = `RMPG FLEX  ${ts} UTC  ${center.lat.toFixed(5)},${center.lng.toFixed(5)}  Z${zoom}`;
-
-        // Background bar
-        ctx.fillStyle = 'rgba(0 0 0 / 0.7)';
-        ctx.fillRect(0, height - 28, width, 28);
-
-        // Text
-        ctx.font = '11px ui-monospace, monospace';
-        ctx.fillStyle = PRINT_WATERMARK_INK;
-        ctx.textBaseline = 'middle';
-        ctx.fillText(watermark, 10, height - 14);
-
-        // Right side
-        ctx.textAlign = 'right';
-        ctx.fillStyle = '#888';
-        ctx.fillText('OFFICIAL USE ONLY', width - 10, height - 14);
-        ctx.textAlign = 'left';
-      }
-
-      // Export
+      const offscreen = compositeMapCanvas(map, options?.includeWatermark !== false);
       const format = options?.format === 'jpeg' ? 'image/jpeg' : 'image/png';
       const quality = options?.quality ?? 0.95;
       const blob = await new Promise<Blob | null>(resolve =>
@@ -101,10 +113,9 @@ export function useMapPrintExport(
     try {
       map.triggerRepaint();
       await new Promise(r => setTimeout(r, 100));
-
-      const canvas = map.getCanvas();
+      const offscreen = compositeMapCanvas(map, true);
       const blob = await new Promise<Blob | null>(resolve =>
-        canvas.toBlob(resolve, 'image/png')
+        offscreen.toBlob(resolve, 'image/png')
       );
 
       if (blob && navigator.clipboard?.write) {

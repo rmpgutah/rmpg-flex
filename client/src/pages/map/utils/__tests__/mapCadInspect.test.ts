@@ -6,6 +6,7 @@ describe('mapCadInspect', () => {
     expect(isCadGeoLayer('geojson-beat-fill')).toBe(true);
     expect(isCadGeoLayer('dh-sector-fill')).toBe(true);
     expect(isCadGeoLayer('beat-coverage-fill')).toBe(true);
+    expect(isCadGeoLayer('rmpg-serve-jobs-source-circle')).toBe(true);
     expect(isCadGeoLayer('vt-osm_safety_hydrant-circle')).toBe(false);
   });
 

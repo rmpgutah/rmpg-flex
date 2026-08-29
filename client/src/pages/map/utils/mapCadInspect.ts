@@ -52,10 +52,13 @@ export interface CadCallHit {
 }
 
 export function isCadGeoLayer(layerId: string): boolean {
-  return /^(geojson-|dh-|beat-coverage-)/.test(layerId);
+  return /^(geojson-|dh-|beat-coverage-|rmpg-serve-jobs)/.test(layerId);
 }
 
 function geoMeta(layerId: string): { categoryLabel: string; groupLabel: string } {
+  if (layerId.startsWith('rmpg-serve-jobs')) {
+    return { categoryLabel: 'Serve job', groupLabel: 'Units & Calls' };
+  }
   if (layerId.startsWith('beat-coverage')) {
     return { categoryLabel: 'Beat coverage', groupLabel: 'Risk & Coverage' };
   }

@@ -24,6 +24,7 @@ describe('MapBottomTray', () => {
     render(<MapBottomTray rosterProps={rosterProps} leftSections={leftSections} rightSections={rightSections} />);
     fireEvent.click(screen.getByText('Layers'));
     expect(screen.getByText('Live Traffic')).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: /find layer/i })).toBeInTheDocument();
   });
 
   it('switches from Layers to Info & Tools content on tab click', () => {

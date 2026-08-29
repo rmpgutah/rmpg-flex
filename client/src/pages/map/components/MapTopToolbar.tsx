@@ -7,7 +7,7 @@
 // ============================================================
 
 import IconButton from '../../../components/IconButton';
-import { Ruler, Maximize, Map as MapIcon, Star, Download, ListTree, ImageDown } from 'lucide-react';
+import { Ruler, Maximize, Map as MapIcon, Star, Download, ListTree, ImageDown, Clipboard } from 'lucide-react';
 import { MAP_STYLE_LABELS, type MapStyleId } from '../utils/mapConstants';
 
 export interface MapTopToolbarProps {
@@ -25,6 +25,7 @@ export interface MapTopToolbarProps {
   onToggleLegend: () => void;
   onSnapshot: () => void;
   onExportImage: () => void;
+  onCopyImage?: () => void;
 }
 
 const ITEM_CLASS = 'p-1.5 transition-colors';
@@ -33,28 +34,28 @@ export default function MapTopToolbar({
   scaleEnabled, onToggleScale, fullscreenEnabled, onToggleFullscreen,
   minimapOpen, onToggleMinimap, mapStyle, onStyleChange,
   showBookmarksPanel, onToggleBookmarks, legendOpen, onToggleLegend, onSnapshot,
-  onExportImage,
+  onExportImage, onCopyImage,
 }: MapTopToolbarProps) {
   return (
     <div className="relative z-20 flex items-center gap-1 px-2 h-9 w-full bg-surface-raised/95 border-b border-border-default backdrop-blur-sm">
       <IconButton
         aria-label={scaleEnabled ? 'Hide scale bar' : 'Show scale bar'}
         onClick={onToggleScale}
-        className={`${ITEM_CLASS} ${scaleEnabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+        className={`${ITEM_CLASS} ${scaleEnabled ? 'text-rmpg-100' : 'text-rmpg-300 hover:text-rmpg-100'}`}
       >
         <Ruler className="w-4 h-4" />
       </IconButton>
       <IconButton
         aria-label={fullscreenEnabled ? 'Exit fullscreen' : 'Enter fullscreen'}
         onClick={onToggleFullscreen}
-        className={`${ITEM_CLASS} ${fullscreenEnabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+        className={`${ITEM_CLASS} ${fullscreenEnabled ? 'text-rmpg-100' : 'text-rmpg-300 hover:text-rmpg-100'}`}
       >
         <Maximize className="w-4 h-4" />
       </IconButton>
       <IconButton
         aria-label={minimapOpen ? 'Hide minimap' : 'Show minimap'}
         onClick={onToggleMinimap}
-        className={`${ITEM_CLASS} ${minimapOpen ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+        className={`${ITEM_CLASS} ${minimapOpen ? 'text-rmpg-100' : 'text-rmpg-300 hover:text-rmpg-100'}`}
       >
         <MapIcon className="w-4 h-4" />
       </IconButton>
@@ -73,31 +74,40 @@ export default function MapTopToolbar({
       <IconButton
         aria-label={showBookmarksPanel ? 'Hide bookmarks' : 'Show bookmarks'}
         onClick={onToggleBookmarks}
-        className={`${ITEM_CLASS} ${showBookmarksPanel ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+        className={`${ITEM_CLASS} ${showBookmarksPanel ? 'text-rmpg-100' : 'text-rmpg-300 hover:text-rmpg-100'}`}
       >
         <Star className="w-4 h-4" />
       </IconButton>
       <IconButton
         aria-label={legendOpen ? 'Hide legend' : 'Show legend'}
         onClick={onToggleLegend}
-        className={`${ITEM_CLASS} ${legendOpen ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+        className={`${ITEM_CLASS} ${legendOpen ? 'text-rmpg-100' : 'text-rmpg-300 hover:text-rmpg-100'}`}
       >
         <ListTree className="w-4 h-4" />
       </IconButton>
       <IconButton
         aria-label="Capture snapshot"
         onClick={onSnapshot}
-        className={`${ITEM_CLASS} text-rmpg-300 hover:text-brand-gold-500`}
+        className={`${ITEM_CLASS} text-rmpg-300 hover:text-rmpg-100`}
       >
         <Download className="w-4 h-4" />
       </IconButton>
       <IconButton
         aria-label="Export map image"
         onClick={onExportImage}
-        className={`${ITEM_CLASS} text-rmpg-300 hover:text-brand-gold-500`}
+        className={`${ITEM_CLASS} text-rmpg-300 hover:text-rmpg-100`}
       >
         <ImageDown className="w-4 h-4" />
       </IconButton>
+      {onCopyImage && (
+        <IconButton
+          aria-label="Copy map image"
+          onClick={onCopyImage}
+          className={`${ITEM_CLASS} text-rmpg-300 hover:text-rmpg-100`}
+        >
+          <Clipboard className="w-4 h-4" />
+        </IconButton>
+      )}
     </div>
   );
 }
