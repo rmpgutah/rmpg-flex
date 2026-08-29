@@ -300,7 +300,7 @@ export function mutualAidToCsv(rows: Array<{
 export function plateHistoryToCsv(rows: Array<{ plate: string; state: string; ts?: number }>): string {
   return csvRows(
     ['plate', 'state', 'checked_at'],
-    rows.map((r) => [r.plate, r.state, r.ts ? new Date(r.ts).toISOString() : '']),
+    rows.map((r) => [r.plate, r.state, r.ts ? new Date(r.ts).toISOString() : '']), // new-date-ok: epoch ms from localStorage plate history
   );
 }
 
