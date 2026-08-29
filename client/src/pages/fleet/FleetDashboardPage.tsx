@@ -30,6 +30,7 @@ import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import { toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { downloadTextFile, fleetListToCsv } from '../../utils/rmsListExport';
 
 // ------------------------------------------------------------
 // Types — mirror the JSON shapes returned by src/routes/fleetViz.ts
@@ -341,6 +342,18 @@ export default function FleetDashboardPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={readiness.length === 0}
+          onClick={() => downloadTextFile('fleet-readiness.csv', fleetListToCsv(readiness.map((r) => ({
+            unit: r.vehicle_number,
+            status: r.status,
+            make: '',
+            model: '',
+            plate: '',
+          }))))}
+        >CSV</button>
       </PanelTitleBar>
 
       {loading && !kpi ? (

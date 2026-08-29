@@ -35,6 +35,8 @@ import { useAuth } from '../context/AuthContext';
 import { safeDateTimeStr } from '../utils/dateUtils';
 import { toDisplayLabel } from '../utils/formatters';
 import { openWebResearchReportPdf } from '../utils/webResearchReportPdf';
+import { downloadTextFile, webResearchHitsToCsv } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -75,6 +77,8 @@ export default function WebResearchPage() {
                        // page rather than letting the cached value go stale.
   const { addToast } = useToast();
   const { user } = useAuth();
+  const queryRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(queryRef);
 
   // Firecrawl connection
   const [firecrawlConnected, setFirecrawlConnected] = useState(false);
@@ -528,6 +532,14 @@ export default function WebResearchPage() {
             PDF
           </button>
         )}
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={(activeTab === 'saved' ? filteredSaved : results).length === 0}
+          onClick={() => downloadTextFile('web-research.csv', webResearchHitsToCsv(
+            (activeTab === 'saved' ? filteredSaved : results).map((r) => ({ title: r.title, url: r.url })),
+          ))}
+        >CSV</button>
 
         {/* Firecrawl status LED */}
         <div className="flex items-center gap-1.5 ml-2">
@@ -604,9 +616,10 @@ export default function WebResearchPage() {
                 }}
               >
                 <input id="ff-webresearchpage-0"
+                  ref={queryRef}
                   type="text"
                   className="input-dark flex-1 min-h-[36px]"
-                  placeholder="Search the web..." aria-label="Search the web..."
+                  placeholder="Search the web… (/)" aria-label="Search the web..."
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                 />

@@ -31,6 +31,7 @@ import type {
 import { generateFleetFuelAnalyticsPdf } from './utils/fleetFuelAnalyticsPdf';
 import FuelImportModal from './modals/FuelImportModal';
 import FuelBudgetModal from './modals/FuelBudgetModal';
+import { downloadTextFile, fuelRowsToCsv } from '../../utils/rmsListExport';
 
 const DEFAULT_WINDOW_DAYS = 90;
 const WINDOW_OPTIONS: { value: number; label: string }[] = [
@@ -150,6 +151,19 @@ export default function FuelAnalyticsPage() {
           <button type="button" className="toolbar-btn text-[10px]" onClick={() => load(windowDays)} disabled={loading}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </button>
+          <button
+            type="button"
+            className="toolbar-btn text-[10px]"
+            disabled={(overview?.vehicles || []).filter((v: { fill_count?: number }) => (v.fill_count ?? 0) > 0).length === 0}
+            onClick={() => downloadTextFile('fuel-analytics.csv', fuelRowsToCsv(
+              (overview?.vehicles || []).filter((v: { fill_count?: number }) => (v.fill_count ?? 0) > 0).map((v: { vehicle_number?: string; total_gallons?: number; total_cost?: number }) => ({
+                vehicle: v.vehicle_number ?? '',
+                gallons: v.total_gallons ?? '',
+                cost: v.total_cost ?? '',
+                filled_at: '',
+              })),
+            ))}
+          >CSV</button>
           <button type="button" className="toolbar-btn text-[10px]" onClick={() => setShowImport(true)}
             title="Import fuel transactions from a CSV (e.g. a fuel-card export)">
             <Upload className="w-3 h-3" /> Import CSV
@@ -171,10 +185,11 @@ export default function FuelAnalyticsPage() {
       </div>
 
       {error && (
-        <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20">
+        <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20 flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-[10px] text-red-400">
             <AlertTriangle className="w-3 h-3" />{error}
           </div>
+          <button type="button" className="toolbar-btn" onClick={() => load(windowDays)}>Retry</button>
         </div>
       )}
 

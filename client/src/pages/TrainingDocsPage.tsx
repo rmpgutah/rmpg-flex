@@ -28,6 +28,8 @@ import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { safeDateStr, parseTimestamp } from '../utils/dateUtils';
+import { downloadTextFile, trainingDocsToCsv } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 import { toDisplayLabel } from '../utils/formatters';
 
 // ── Category config ─────────────────────────────────────────
@@ -121,6 +123,9 @@ export default function TrainingDocsPage() {
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<CompanyDocCategory | 'all'>(validCategory);
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
+  const [docLoadError, setDocLoadError] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editDoc, setEditDoc] = useState<any | null>(null);
   const [showBlankForms, setShowBlankForms] = useState(false);
@@ -135,10 +140,12 @@ export default function TrainingDocsPage() {
   const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
+      setDocLoadError(false);
       const data = await apiFetchCompanyDocuments(category !== 'all' ? category : undefined);
       setDocuments(data || []);
     } catch (err) {
       console.error('Failed to load documents:', err);
+      setDocLoadError(true);
       addToast('Failed to load documents', 'error');
     } finally {
       setLoading(false);
@@ -252,8 +259,9 @@ export default function TrainingDocsPage() {
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
             <input id="ff-trainingdocspage-0"
+              ref={searchRef}
               type="text"
-              placeholder="Search documents..." aria-label="Search documents..."
+              placeholder="Search documents… (/)" aria-label="Search documents..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input-dark text-[11px] pl-6 pr-2 py-1 w-48 min-h-[36px]"
@@ -273,6 +281,16 @@ export default function TrainingDocsPage() {
             Blank Forms
           </button>
           <ExportButton exportUrl="/api/company-documents/export/csv" exportFilename="training-docs.csv" />
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={filtered.length === 0}
+            onClick={() => downloadTextFile('training-docs.csv', trainingDocsToCsv(filtered.map((d: { title?: string; category?: string; updated_at?: string; created_at?: string }) => ({
+              title: d.title ?? '',
+              category: d.category ?? '',
+              updated_at: d.updated_at ?? d.created_at ?? '',
+            }))))}
+          >CSV</button>
           {isAdmin && (
             <button type="button"
               onClick={() => { setEditDoc(null); setShowModal(true); }}
@@ -368,6 +386,12 @@ export default function TrainingDocsPage() {
 
       {/* Document List */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 scrollbar-dark" role="tabpanel">
+        {docLoadError && (
+          <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+            <span>Failed to load documents.</span>
+            <button type="button" className="toolbar-btn" onClick={() => { void loadDocuments(); }}>Retry</button>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />

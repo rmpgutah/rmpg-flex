@@ -88,6 +88,12 @@ describe('buildDockSections', () => {
     }
   });
 
+  it('gives Administrative Boundaries All/None bulk controls', () => {
+    const [section] = buildDockSections(['Administrative Boundaries'], allBindings());
+    expect(section.onEnableAll).toBeTypeOf('function');
+    expect(section.onDisableAll).toBeTypeOf('function');
+  });
+
   it('All enables only inactive OSM toggles; None disables only active ones', () => {
     const bindings = allBindings();
     const hydrant = MAP_LAYER_REGISTRY.find((l) => l.id.includes('hydrant'))!;

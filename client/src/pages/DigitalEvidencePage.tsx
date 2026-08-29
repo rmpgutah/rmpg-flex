@@ -30,6 +30,8 @@ import { officerFacingFileError } from '../utils/officerFacingFileError';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { digitalEvidenceToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -612,6 +614,8 @@ export default function DigitalEvidencePage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [previewItem, setPreviewItem] = useState<DigitalEvidenceItem | null>(null);
   const [custodyItem, setCustodyItem] = useState<DigitalEvidenceItem | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -713,6 +717,19 @@ export default function DigitalEvidencePage() {
     <div className="flex flex-col h-full min-h-0" style={{ background: 'var(--surface-base)' }}>
       {/* Title bar */}
       <PanelTitleBar title="DIGITAL EVIDENCE" icon={FileVideo}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('digital-evidence.csv', digitalEvidenceToCsv(filtered.map((item) => ({
+            filename: item.filename,
+            evidence_type: item.evidence_type,
+            status: item.status,
+            case_number: item.case_number,
+            call_number: item.call_number,
+            created_at: item.created_at,
+          }))))}
+        >CSV</button>
         <div className="flex items-center gap-2 ml-auto">
           {/* Search */}
           <div
@@ -721,10 +738,11 @@ export default function DigitalEvidencePage() {
           >
             <Search size={11} style={{ color: 'var(--text-secondary)' }} />
             <input
+              ref={searchRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search evidence…"
+              placeholder="Search evidence… (/)"
               aria-label="Search digital evidence"
               className="bg-transparent text-xs outline-none w-40"
               style={{ color: 'var(--text-primary)' }}

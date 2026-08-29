@@ -10,6 +10,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxForwardGeocode, mapboxTilequery, type MapboxGeocodingResult } from '../services/mapboxApiService';
 import { withAlpha } from '../utils/withAlpha';
+import { escapeHtml } from '../utils/sanitize';
+import { MAP_CAD_CRITICAL, MAP_CAD_INK, MAP_CAD_OK, MAP_CAD_WARN } from '../pages/map/utils/mapCadInk';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -32,14 +34,14 @@ export interface PlaceResult {
 }
 
 export const PLACE_CATEGORIES: PlaceCategory[] = [
-  { id: 'hospital', label: 'Hospitals', icon: '🏥', keywords: ['hospital', 'emergency room', 'medical center'], color: 'var(--sev-critical)' },
-  { id: 'fire_station', label: 'Fire Stations', icon: '🚒', keywords: ['fire station', 'fire department'], color: 'var(--sev-high)' },
+  { id: 'hospital', label: 'Hospitals', icon: '🏥', keywords: ['hospital', 'emergency room', 'medical center'], color: MAP_CAD_CRITICAL },
+  { id: 'fire_station', label: 'Fire Stations', icon: '🚒', keywords: ['fire station', 'fire department'], color: MAP_CAD_WARN },
   { id: 'police', label: 'Police Stations', icon: '🚔', keywords: ['police station', 'sheriff', 'law enforcement'], color: '#3b82f6' },
   { id: 'school', label: 'Schools', icon: '🏫', keywords: ['school', 'elementary', 'high school', 'university'], color: '#a855f7' },
-  { id: 'gas_station', label: 'Gas Stations', icon: '⛽', keywords: ['gas station', 'fuel', 'petrol'], color: 'var(--sev-ok)' },
+  { id: 'gas_station', label: 'Gas Stations', icon: '⛽', keywords: ['gas station', 'fuel', 'petrol'], color: MAP_CAD_OK },
   { id: 'pharmacy', label: 'Pharmacies', icon: '💊', keywords: ['pharmacy', 'drugstore', 'CVS', 'Walgreens'], color: '#ec4899' },
   { id: 'shelter', label: 'Shelters', icon: '🏠', keywords: ['shelter', 'homeless shelter', 'refuge'], color: '#14b8a6' },
-  { id: 'church', label: 'Places of Worship', icon: '⛪', keywords: ['church', 'mosque', 'temple', 'synagogue'], color: 'var(--sev-warn)' },
+  { id: 'church', label: 'Places of Worship', icon: '⛪', keywords: ['church', 'mosque', 'temple', 'synagogue'], color: MAP_CAD_WARN },
 ];
 
 // ── Hook ──────────────────────────────────────────────────
@@ -120,9 +122,9 @@ export function useMapPlacesSearch(
             new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
               .setHTML(`
                 <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-size:11px;min-width:160px;">
-                  <div style="font-weight:700;color:${category.color};margin-bottom:2px;">${category.icon} ${place.name}</div>
-                  <div style="color:#888;font-size:10px;">${place.address}</div>
-                  <div style="margin-top:4px;font-size:9px;color:#555;">${category.label}</div>
+                  <div style="font-weight:700;color:${category.color};margin-bottom:2px;">${category.icon} ${escapeHtml(place.name)}</div>
+                  <div style="color:#888;font-size:10px;">${escapeHtml(place.address)}</div>
+                  <div style="margin-top:4px;font-size:9px;color:#555;">${escapeHtml(category.label)}</div>
                 </div>
               `)
           )
@@ -176,10 +178,10 @@ export function useMapPlacesSearch(
         const el = document.createElement('div');
         el.style.cssText = `
           width:24px;height:24px;border-radius:50%;
-          background:#d4a017;border:2px solid #fff;
+          background:${MAP_CAD_INK};border:2px solid #fff;
           display:flex;align-items:center;justify-content:center;
-          font-size:10px;cursor:pointer;color:#fff;font-weight:700;
-          box-shadow:0 0 8px #d4a01780;
+          font-size:10px;cursor:pointer;color:#0a1422;font-weight:700;
+          box-shadow:0 0 8px ${withAlpha(MAP_CAD_INK, '80')};
         `;
         el.textContent = '📍';
         el.title = place.name;
@@ -190,8 +192,8 @@ export function useMapPlacesSearch(
             new mapboxgl.Popup({ offset: 14, closeButton: false, className: 'mapbox-popup-dark' })
               .setHTML(`
                 <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-size:11px;min-width:160px;">
-                  <div style="font-weight:700;color:#d4a017;margin-bottom:2px;">${place.name}</div>
-                  <div style="color:#888;font-size:10px;">${place.address}</div>
+                  <div style="font-weight:700;color:${MAP_CAD_INK};margin-bottom:2px;">${escapeHtml(place.name)}</div>
+                  <div style="color:#888;font-size:10px;">${escapeHtml(place.address)}</div>
                 </div>
               `)
           )

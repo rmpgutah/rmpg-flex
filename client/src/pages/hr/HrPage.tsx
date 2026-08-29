@@ -20,8 +20,9 @@ import DocumentsTab from './tabs/DocumentsTab';
 import AttendanceTab from './tabs/AttendanceTab';
 import BenefitsTab from './tabs/BenefitsTab';
 import PIPsTab from './tabs/PIPsTab';
+import CorporateOpsTab from './tabs/CorporateOpsTab';
 
-const VALID_TABS: readonly HRTab[] = ['dashboard', 'leave', 'disciplinary', 'reviews', 'payroll', 'grievances', 'documents', 'attendance', 'benefits', 'pips'] as const;
+const VALID_TABS: readonly HRTab[] = ['dashboard', 'leave', 'disciplinary', 'reviews', 'payroll', 'ops', 'grievances', 'documents', 'attendance', 'benefits', 'pips'] as const;
 
 // Manager-tier roles that can access sensitive HR data.
 // Mirrors server-side MANAGER_ROLES in hr.ts.
@@ -29,7 +30,7 @@ const HR_MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 // Tabs that are restricted to manager/HR roles — officers must not see other
 // employees' payroll or benefits data.
-const MANAGER_ONLY_TABS: readonly HRTab[] = ['payroll', 'benefits'] as const;
+const MANAGER_ONLY_TABS: readonly HRTab[] = ['payroll', 'benefits', 'ops'] as const;
 
 export default function HRPage() {
   const { user } = useAuth();
@@ -105,6 +106,10 @@ export default function HRPage() {
         // Extra guard — if an officer somehow lands here, show nothing sensitive.
         return isManager
           ? <PayrollTab userRole={userRole} />
+          : <div className="p-6 text-sm text-rmpg-500 text-center">Not authorized.</div>;
+      case 'ops':
+        return isManager
+          ? <CorporateOpsTab />
           : <div className="p-6 text-sm text-rmpg-500 text-center">Not authorized.</div>;
       case 'grievances':
         return <GrievancesTab />;

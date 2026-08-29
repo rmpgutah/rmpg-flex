@@ -34,6 +34,7 @@ import {
   extractOverlapConflicts,
   type ScheduleConflict,
 } from '../utils/serveScheduleErrors';
+import { downloadTextFile, serveScheduleToCsv } from '../utils/rmsListExport';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -333,8 +334,9 @@ export default function ServeSchedulerPage() {
     }
     if (error) {
       return (
-        <div className="flex items-center justify-center h-32 text-[11px] text-red-300" role="alert">
-          {error}
+        <div className="flex items-center justify-center h-32 text-[11px] text-red-300 gap-2" role="alert">
+          <span>{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void refetch(); }}>Retry</button>
         </div>
       );
     }
@@ -389,6 +391,17 @@ export default function ServeSchedulerPage() {
               <RefreshCcw size={9} className="inline mr-1" /> Rebalance
             </button>
           )}
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={slots.length === 0}
+            onClick={() => downloadTextFile('serve-schedule.csv', serveScheduleToCsv(slots.map((s) => ({
+              job_number: s.case_number ?? String(s.id),
+              status: s.status,
+              court: s.window_label ?? '',
+              hearing_date: s.scheduled_date,
+            }))))}
+          >CSV</button>
         </div>
       </div>
 

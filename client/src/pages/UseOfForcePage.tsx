@@ -56,11 +56,12 @@ import useFormDraft from '../hooks/useFormDraft';
 import RichTextArea from '../components/RichTextArea';
 import PersonPicker from '../components/PersonPicker';
 import IncidentPickerInline from '../components/IncidentPickerInline';
-import {
-  openUseOfForceReportPdf,
+import { openUseOfForceReportPdf,
   type LinkedFootageEntry,
   type UofReportForPdf,
 } from '../utils/useOfForceReportPdf';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { uofReportsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface UofReport {
   id: number; incident_id?: number; officer_id: number; subject_person_id?: number;
@@ -154,6 +155,8 @@ export default function UseOfForcePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterIncidentId, setFilterIncidentId] = useState<string>('');
   const [filterSubjectId, setFilterSubjectId] = useState<string>('');
@@ -612,8 +615,9 @@ export default function UseOfForcePage() {
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
             id="ff-useofforcepage-0"
+            ref={searchRef}
             className="input-dark text-[10px] pl-7 w-full py-[3px]"
-            placeholder="Search..."
+            placeholder="Search... (/)"
             aria-label="Search use-of-force reports"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
@@ -918,11 +922,27 @@ export default function UseOfForcePage() {
 
   return (
     <div className="p-4 space-y-3 h-full flex flex-col">
-      <PanelTitleBar title="USE OF FORCE REPORTS" icon={Shield} />
+      <PanelTitleBar title="USE OF FORCE REPORTS" icon={Shield}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={reports.length === 0}
+          onClick={() => downloadTextFile('use-of-force.csv', uofReportsToCsv(reports.map((r) => ({
+            id: r.id,
+            incident_number: r.incident_number,
+            force_type: r.force_type,
+            force_level: r.force_level,
+            status: r.status,
+            created_at: r.created_at,
+          }))))}
+        >CSV</button>
+      </PanelTitleBar>
 
       {error && (
         <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
-          {error} <button type="button" className="ml-2 underline" onClick={() => setError('')}>dismiss</button>
+          {error}{' '}
+          <button type="button" className="toolbar-btn ml-2" onClick={() => { void fetchReports(); }}>Retry</button>
+          <button type="button" className="ml-2 underline" onClick={() => setError('')}>dismiss</button>
         </div>
       )}
 

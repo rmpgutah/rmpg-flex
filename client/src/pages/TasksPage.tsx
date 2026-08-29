@@ -92,6 +92,7 @@ import { describeDueDate, dueToneTextClass } from '../utils/taskDueCountdown';
 import { generateTasksPdf } from '../utils/taskPdf';
 import { toDisplayLabel } from '../utils/formatters';
 import { safeDateStr } from '../utils/dateUtils';
+import { tasksToCsv, downloadTextFile } from '../utils/rmsListExport';
 import {
   ClipboardList, Clock, AlertTriangle, Plus, Pencil, Trash2, Eye,
   FileText, X, CheckCircle2, RotateCcw, ExternalLink,
@@ -542,6 +543,20 @@ export default function TasksPage() {
       <PanelTitleBar title="TASK MANAGEMENT" icon={ClipboardList}>
         <button
           type="button"
+          className="toolbar-btn"
+          disabled={tasks.length === 0}
+          onClick={() => downloadTextFile('tasks.csv', tasksToCsv(tasks.map((t) => ({
+            id: t.id,
+            task_title: t.task_title,
+            status: t.status,
+            priority: t.priority,
+            due_date: t.due_date,
+            linked_entity_type: t.linked_entity_type,
+            linked_entity_id: t.linked_entity_id,
+          }))))}
+        >CSV</button>
+        <button
+          type="button"
           onClick={() => fetchData(true)}
           disabled={refreshing}
           className="toolbar-btn"
@@ -580,6 +595,7 @@ export default function TasksPage() {
         >
           <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div className="flex-1">{error}</div>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchData(); }}>Retry</button>
           <IconButton aria-label="Dismiss error" onClick={() => setError(null)} className="text-red-300 hover:text-red-100">
             <X size={12} />
           </IconButton>

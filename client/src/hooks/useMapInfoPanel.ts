@@ -248,13 +248,13 @@ export function useMapInfoPanel(
       .setLngLat(data.lngLat)
       .setHTML(`
         <div style="background:var(--surface-raised,#15212e);color:var(--text-primary,#e6edf5);padding:8px 12px;border:1px solid var(--border-default,#2a3a4d);border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;">
-          <div style="font-weight:700;color:${data.color || 'var(--panel-header-color,#d4a017)'};font-size:12px;margin-bottom:2px;">${escapeHtml(data.title)}</div>
+          <div style="font-weight:700;color:${data.color || 'var(--panel-header-color,#c3ccd6)'};font-size:12px;margin-bottom:2px;">${escapeHtml(data.title)}</div>
           ${data.subtitle && data.subtitle !== data.address ? `<div style="color:var(--text-muted,#8fa3b8);font-size:10px;">${escapeHtml(data.subtitle)}</div>` : ''}
           ${data.address ? `<div style="color:var(--text-muted,#8fa3b8);font-size:10px;margin-top:4px;">📍 ${escapeHtml(data.address)}</div>` : ''}
           ${data.weather ? renderWeatherBlock(data.weather) : ''}
           ${data.nearby && data.nearby.length > 0 ? `
             <div style="border-top:1px solid #222;margin-top:4px;padding-top:4px;">
-              <div style="color:var(--panel-header-color,#d4a017);font-size:9px;font-weight:700;">NEARBY</div>
+              <div style="color:var(--panel-header-color,#c3ccd6);font-size:9px;font-weight:700;">NEARBY</div>
               ${data.nearby.slice(0, 5).map(n =>
                 `<div style="font-size:10px;color:#aaa;margin-top:1px;">
                   <span style="color:${n.color || '#888'};">●</span> ${escapeHtml(n.label)} — ${escapeHtml(n.distance)}

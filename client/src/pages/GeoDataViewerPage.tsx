@@ -17,6 +17,8 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import GeoDataMapView from '../components/GeoDataMapView';
+import { downloadTextFile, geoLayersToCsv } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -283,6 +285,7 @@ export default function GeoDataViewerPage() {
 
   const mountedRef = useRef(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchInputRef);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   // ── Load layer ──────────────────────────────────────────
@@ -462,6 +465,16 @@ export default function GeoDataViewerPage() {
             </span>
             <button
               type="button"
+              className="toolbar-btn"
+              onClick={() => downloadTextFile('geo-layers.csv', geoLayersToCsv(LAYERS.map((l) => ({
+                id: l.id,
+                name: l.label,
+                type: l.file,
+                visible: l.id === activeLayerId,
+              }))))}
+            >CSV</button>
+            <button
+              type="button"
               onClick={handleExportCSV}
               disabled={!sorted.length}
               title="Export filtered features as CSV"
@@ -474,7 +487,7 @@ export default function GeoDataViewerPage() {
               }}
             >
               <Download style={{ width: 10, height: 10 }} />
-              CSV
+              Features
             </button>
           </div>
         </PanelTitleBar>

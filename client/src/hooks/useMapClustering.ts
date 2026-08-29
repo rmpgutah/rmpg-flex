@@ -43,7 +43,7 @@ function pointsToGeoJSON(points: ClusterablePoint[]): GeoJSON.FeatureCollection 
     type: 'FeatureCollection',
     features: points.map(p => ({
       type: 'Feature' as const,
-      properties: { id: p.id, priority: p.priority || '3', label: p.label || '', color: p.color || '#d4a017' },
+      properties: { id: p.id, priority: p.priority || '3', label: p.label || '', color: p.color || '#c3ccd6' },
       geometry: { type: 'Point' as const, coordinates: [p.longitude, p.latitude] },
     })),
   };
@@ -109,7 +109,7 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
           paint: {
             'circle-color': [
               'step', ['get', 'point_count'],
-              '#d4a017', 10,   // gold for < 10
+              '#c3ccd6', 10,   // gold for < 10
               '#f59e0b', 30,   // amber for < 30
               '#ef4444',       // red for >= 30
             ],

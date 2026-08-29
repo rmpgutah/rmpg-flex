@@ -15,6 +15,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { toDisplayLabel } from '../utils/formatters';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { statuteCountsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface StatuteEntry {
   statute_number: string;
@@ -64,6 +66,7 @@ export default function StatuteAnalyticsPage() {
   const [days, setDays] = useState(initDays);
   const [search, setSearch] = useState(initStatute);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchInputRef);
 
   // Strip deep-link params after mount so they don't persist in history
   useEffect(() => {
@@ -222,6 +225,7 @@ export default function StatuteAnalyticsPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); void fetchData(); }}>Retry</button>
           <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
@@ -229,6 +233,17 @@ export default function StatuteAnalyticsPage() {
       {/* Title bar (desktop) */}
       {!isMobile && (
         <PanelTitleBar title="Statute Analytics" icon={BarChart3}>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={filteredStatutes.length === 0}
+            onClick={() => downloadTextFile('statute-analytics.csv', statuteCountsToCsv(filteredStatutes.map((s) => ({
+              statute_number: s.statute_number,
+              title: s.title,
+              offense_level: s.offense_level,
+              count: s.count,
+            }))))}
+          >CSV</button>
           <div className="flex items-center gap-2">
             {[30, 60, 90, 180, 365].map(d => (
               <button type="button"
@@ -383,7 +398,7 @@ export default function StatuteAnalyticsPage() {
                     ref={searchInputRef}
                     type="text"
                     className="bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30 transition-colors"
-                    placeholder="Search statutes… (N)"
+                    placeholder="Search statutes… (/)"
                     aria-label="Search statutes"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}

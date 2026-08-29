@@ -49,4 +49,15 @@ describe('MapLeftDock', () => {
     expect(screen.getByText('Fire hydrants')).toBeInTheDocument();
     expect(screen.queryByText('Live Traffic')).not.toBeInTheDocument();
   });
+
+  it('lists favorited layers in a Favorites section', () => {
+    const onToggleFavorite = vi.fn();
+    const sections = [{
+      title: 'Live Conditions',
+      items: [{ id: 'traffic', label: 'Live Traffic', active: false, onToggle: vi.fn(), favorite: true, onToggleFavorite }],
+    }];
+    render(<MapLeftDock sections={sections} />);
+    expect(screen.getByText('Favorites')).toBeInTheDocument();
+    expect(screen.getAllByText('Live Traffic').length).toBeGreaterThan(1);
+  });
 });

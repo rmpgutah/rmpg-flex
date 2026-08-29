@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import IconButton from '../../components/IconButton';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { downloadTextFile, reportCatalogToCsv } from '../../utils/rmsListExport';
 
 // ============================================================
 // RMPG Flex — Fleet Daily Reports Archive
@@ -133,6 +134,14 @@ export default function FleetReportsPage() {
     <div className="flex flex-col h-full bg-surface-base text-rmpg-100">
       <PanelTitleBar title="FLEET DAILY REPORTS" icon={Calendar}>
         <span className="text-[11px] text-fg-muted">{totalReports} reports archived</span>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={months.length === 0}
+          onClick={() => downloadTextFile('fleet-daily-reports.csv', reportCatalogToCsv(
+            months.flatMap((m) => m.days.map((d) => ({ id: d.filename, name: d.date, category: m.month }))),
+          ))}
+        >CSV</button>
         <IconButton onClick={loadReports} aria-label="Refresh reports list" className="p-1 hover:bg-surface-sunken">
           <RefreshCw className="w-4 h-4" />
         </IconButton>
@@ -142,6 +151,12 @@ export default function FleetReportsPage() {
       </PanelTitleBar>
 
       <div className="flex-1 overflow-auto p-4">
+        {!loading && loadError && months.length > 0 && (
+          <div className="p-3 text-xs text-[color:var(--sev-critical)] flex items-center justify-between mb-2" role="alert">
+            <span>{loadError}</span>
+            <button type="button" className="toolbar-btn" onClick={() => { void loadReports(); }}>Retry</button>
+          </div>
+        )}
         {loading && months.length === 0 && (
           <div className="text-center text-fg-muted py-8">Loading reports…</div>
         )}

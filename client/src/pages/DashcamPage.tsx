@@ -10,6 +10,8 @@ import UnitPicker from '../components/UnitPicker';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import { dashcamListToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'text-red-400',
@@ -48,7 +50,9 @@ export default function DashcamPage() {
 
   const pageRef = useRef(page);
   const searchRef = useRef(search);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const deepLinkRef = useRef(false);
+  useSlashFocus(searchInputRef);
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { searchRef.current = search; }, [search]);
 
@@ -184,7 +188,20 @@ export default function DashcamPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <PanelTitleBar title="HOWEN / VIZTRACK DASHCAM SYSTEM" icon={Camera} />
+      <PanelTitleBar title="HOWEN / VIZTRACK DASHCAM SYSTEM" icon={Camera}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={devices.length === 0}
+          onClick={() => downloadTextFile('dashcam-devices.csv', dashcamListToCsv(devices.map((d: { id?: number; model?: string; device_id?: string; last_gps_at?: string }) => ({
+            id: d.id ?? 0,
+            classification: d.model ?? '',
+            source: d.device_id ?? '',
+            recorded_at: d.last_gps_at ?? '',
+            case_number: '',
+          }))))}
+        >CSV</button>
+      </PanelTitleBar>
 
       <ConfirmDialog
         isOpen={!!deactivateTarget}
@@ -203,9 +220,9 @@ export default function DashcamPage() {
       />
 
       {error && (
-        <div className="bg-red-900/20 border border-red-800 text-red-400 px-4 py-2 text-sm">
-          {error}
-          <button type="button" className="float-right" onClick={() => setError('')}>✕</button>
+        <div className="bg-red-900/20 border border-red-800 text-red-400 px-4 py-2 text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setError(''); void fetchDevices(page, search); }}>Retry</button>
         </div>
       )}
 
@@ -285,8 +302,9 @@ export default function DashcamPage() {
                   <div className="flex items-center gap-1 bg-surface-sunken border border-border-default px-2 py-0.5">
                     <Search className="w-3 h-3 text-text-muted" />
                     <input id="ff-dashcampage-0"
+                      ref={searchInputRef}
                       className="bg-transparent border-none outline-none text-xs text-text-default w-32"
-                      placeholder="Search devices..."
+                      placeholder="Search devices… (/)"
                       aria-label="Search dashcam devices"
                       value={search}
                       onChange={e => { setSearch(e.target.value); fetchDevices(1, e.target.value); }}

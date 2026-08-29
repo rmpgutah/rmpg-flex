@@ -797,9 +797,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     const el = document.createElement('div');
     el.style.cssText =
       'width:24px;height:24px;border-radius:2px;display:flex;align-items:center;justify-content:center;' +
-      'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #d4a017;' +
-      "color:#d4a017;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900;line-height:1;" +
-      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0 0 0 / 0.6);' +
+      'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #c3ccd6;' +
+      "color:#c3ccd6;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900;line-height:1;" +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #c3ccd666, 0 1px 4px rgba(0 0 0 / 0.6);' +
       'cursor:default;';
     el.textContent = String(order);
     return el;
@@ -937,7 +937,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
               type: 'line',
               source: MULTI_SOURCE_ID,
               layout: { 'line-cap': 'round', 'line-join': 'round' },
-              paint: { 'line-color': '#d4a017', 'line-width': 4, 'line-opacity': 0.95, 'line-dasharray': [2, 1.5] },
+              paint: { 'line-color': '#c3ccd6', 'line-width': 4, 'line-opacity': 0.95, 'line-dasharray': [2, 1.5] },
             });
           } catch { /* style race — markers below still render */ }
         });
