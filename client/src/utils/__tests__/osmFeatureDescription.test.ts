@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { describeOsmFeature } from '../osmFeatureDescription';
+import {
+  describeOsmFeature, formatHydrantDiameter, formatFlowRate,
+} from '../osmFeatureDescription';
 
 const rowFor = (d: ReturnType<typeof describeOsmFeature>, label: string) =>
   d.rows.find((r) => r.label === label)?.value;
@@ -76,5 +78,18 @@ describe('describeOsmFeature', () => {
     // Escaping here would double-escape in the popup.
     const d = describeOsmFeature({ name: 'A & B <script>' });
     expect(d.title).toBe('A & B <script>');
+  });
+
+  it('converts hydrant diameter millimetres to inches', () => {
+    expect(formatHydrantDiameter('150')).toBe('5.9" (150 mm)');
+    expect(formatHydrantDiameter('6 in')).toBe('6 in');
+    expect(rowFor(describeOsmFeature({ 'fire_hydrant:diameter': '150' }), 'Main diameter'))
+      .toBe('5.9" (150 mm)');
+  });
+
+  it('converts hydrant flow from L/s to GPM', () => {
+    expect(formatFlowRate('20')).toMatch(/GPM/);
+    expect(formatFlowRate('20')).toContain('20 L/s');
+    expect(rowFor(describeOsmFeature({ flow_rate: '20' }), 'Flow rate')).toMatch(/GPM/);
   });
 });

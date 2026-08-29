@@ -92,6 +92,7 @@ export function osmColorFor(cat: string | undefined, group: string | undefined):
 
 /** Dashed line patterns for attributes that are NOT the basemap road. */
 export const OSM_LINE_DASH: Record<string, number[]> = {
+  restriction: [4, 2],
   unpaved: [1.6, 1.4],
   fourwd: [1, 1.6, 4, 1.6],
   seasonal: [1, 2.4],

@@ -18,18 +18,47 @@ export interface DockSectionProps {
    *  collapse control — for sections whose state must always stay
    *  visible (e.g. safety-critical toggles). Defaults to true. */
   collapsible?: boolean;
+  onEnableAll?: () => void;
+  onDisableAll?: () => void;
   children: ReactNode;
 }
 
-export default function DockSection({ title, defaultOpen = true, collapsible = true, children }: DockSectionProps) {
+export default function DockSection({
+  title, defaultOpen = true, collapsible = true, onEnableAll, onDisableAll, children,
+}: DockSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const isOpen = collapsible ? open : true;
+  const groupOps = onEnableAll || onDisableAll;
+
+  const ops = groupOps ? (
+    <span className="flex items-center gap-1 shrink-0">
+      {onEnableAll && (
+        <button
+          type="button"
+          className="px-1 text-[8px] font-semibold uppercase tracking-wide text-rmpg-400 hover:text-rmpg-100"
+          onClick={onEnableAll}
+        >
+          All
+        </button>
+      )}
+      {onDisableAll && (
+        <button
+          type="button"
+          className="px-1 text-[8px] font-semibold uppercase tracking-wide text-rmpg-400 hover:text-rmpg-100"
+          onClick={onDisableAll}
+        >
+          None
+        </button>
+      )}
+    </span>
+  ) : null;
 
   if (!collapsible) {
     return (
       <div className="border-b border-border-subtle">
         <div className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-400">
           <span>{title}</span>
+          {ops}
         </div>
         <div className="pb-1">{children}</div>
       </div>
@@ -38,15 +67,21 @@ export default function DockSection({ title, defaultOpen = true, collapsible = t
 
   return (
     <div className="border-b border-border-subtle">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={isOpen}
-        className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-400 hover:text-rmpg-200 transition-colors"
-      >
-        <span>{title}</span>
-        {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-      </button>
+      {/* Title toggle and All/None are sibling controls — nested <button>
+          inside the accordion header is invalid HTML and makes All/None
+          unreliable in some browsers. */}
+      <div className="w-full flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-400">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={isOpen}
+          className="flex-1 min-w-0 flex items-center justify-between hover:text-rmpg-200 transition-colors text-left"
+        >
+          <span>{title}</span>
+          {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        </button>
+        {ops}
+      </div>
       {isOpen && <div className="pb-1">{children}</div>}
     </div>
   );

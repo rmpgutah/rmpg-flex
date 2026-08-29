@@ -76,6 +76,35 @@ describe('buildDockSections', () => {
     const [section] = buildDockSections(['Live Conditions'], allBindings());
     expect(section.collapsible).toBe(false);
   });
+
+  it('starts OSM groups collapsed with All/None ops', () => {
+    const sections = buildDockSections(LEFT_DOCK_GROUPS, allBindings());
+    const osm = sections.filter((s) => s.title.startsWith('OSM'));
+    expect(osm.length).toBeGreaterThan(0);
+    for (const s of osm) {
+      expect(s.defaultOpen).toBe(false);
+      expect(s.onEnableAll).toBeTypeOf('function');
+      expect(s.onDisableAll).toBeTypeOf('function');
+    }
+  });
+
+  it('All enables only inactive OSM toggles; None disables only active ones', () => {
+    const bindings = allBindings();
+    const hydrant = MAP_LAYER_REGISTRY.find((l) => l.id.includes('hydrant'))!;
+    bindings[hydrant.id] = { ...bindings[hydrant.id], active: true };
+    const [section] = buildDockSections(['OSM Fire & Safety'], bindings);
+    section.onEnableAll?.();
+    for (const item of section.items) {
+      if (item.id === hydrant.id) expect(bindings[item.id].onToggle).not.toHaveBeenCalled();
+      else expect(bindings[item.id].onToggle).toHaveBeenCalledTimes(1);
+    }
+    vi.clearAllMocks();
+    section.onDisableAll?.();
+    expect(bindings[hydrant.id].onToggle).toHaveBeenCalledTimes(1);
+    for (const item of section.items) {
+      if (item.id !== hydrant.id) expect(bindings[item.id].onToggle).not.toHaveBeenCalled();
+    }
+  });
 });
 
 describe('findUnboundLayers', () => {
@@ -112,7 +141,7 @@ describe('MapboxMapPage binding coverage', () => {
     );
     expect(bindingBlock.length, 'layerBindings block not found').toBeGreaterThan(0);
 
-    const dynamic = new Set(['district-', 'geo-', 'osm_']);
+    const dynamic = new Set(['district-', 'geo-', 'osm_', 'utah_']);
     const missing = MAP_LAYER_REGISTRY
       .filter((l) => ![...dynamic].some((p) => l.id.startsWith(p)))
       .filter((l) => !bindingBlock.includes(`'${l.id}'`) && !new RegExp(`\\b${l.id}\\s*:`).test(bindingBlock))

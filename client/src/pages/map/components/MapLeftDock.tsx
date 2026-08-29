@@ -13,6 +13,9 @@ export interface MapLeftDockSection {
   /** Forwarded to DockSection — when false, this section renders
    *  always-expanded with no collapse control. */
   collapsible?: boolean;
+  defaultOpen?: boolean;
+  onEnableAll?: () => void;
+  onDisableAll?: () => void;
 }
 
 export interface MapLeftDockProps {
@@ -26,7 +29,14 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
         LAYERS
       </div>
       {sections.map((section) => (
-        <DockSection key={section.title} title={section.title} collapsible={section.collapsible}>
+        <DockSection
+          key={section.title}
+          title={section.title}
+          collapsible={section.collapsible}
+          defaultOpen={section.defaultOpen}
+          onEnableAll={section.onEnableAll}
+          onDisableAll={section.onDisableAll}
+        >
           {section.items.map((item) => (
             <DockToggleRow key={item.id} item={item} />
           ))}

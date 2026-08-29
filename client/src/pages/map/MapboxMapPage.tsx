@@ -642,6 +642,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   } | null>(null);
   const [visibleOsmGroups, setVisibleOsmGroups] = useState<string[]>([]);
   const osmOverrides = useOsmOverrides(visibleOsmGroups);
+  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
 
   const vectorTiles = useVectorTileLayers({
     map: mapRef.current,
@@ -656,6 +657,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     osmOverrides: osmOverrides.byOsmId,
     osmHiddenIds: osmOverrides.hiddenIds,
     onEditOsmFeature: setOsmEditTarget,
+    suppressPopup: featureInspect.enabled,
   });
 
   // Derive the visible OSM groups from the layer states. Sorted+joined into a
@@ -679,7 +681,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       : districtHierarchy.hierarchyStates['zone']?.visible ? 'zone'
       : null,
   });
-  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const [hoveredFeature, setHoveredFeature] = useState<InspectedFeature | null>(null);
   const inspectMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
@@ -1875,6 +1876,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           onSelect={featureInspect.select}
           onClose={featureInspect.clear}
           onHoverFeature={setHoveredFeature}
+          osmOverrides={osmOverrides.byOsmId}
+          onEditOsmFeature={setOsmEditTarget}
         />
       )}
 
@@ -2051,7 +2054,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             county: geoJsonLayers.layerStates['county']?.visible ?? false,
             municipality: geoJsonLayers.layerStates['municipality']?.visible ?? false,
           }}
-          statewide={{ roads: false, addresses: false }}
+          statewide={{
+            roads: vectorTiles.vectorLayerStates['utah_roads']?.visible ?? false,
+            addresses: vectorTiles.vectorLayerStates['utah_addresses']?.visible ?? false,
+          }}
           choro={activityChoropleth.choroLegend}
           categorical={[]}
           isLight={false}
