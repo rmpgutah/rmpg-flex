@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Voicemail,
   History, Search, Star, Printer, Download, Play, Pause, RefreshCw,
-  Plus, Trash2, Copy, Archive, CheckCheck, UserPlus, Link2, Hash,
+  Plus, Trash2, Copy, Archive, CheckCheck, UserPlus, Link2, FileDown, MicOff, PhoneOff,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch, apiFetchBlob, apiPostForm } from '../hooks/useApi';
@@ -18,6 +19,8 @@ import {
 import { downloadDialerCallRecordPdf, openDialerCallRecordPdf } from '../utils/dialerCallRecordPdf';
 import type { DialerRecordForPdf } from '../utils/dialerCallRecordPdf';
 import { toDisplayLabel } from '../utils/formatters';
+import { safeDateTimeStr } from '../utils/dateUtils';
+import { copyToClipboard } from '../utils/clipboard';
 
 type TabId = 'dialer' | 'voicemail' | 'history';
 
@@ -83,6 +86,10 @@ function vmToPdf(v: VoicemailRow): DialerRecordForPdf {
   return { ...v, kind: 'voicemail', started_at: v.received_at };
 }
 
+function hasAudio(row: { recording_r2_key?: string | null; recording_source_url?: string | null }): boolean {
+  return Boolean(row.recording_r2_key || row.recording_source_url);
+}
+
 async function downloadAudio(kind: 'call' | 'voicemail', id: number) {
   const blob = await apiFetchBlob(`/dialer-connect/${kind === 'call' ? 'calls' : 'voicemails'}/${id}/audio`);
   const url = URL.createObjectURL(blob);
@@ -93,12 +100,31 @@ async function downloadAudio(kind: 'call' | 'voicemail', id: number) {
   URL.revokeObjectURL(url);
 }
 
+async function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseTags(raw: string | null | undefined): string {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed.map(String).join(', ');
+  } catch { /* stored as comma list */ }
+  return raw;
+}
+
 export default function DialerConnectPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
   const [liveOpen, setLiveOpen] = useState(true);
+  const [vmUnread, setVmUnread] = useState(0);
 
   useEffect(() => {
     document.title = 'Dialer Connect — RMPG Flex';
@@ -113,15 +139,21 @@ export default function DialerConnectPage() {
     return () => window.removeEventListener(DIALER_CHROME_EVENT, onChrome);
   }, []);
 
+  useEffect(() => {
+    apiFetch<{ data: { unread?: number } }>('/dialer-connect/voicemails/summary')
+      .then((r) => setVmUnread(Number(r.data?.unread || 0)))
+      .catch(() => {});
+  }, [tab]);
+
   return (
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="DIAL CONNECT" icon={PhoneCall} statusLed="var(--sev-ok)">
         <div className="flex items-center gap-1">
           {([
-            ['dialer', 'Dialer', Phone],
-            ['voicemail', 'Voicemail', Voicemail],
-            ['history', 'Call History', History],
-          ] as const).map(([id, label, Icon]) => (
+            ['dialer', 'Dialer', Phone, null as number | null],
+            ['voicemail', 'Voicemail', Voicemail, vmUnread],
+            ['history', 'Call History', History, null],
+          ] as const).map(([id, label, Icon, badge]) => (
             <button
               key={id}
               type="button"
@@ -134,6 +166,9 @@ export default function DialerConnectPage() {
               }}
             >
               <Icon className="w-3 h-3" /> {label}
+              {badge ? (
+                <span className="min-w-[1.1rem] px-1 text-[8px] font-mono rounded-full" style={{ background: 'var(--sev-warn)', color: '#111' }}>{badge}</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -155,17 +190,34 @@ export default function DialerConnectPage() {
   );
 }
 
-function FunctionStrip({ items }: { items: readonly { id: string; label: string }[] }) {
+function FunctionStrip({
+  items,
+  onPick,
+}: {
+  items: readonly { id: string; label: string }[];
+  onPick?: (id: string) => void;
+}) {
   return (
     <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1 shrink-0">
       {items.map((f) => (
-        <span
+        <button
           key={f.id}
-          className="text-[8px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-border-subtle text-rmpg-400"
+          type="button"
+          onClick={() => onPick?.(f.id)}
+          className="text-[8px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-border-subtle text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-500"
         >
           {f.label}
-        </span>
+        </button>
       ))}
+    </div>
+  );
+}
+
+function ErrorBar({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="border-b border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-1.5 flex items-center justify-between" role="alert">
+      <span>{message}</span>
+      <button type="button" className="text-[10px] uppercase border border-red-700/50 px-2 py-0.5" onClick={onRetry}>Retry</button>
     </div>
   );
 }
@@ -173,6 +225,7 @@ function FunctionStrip({ items }: { items: readonly { id: string; label: string 
 type AddToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 
 function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: AddToast }) {
+  const navigate = useNavigate();
   const [digits, setDigits] = useState('');
   const [presence, setPresence] = useState('available');
   const [presenceMsg, setPresenceMsg] = useState('');
@@ -186,14 +239,20 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
   const [disposition, setDisposition] = useState('completed');
   const [callbackAt, setCallbackAt] = useState('');
   const [dtmfLog, setDtmfLog] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [sd, pr] = await Promise.all([
-      apiFetch<{ data: SpeedDial[] }>('/dialer-connect/speed-dials'),
-      apiFetch<{ data: Presence[] }>('/dialer-connect/presence'),
-    ]);
-    setSpeed(sd.data || []);
-    setAgents(pr.data || []);
+    try {
+      setLoadError(null);
+      const [sd, pr] = await Promise.all([
+        apiFetch<{ data: SpeedDial[] }>('/dialer-connect/speed-dials'),
+        apiFetch<{ data: Presence[] }>('/dialer-connect/presence'),
+      ]);
+      setSpeed(sd.data || []);
+      setAgents(pr.data || []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load Dial Connect');
+    }
   }, []);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
@@ -209,6 +268,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
     if (!to) return;
     const res = await apiFetch<{ data: LookupHit[] }>(`/dialer-connect/lookup?number=${encodeURIComponent(to)}`);
     setLookup(res.data || []);
+    if (!(res.data || []).length) addToast('No RMS person match', 'info');
   };
 
   const saveSpeed = async () => {
@@ -221,15 +281,28 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
 
   const pad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
 
+  const jump = (id: string) => {
+    const map: Record<string, string> = {
+      keypad: 'dc-keypad', dtmf: 'dc-keypad', hold: 'dc-keypad', transfer: 'dc-keypad',
+      conference: 'dc-keypad', record: 'dc-keypad', hangup: 'dc-keypad',
+      speed_dial: 'dc-speed', lookup: 'dc-speed',
+      link_cfs: 'dc-notes', disposition: 'dc-notes', callback: 'dc-notes',
+      presence: 'dc-presence',
+    };
+    document.getElementById(map[id] || 'dc-keypad')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="h-full overflow-y-auto scrollbar-dark">
-      <FunctionStrip items={DIALER_FUNCTIONS} />
+      <FunctionStrip items={DIALER_FUNCTIONS} onPick={jump} />
+      {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="p-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="bg-surface-raised border border-border-subtle p-3 space-y-2">
+        <div id="dc-keypad" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
           <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>Keypad</div>
           <input
             value={digits}
             onChange={(e) => setDigits(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); place(digits); } }}
             className="w-full bg-surface-sunken border border-border-subtle px-2 py-1.5 font-mono text-rmpg-100 text-sm"
             aria-label="Dial number"
           />
@@ -247,6 +320,14 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
             <button type="button" onClick={() => place(digits)} className="flex-1 py-1.5 text-[10px] font-bold uppercase border text-[color:var(--sev-ok)]" style={{ background: 'color-mix(in srgb, var(--sev-ok) 20%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-ok) 40%, transparent)' }}>Call</button>
             <button type="button" onClick={() => setDigits((p) => p.slice(0, -1))} className="px-2 text-[10px] border border-border-subtle text-rmpg-400">⌫</button>
             <button type="button" onClick={() => openDialerWindow()} className="px-2 text-[10px] border border-border-subtle text-rmpg-300">Open</button>
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300 flex items-center justify-center gap-1" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'hangup' })}>
+              <PhoneOff className="w-3 h-3" /> Hang up
+            </button>
+            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300 flex items-center justify-center gap-1" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'mute' })}>
+              <MicOff className="w-3 h-3" /> Mute
+            </button>
           </div>
           <div className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>In-call DTMF</div>
           <div className="flex flex-wrap gap-1">
@@ -273,13 +354,16 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
           </div>
         </div>
 
-        <div className="bg-surface-raised border border-border-subtle p-3 space-y-2">
+        <div id="dc-speed" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
           <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>Speed dial</div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {speed.map((s) => (
               <div key={s.id} className="flex items-center gap-1 text-[11px]">
                 <button type="button" className="flex-1 text-left text-rmpg-100 truncate" onClick={() => place(s.number)}>
                   {s.label} <span className="text-rmpg-500 font-mono">{displayPhone(s.number)}</span>
+                </button>
+                <button type="button" aria-label={`Copy ${s.label}`} onClick={() => copyToClipboard(s.number).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}>
+                  <Copy className="w-3 h-3 text-rmpg-500" />
                 </button>
                 <button type="button" aria-label={`Delete ${s.label}`} onClick={() => apiFetch(`/dialer-connect/speed-dials/${s.id}`, { method: 'DELETE' }).then(load)}>
                   <Trash2 className="w-3 h-3 text-rmpg-500" />
@@ -296,11 +380,16 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
           <div className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>Caller lookup</div>
           <button type="button" className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300" onClick={() => lookupNumber(digits).catch(() => {})}>Lookup current number</button>
           {lookup.map((p) => (
-            <div key={p.id} className="text-[11px] text-rmpg-200">
+            <button
+              key={p.id}
+              type="button"
+              className="block text-left text-[11px] text-rmpg-200 hover:text-rmpg-50"
+              onClick={() => navigate(`/records?tab=persons&personId=${p.id}`)}
+            >
               {p.first_name} {p.last_name} <span className="font-mono text-rmpg-500">{displayPhone(p.phone)}</span>
-            </div>
+            </button>
           ))}
-          <div className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>Link CFS / notes</div>
+          <div id="dc-notes" className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>Link CFS / notes</div>
           <input value={cfsId} onChange={(e) => setCfsId(e.target.value)} placeholder="CFS id" className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
           <select value={disposition} onChange={(e) => setDisposition(e.target.value)} className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100">
             {DISPOSITIONS.map((d) => <option key={d} value={d}>{toDisplayLabel(d)}</option>)}
@@ -334,7 +423,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
           >Log + print form</button>
         </div>
 
-        <div className="bg-surface-raised border border-border-subtle p-3 space-y-2">
+        <div id="dc-presence" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
           <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>Agent presence</div>
           <select value={presence} onChange={(e) => setPresence(e.target.value)} className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100">
             {PRESENCE_STATUSES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
@@ -349,9 +438,12 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
             {agents.map((a) => (
               <div key={a.user_id} className="flex items-center gap-2 text-[11px] text-rmpg-200">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: a.status === 'available' ? 'var(--sev-ok)' : a.status === 'dnd' ? 'var(--sev-critical)' : 'var(--sev-warn)' }} />
-                {a.name || `User ${a.user_id}`} · {toDisplayLabel(a.status)}
+                <span className="truncate">{a.name || `User ${a.user_id}`} · {toDisplayLabel(a.status)}</span>
               </div>
             ))}
+            {agents.map((a) => a.message ? (
+              <div key={`${a.user_id}-msg`} className="pl-3.5 text-[10px] text-rmpg-500">{a.message}</div>
+            ) : null)}
           </div>
         </div>
       </div>
@@ -360,6 +452,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
 }
 
 function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: AddToast }) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<VoicemailRow[]>([]);
   const [q, setQ] = useState('');
   const [unread, setUnread] = useState(false);
@@ -369,16 +462,23 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
   const [playing, setPlaying] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (unread) params.set('unread', '1');
-    if (starred) params.set('starred', '1');
-    if (archived) params.set('archived', '1');
-    if (urgency) params.set('urgency', urgency);
-    const res = await apiFetch<{ data: VoicemailRow[] }>(`/dialer-connect/voicemails?${params}`);
-    setRows(res.data || []);
+    try {
+      setLoadError(null);
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (unread) params.set('unread', '1');
+      if (starred) params.set('starred', '1');
+      if (archived) params.set('archived', '1');
+      if (urgency) params.set('urgency', urgency);
+      const res = await apiFetch<{ data: VoicemailRow[] }>(`/dialer-connect/voicemails?${params}`);
+      setRows(res.data || []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load voicemail');
+    }
   }, [q, unread, starred, archived, urgency]);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
@@ -405,6 +505,7 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
   return (
     <div className="h-full flex flex-col">
       <FunctionStrip items={VOICEMAIL_FUNCTIONS} />
+      {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1.5 items-center shrink-0">
         <Search className="w-3 h-3 text-rmpg-500" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search transcript / number" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
@@ -417,11 +518,20 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
           <option value="urgent">Urgent</option>
           <option value="emergency">Emergency</option>
         </select>
+        <button
+          type="button"
+          className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300"
+          onClick={async () => {
+            const blob = await apiFetchBlob(`/dialer-connect/voicemails/export.csv?archived=${archived ? '1' : '0'}`);
+            saveBlob(blob, 'dialer-voicemail.csv');
+          }}
+        >CSV</button>
         <button type="button" onClick={() => load()} className="ml-auto text-rmpg-400" aria-label="Refresh voicemail"><RefreshCw className="w-3.5 h-3.5" /></button>
         <button
           type="button"
           className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300 flex items-center gap-1"
           onClick={async () => {
+            if (selected.size === 0) { addToast('Select voicemails first', 'warning'); return; }
             await apiFetch('/dialer-connect/voicemails/bulk-heard', { method: 'POST', body: JSON.stringify({ ids: [...selected] }) });
             setSelected(new Set());
             await load();
@@ -430,7 +540,7 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
         ><CheckCheck className="w-3 h-3" /> Bulk heard</button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-2 space-y-1">
-        {rows.length === 0 && <div className="text-[11px] text-rmpg-500 text-center py-8">No voicemail in this filter.</div>}
+        {rows.length === 0 && !loadError && <div className="text-[11px] text-rmpg-500 text-center py-8">No voicemail in this filter.</div>}
         {rows.map((v) => (
           <div key={v.id} className="bg-surface-raised/40 border border-rmpg-800 px-2 py-1.5 space-y-1">
             <div className="flex items-center gap-1.5">
@@ -446,20 +556,30 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
               <span className="text-[10px] text-rmpg-400 truncate flex-1">{v.from_name || 'Unknown'}</span>
               <span className="text-[8px] font-bold uppercase text-rmpg-400">{v.urgency}</span>
               <span className="text-[9px] font-mono text-rmpg-500">{formatDuration(v.duration_seconds)}</span>
+              <span className="text-[9px] font-mono text-rmpg-600">{safeDateTimeStr(v.received_at)}</span>
             </div>
-            {v.transcript && <div className="text-[10px] text-rmpg-300 pl-5 line-clamp-2">{v.transcript}</div>}
+            {v.transcript && (
+              <button type="button" className={`text-left text-[10px] text-rmpg-300 pl-5 ${expanded === v.id ? '' : 'line-clamp-2'}`} onClick={() => setExpanded(expanded === v.id ? null : v.id)}>
+                {v.transcript}
+              </button>
+            )}
+            {v.notes && <div className="text-[10px] text-rmpg-500 pl-5">Note: {v.notes}</div>}
             <div className="flex flex-wrap gap-1 pl-5">
               <IconAction label="Play" onClick={() => play(v.id).catch((e) => addToast(String(e), 'error'))}>
                 {playing === v.id ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
               </IconAction>
               <IconAction label="Download recording" onClick={() => downloadAudio('voicemail', v.id).catch((e) => addToast(String(e), 'error'))}><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
-              <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><Hash className="w-3 h-3" /></IconAction>
+              <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
+              <IconAction label="Copy transcript" onClick={() => copyToClipboard(v.transcript || '').then((ok) => addToast(ok ? 'Copied transcript' : 'Nothing to copy', ok ? 'success' : 'warning'))}><Copy className="w-3 h-3" /></IconAction>
               <IconAction label={v.starred ? 'Unstar' : 'Star'} onClick={() => patch(v.id, { starred: !v.starred })}><Star className={`w-3 h-3 ${v.starred ? 'text-brand-400' : ''}`} /></IconAction>
               <IconAction label="Mark heard" onClick={() => patch(v.id, { is_read: !v.is_read })}><CheckCheck className="w-3 h-3" /></IconAction>
               <IconAction label="Return call" onClick={() => { window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(v.from_number || '') } })); addToast('Returning call', 'success'); }}><Phone className="w-3 h-3" /></IconAction>
               <IconAction label="Archive" onClick={() => patch(v.id, { archived: !v.archived })}><Archive className="w-3 h-3" /></IconAction>
               <IconAction label="Assign to me" onClick={() => patch(v.id, { assigned_name: exportedBy })}><UserPlus className="w-3 h-3" /></IconAction>
+              {v.call_id ? (
+                <IconAction label="Open CFS" onClick={() => navigate(`/dispatch?call_id=${v.call_id}`)}><Link2 className="w-3 h-3" /></IconAction>
+              ) : null}
             </div>
           </div>
         ))}
@@ -469,30 +589,52 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
 }
 
 function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: AddToast }) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<DialerCall[]>([]);
   const [q, setQ] = useState('');
   const [direction, setDirection] = useState('all');
   const [missed, setMissed] = useState(false);
+  const [starredOnly, setStarredOnly] = useState(false);
   const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [summary, setSummary] = useState<{ total?: number; inbound?: number; outbound?: number; missed?: number; recorded?: number; avg_duration?: number | null } | null>(null);
   const [playing, setPlaying] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [uploadId, setUploadId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState<Record<number, string>>({});
+  const [tagDraft, setTagDraft] = useState<Record<number, string>>({});
 
-  const load = useCallback(async () => {
+  const listParams = useCallback(() => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (direction !== 'all') params.set('direction', direction);
     if (missed) params.set('missed', '1');
+    if (starredOnly) params.set('starred', '1');
     if (from) params.set('from', from);
-    const [list, sum] = await Promise.all([
-      apiFetch<{ data: DialerCall[] }>(`/dialer-connect/calls?${params}`),
-      apiFetch<{ data: typeof summary }>('/dialer-connect/calls/summary'),
-    ]);
-    setRows(list.data || []);
-    setSummary(sum.data);
-  }, [q, direction, missed, from]);
+    if (to) params.set('to', to);
+    return params;
+  }, [q, direction, missed, starredOnly, from, to]);
+
+  const load = useCallback(async () => {
+    try {
+      setLoadError(null);
+      const params = listParams();
+      const sumParams = new URLSearchParams();
+      if (from) sumParams.set('from', from);
+      if (to) sumParams.set('to', to);
+      const [list, sum] = await Promise.all([
+        apiFetch<{ data: DialerCall[] }>(`/dialer-connect/calls?${params}`),
+        apiFetch<{ data: typeof summary }>(`/dialer-connect/calls/summary?${sumParams}`),
+      ]);
+      setRows(list.data || []);
+      setSummary(sum.data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load call history');
+    }
+  }, [listParams, from, to]);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
   const play = async (id: number) => {
@@ -506,11 +648,8 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
   };
 
   const exportCsv = async () => {
-    const blob = await apiFetchBlob('/dialer-connect/calls/export.csv');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'dialer-call-history.csv'; a.click();
-    URL.revokeObjectURL(url);
+    const blob = await apiFetchBlob(`/dialer-connect/calls/export.csv?${listParams()}`);
+    saveBlob(blob, 'dialer-call-history.csv');
   };
 
   const clusters = useMemo(() => {
@@ -525,6 +664,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
   return (
     <div className="h-full flex flex-col">
       <FunctionStrip items={CALL_HISTORY_FUNCTIONS} />
+      {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1.5 items-center shrink-0">
         <Search className="w-3 h-3 text-rmpg-500" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number, name, transcript" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
@@ -535,7 +675,9 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
           <option value="internal">Internal</option>
         </select>
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={missed} onChange={(e) => setMissed(e.target.checked)} /> Missed</label>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
+        <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={starredOnly} onChange={(e) => setStarredOnly(e.target.checked)} /> Starred</label>
+        <input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
+        <input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
         <button type="button" onClick={() => exportCsv().catch((e) => addToast(String(e), 'error'))} className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300">CSV</button>
         <button type="button" onClick={() => load()} className="ml-auto text-rmpg-400" aria-label="Refresh history"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
@@ -547,7 +689,11 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
           <span>missed {summary.missed ?? 0}</span>
           <span>recorded {summary.recorded ?? 0}</span>
           <span>avg {formatDuration(summary.avg_duration)}</span>
-          {clusters[0] && <span className="ml-auto">dup {displayPhone(clusters[0][0])} ×{clusters[0][1]}</span>}
+          {clusters[0] && (
+            <button type="button" className="ml-auto hover:text-rmpg-200" onClick={() => setQ(clusters[0][0])}>
+              dup {displayPhone(clusters[0][0])} ×{clusters[0][1]}
+            </button>
+          )}
         </div>
       )}
       <input
@@ -568,7 +714,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
         }}
       />
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-2 space-y-1">
-        {rows.length === 0 && <div className="text-[11px] text-rmpg-500 text-center py-8">No Dial Connect calls in this filter.</div>}
+        {rows.length === 0 && !loadError && <div className="text-[11px] text-rmpg-500 text-center py-8">No Dial Connect calls in this filter.</div>}
         {rows.map((c) => (
           <div key={c.id} className="bg-surface-raised/40 border border-rmpg-800 px-2 py-1.5">
             <div className="flex items-center gap-1.5">
@@ -577,19 +723,54 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
               <span className="text-[10px] text-rmpg-400 truncate flex-1">{c.from_name || c.to_name || c.agent_name || ''}</span>
               <span className="text-[8px] font-bold uppercase text-rmpg-400">{c.status}</span>
               <span className="text-[9px] font-mono text-rmpg-500">{formatDuration(c.duration_seconds)}</span>
+              <span className="text-[9px] font-mono text-rmpg-600">{safeDateTimeStr(c.started_at)}</span>
             </div>
-            {c.transcript && <div className="text-[10px] text-rmpg-300 pl-5 line-clamp-2 mt-0.5">{c.transcript}</div>}
+            {c.transcript && (
+              <button type="button" className={`text-left text-[10px] text-rmpg-300 pl-5 mt-0.5 ${expanded === c.id ? '' : 'line-clamp-2'}`} onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
+                {c.transcript}
+              </button>
+            )}
+            {expanded === c.id && (
+              <div className="pl-5 mt-1 flex flex-wrap gap-1">
+                <input
+                  value={noteDraft[c.id] ?? c.notes ?? ''}
+                  onChange={(e) => setNoteDraft((p) => ({ ...p, [c.id]: e.target.value }))}
+                  placeholder="Notes"
+                  className="flex-1 min-w-[12rem] bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[10px] text-rmpg-100"
+                />
+                <input
+                  value={tagDraft[c.id] ?? parseTags(c.tags)}
+                  onChange={(e) => setTagDraft((p) => ({ ...p, [c.id]: e.target.value }))}
+                  placeholder="Tags"
+                  className="w-36 bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[10px] text-rmpg-100"
+                />
+                <button
+                  type="button"
+                  className="text-[9px] uppercase border border-border-subtle px-1.5 text-rmpg-300"
+                  onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                      notes: noteDraft[c.id] ?? c.notes,
+                      tags: tagDraft[c.id] ?? parseTags(c.tags),
+                    }),
+                  }).then(() => { addToast('Saved notes', 'success'); load(); })}
+                >Save</button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-1 pl-5 mt-1">
               <IconAction label="Play recording" onClick={() => play(c.id).catch((e) => addToast(String(e), 'error'))}>
-                {playing === c.id ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                {playing === c.id ? <Pause className="w-3 h-3" /> : <Play className={`w-3 h-3 ${hasAudio(c) ? '' : 'opacity-40'}`} />}
               </IconAction>
               <IconAction label="Download recording" onClick={() => downloadAudio('call', c.id).catch((e) => addToast(String(e), 'error'))}><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
-              <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><Hash className="w-3 h-3" /></IconAction>
+              <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
+              <IconAction label="Copy transcript" onClick={() => copyToClipboard(c.transcript || counterparty(c)).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}><Copy className="w-3 h-3" /></IconAction>
               <IconAction label="Redial" onClick={() => window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(counterparty(c)) } }))}><PhoneCall className="w-3 h-3" /></IconAction>
-              <IconAction label="Copy number" onClick={() => navigator.clipboard.writeText(counterparty(c)).then(() => addToast('Copied', 'success'))}><Copy className="w-3 h-3" /></IconAction>
               <IconAction label="Star" onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, { method: 'PATCH', body: JSON.stringify({ starred: !c.starred }) }).then(load)}><Star className={`w-3 h-3 ${c.starred ? 'text-brand-400' : ''}`} /></IconAction>
               <IconAction label="Attach recording" onClick={() => { setUploadId(c.id); fileRef.current?.click(); }}><Link2 className="w-3 h-3" /></IconAction>
+              {c.call_id ? (
+                <IconAction label="Open CFS" onClick={() => navigate(`/dispatch?call_id=${c.call_id}`)}><PhoneIncoming className="w-3 h-3" /></IconAction>
+              ) : null}
             </div>
           </div>
         ))}

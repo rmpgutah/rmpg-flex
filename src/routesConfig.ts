@@ -133,7 +133,6 @@ import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
 import deepResearch from './routes/deepResearch';
-import dialConnectRecordings from './routes/dialConnectRecordings';
 import crisisResponse from './routes/crisisResponse';
 import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
@@ -492,8 +491,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/crm', router: crm, auth: 'required',
     note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
   { prefix: '/api/deep-research', router: deepResearch, auth: 'required' },
-  { prefix: '/api/dial-connect-recordings', router: dialConnectRecordings, auth: 'required',
-    note: 'Dial Connect call recordings + transcripts: JWT list/detail/audio download and CAD iframe ingest. Machine ingest is POST /api/integrations/dial-connect-recordings.' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',

@@ -10,9 +10,9 @@ describe('Dial Connect client catalogs', () => {
     expect(counts.dialer).toBeGreaterThanOrEqual(10);
     expect(counts.voicemail).toBeGreaterThanOrEqual(10);
     expect(counts.history).toBeGreaterThanOrEqual(10);
-    expect(DIALER_FUNCTIONS.map((f) => f.id)).toContain('record');
-    expect(VOICEMAIL_FUNCTIONS.map((f) => f.id)).toContain('print_pdf');
-    expect(CALL_HISTORY_FUNCTIONS.map((f) => f.id)).toContain('download_audio');
+    expect(DIALER_FUNCTIONS.map((f) => f.id)).toContain('hangup');
+    expect(VOICEMAIL_FUNCTIONS.map((f) => f.id)).toContain('csv');
+    expect(CALL_HISTORY_FUNCTIONS.map((f) => f.id)).toContain('starred');
   });
   it('formats phones, durations, and export names', () => {
     expect(displayPhone('+18015550100')).toBe('(801) 555-0100');

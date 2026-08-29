@@ -10,6 +10,7 @@ import {
   parseTagList,
   serializeTags,
   callsToCsv,
+  voicemailsToCsv,
   timingSafeEqual,
   assertMinFunctions,
   DIALER_FUNCTIONS,
@@ -89,6 +90,11 @@ describe('formatDuration / tags / csv / hmac compare', () => {
   it('csv-escapes quotes', () => {
     const csv = callsToCsv([{ id: 1, notes: 'said "hello", then hung up' }]);
     expect(csv).toContain('"said ""hello"", then hung up"');
+  });
+  it('exports voicemail without extra identity columns', () => {
+    const csv = voicemailsToCsv([{ id: 9, from_number: '+18015550100', transcript: 'call me', urgency: 'urgent' }]);
+    expect(csv).toContain('call me');
+    expect(csv.split('\r\n')[0]).toContain('from_number');
   });
   it('compares secrets in constant time', () => {
     expect(timingSafeEqual('abc', 'abc')).toBe(true);

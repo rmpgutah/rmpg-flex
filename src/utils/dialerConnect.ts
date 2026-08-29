@@ -13,6 +13,7 @@ export const DIALER_FUNCTIONS = [
   { id: 'transfer', label: 'Blind / Warm Transfer' },
   { id: 'conference', label: 'Add Conference Party' },
   { id: 'record', label: 'Start / Stop Recording' },
+  { id: 'hangup', label: 'Hang Up / Mute' },
   { id: 'lookup', label: 'Caller ID Lookup' },
   { id: 'link_cfs', label: 'Link Call to CFS' },
   { id: 'disposition', label: 'Call Disposition' },
@@ -32,6 +33,8 @@ export const VOICEMAIL_FUNCTIONS = [
   { id: 'search', label: 'Transcript Search' },
   { id: 'urgency', label: 'Urgency Classification' },
   { id: 'bulk_heard', label: 'Bulk Mark Heard' },
+  { id: 'csv', label: 'CSV Export' },
+  { id: 'notes', label: 'Mailbox Notes' },
 ] as const;
 
 export const CALL_HISTORY_FUNCTIONS = [
@@ -47,6 +50,8 @@ export const CALL_HISTORY_FUNCTIONS = [
   { id: 'stats', label: 'Duration Stats' },
   { id: 'duplicates', label: 'Duplicate Clusters' },
   { id: 'tags', label: 'Tags & Notes' },
+  { id: 'starred', label: 'Starred Filter' },
+  { id: 'link_cfs', label: 'Open Linked CFS' },
 ] as const;
 
 export const PRESENCE_STATUSES = ['available', 'busy', 'dnd', 'wrapup', 'offline'] as const;
@@ -203,6 +208,19 @@ export function callsToCsv(rows: Array<Record<string, unknown>>): string {
     'id', 'call_sid', 'direction', 'status', 'from_number', 'to_number',
     'from_name', 'to_name', 'agent_name', 'started_at', 'ended_at',
     'duration_seconds', 'disposition', 'starred', 'call_id', 'notes',
+  ];
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((h) => csvEscape(row[h])).join(','));
+  }
+  return lines.join('\r\n');
+}
+
+export function voicemailsToCsv(rows: Array<Record<string, unknown>>): string {
+  const headers = [
+    'id', 'call_sid', 'from_number', 'from_name', 'to_number', 'mailbox',
+    'duration_seconds', 'urgency', 'is_read', 'starred', 'archived',
+    'assigned_name', 'received_at', 'call_id', 'notes', 'transcript',
   ];
   const lines = [headers.join(',')];
   for (const row of rows) {
