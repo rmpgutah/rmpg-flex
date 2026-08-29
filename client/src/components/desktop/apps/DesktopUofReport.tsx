@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, CheckCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 type Injury = 'none' | 'minor' | 'serious' | 'death';
 type OfficerInjury = 'none' | 'minor' | 'serious';
@@ -33,15 +34,33 @@ interface Props {
 }
 
 const ALLOWED_ROLES = ['officer', 'supervisor', 'admin', 'manager'];
+const UOF_DRAFT_KEY = 'rmpg_uof_ops_draft';
+
+function loadUofOpsDraft(): { callId?: string; location?: string; forceTypes?: string[]; officerAction?: string } {
+  try {
+    const raw = localStorage.getItem(UOF_DRAFT_KEY);
+    if (!raw) return {};
+    const p = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      callId: typeof p.callId === 'string' ? p.callId : undefined,
+      location: typeof p.location === 'string' ? p.location : undefined,
+      forceTypes: Array.isArray(p.forceTypes) ? p.forceTypes.filter((x): x is string => typeof x === 'string') : undefined,
+      officerAction: typeof p.officerAction === 'string' ? p.officerAction : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
 
 export default function DesktopUofReport({ callId: propCallId, onClose }: Props) {
   const { user } = useAuth();
   const canAccess = user && ALLOWED_ROLES.includes(user.role);
 
   // Section 1
-  const [callId, setCallId] = useState(propCallId ?? '');
-  const [incidentDateTime, setIncidentDateTime] = useState(() => new Date().toISOString().slice(0, 16));
-  const [location, setLocation] = useState('');
+  const opsDraft = loadUofOpsDraft();
+  const [callId, setCallId] = useState(propCallId ?? opsDraft.callId ?? '');
+  const [incidentDateTime, setIncidentDateTime] = useState(() => new Date().toISOString().slice(0, 16)); // new-date-ok — local datetime-local default
+  const [location, setLocation] = useState(opsDraft.location ?? '');
 
   // Section 2
   const [subjectName, setSubjectName] = useState('');
@@ -51,8 +70,8 @@ export default function DesktopUofReport({ callId: propCallId, onClose }: Props)
   const [subjectAge, setSubjectAge] = useState('');
 
   // Section 3
-  const [forceTypes, setForceTypes] = useState<Set<string>>(new Set());
-  const [officerAction, setOfficerAction] = useState('');
+  const [forceTypes, setForceTypes] = useState<Set<string>>(() => new Set(opsDraft.forceTypes ?? []));
+  const [officerAction, setOfficerAction] = useState(opsDraft.officerAction ?? '');
 
   // Section 4
   const [subjectInjury, setSubjectInjury] = useState<Injury>('none');
@@ -67,6 +86,14 @@ export default function DesktopUofReport({ callId: propCallId, onClose }: Props)
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(UOF_DRAFT_KEY, JSON.stringify({
+        callId, location, forceTypes: [...forceTypes], officerAction,
+      }));
+    } catch { /* quota */ }
+  }, [callId, location, forceTypes, officerAction]);
 
   const toggleForce = (id: string) => {
     setForceTypes(prev => {
@@ -171,7 +198,15 @@ export default function DesktopUofReport({ callId: propCallId, onClose }: Props)
           <div style={{ ...row3, marginBottom: 10 }}>
             <div style={fieldGroup}>
               <label style={labelStyle}>Call ID</label>
-              <input type="text" value={callId} onChange={e => setCallId(e.target.value)} style={inputStyle} placeholder="Optional" />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input type="text" value={callId} onChange={e => setCallId(e.target.value)} style={inputStyle} placeholder="Optional" />
+                <button
+                  type="button"
+                  disabled={!callId.trim()}
+                  onClick={() => void copyToClipboard(callId)}
+                  style={{ fontSize: 10, padding: '4px 8px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+                >Copy</button>
+              </div>
             </div>
             <div style={fieldGroup}>
               <label style={labelStyle}>Date / Time</label>

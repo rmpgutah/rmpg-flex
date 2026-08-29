@@ -11,6 +11,7 @@ import { Brain, Heart, PhoneCall, Users, Plus, Pencil, Trash2 } from 'lucide-rea
 
 import ConfirmDialog from '../components/ConfirmDialog';
 import { toDisplayLabel } from '../utils/formatters';
+import { crisisIncidentsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface CrisisIncident {
   id: number;
@@ -56,6 +57,8 @@ export default function CrisisResponsePage() {
   });
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CrisisIncident | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
@@ -76,6 +79,7 @@ export default function CrisisResponsePage() {
   );
 
   const fetchData = useCallback(async () => {
+    setLoadState('loading');
     try {
       const [i, s] = await Promise.all([
         apiFetch<CrisisIncident[]>('/crisis/incidents').catch(() => [] as CrisisIncident[]),
@@ -124,18 +128,20 @@ export default function CrisisResponsePage() {
   // ── Filtered view ─────────────────────────────────────────────
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return incidents;
-    return incidents.filter(
-      (r) =>
+    return incidents.filter((r) => {
+      if (typeFilter !== 'ALL' && r.incident_type !== typeFilter) return false;
+      if (!needle) return true;
+      return (
         r.incident_number?.toLowerCase().includes(needle) ||
         r.subject_name?.toLowerCase().includes(needle) ||
         r.location?.toLowerCase().includes(needle) ||
         r.incident_type?.toLowerCase().includes(needle) ||
-        r.disposition?.toLowerCase().includes(needle),
-    );
-  }, [incidents, search]);
+        r.disposition?.toLowerCase().includes(needle)
+      );
+    });
+  }, [incidents, search, typeFilter]);
 
-  const hasSearch = search.trim().length > 0;
+  const hasSearch = search.trim().length > 0 || typeFilter !== 'ALL';
 
   const openNew = useCallback(() => {
     setEditingRecord(null);
@@ -208,11 +214,16 @@ export default function CrisisResponsePage() {
       if (e.key === 'Escape') {
         if (deleteTarget) { setDeleteTarget(null); return; }
         if (formOpen) { setFormOpen(false); setEditingRecord(null); return; }
-        if (hasSearch) { setSearch(''); return; }
+        if (hasSearch) { setSearch(''); setTypeFilter('ALL'); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if ((e.key === 'n' || e.key === 'N') && canCreate) {
         e.preventDefault();
         openNew();
@@ -292,6 +303,13 @@ export default function CrisisResponsePage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="CRISIS RESPONSE" icon={Brain}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('crisis-incidents.csv', crisisIncidentsToCsv(filtered))}
+        >CSV</button>
         {canCreate && (
           <button
             onClick={openNew}
@@ -311,20 +329,40 @@ export default function CrisisResponsePage() {
         <StatsCard label="TEAMS AVAILABLE" value={String(stats.teamsAvailable)} icon={Brain} />
       </div>
 
+      {loadState === 'error' && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load crisis incidents.</span>
+          <button type="button" className="toolbar-btn" onClick={() => void fetchData()}>Retry</button>
+        </div>
+      )}
+
       {/* Search bar */}
       <div className="flex items-center gap-2">
         <input
+          ref={searchRef}
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search incidents..."
+          placeholder="Search incidents… (/)"
           className="input-dark text-xs"
           style={{ width: 220 }}
           aria-label="Search crisis incidents"
         />
+        <select
+          aria-label="Filter by incident type"
+          className="select-dark text-xs h-7"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option value="ALL">All types</option>
+          <option value="mental_health">Mental health</option>
+          <option value="suicide">Suicide</option>
+          <option value="substance">Substance</option>
+          <option value="other">Other</option>
+        </select>
         {hasSearch && (
           <button
-            onClick={() => setSearch('')}
+            onClick={() => { setSearch(''); setTypeFilter('ALL'); }}
             className="toolbar-btn text-xs px-2"
             style={{ height: 28 }}
           >

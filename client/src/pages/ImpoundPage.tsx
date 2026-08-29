@@ -10,6 +10,8 @@ import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import { impoundsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 // ── Types ────────────────────────────────────────────────────────
 interface Impound {
@@ -113,6 +115,7 @@ export default function ImpoundPage() {
 
   const [rows, setRows] = useState<Impound[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [stats, setStats] = useState<Record<string, number>>({});
   const [tab, setTab] = useState('');
   const [search, setSearch] = useState('');
@@ -127,6 +130,7 @@ export default function ImpoundPage() {
   // ── Fetch ──
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = tab ? `?status=${tab}` : '';
       const [list, statRows] = await Promise.all([
@@ -138,6 +142,7 @@ export default function ImpoundPage() {
       statRows.forEach((r) => { m[r.status] = r.count; });
       setStats(m);
     } catch (err: any) {
+      setLoadError(true);
       addToast(err?.message || 'Failed to load impounds', 'error');
     } finally {
       setLoading(false);
@@ -303,7 +308,20 @@ export default function ImpoundPage() {
             </IconButton>
           )}
         </div>
+        <button
+          type="button"
+          className="px-2 py-1 text-[11px] border border-border-default"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('impounds.csv', impoundsToCsv(filtered))}
+        >CSV</button>
       </div>
+
+      {loadError && !loading && (
+        <div className="text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load impound records.</span>
+          <button type="button" className="px-2 py-1 border border-border-default" onClick={() => void fetchData()}>Retry</button>
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -311,7 +329,7 @@ export default function ImpoundPage() {
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Car} title="No impound records" description="Click New Impound to add a record." action={{ label: 'New Impound', onClick: openNew }} />
+        <EmptyState icon={Car} title={search.trim() ? 'No matching impounds' : 'No impound records'} description={search.trim() ? 'Clear the search or try a different plate/VIN.' : 'Click New Impound to add a record.'} action={search.trim() ? undefined : { label: 'New Impound', onClick: openNew }} />
       ) : (
         <div className="overflow-x-auto border border-border-default" style={{ borderRadius: 2 }}>
           <table className="w-full text-left">
@@ -332,7 +350,12 @@ export default function ImpoundPage() {
                   <td className="px-2 py-[2px] text-[11px] text-white font-mono">{r.impound_date?.slice(0, 10) || '—'}</td>
                   <td className="px-2 py-[2px] text-[11px] text-white">{ymm(r)}</td>
                   <td className="px-2 py-[2px] text-[11px] text-rmpg-400">{r.vehicle_color || '—'}</td>
-                  <td className="px-2 py-[2px] text-[11px] text-white font-mono">{r.license_plate || '—'}{r.license_state ? ` (${r.license_state})` : ''}</td>
+                  <td className="px-2 py-[2px] text-[11px] text-white font-mono">
+                    {r.license_plate || '—'}{r.license_state ? ` (${r.license_state})` : ''}
+                    {r.license_plate && (
+                      <button type="button" className="ml-1 text-[9px] border border-border-default px-1" onClick={(e) => { e.stopPropagation(); void copyToClipboard(r.license_plate ?? ''); }}>Copy</button>
+                    )}
+                  </td>
                   <td className="px-2 py-[2px] text-[11px] text-rmpg-400">{r.tow_company || '—'}</td>
                   <td className="px-2 py-[2px] text-[11px] text-rmpg-400">{r.lot_space || '—'}</td>
                   <td className="px-2 py-[2px] text-[11px] text-white font-mono">{r.days_stored ?? daysSince(r.impound_date)}</td>

@@ -2792,7 +2792,7 @@ si.get('/:id/skip-trace', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
-  const data = rows.map((row) => {
+  const data = rows.map((row: Record<string, unknown>) => {
     let addresses_found: unknown[] = [];
     const raw = row.addresses_found_json;
     if (typeof raw === 'string' && raw.trim()) {

@@ -11,6 +11,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Pill, TrendingUp, Scale, Shield, DollarSign, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 import { formatEnumValue } from '../utils/formatters';
+import { narcCasesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface NarcCase {
   id: number;
@@ -63,6 +64,8 @@ export default function NarcoticsPage() {
   });
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<NarcCase | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
@@ -80,12 +83,10 @@ export default function NarcoticsPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [c, s] = await Promise.all([
-        apiFetch<NarcCase[]>('/narcotics/cases').catch(() => [] as NarcCase[]),
-        apiFetch<NarcStats>('/narcotics/stats').catch(
-          () => ({ totalInvestigations: 0, totalSeizures: 0, totalStreetValue: 0, activeCIs: 0 } as NarcStats),
-        ),
-      ]);
+      const c = await apiFetch<NarcCase[]>('/narcotics/cases');
+      const s = await apiFetch<NarcStats>('/narcotics/stats').catch(
+        () => ({ totalInvestigations: 0, totalSeizures: 0, totalStreetValue: 0, activeCIs: 0 } as NarcStats),
+      );
       setCases(c);
       setStats(s);
       setLoadState('ok');
@@ -157,6 +158,11 @@ export default function NarcoticsPage() {
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if ((e.key === 'n' || e.key === 'N') && canManage) {
         e.preventDefault();
         openNew();
@@ -227,16 +233,17 @@ export default function NarcoticsPage() {
   // -- Filtered view --
   const needle = search.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!needle) return cases;
     return cases.filter((c) => {
-      const blob = [c.case_number, c.case_type, c.subject_name, c.substance, c.location, c.status, c.priority]
+      if (statusFilter !== 'ALL' && c.status !== statusFilter) return false;
+      if (!needle) return true;
+      const blob = [c.case_number, c.case_type, c.substance, c.location, c.status, c.priority]
         .join(' ')
         .toLowerCase();
       return blob.includes(needle);
     });
-  }, [cases, needle]);
+  }, [cases, needle, statusFilter]);
 
-  const hasFilter = !!needle;
+  const hasFilter = !!needle || statusFilter !== 'ALL';
 
   const columns = [
     { key: 'case_number', label: 'Case #' },
@@ -291,13 +298,14 @@ export default function NarcoticsPage() {
   const emptyMessage =
     loadState === 'loading' ? 'Loading…'
     : loadState === 'error'  ? 'Failed to load narcotics cases'
-    : hasFilter              ? `No cases match “${search.trim()}”`
+    : hasFilter              ? 'No cases match the current filter'
     :                          'No narcotics cases on file';
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="NARCOTICS & VICE" icon={Pill}>
         <input
+          ref={searchRef}
           type="search"
           placeholder="Search…"
           value={search}
@@ -305,6 +313,24 @@ export default function NarcoticsPage() {
           className="input-dark text-xs h-[28px] w-44"
           aria-label="Search narcotics cases"
         />
+        <select
+          aria-label="Filter by status"
+          className="select-dark text-xs h-7"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="ALL">All statuses</option>
+          <option value="open">Open</option>
+          <option value="active">Active</option>
+          <option value="closed">Closed</option>
+        </select>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('narcotics-cases.csv', narcCasesToCsv(filtered))}
+        >CSV</button>
         {canManage && (
           <button
             onClick={openNew}
@@ -324,6 +350,13 @@ export default function NarcoticsPage() {
         <StatsCard label="ACTIVE CIs" value={String(stats.activeCIs)} icon={TrendingUp} />
       </div>
 
+      {loadState === 'error' && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load narcotics cases.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoadState('loading'); void fetchData(); }}>Retry</button>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={filtered}
@@ -336,6 +369,7 @@ export default function NarcoticsPage() {
             m.separator(),
           ] : [m.separator()]),
           m.copyId(r.id),
+          m.copy('Copy case #', r.case_number),
           ...(canManage ? [
             m.action('Delete', () => setDeleteTarget(r), { danger: true, icon: <Trash2 size={12} /> }),
           ] : []),

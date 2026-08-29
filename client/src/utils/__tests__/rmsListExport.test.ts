@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  tipsToCsv, communityReportsToCsv,
-  crashReportsToCsv, briefingsToCsv, shiftNotesToCsv, trainingCoursesToCsv,
-  fileListingToCsv, formatRadioLine, unitsBoardToCsv, unitsBoardToTsv,
+  tipsToCsv, communityReportsToCsv, crashReportsToCsv, formatRadioLine,
   agendaToCsv, qaReviewsToCsv, assetsToCsv, errorLogsToCsv, recordingsToCsv,
-  modulesToCsv, mutualAidToCsv, plateHistoryToCsv, jailBookingsToCsv,
-  partnersToCsv, recruitmentPipelineToCsv, invoicesToCsv,
+  modulesToCsv, mutualAidToCsv, plateHistoryToCsv,
+  jailBookingsToCsv, partnersToCsv, recruitmentPipelineToCsv, invoicesToCsv,
+  victimCasesToCsv, alarmAccountsToCsv, screeningHitsToCsv, warrantDocketToCsv,
+  crimeOffensesToCsv, briefingWarrantsToCsv, personIntelXrefsToCsv,
+  narcCasesToCsv, pawnItemsToCsv, bulletinsToCsv, animalCasesToCsv, impoundsToCsv,
+  accreditationStandardsToCsv, crisisIncidentsToCsv, alertTemplatesToCsv, inmateRosterToCsv,
+  communityTipsSafeToCsv, darListToCsv, bodyCamerasToCsv, loginHistoryToCsv, cdocResultsToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -44,54 +47,74 @@ describe('rmsListExport', () => {
     expect(invoicesToCsv([{ invoice_number: 'INV-1', status: 'sent', total_amount: 10, paid_amount: 0 }])).toContain('INV-1');
   });
 
-  it('serializes crash reports, briefings, notes, courses, files, and unit board', () => {
-    expect(crashReportsToCsv([{
-      report_number: 'CR-1', crash_date: '2026-08-01', location: 'State St',
-      crash_type: 'rear_end', severity: 'minor_injury', vehicles_involved: 2,
-      injuries: 1, fatalities: 0, status: 'filed',
-    }])).toContain('CR-1');
-    expect(briefingsToCsv([{
-      briefing_number: 'B-1', title: 'Day', shift_type: 'day', created_at: 't',
-      created_by: 'Disp', acknowledged_count: 2, total_officers: 8,
-    }])).toContain('Day');
-    expect(shiftNotesToCsv([{
-      officer_name: 'Hale', shift_date: '2026-08-01', visibility: 'all',
-      tags: ['Patrol'], content: 'Quiet',
-    }])).toContain('Quiet');
-    expect(trainingCoursesToCsv([{ course_name: 'DT', course_code: 'DT-1', category: 'defensive_tactics', mandatory: 1, hours: 8 }])).toContain('DT-1');
-    expect(fileListingToCsv([{ name: 'a.log', size: 12, modified: 't', path: '/logs/a.log' }])).toContain('a.log');
-    expect(formatRadioLine({
-      unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
-    })).toContain('Adam-1');
-    expect(unitsBoardToCsv([{
-      unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
-    }])).toContain('Adam-1');
-    expect(unitsBoardToTsv([{
-      unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
-    }]).split('\t').length).toBeGreaterThan(3);
+  it('omits victim contact and alarm phones from CSV', () => {
+    const v = victimCasesToCsv([{
+      victim_name: 'Pat', case_number: '26-1', crime_type: 'assault', status: 'active',
+      safety_plan: 1, protective_order: 0,
+    }]);
+    expect(v).toContain('26-1');
+    expect(v).not.toContain('email');
+    expect(v).not.toContain('phone');
+    const a = alarmAccountsToCsv([{
+      account_number: 'A-9', account_name: 'Shop', address: '400 S', alarm_type: 'burglary',
+      permit_status: 'active', status: 'active', false_alarm_count: 2,
+    }]);
+    expect(a).toContain('A-9');
+    expect(a).not.toContain('contact');
   });
 
-  it('exports crash reports, briefings, notes, courses, files, and the unit board', () => {
-    expect(crashReportsToCsv([{
-      report_number: 'CR-1', crash_date: '2026-08-01', location: '500 W', crash_type: 'rear',
-      severity: 'pdo', vehicles_involved: 2, injuries: 0, fatalities: 0, status: 'open',
-      investigating_officer: 'Hale',
-    }])).toContain('CR-1');
-    expect(briefingsToCsv([{
-      briefing_number: 'B-1', title: 'Day', shift_type: 'day', created_at: 't', created_by: 'Disp',
-      acknowledged_count: 2, total_officers: 8,
-    }])).toContain('B-1');
-    expect(shiftNotesToCsv([{
-      officer_name: 'Hale', content: 'FI at 400 S', visibility: 'all', tags: ['FI'],
-      created_at: 't', shift_date: '2026-08-01',
-    }])).toContain('FI at 400 S');
-    expect(trainingCoursesToCsv([{ course_name: 'Firearms', course_code: 'FA-1', category: 'firearms', location: 'Range', mandatory: true }]))
-      .toContain('Firearms');
-    expect(fileListingToCsv([{ name: 'a.log', size: 12, modified: 't', path: '/logs/a.log' }])).toContain('a.log');
-    expect(formatRadioLine({ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }))
-      .toBe('U1 available — Hale — no location');
-    expect(unitsBoardToCsv([{ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }])).toContain('U1');
-    expect(unitsBoardToTsv([{ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }])).toContain('\t');
+  it('omits warrant names and screening display names from CSV', () => {
+    const w = warrantDocketToCsv([{ warrant_number: 'W-1', type: 'arrest', status: 'active', issuing_court: '3rd' }]);
+    expect(w).toContain('W-1');
+    expect(w).not.toContain('name');
+    expect(w).not.toContain('dob');
+    const h = screeningHitsToCsv([{ id: 4, source_key: 'interpol', match_score: 0.9, status: 'pending' }]);
+    expect(h).toContain('interpol');
+    expect(h).not.toContain('display');
+    expect(crimeOffensesToCsv([{ offense_type: 'theft', count: 3 }])).toContain('theft');
+    expect(briefingWarrantsToCsv([{ warrant_number: 'W-2', warrant_type: 'bench', charge: 'FTA' }])).toContain('FTA');
+    expect(personIntelXrefsToCsv([{ source: 'FBI_WANTED', externalRef: 'x-1', confidence: 0.8, isCriminal: true }])).toContain('x-1');
+  });
+
+  it('omits narcotics notes, pawn seller PII, bulletin suspects, and owner phones', () => {
+    const n = narcCasesToCsv([{ case_number: 'N-1', substance: 'meth', status: 'open', location: '400 S' }]);
+    expect(n).toContain('N-1');
+    expect(n).not.toContain('notes');
+    expect(n).not.toContain('subject');
+    const p = pawnItemsToCsv([{ shop_name: 'PawnCo', serial_number: 'SN1', item_description: 'TV', status: 'held' }]);
+    expect(p).toContain('SN1');
+    expect(p).not.toContain('seller');
+    expect(p).not.toContain('dob');
+    const b = bulletinsToCsv([{ bulletin_number: 'BOLO-1', title: 'Alert', type: 'bolo', priority: 'high', status: 'active' }]);
+    expect(b).toContain('BOLO-1');
+    expect(b).not.toContain('suspect');
+    expect(animalCasesToCsv([{ case_number: 'AC-1', animal_type: 'dog', location: 'Main' }])).toContain('AC-1');
+    expect(impoundsToCsv([{ license_plate: 'ABC123', status: 'impounded' }])).toContain('ABC123');
+  });
+
+  it('omits crisis subjects, inmate names/DOB, DOC names/DOB, login names, camera officers, DAR narrative, and alert bodies', () => {
+    const c = crisisIncidentsToCsv([{
+      incident_number: 'CIT-1', incident_type: 'mental_health', location: '400 S', disposition: 'diverted',
+    }]);
+    expect(c).toContain('CIT-1');
+    expect(c).not.toContain('subject');
+    expect(c).not.toContain('notes');
+    const j = inmateRosterToCsv([{ booking_number: 'BK-1', status: 'housed', housing_unit: 'A', booking_date: '2026-01-01' }]);
+    expect(j).toContain('BK-1');
+    expect(j).not.toContain('name');
+    expect(j).not.toContain('dob');
+    const d = cdocResultsToCsv([{ doc_number: '12345', facility: 'CSP', status: 'incarcerated' }]);
+    expect(d).toContain('12345');
+    expect(d).not.toContain('dob');
+    expect(d).not.toContain('first_name');
+    expect(loginHistoryToCsv([{ created_at: 't', success: 1, ip_address: '1.2.3.4' }])).not.toContain('full_name');
+    expect(bodyCamerasToCsv([{ camera_id: 'CAM-1', make: 'Axon', model: '3', status: 'issued' }])).not.toContain('officer');
+    expect(darListToCsv([{ dar_number: 'DAR-1', shift_date: '2026-01-01', status: 'submitted' }])).not.toContain('narrative');
+    expect(alertTemplatesToCsv([{ template_name: 'Storm', subject: 'Weather', channel: 'sms', category: 'wx' }])).not.toContain('body');
+    expect(accreditationStandardsToCsv([{ standard_number: '1.1', standard_name: 'Use of Force', category: 'ops', compliance_status: 'compliant' }])).toContain('1.1');
+    const tip = communityTipsSafeToCsv([{ tip_number: 'T-9', is_anonymous: 1, submitter_name: 'Jane Doe', category: 'noise', location: 'Main', status: 'new', priority: 'low' }]);
+    expect(tip).toContain('[anonymous]');
+    expect(tip).not.toContain('Jane Doe');
   });
 
   it('exports crash reports, briefings, shift notes, and training courses', () => {

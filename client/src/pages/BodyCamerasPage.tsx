@@ -26,6 +26,7 @@ import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappe
 import DeleteRecordModal from '../components/DeleteRecordModal';
 import { isEvidenceLocked, evidenceLockReason } from '../utils/evidenceLock';
 import { parseTimestamp } from '../utils/dateUtils';
+import { bodyCamerasToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
@@ -479,6 +480,13 @@ export default function BodyCamerasPage() {
       {/* Header */}
       <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: 'var(--surface-overlay)' }}>
         <PanelTitleBar title="BODY CAMERAS" icon={Video}>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={cameras.length === 0}
+            onClick={() => downloadTextFile('body-cameras.csv', bodyCamerasToCsv(cameras))}
+            title="CSV of camera id, make, model, status — no officer names"
+          >CSV</button>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
           <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3" role="group" aria-label="Body camera statistics">
