@@ -39,6 +39,7 @@ import {
   DEFAULT_CORPORATE_WINDOWS, DEFAULT_SMALL_BUSINESS_WINDOWS,
   DEFAULT_GOVERNMENT_WINDOWS,
 } from './serveAttemptWindows';
+import { buildOutputTree, renderOutputTreeNote, inferVenueKind, VENUE_LABELS } from './serveIntakeOutputTree';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -558,6 +559,10 @@ function buildIntakeNote(input: BriefingInput, nowIso: string): string {
   const klass = input.addressClass || 'unknown';
   lines.push('**■ SERVICE PROFILE**');
   lines.push(`Location type: ${addressClassLabel(klass)}${input.addressClassConfirmed ? ' (confirmed)' : ''}`);
+  {
+    const venue = inferVenueKind(fullLocation, queueRow.recipient_name || f('recipient_business_name'), queueRow.service_instructions);
+    if (venue !== 'none') lines.push(`Venue overlay: ${VENUE_LABELS[venue]}`);
+  }
   if (isBusiness || isSpecificOfficeClass(klass)) {
     lines.push(`Target Entity: ${queueRow.recipient_name || f('recipient_business_name') || 'Unknown business'}`);
     if (agentName) lines.push(`Accept-Service Party: Registered Agent ${agentName}`);
@@ -824,7 +829,8 @@ function buildPlanNote(input: BriefingInput): string {
     const showSmall = planAuthorities.has('small_business default');
     const showGov = planAuthorities.has('government default');
     const showBusiness = planAuthorities.has('business default');
-    const noClassSignal = !showResidential && !showCorporate && !showSmall && !showGov && !showBusiness && !planAuthorities.has('site note');
+    const showVenue = planAuthorities.has('venue default');
+    const noClassSignal = !showResidential && !showCorporate && !showSmall && !showGov && !showBusiness && !showVenue && !planAuthorities.has('site note');
     if (showResidential || noClassSignal) {
       lines.push(`• Residential: ${windowList(DEFAULT_RESIDENTIAL_WINDOWS)}. Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.`);
     }
@@ -839,6 +845,9 @@ function buildPlanNote(input: BriefingInput): string {
     }
     if (showBusiness) {
       lines.push(`• Business (CONFIRMED generic business location): ${windowList(DEFAULT_BUSINESS_WINDOWS)} during posted business hours.`);
+    }
+    if (showVenue) {
+      lines.push('• Venue overlay windows (see RECOMMENDED ATTEMPT PLAN [venue default]) replace the generic office bands for this site type — warehouse receiving, school office, hotel desk, or medical admin hours.');
     }
     if (planAuthorities.has('site note')) {
       lines.push('• The windows above came from a recorded site notation for this address — see SERVICE CONSTRAINTS in the intake note.');
@@ -1036,6 +1045,20 @@ export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBrief
   // Safety note FIRST so it sits at the top of the feed the PSO scans.
   push('OFFICER SAFETY', buildSafetyNote(assessment));
   push('INTAKE', buildIntakeNote(input, nowIso));
+  const tree = buildOutputTree({
+    addressClass: input.addressClass || 'unknown',
+    addressClassConfirmed: input.addressClassConfirmed,
+    isBusiness: input.isBusiness,
+    fields: input.fields,
+    queueRow: input.queueRow,
+    agentName: input.agentName,
+    fullLocation: input.fullLocation,
+    docCount: input.docCount,
+    nowIso,
+    gateCode: input.propertyRecord?.gate_code,
+    hazardNotes: input.propertyRecord?.hazard_notes,
+  });
+  push('OPS', renderOutputTreeNote(tree));
   push('DISPATCH', buildTacticalNote(input, hint));
   push('DISPATCH', buildPlanNote(input));
   push('DISPATCH', buildAffidavitNote(input));

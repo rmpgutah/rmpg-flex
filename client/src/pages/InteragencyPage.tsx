@@ -10,6 +10,7 @@ import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Share2, Building2, FileText, ArrowRightLeft, Plus, Pencil, Trash2, Eye } from 'lucide-react';
+import { partnersToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Partner {
   id: number;
@@ -38,6 +39,9 @@ export default function InteragencyPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats>({ partners: 0, active_agreements: 0, total_exchanges: 0 });
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [editingRecord, setEditingRecord] = useState<Partner | null>(null);
   // showForm is tracked independently of editingRecord — the "New Partner" path
   // has editingRecord = null and still needs to open the form.
@@ -117,6 +121,18 @@ export default function InteragencyPage() {
     return () => document.removeEventListener('keydown', handleEsc, true);
   }, [deleteTarget, showForm]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/') return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const EMPTY_FORM: Partial<Partner> = {
     agency_name: '', agency_type: '', jurisdiction: '',
     contact_name: '', contact_email: '', contact_phone: '', data_share_level: 'none',
@@ -160,12 +176,15 @@ export default function InteragencyPage() {
   };
 
   // Client-side search filter
-  const filteredPartners = search.trim()
-    ? partners.filter((p) =>
-        [p.agency_name, p.agency_type, p.jurisdiction, p.contact_name]
-          .some((v) => v?.toLowerCase().includes(search.toLowerCase()))
-      )
-    : partners;
+  const filteredPartners = partners.filter((p) => {
+    if (typeFilter !== 'ALL' && (p.agency_type || '') !== typeFilter) return false;
+    if (statusFilter !== 'ALL' && (p.status || '') !== statusFilter) return false;
+    if (!search.trim()) return true;
+    return [p.agency_name, p.agency_type, p.jurisdiction, p.contact_name]
+      .some((v) => v?.toLowerCase().includes(search.toLowerCase()));
+  });
+  const partnerTypes = Array.from(new Set(partners.map((p) => p.agency_type).filter(Boolean))) as string[];
+  const partnerStatuses = Array.from(new Set(partners.map((p) => p.status).filter(Boolean))) as string[];
 
   const hasData = partners.length > 0;
   const hasSearchResults = filteredPartners.length > 0;
@@ -208,10 +227,18 @@ export default function InteragencyPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERAGENCY DATA SHARING" icon={Share2}>
         {error && (
-          <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">
-            {error}
+          <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3 flex items-center justify-between" role="alert">
+            <span>{error}</span>
+            <button type="button" className="toolbar-btn" style={{ height: 26 }} onClick={() => { setLoading(true); fetchData().finally(() => setLoading(false)); }}>Retry</button>
           </div>
         )}
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filteredPartners.length === 0}
+          onClick={() => downloadTextFile('interagency-partners.csv', partnersToCsv(filteredPartners))}
+        >CSV</button>
         {canEdit && (
           <button
             onClick={openNew}
@@ -231,13 +258,24 @@ export default function InteragencyPage() {
       </div>
 
       {/* Search */}
-      <input
-        className="input-dark w-full max-w-xs"
-        placeholder="Search partners…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        aria-label="Search interagency partners"
-      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          ref={searchRef}
+          className="input-dark w-full max-w-xs"
+          placeholder="Search partners… (/)"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search interagency partners"
+        />
+        <select aria-label="Filter by type" className="select-dark text-[11px]" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="ALL">All types</option>
+          {partnerTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select aria-label="Filter by status" className="select-dark text-[11px]" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="ALL">All statuses</option>
+          {partnerStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
 
       {/* Content area: loading / zero-data empty state / table */}
       {loading ? (
@@ -264,10 +302,12 @@ export default function InteragencyPage() {
               m.action('Edit', () => openEdit(row as Partner), { icon: <Pencil size={12} /> }),
               m.separator(),
               m.copyId((row as Partner).id),
+              m.copy('Copy agency', (row as Partner).agency_name),
               m.action('Delete', () => setDeleteTarget(row as Partner), { danger: true, icon: <Trash2 size={12} /> }),
             ] : [
               m.separator(),
               m.copyId((row as Partner).id),
+              m.copy('Copy agency', (row as Partner).agency_name),
             ]),
           ]}
         />

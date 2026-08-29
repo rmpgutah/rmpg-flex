@@ -17,6 +17,7 @@ import type { ServePriority } from './serveIntakeExtract';
 import type { TimeBand } from './serveScheduleParse';
 import type { AddressClass } from './serveAddressClass';
 import { selectWindows, usesBusinessTiming, defaultAuthorityForClass, type WindowAuthority } from './serveAttemptWindows';
+import type { VenueKind } from './serveIntakeOutputTree';
 import { log } from './logger';
 
 export interface AttemptWindow {
@@ -50,6 +51,7 @@ export interface PlanOptions {
     hours_end?: string | null;
     cutoff_time?: string | null;
   } | null;
+  venueKind?: VenueKind | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -97,6 +99,7 @@ export function planAttemptWindows(
     addressClassConfirmed: options.addressClassConfirmed,
     clientBands: options.clientBands ?? [],
     locationNote: locationNote ?? null,
+    venueKind: options.venueKind ?? null,
   });
 
   // Allowed days: client constraint > location note > address-class default.

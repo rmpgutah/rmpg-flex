@@ -12,6 +12,8 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp, safeDateStr } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { formatEnumValue } from '../utils/formatters';
+import { jailBookingsToCsv, jailSourcesToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 interface Source {
   source_key: string; display_name: string; county: string | null;
@@ -55,6 +57,9 @@ export default function JailRecordsPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingSearch, setBookingSearch] = useState('');
+  const [bookingCounty, setBookingCounty] = useState('ALL');
+  const [newestFirst, setNewestFirst] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [county, setCounty] = useState('');
   const [format, setFormat] = useState<'lines' | 'csv'>('lines');
   const [text, setText] = useState('');
@@ -76,8 +81,11 @@ export default function JailRecordsPage() {
 
   const loadBookings = useCallback(() =>
     apiFetch<Booking[]>('/intel/jail/bookings?limit=25')
-      .then((r) => setBookings(Array.isArray(r) ? r : []))
-      .catch(() => setBookings([])),
+      .then((r) => { setBookings(Array.isArray(r) ? r : []); setBookingsError(null); })
+      .catch((err) => {
+        setBookings([]);
+        setBookingsError(err instanceof Error ? err.message : 'Failed to load bookings');
+      }),
   []);
 
   useEffect(() => {
@@ -162,16 +170,21 @@ export default function JailRecordsPage() {
   const active = sources.filter((s) => s.status === 'active');
   const pending = sources.filter((s) => s.status !== 'active');
 
-  const filteredBookings = bookingSearch.trim()
-    ? bookings.filter(b => {
-        const term = bookingSearch.trim().toLowerCase();
-        return (
-          b.full_name.toLowerCase().includes(term) ||
-          (b.charges || '').toLowerCase().includes(term) ||
-          (b.county || '').toLowerCase().includes(term)
-        );
-      })
-    : bookings;
+  const counties = Array.from(new Set(bookings.map((b) => b.county).filter(Boolean))) as string[];
+  const filteredBookings = bookings.filter(b => {
+    if (bookingCounty !== 'ALL' && b.county !== bookingCounty) return false;
+    if (!bookingSearch.trim()) return true;
+    const term = bookingSearch.trim().toLowerCase();
+    return (
+      b.full_name.toLowerCase().includes(term) ||
+      (b.charges || '').toLowerCase().includes(term) ||
+      (b.county || '').toLowerCase().includes(term)
+    );
+  }).slice().sort((a, b) => {
+    const da = a.booking_date ?? '';
+    const db = b.booking_date ?? '';
+    return newestFirst ? db.localeCompare(da) : da.localeCompare(db);
+  });
 
   const bookingsEmpty = !loading && bookings.length === 0;
   const bookingsFiltered = !loading && bookings.length > 0 && filteredBookings.length === 0;
@@ -244,7 +257,25 @@ export default function JailRecordsPage() {
       {/* Recent bookings */}
       <div className="bg-surface-raised border border-rmpg-700">
         <div className="px-2 py-[3px] border-b border-border-subtle flex items-center gap-2">
-          <span className="text-[9px] font-semibold text-brand-400 flex-1">RECENT BOOKINGS</span>
+          <span className="text-[9px] font-semibold flex-1" style={{ color: 'var(--panel-header-color)' }}>RECENT BOOKINGS</span>
+          <select
+            aria-label="Filter by county"
+            className="bg-surface-overlay border border-border-default text-[10px] text-rmpg-200"
+            value={bookingCounty}
+            onChange={(e) => setBookingCounty(e.target.value)}
+          >
+            <option value="ALL">All counties</option>
+            {counties.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button type="button" className="text-[9px] border border-border-default px-1.5" onClick={() => setNewestFirst((v) => !v)}>
+            {newestFirst ? 'Newest' : 'Oldest'}
+          </button>
+          <button
+            type="button"
+            className="text-[9px] border border-border-default px-1.5"
+            disabled={filteredBookings.length === 0}
+            onClick={() => downloadTextFile('jail-bookings.csv', jailBookingsToCsv(filteredBookings))}
+          >CSV</button>
           <div className="relative">
             <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
             <input
@@ -269,8 +300,11 @@ export default function JailRecordsPage() {
             </button>
           )}
         </div>
-        {loading && (
-          <div className="p-2 text-[11px] text-rmpg-500">Loading bookings…</div>
+        {bookingsError && (
+          <div className="p-2 text-[11px] text-red-300 flex items-center justify-between">
+            <span>{bookingsError}</span>
+            <button type="button" className="text-[9px] border border-border-default px-2" onClick={() => void loadBookings()}>Retry</button>
+          </div>
         )}
         {!loading && bookingsEmpty && (
           <div className="p-2 text-[11px] text-rmpg-500">No bookings yet — ingest a roster above.</div>
@@ -284,6 +318,7 @@ export default function JailRecordsPage() {
         {filteredBookings.map((b) => (
           <div key={b.id} className="px-2 py-[2px] text-[11px] flex items-center gap-2 border-b border-border-subtle last:border-b-0">
             <span className="text-rmpg-200 w-44 shrink-0 truncate">{b.full_name}</span>
+            <button type="button" className="text-[9px] border border-border-default px-1" onClick={() => void copyToClipboard(b.full_name)}>Copy</button>
             <span className="text-rmpg-500 min-w-0 flex-1 truncate">{b.charges || ''}</span>
             <span className="text-rmpg-500">{b.county || ''}</span>
             <span className="text-rmpg-500">{fmtBookingDate(b.booking_date)}</span>
@@ -296,14 +331,23 @@ export default function JailRecordsPage() {
 
       {/* Source registry */}
       <div className="bg-surface-raised border border-rmpg-700">
-        <div className="px-2 py-[3px] text-[9px] font-semibold text-brand-400 border-b border-border-subtle">
-          SOURCES — {active.length} active, {pending.length} pending
+        <div className="px-2 py-[3px] text-[9px] font-semibold border-b border-border-subtle flex items-center gap-2" style={{ color: 'var(--panel-header-color)' }}>
+          <span className="flex-1">SOURCES — {active.length} active, {pending.length} pending</span>
+          <button
+            type="button"
+            className="text-[9px] border border-border-default px-1.5"
+            disabled={sources.length === 0}
+            onClick={() => downloadTextFile('jail-sources.csv', jailSourcesToCsv(sources))}
+          >CSV</button>
         </div>
         {loading && (
           <div className="p-2 text-[11px] text-rmpg-500">Loading sources…</div>
         )}
         {!loading && sourcesError && (
-          <div className="p-2 text-[11px] text-rmpg-500">Could not load sources. Check API connectivity.</div>
+          <div className="p-2 text-[11px] text-rmpg-500 flex items-center justify-between">
+            <span>Could not load sources. Check API connectivity.</span>
+            <button type="button" className="text-[9px] border border-border-default px-2" onClick={() => void loadSources()}>Retry</button>
+          </div>
         )}
         {!loading && !sourcesError && sources.length === 0 && (
           <div className="p-2 text-[11px] text-rmpg-500">No sources configured.</div>
@@ -324,6 +368,7 @@ export default function JailRecordsPage() {
               </span>
             )}
             <span className="text-rmpg-500 text-[9px] w-28 truncate text-right">{s.last_status || s.status}</span>
+            <button type="button" className="text-[9px] border border-border-default px-1" onClick={() => void copyToClipboard(s.source_key)}>Key</button>
           </div>
         ))}
       </div>

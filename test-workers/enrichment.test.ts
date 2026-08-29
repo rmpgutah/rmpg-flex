@@ -26,6 +26,7 @@ vi.mock('../src/utils/enrichment/sources/censusGeocoder',() => ({ search: async 
 vi.mock('../src/utils/enrichment/sources/ofac',          () => ({ search: async () => ({ source: 'ofac_sdn',        ok: true,  latency_ms: 5, records: [] }) }));
 
 import enrichment from '../src/routes/enrichment';
+import { OPEN_SOURCE_ENRICHMENT_SOURCES } from '../src/utils/enrichment/catalog';
 
 type TestUser = { id: number; role: string; username: string };
 
@@ -121,7 +122,9 @@ describe('POST /api/enrichment/search', () => {
     const res = await app.fetch(new Request('https://example.com/api/enrichment/sources'), env);
     const json = await res.json() as any[];
     expect(res.status).toBe(200);
-    expect(json).toHaveLength(7);
-    expect(json.every(s => s.open_source === true)).toBe(true);
+    expect(json).toHaveLength(OPEN_SOURCE_ENRICHMENT_SOURCES.length);
+    expect(json.filter(s => s.open_source === true)).toHaveLength(
+      OPEN_SOURCE_ENRICHMENT_SOURCES.filter(s => s.openSource).length,
+    );
   });
 });
