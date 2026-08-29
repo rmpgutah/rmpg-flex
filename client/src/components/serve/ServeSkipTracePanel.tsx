@@ -99,6 +99,7 @@ async function fetchSkipTraceSearch(opts: {
       params.set('firstName', tokens[0]);
       params.set('lastName', tokens[tokens.length - 1]);
     }
+    if (address) params.set('address', address);
   } else if (address) {
     params.set('q', address);
   } else {
@@ -164,7 +165,7 @@ export default function ServeSkipTracePanel({
     try {
       const outcome = await fetchSkipTraceSearch({
         name: name || undefined,
-        address: !name ? address : undefined,
+        address: address || undefined,
         city: job.recipient_city ?? undefined,
         state: job.recipient_state ?? undefined,
       });

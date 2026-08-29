@@ -404,6 +404,9 @@ export default function SkipTracerV2Page() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [selected, setSelected] = useState<Profile | null>(null);
+  const ALL_CATEGORIES = ['people', 'court', 'property', 'business', 'osint', 'registry'] as const;
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [searchEngine, setSearchEngine] = useState<'all' | 'microbilt' | 'rapidapi'>('all');
 
   // Sources
   const [sources, setSources] = useState<SourceInfo[]>([]);
@@ -425,9 +428,6 @@ export default function SkipTracerV2Page() {
   // Save dossier
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Search engine selection
-  const [searchEngine, setSearchEngine] = useState<'microbilt' | 'rapidapi' | 'all'>('all');
 
   // Load sources on mount
   useEffect(() => {
@@ -481,9 +481,19 @@ export default function SkipTracerV2Page() {
 
   // ─── Search ───────────────────────────────────────────────
 
-  const handleSearch = useCallback(async (overrideQuery?: string) => {
+  const handleSearch = useCallback(async (
+    overrideQuery?: string,
+    opts?: {
+      advanced?: Record<string, string>;
+      engine?: 'all' | 'microbilt' | 'rapidapi';
+      categories?: Set<string>;
+    },
+  ) => {
     const q = (overrideQuery ?? query).trim();
-    const hasAdvanced = Object.values(advancedFields).some(v => v.trim());
+    const fields = opts?.advanced ?? advancedFields;
+    const engine = opts?.engine ?? searchEngine;
+    const cats = opts?.categories ?? selectedCategories;
+    const hasAdvanced = Object.values(fields).some(v => v.trim());
     if (!q && !hasAdvanced) return;
 
     setLoading(true);
@@ -494,13 +504,13 @@ export default function SkipTracerV2Page() {
     try {
       const params = new URLSearchParams();
       if (q) params.set('q', q);
-      for (const [key, val] of Object.entries(advancedFields)) {
+      for (const [key, val] of Object.entries(fields)) {
         if (val.trim()) params.set(key, val.trim());
       }
-      if (selectedCategories.size > 0) {
-        params.set('categories', Array.from(selectedCategories).join(','));
+      if (cats.size > 0) {
+        params.set('categories', Array.from(cats).join(','));
       }
-      params.set('engine', searchEngine);
+      params.set('engine', engine);
       const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
       setResult(data);
       if (data.profiles?.length === 1) setSelected(data.profiles[0]);
@@ -509,7 +519,7 @@ export default function SkipTracerV2Page() {
     } finally {
       setLoading(false);
     }
-  }, [query, advancedFields, searchEngine]);
+  }, [query, advancedFields, searchEngine, selectedCategories]);
 
   const searchAssociate = useCallback((name: string) => {
     setQuery(name);
@@ -576,24 +586,37 @@ export default function SkipTracerV2Page() {
     try {
       const params = JSON.parse(item.query_params) as Record<string, unknown>;
       const q = historyQueryFromParams(params);
-      if (params.firstName || params.lastName || params.dob || params.engine) {
-        setAdvancedFields(prev => ({
-          ...prev,
-          firstName: String(params.firstName ?? ''),
-          lastName: String(params.lastName ?? ''),
-          dob: String(params.dob ?? ''),
-        }));
-        if (typeof params.engine === 'string' && ['all', 'microbilt', 'rapidapi'].includes(params.engine)) {
-          setSearchEngine(params.engine as 'all' | 'microbilt' | 'rapidapi');
-        }
-      }
+      const nextAdvanced: Record<string, string> = {
+        firstName: String(params.firstName ?? ''),
+        lastName: String(params.lastName ?? ''),
+        dob: String(params.dob ?? ''),
+        city: String(params.city ?? ''),
+        state: String(params.state ?? ''),
+        ssn_last4: String(params.ssn_last4 ?? ''),
+        address: String(params.address ?? ''),
+      };
+      const nextEngine = (typeof params.engine === 'string'
+        && ['all', 'microbilt', 'rapidapi'].includes(params.engine))
+        ? params.engine as 'all' | 'microbilt' | 'rapidapi'
+        : searchEngine;
+      const nextCats = Array.isArray(params.categories)
+        ? new Set(params.categories.filter((c): c is string => typeof c === 'string'))
+        : selectedCategories;
+
+      setAdvancedFields(prev => ({ ...prev, ...nextAdvanced }));
+      setSearchEngine(nextEngine);
+      setSelectedCategories(nextCats);
       if (q) {
         setQuery(q);
         setActiveTab('search');
-        setTimeout(() => handleSearch(q), 0);
+        setTimeout(() => handleSearch(q, {
+          advanced: nextAdvanced,
+          engine: nextEngine,
+          categories: nextCats,
+        }), 0);
       }
     } catch { /* silent */ }
-  }, [handleSearch]);
+  }, [handleSearch, searchEngine, selectedCategories]);
 
   const inputType = detectInputType(query);
 
@@ -663,9 +686,6 @@ export default function SkipTracerV2Page() {
   }, [batchText]);
 
   // ─── Source Category Filters ─────────────────────────────
-
-  const ALL_CATEGORIES = ['people', 'court', 'property', 'business', 'osint', 'registry'] as const;
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
   const toggleCategory = useCallback((cat: string) => {
     setSelectedCategories(prev => {

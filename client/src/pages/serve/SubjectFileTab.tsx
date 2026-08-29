@@ -264,7 +264,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [loading, setLoading] = useState(false);
   const [dossierTab, setDossierTab] = useState<'overview' | 'evidence' | 'intel' | 'activity'>('overview');
 
-  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, error: enrichError, reset: enrichReset } = useEnrichment();
 
   const load = useCallback(async (id: number) => {
     setLoading(true);
@@ -301,9 +301,13 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const handleLocateSubject = useCallback(() => {
     if (!job) return;
     const { first, last } = splitPersonName(job.recipient_name ?? '');
+    // documentIntake split maps mononyms to last-only; enrichment needs both
+    // first+last (or an address) to run registry sources.
+    const firstName = first || last;
+    const lastName = last || first;
     const seed: EnrichmentSeed = {
-      first_name: first,
-      last_name:  last,
+      first_name: firstName,
+      last_name:  lastName,
       dob:        (job.recipient_dob as string | undefined) ?? undefined,
       address:    job.recipient_address ?? undefined,
       city:       job.recipient_city ?? undefined,
@@ -644,7 +648,11 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                 </div>
               )}
 
-              {!enrichResult && !enrichLoading && (
+              {enrichError && (
+                <p className="px-3 py-2 text-[10px] text-red-400">{enrichError}</p>
+              )}
+
+              {!enrichResult && !enrichLoading && !enrichError && (
                 <p className="px-3 py-2 text-[9px] text-text-secondary">Click "Locate Subject" to run open-source intelligence search.</p>
               )}
             </div>

@@ -102,6 +102,15 @@ describe('skiptracerV2 search helpers', () => {
     });
   });
 
+  it('includes optional address seed on name searches', () => {
+    const seed = buildEnrichmentSeed(parseSearchParams(
+      new URLSearchParams('q=John+Smith&address=123+Main+St&city=SLC&state=UT'),
+    ));
+    expect(seed?.address).toBe('123 Main St');
+    expect(seed?.first_name).toBe('John');
+    expect(seed?.city).toBe('SLC');
+  });
+
   it('maps enrichment records into dossier profiles', () => {
     const profile = enrichedRecordToProfile({
       name: 'John Smith',

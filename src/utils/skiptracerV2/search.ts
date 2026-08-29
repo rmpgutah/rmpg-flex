@@ -52,6 +52,8 @@ export interface V2SearchParams {
   ssn_last4?: string;
   city?: string;
   state?: string;
+  /** Optional address seed for enrichment property sources during a name search. */
+  address?: string;
   /** microbilt = local + open-source enrichment; rapidapi = RapidAPI; all = everything */
   engine: 'microbilt' | 'rapidapi' | 'all';
   categories: string[];
@@ -550,6 +552,7 @@ export function buildEnrichmentSeed(params: V2SearchParams): EnrichmentSeed | nu
     dob: params.dob,
     city: params.city,
     state: params.state,
+    address: params.address,
     phone: searchType === 'phone' ? q : undefined,
     email: searchType === 'email' ? q : undefined,
     ssn_last4: params.ssn_last4,
@@ -717,6 +720,7 @@ export function parseSearchParams(searchParams: URLSearchParams): V2SearchParams
     ssn_last4: searchParams.get('ssn_last4') ?? undefined,
     city: searchParams.get('city') ?? undefined,
     state: searchParams.get('state') ?? undefined,
+    address: searchParams.get('address') ?? undefined,
     engine,
     categories: categoriesRaw ? categoriesRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
   };
