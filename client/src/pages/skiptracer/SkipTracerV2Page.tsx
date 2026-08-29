@@ -745,9 +745,13 @@ export default function SkipTracerV2Page() {
 
   const enrichSeed = useCallback((): EnrichmentSeed | null => {
     if (!selected) return null;
+    const full = selected.fullName || [selected.firstName, selected.middleName, selected.lastName].filter(Boolean).join(' ');
+    const tokens = full.trim().split(/\s+/).filter(Boolean);
+    const first = tokens[0] || selected.firstName || '';
+    const last = tokens.length > 1 ? tokens[tokens.length - 1] : (selected.lastName || '');
     return {
-      first_name: selected.firstName ?? '',
-      last_name:  selected.lastName  ?? '',
+      first_name: first,
+      last_name:  last,
       dob:        selected.dob        ?? undefined,
       city:       selected.city       ?? undefined,
       state:      selected.state      ?? undefined,

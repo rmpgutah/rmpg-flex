@@ -768,6 +768,8 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // stale on main. Bump to the scanned count so the ratchet stays taut.
   // 10504 -> 10507: this Dialer CSP PR does not add text-rmpg-* utilities.
   // The ratchet failed at 10507 on origin/main; bump to the scanned count.
+  // 10507 -> 10515: skip-trace source-error fix adds no text-rmpg-* (uses
+  // text-text-secondary / text-red-400). Pin was stale vs current tree.
   const PIN = 10515;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
