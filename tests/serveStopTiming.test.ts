@@ -7,15 +7,15 @@ import {
 } from '../src/utils/serveStopTiming';
 
 describe('clampDwellSeconds', () => {
-  it('uses 12 min for a house and 18 min for a business', () => {
-    expect(clampDwellSeconds('individual')).toBe(12 * 60);
-    expect(clampDwellSeconds('business')).toBe(18 * 60);
+  it('uses 18 min for a house and 22 min for a business (includes attempt-log time)', () => {
+    expect(clampDwellSeconds('individual')).toBe(18 * 60);
+    expect(clampDwellSeconds('business')).toBe(22 * 60);
   });
 
-  it('clamps learned dwell into the type range', () => {
-    expect(clampDwellSeconds('individual', 4 * 60)).toBe(10 * 60);
-    expect(clampDwellSeconds('business', 45 * 60)).toBe(20 * 60);
-    expect(clampDwellSeconds('business', 16 * 60)).toBe(16 * 60);
+  it('clamps learned dwell into the type range without squeezing real 35-min visits', () => {
+    expect(clampDwellSeconds('individual', 4 * 60)).toBe(8 * 60);
+    expect(clampDwellSeconds('business', 90 * 60)).toBe(45 * 60);
+    expect(clampDwellSeconds('business', 35 * 60)).toBe(35 * 60);
   });
 });
 

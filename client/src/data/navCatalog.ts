@@ -11,7 +11,7 @@ import {
   Phone,
   Navigation, Star, Clock, ExternalLink, RefreshCw, Grid3X3,
   Calculator, ArrowLeftRight, Clipboard, Timer, Cpu, Printer, Download,
-  Layout, WifiOff, FileVideo,
+  Layout, WifiOff, FileVideo, PhoneCall,
 } from 'lucide-react';
 
 export interface NavFunction {
@@ -60,6 +60,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
       { path: '/mdt', label: 'Mobile Data Terminal', icon: Monitor, shortcut: 'F4', description: 'In-vehicle mobile data terminal for field officers', windowSize: { width: 1000, height: 800 } },
       { path: '/ncic', label: 'NCIC Terminal', icon: Terminal, shortcut: 'F5', description: 'NCIC-style query terminal for warrants, persons, vehicles, and firearms' },
       { path: '/geography', label: 'Dispatch Geography', icon: Map, description: 'Sector, zone, and beat boundary management for dispatch geography' },
+      { path: '/dialer-connect', label: 'Dialer Connect', icon: PhoneCall, description: 'In-app Dial Connect phone for inbound and outbound dispatch calls', notWindowable: 'Embeds Dial Connect in the CAD shell via a persistent iframe; a floating window would nest a second Twilio Voice client.' },
       { path: '/desktop-company-browser', label: 'Company Browser', icon: Globe, description: 'General-purpose web browser for vendor portals, county sites, and research', windowSize: { width: 1200, height: 900 } },
     ],
   },

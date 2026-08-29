@@ -6,7 +6,10 @@ import type { Bindings } from '../../types';
 import { OPEN_SOURCE_ENRICHMENT_SOURCES, type EnrichmentSourceDefinition } from './catalog';
 
 /** Sources that work without a person name (address-only enrichment). */
-const ADDRESS_ONLY_SOURCES = new Set(['census_geocoder', 'sl_assessor']);
+const ADDRESS_ONLY_SOURCES = new Set(['census_geocoder', 'sl_assessor', 'usps']);
+
+/** Sources that need a phone seed; skipped when phone is absent. */
+const PHONE_ONLY_SOURCES = new Set(['numverify']);
 
 export function seedHasPersonName(seed: EnrichmentSeed): boolean {
   return Boolean(seed.first_name?.trim() && seed.last_name?.trim());
@@ -16,11 +19,23 @@ function sourcesForSeed(
   sources: EnrichmentSourceDefinition[],
   seed: EnrichmentSeed,
 ): EnrichmentSourceDefinition[] {
-  if (seedHasPersonName(seed)) return sources;
-  if (seed.address?.trim()) {
-    return sources.filter(s => ADDRESS_ONLY_SOURCES.has(s.key));
+  let out = sources;
+  if (!seedHasPersonName(seed)) {
+    if (seed.address?.trim()) {
+      out = out.filter(s => ADDRESS_ONLY_SOURCES.has(s.key));
+    } else if (seed.phone?.trim()) {
+      out = out.filter(s => PHONE_ONLY_SOURCES.has(s.key));
+    } else {
+      return [];
+    }
   }
-  return sources;
+  if (!seed.phone?.trim()) {
+    out = out.filter(s => !PHONE_ONLY_SOURCES.has(s.key));
+  }
+  if (!seed.address?.trim()) {
+    out = out.filter(s => s.key !== 'usps' && s.key !== 'census_geocoder' && s.key !== 'sl_assessor');
+  }
+  return out;
 }
 
 export interface RunEnrichmentSearchOptions {

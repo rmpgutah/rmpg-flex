@@ -15,6 +15,10 @@ import {
 } from '../../constants/processServiceCodes';
 import { toDisplayLabel } from '../../utils/formatters';
 import {
+  defaultPsCodeForFailedReason,
+  normalizeServeAttemptResult,
+} from '../../utils/serveAttemptNormalize';
+import {
   inferServeFileKind,
   SERVE_ATTEMPT_FILE_ACCEPT,
   SERVE_DOCUMENT_TYPE_LABELS,
@@ -195,6 +199,7 @@ export default function ServeAttemptModal({
   });
   const [gpsRetryCount, setGpsRetryCount] = useState(0);
   const acquireGenRef = useRef(0);
+  const arrivedAtRef = useRef<string | null>(null);
 
   // Text/dropdown fields — draft-persisted so an in-progress attempt survives
   // a lost connection, accidental close, or device switch (photos/signature/
@@ -333,6 +338,7 @@ export default function ServeAttemptModal({
 
   useEffect(() => {
     if (isOpen) {
+      arrivedAtRef.current = new Date().toISOString();
       setGpsRetryCount(0);
       acquireGps(0);
       // Reset UI/binary state on open — text fields are handled by
@@ -373,7 +379,6 @@ export default function ServeAttemptModal({
   // Whenever the attemptType changes, clear the picker so a stale code
   // from a different category doesn't survive the switch.
   useEffect(() => {
-    setDispositionCode('');
     setPickerCategory(null);
     setShowAllCategories(false);
   }, [attemptType]);
@@ -497,7 +502,7 @@ export default function ServeAttemptModal({
       const data: ServeAttemptData = {
         attempt_type: attemptType,
         result: attemptType === 'failed'
-          ? (failedReason || 'other')
+          ? (normalizeServeAttemptResult(failedReason || 'other') as ServeAttemptData['result'])
           : 'served',
         latitude: gps.latitude ?? undefined,
         longitude: gps.longitude ?? undefined,
@@ -520,10 +525,13 @@ export default function ServeAttemptModal({
         notes: composedNotes || undefined,
         next_attempt_note: nextAttemptText.trim() || undefined,
         // Structured code wins on the server — codeToLegacyResult derives the
-        // CHECK-enum `result` from it. Only set when the operator actually
-        // picked one (failed-fast-path picker, or the structured picker on
-        // successful attempts).
-        disposition_code: dispositionCode || undefined,
+        // CHECK-enum `result` from it. Auto-fill from the failed-reason chips
+        // so officers are not forced through the nested PS picker on a no-answer.
+        disposition_code: dispositionCode
+          || (attemptType === 'failed' ? defaultPsCodeForFailedReason(failedReason) : undefined)
+          || (attemptType === 'personal' ? 'PS/05.01' : undefined)
+          || (attemptType === 'substitute' ? 'PS/10.01' : undefined),
+        arrivedAt: arrivedAtRef.current ?? undefined,
       };
 
       if (attemptType === 'personal' || attemptType === 'substitute') {
@@ -694,6 +702,37 @@ export default function ServeAttemptModal({
                     </span>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
+                    Quick log (skips extra screens)
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['no_answer', 'No Answer'],
+                      ['refused', 'Refused'],
+                      ['wrong_address', 'Bad Address'],
+                    ] as const).map(([reason, label]) => (
+                      <button
+                        key={reason}
+                        type="button"
+                        onClick={() => {
+                          const code = defaultPsCodeForFailedReason(reason) || '';
+                          setDraft((prev) => ({
+                            ...prev,
+                            attemptType: 'failed',
+                            failedReason: reason,
+                            dispositionCode: code,
+                          }));
+                          setStep(3);
+                        }}
+                        className="px-2 py-2 text-xs font-semibold bg-surface-sunken border border-rmpg-600 text-rmpg-100 hover:border-accent-silver-400 rounded-[2px]"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -722,6 +761,7 @@ export default function ServeAttemptModal({
                     disabled={card.disabled}
                     onClick={() => {
                       setAttemptType(card.type);
+                      setDispositionCode('');
                       if (card.type !== 'failed') setFailedReason(null);
                     }}
                     className={`w-full text-left p-3 rounded-[2px] border-2 transition-all duration-150 panel-beveled ${

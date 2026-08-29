@@ -8,9 +8,9 @@ export interface ServeHhMmWindow {
 }
 
 export const DWELL_RANGE_S: Record<DefendantType, { min: number; max: number; default: number }> = {
-  individual: { min: 10 * 60, max: 15 * 60, default: 12 * 60 },
-  apartment: { min: 12 * 60, max: 15 * 60, default: 13 * 60 },
-  business: { min: 15 * 60, max: 20 * 60, default: 18 * 60 },
+  individual: { min: 8 * 60, max: 40 * 60, default: 18 * 60 },
+  apartment: { min: 10 * 60, max: 45 * 60, default: 20 * 60 },
+  business: { min: 12 * 60, max: 45 * 60, default: 22 * 60 },
 };
 
 export function clampDwellSeconds(type: DefendantType, learnedSeconds?: number | null): number {

@@ -37,7 +37,7 @@ describe('ServeAttemptModal draft setters', () => {
     // The two-setter handler is the thing that exposed the bug; if it is
     // ever collapsed to one, this test should be revisited rather than
     // silently passing for the wrong reason.
-    expect(SRC).toMatch(/setAttemptType\(card\.type\);\s*\n\s*if \(card\.type !== 'failed'\) setFailedReason\(null\);/);
+    expect(SRC).toMatch(/setAttemptType\(card\.type\);\s*\n\s*setDispositionCode\(''\);\s*\n\s*if \(card\.type !== 'failed'\) setFailedReason\(null\);/);
   });
 });
 

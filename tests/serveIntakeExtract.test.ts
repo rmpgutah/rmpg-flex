@@ -235,7 +235,7 @@ describe('normalizeAddressClass', () => {
   it('recognizes explicit business language', () => {
     expect(normalizeAddressClass('BUSINESS ADDRESS')).toBe('business');
     expect(normalizeAddressClass('place of employment')).toBe('business');
-    expect(normalizeAddressClass('commercial')).toBe('business');
+    expect(normalizeAddressClass('commercial')).toBe('small_business');
   });
 
   it('recognizes residential language', () => {
@@ -447,7 +447,7 @@ describe('normalizeAddressClass — residential wins a both-hints string', () =>
 
   it('still classifies an unambiguous business address as business', () => {
     expect(normalizeAddressClass('service at his place of employment')).toBe('business');
-    expect(normalizeAddressClass('corporate address, 5th floor')).toBe('business');
+    expect(normalizeAddressClass('corporate address, 5th floor')).toBe('corporate');
   });
 });
 

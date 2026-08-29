@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search, Plus, X, Save, Loader2, Car, ChevronRight, ChevronLeft,
-  FileText, Filter,
+  FileText, Download, Copy,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
+import { crashReportsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ── Types ──
 interface CrashReport {
@@ -67,6 +68,12 @@ export default function CrashReportsPage() {
   const [filterSeverity, setFilterSeverity] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [fatalFirst, setFatalFirst] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [selected, setSelected] = useState<CrashReport | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // ── Wizard state ──
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -79,6 +86,7 @@ export default function CrashReportsPage() {
   // ── Fetch ──
   const fetchReports = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const params = new URLSearchParams();
       if (searchQuery) params.set('search', searchQuery);
@@ -89,7 +97,9 @@ export default function CrashReportsPage() {
       const data = await apiFetch<{ data: CrashReport[]; stats: CrashStats }>(`/crash-reports?${params}`);
       setReports(data.data || []);
       setStats(data.stats || { total: 0, draft: 0, pending_review: 0, filed: 0 });
-    } catch { /* empty */ }
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : 'Failed to load crash reports');
+    }
     finally { setLoading(false); }
   }, [searchQuery, filterType, filterSeverity, dateFrom, dateTo]);
 
@@ -116,29 +126,74 @@ export default function CrashReportsPage() {
         }),
       });
       setWizardOpen(false);
+      setToast('Crash report filed');
+      setTimeout(() => setToast(null), 3000);
       fetchReports();
-    } catch { /* error */ }
+    } catch (e: unknown) {
+      setToast(e instanceof Error ? e.message : 'Failed to file report');
+      setTimeout(() => setToast(null), 4000);
+    }
     finally { setSubmitting(false); }
   };
 
   const STEPS = ['Crash Info', 'Parties / Vehicles', 'Narrative'];
 
+  const visible = useMemo(() => {
+    let rows = reports;
+    if (filterStatus) rows = rows.filter((r) => r.status === filterStatus);
+    if (fatalFirst) rows = [...rows].sort((a, b) => b.fatalities - a.fatalities || b.injuries - a.injuries);
+    return rows;
+  }, [reports, filterStatus, fatalFirst]);
+
+  const filtersOn = Boolean(searchQuery || filterType || filterSeverity || dateFrom || dateTo || filterStatus);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (e.key === 'Escape') {
+        if (wizardOpen) { setWizardOpen(false); return; }
+        if (selected) { setSelected(null); return; }
+      }
+      if (typing) return;
+      if (e.key === 'n' || e.key === 'N') openWizard();
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [wizardOpen, selected]);
+
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="CRASH / ACCIDENT REPORTS" icon={Car} />
 
+      {toast && (
+        <div className="text-[11px] px-3 py-2 border border-border-default bg-surface-raised text-rmpg-100">{toast}</div>
+      )}
+      {loadError && (
+        <div className="text-[11px] px-3 py-2 border border-red-700/40 bg-red-900/20 text-red-400 flex items-center justify-between" role="alert">
+          <span>{loadError}</span>
+          <button type="button" onClick={fetchReports} className="underline">Retry</button>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: stats.total },
-          { label: 'Draft', value: stats.draft },
-          { label: 'Pending Review', value: stats.pending_review },
-          { label: 'Filed', value: stats.filed },
+          { label: 'Total', value: stats.total, status: '' },
+          { label: 'Draft', value: stats.draft, status: 'draft' },
+          { label: 'Pending Review', value: stats.pending_review, status: 'pending_review' },
+          { label: 'Filed', value: stats.filed, status: 'filed' },
         ].map(s => (
-          <div key={s.label} className="bg-surface-raised border border-border-default rounded-[2px] p-3">
+          <button
+            type="button"
+            key={s.label}
+            onClick={() => setFilterStatus(filterStatus === s.status ? '' : s.status)}
+            className={`bg-surface-raised border rounded-[2px] p-3 text-left ${filterStatus === s.status ? 'border-accent-silver-600' : 'border-border-default'}`}
+          >
             <div className="text-lg font-bold text-white">{s.value}</div>
             <div className="text-[10px] text-rmpg-400 uppercase tracking-wider">{s.label}</div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -147,8 +202,9 @@ export default function CrashReportsPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-accent-silver-500" />
           <input
+            ref={searchRef}
             type="text"
-            placeholder="Search report #, location..."
+            placeholder="Search report #, location… (/ to focus)"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none"
@@ -169,6 +225,19 @@ export default function CrashReportsPage() {
         <span className="text-rmpg-400 text-xs">to</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
           className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none" />
+        <label className="flex items-center gap-1 text-[10px] text-rmpg-400">
+          <input type="checkbox" checked={fatalFirst} onChange={e => setFatalFirst(e.target.checked)} />
+          Fatalities first
+        </label>
+        {filtersOn && (
+          <button type="button" onClick={() => { setSearchQuery(''); setFilterType(''); setFilterSeverity(''); setDateFrom(''); setDateTo(''); setFilterStatus(''); }}
+            className="text-[10px] px-2 py-1 border border-border-default rounded-[2px] text-rmpg-100">Clear</button>
+        )}
+        <button type="button" disabled={visible.length === 0}
+          onClick={() => downloadTextFile('crash-reports.csv', crashReportsToCsv(visible))}
+          className="flex items-center gap-1 px-2 py-1.5 text-xs border border-border-default rounded-[2px] text-rmpg-100 disabled:opacity-40">
+          <Download className="w-3.5 h-3.5" /> CSV
+        </button>
         <button onClick={openWizard}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-silver-500 text-black text-xs font-semibold rounded-[2px] hover:bg-accent-silver-400">
           <Plus className="w-3.5 h-3.5" /> New Report
@@ -189,10 +258,12 @@ export default function CrashReportsPage() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={9} className="text-center py-8 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-              ) : reports.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-8 text-rmpg-400">No crash reports found</td></tr>
-              ) : reports.map(report => (
-                <tr key={report.id} className="border-b border-border-subtle hover:bg-surface-hover">
+              ) : visible.length === 0 ? (
+                <tr><td colSpan={9} className="text-center py-8 text-rmpg-400">
+                  {reports.length === 0 ? 'No crash reports found' : 'Filters hid every report'}
+                </td></tr>
+              ) : visible.map(report => (
+                <tr key={report.id} onClick={() => setSelected(report)} className={`border-b border-border-subtle hover:bg-surface-hover cursor-pointer ${selected?.id === report.id ? 'bg-surface-hover' : ''}`}>
                   <td className="px-3 py-[2px] text-rmpg-100 font-mono">{report.report_number}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.crash_date}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.location}</td>
@@ -214,6 +285,27 @@ export default function CrashReportsPage() {
           </table>
         </div>
       </div>
+
+      {selected && (
+        <div className="bg-surface-raised border border-border-default rounded-[2px] p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-accent-silver-500" />
+            <span className="font-mono text-sm text-[color:var(--panel-header-color)]">{selected.report_number}</span>
+            <IconButton aria-label="Copy report number" onClick={() => navigator.clipboard.writeText(selected.report_number).catch(() => undefined)}>
+              <Copy className="w-4 h-4 text-accent-silver-500" />
+            </IconButton>
+            <IconButton aria-label="Copy location" onClick={() => navigator.clipboard.writeText(selected.location).catch(() => undefined)}>
+              <span className="text-[10px] text-rmpg-100">Loc</span>
+            </IconButton>
+            <div className="ml-auto">
+              <IconButton aria-label="Close detail" onClick={() => setSelected(null)}><X className="w-4 h-4 text-rmpg-400" /></IconButton>
+            </div>
+          </div>
+          <p className="text-xs text-rmpg-400">{selected.location} · {toDisplayLabel(selected.crash_type)} · {toDisplayLabel(selected.severity)}</p>
+          <p className="text-xs text-white whitespace-pre-wrap">{selected.narrative || 'No narrative on file.'}</p>
+          <p className="text-[10px] text-rmpg-400">Officer {selected.investigating_officer || '—'} · weather {selected.weather_conditions || '—'} · road {selected.road_conditions || '—'}</p>
+        </div>
+      )}
 
       {/* ═══ Wizard Modal ═══ */}
       {wizardOpen && (

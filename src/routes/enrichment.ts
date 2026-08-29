@@ -14,26 +14,53 @@ function actorId(c: { get: (k: 'user') => { user_id?: number; userId?: number; i
   return u?.user_id ?? u?.userId ?? u?.id ?? null;
 }
 
+async function configValue(db: D1Database, key: string): Promise<string | null> {
+  try {
+    const row = await db.prepare(
+      `SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1`,
+    ).bind(key).first<{ config_value: string }>();
+    return row?.config_value?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function sourceConfigured(
+  key: string,
+  env: Record<string, unknown>,
+  db: D1Database,
+): Promise<boolean> {
+  switch (key) {
+    case 'open_sanctions':
+      return Boolean((env.OPENSANCTIONS_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'opensanctions_api_key'));
+    case 'usps':
+      return Boolean((env.USPS_USER_ID as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'usps_user_id'));
+    case 'open_corporates':
+      return Boolean((env.OPENCORPORATES_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'opencorporates_api_key'));
+    case 'numverify':
+      return Boolean((env.NUMVERIFY_API_KEY as string | undefined)?.trim())
+        || Boolean(await configValue(db, 'numverify_api_key'));
+    default:
+      // NSOPW has local DB fallback; other open sources need no keys.
+      return true;
+  }
+}
+
 enrichment.get('/sources', async (c) => {
   const env = c.env as Record<string, unknown>;
-  let openSanctionsConfigured = Boolean((env.OPENSANCTIONS_API_KEY as string | undefined)?.trim());
-  if (!openSanctionsConfigured) {
-    try {
-      const row = await c.env.DB.prepare(
-        `SELECT config_value FROM system_config
-          WHERE config_key = 'opensanctions_api_key' AND is_active = 1 LIMIT 1`,
-      ).first<{ config_value: string }>();
-      openSanctionsConfigured = Boolean(row?.config_value?.trim());
-    } catch { /* ignore */ }
-  }
-  return c.json(OPEN_SOURCE_ENRICHMENT_SOURCES.map(s => ({
-    key: s.key,
-    label: s.label,
-    category: s.category,
-    open_source: s.openSource,
-    // NSOPW has a local DB fallback even when the live API flag is off.
-    configured: s.key === 'open_sanctions' ? openSanctionsConfigured : true,
-  })));
+  const configured = await Promise.all(
+    OPEN_SOURCE_ENRICHMENT_SOURCES.map(async s => ({
+      key: s.key,
+      label: s.label,
+      category: s.category,
+      open_source: s.openSource,
+      configured: await sourceConfigured(s.key, env, c.env.DB),
+    })),
+  );
+  return c.json(configured);
 });
 
 enrichment.post('/search', async (c) => {
@@ -42,8 +69,9 @@ enrichment.post('/search', async (c) => {
   const first = (body.first_name ?? '').trim();
   const last  = (body.last_name  ?? '').trim();
   const address = (body.address ?? '').trim();
-  if ((!first || !last) && !address) {
-    return c.json({ error: 'first_name and last_name required (or address for property/geocode lookup)' }, 400);
+  const phone = (body.phone ?? '').trim();
+  if ((!first || !last) && !address && !phone) {
+    return c.json({ error: 'first_name and last_name required (or address/phone for property/phone lookup)' }, 400);
   }
 
   const seed: EnrichmentSeed = {

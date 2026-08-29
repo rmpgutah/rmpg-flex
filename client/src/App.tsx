@@ -143,6 +143,7 @@ const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'))
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
+const DialerConnectPage = lazyRetry(() => import('./pages/DialerConnectPage'));
 const RouteBuilderPage = lazyRetry(() => import('./pages/RouteBuilderPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
@@ -599,6 +600,7 @@ function AppRoutes() {
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
             <Route path="/route-builder" element={<RouteErrorBoundary><RouteBuilderPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
+            <Route path="/dialer-connect" element={<RouteErrorBoundary><DialerConnectPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
