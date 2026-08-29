@@ -170,4 +170,73 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
 
     expect(pdf.getNumberOfPages()).toBe(1);
   });
+
+  it('keeps flowing content above the QR band with readable tier-0 spacing (2 attempts)', async () => {
+    const pdf = await generateNoticeOfAttempt({
+      caseNumber: '',
+      agencyRefNumber: 'CFS26-00074',
+      noticeDate: '06/21/2026',
+      courtName: 'N/A',
+      jurisdiction: 'Salt Lake County, Utah',
+      serverName: 'Christopher Zamora',
+      serverBadge: '5721',
+      serverCompany: ORGANIZATION.name,
+      serverPhone: ORGANIZATION.phone,
+      recipientName: 'Authorized Representative (or current occupant)',
+      recipientAddress: '745 East Village Way, Sandy, Utah 84094',
+      documentType: 'Subpoena Service',
+      clientName: 'ICU Investigations, LLC.',
+      attorneyName: 'Megan Van Kalsbeek',
+      attempts: [
+        { number: 1, date: '06/20/2026', time: '23:00', result: 'PS/00.99', notes: 'I arrived on site at 745 E. Village Way, Sandy, Utah 84094, where I observed on arrival, w...', gpsLat: 40.5701, gpsLng: -111.8770 },
+        { number: 2, date: '06/21/2026', time: '07:35', result: 'PS/00.99', notes: 'Second attempt — no answer at door, vehicle in driveway, lights off.', gpsLat: 40.5702, gpsLng: -111.8771 },
+      ],
+      nextAttemptNote: 'Will return Tuesday, Jun 25, 2026 between 6:00 PM and 8:00 PM.',
+    }, { printTarget: 'mobile' });
+
+    const layout = (pdf as unknown as { __noticeLayout?: { tier: number; contentBottomY: number; qrZoneTop: number } }).__noticeLayout;
+    expect(layout).toBeDefined();
+    expect(layout!.tier).toBeLessThanOrEqual(1);
+    expect(layout!.contentBottomY).toBeLessThanOrEqual(layout!.qrZoneTop);
+  });
+
+  it('writes sample PDFs for visual QA', async () => {
+    const cases = [
+      ['typical-1-attempt', {
+        attempts: [{ number: 1, date: '06/20/2026', time: '23:00', result: 'PS/00.99', notes: 'I arrived on site at 745 E. Village Way, Sandy, Utah 84094, where I observed on arrival, w...', gpsLat: 40.5701, gpsLng: -111.8770 }],
+      }],
+      ['typical-2-attempt', {
+        attempts: [
+          { number: 1, date: '06/20/2026', time: '23:00', result: 'PS/00.99', notes: 'I arrived on site at 745 E. Village Way, Sandy, Utah 84094, where I observed on arrival, w...', gpsLat: 40.5701, gpsLng: -111.8770 },
+          { number: 2, date: '06/21/2026', time: '07:35', result: 'PS/00.99', notes: 'Second attempt — no answer at door, vehicle in driveway, lights off.', gpsLat: 40.5702, gpsLng: -111.8771 },
+        ],
+      }],
+    ] as const;
+
+    const base = {
+      caseNumber: '',
+      agencyRefNumber: 'CFS26-00074',
+      noticeDate: '06/21/2026',
+      courtName: 'N/A',
+      jurisdiction: 'Salt Lake County, Utah',
+      serverName: 'Christopher Zamora',
+      serverBadge: '5721',
+      serverCompany: ORGANIZATION.name,
+      serverPhone: ORGANIZATION.phone,
+      recipientName: 'Authorized Representative (or current occupant)',
+      recipientAddress: '745 East Village Way, Sandy, Utah 84094',
+      documentType: 'Subpoena Service',
+      clientName: 'ICU Investigations, LLC.',
+      attorneyName: 'Megan Van Kalsbeek',
+      nextAttemptNote: 'Will return Tuesday, Jun 25, 2026 between 6:00 PM and 8:00 PM.',
+    };
+
+    for (const [name, extra] of cases) {
+      const pdf = await generateNoticeOfAttempt({ ...base, ...extra }, { printTarget: 'mobile' });
+      expect(pdf.getNumberOfPages()).toBe(1);
+      try {
+        writeFileSync(`/opt/cursor/artifacts/notice-${name}.pdf`, Buffer.from(pdf.output('arraybuffer')));
+      } catch { /* optional in CI */ }
+    }
+  });
 });
