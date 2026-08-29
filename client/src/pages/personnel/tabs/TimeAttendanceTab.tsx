@@ -7,6 +7,9 @@ import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from '
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { apiFetch } from '../../../hooks/useApi';
+import { useToast } from '../../../components/ToastProvider';
+import CorporateLinkageStrip from '../../../components/CorporateLinkageStrip';
 import { parseTimestamp, displayClockTime } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -18,8 +21,11 @@ interface Props {
   onDeleteTimeEntry?: (entryId: string) => void;
 }
 
-export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEntry, onDeleteTimeEntry }: Props) {
+export default function TimeAttendanceTab({ timeEntries, officers: _officers, onEditTimeEntry, onDeleteTimeEntry }: Props) {
+  const { addToast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [forceEndTarget, setForceEndTarget] = useState<TimeEntry | null>(null);
+  const [forceReason, setForceReason] = useState('Forgotten clock-out');
   // Compute summary stats
   const stats = useMemo(() => {
     const clockedIn = timeEntries.filter((te) => te.status === 'clocked_in');
@@ -79,6 +85,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+      <CorporateLinkageStrip />
       {/* Header */}
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4 text-brand-400" />
@@ -124,6 +131,16 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                   <span className="px-1 py-0.5 text-[8px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">
                     BREAK
                   </span>
+                )}
+                {(te.status === 'clocked_in' || te.status === 'on_break') && (
+                  <button
+                    type="button"
+                    className="toolbar-btn p-1 text-[8px] uppercase"
+                    title="Force-end this open shift"
+                    onClick={() => { setForceEndTarget(te); setForceReason('Forgotten clock-out'); }}
+                  >
+                    End
+                  </button>
                 )}
               </div>
             ))}
@@ -265,6 +282,41 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
           confirmVariant="danger"
         />
       )}
+      <ConfirmDialog
+        isOpen={!!forceEndTarget}
+        onClose={() => setForceEndTarget(null)}
+        onConfirm={async () => {
+          if (!forceEndTarget) return;
+          try {
+            await apiFetch('/dispatch/duty/force-end', {
+              method: 'POST',
+              body: JSON.stringify({ officer_id: Number(forceEndTarget.officer_id), reason: forceReason }),
+            });
+            addToast('Shift force-ended', 'success');
+          } catch (err: unknown) {
+            addToast(err instanceof Error ? err.message : 'Force-end failed', 'error');
+          } finally {
+            setForceEndTarget(null);
+          }
+        }}
+        title="Force-end open shift"
+        message="Closes the open clock for payroll. A reason is required."
+        details={(
+          <label className="block text-[10px] text-rmpg-300">
+            Reason
+            <input
+              type="text"
+              value={forceReason}
+              onChange={(e) => setForceReason(e.target.value)}
+              className="mt-1 w-full px-2 py-1 bg-surface-deep border border-rmpg-700 text-rmpg-100"
+              style={{ borderRadius: 2 }}
+            />
+          </label>
+        )}
+        confirmLabel="Force end"
+        confirmVariant="warning"
+        confirmDisabled={forceReason.trim().length < 3}
+      />
     </div>
   );
 }

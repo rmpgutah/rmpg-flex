@@ -37,6 +37,8 @@ import { importWithRetry } from '../utils/importWithRetry';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
+import { formatServerAssignLabel, type CorporateServer } from '../utils/corporateOpsClient';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
@@ -335,7 +337,7 @@ export default function ServePage() {
   const [deleteJob, setDeleteJob] = useState<ServeJob | null>(null);
   const [deleting, setDeleting] = useState(false);
   // ── Officers for route planner ──────────────────────────────────────
-  const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  const [officers, setOfficers] = useState<{ id: number; name: string; onDuty?: boolean; vehicle?: string | null; milesToday?: number | null }[]>([]);
   // ── Clients (hiring parties) for the Add Job form selector ──────────
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
   // ── Saved route state ───────────────────────────────────────────────
@@ -936,7 +938,27 @@ export default function ServePage() {
         const res = await apiFetch<any>('/personnel?status=active');
         if (cancelled) return;
         const list = Array.isArray(res) ? res : res?.data ?? [];
-        setOfficers(list.map((u: any) => ({ id: u.id, name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
+        const roster: { id: number; name: string; onDuty: boolean; vehicle: string | null; milesToday: number | null }[] = list.map((u: Record<string, unknown>) => ({
+          id: Number(u.id),
+          name: String(u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || ''),
+          onDuty: false,
+          vehicle: null,
+          milesToday: null,
+        }));
+        try {
+          const servers = await apiFetch<{ officers?: CorporateServer[] }>('/corporate-ops/servers');
+          const byId = new Map((servers.officers ?? []).map((s) => [Number(s.officer_id), s]));
+          for (const o of roster) {
+            const s = byId.get(o.id);
+            if (s) {
+              o.onDuty = true;
+              o.vehicle = s.vehicle_number ?? s.call_sign ?? null;
+              o.milesToday = s.miles_today ?? null;
+            }
+          }
+          roster.sort((a, b) => Number(b.onDuty) - Number(a.onDuty) || a.name.localeCompare(b.name));
+        } catch { /* snapshot is manager-tier; keep personnel fallback */ }
+        if (!cancelled) setOfficers(roster);
       } catch { /* non-critical */ }
     })();
     return () => { cancelled = true; };
@@ -2485,6 +2507,8 @@ export default function ServePage() {
           )}
         </div>
       </div>
+
+      <CorporateLinkageStrip />
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
       <div className="border-b border-border-subtle bg-surface-sunken">
@@ -4129,7 +4153,11 @@ export default function ServePage() {
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 >
                   <option value="">— Unassigned —</option>
-                  {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  {officers.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {formatServerAssignLabel(o)}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

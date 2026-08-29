@@ -28,7 +28,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
 import { log } from '../../utils/logger';
 import { nowDualStamp } from '../../utils/denverTime';
-import { lookupTodayScheduleId, officerOnApprovedLeave, ensureCorporateOpsSchema } from '../../utils/corporateWorkflows';
+import { lookupTodayScheduleId, officerOnApprovedLeave, ensureCorporateOpsSchema, enrichTimeEntryOnClockIn } from '../../utils/corporateWorkflows';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const duty = new Hono<Env>();
@@ -406,7 +406,10 @@ duty.post('/start', requireRole('officer', 'dispatcher', 'supervisor', 'manager'
     const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
     try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { log.warn('[duty/start] broadcast unit_updated failed', { unitId: unit.id }); /* never break the write */ }
 
-    return c.json(await stateFor(db, officerId), 200);
+    const flags = entry?.id
+      ? await enrichTimeEntryOnClockIn(db, Number(entry.id), officerId, { clockSource: 'duty' })
+      : { handbook_pending: false, service_due: false, license_expiring: false };
+    return c.json({ ...(await stateFor(db, officerId)), ...flags }, 200);
   } catch (err) {
     log.error('POST /dispatch/duty/start failed', {}, err);
     return dbErrorResponse(c, err, 'Failed to start shift');
