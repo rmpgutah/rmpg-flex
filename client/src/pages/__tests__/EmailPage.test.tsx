@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 
 // ─── Per-user mailbox connect-gate (Phase 3 cutover) ───────────────────
@@ -24,9 +25,12 @@ vi.mock('../../components/ToastProvider', () => ({
 }));
 vi.mock('react-router', () => ({
   useSearchParams: () => [new URLSearchParams(), vi.fn()],
+  Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
+    <a href={to} {...rest}>{children}</a>
+  ),
 }));
 
-let connectStatus: { connected: boolean; mailbox: string | null } = { connected: false, mailbox: null };
+let connectStatus: { connected: boolean; mailbox: string | null; azureConfigured?: boolean } = { connected: false, mailbox: null };
 
 function installApiMock() {
   mockApiFetch.mockImplementation(async (path: string, _opts?: any) => {
@@ -41,7 +45,17 @@ function installApiMock() {
 describe('EmailPage connect-gate', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
-    connectStatus = { connected: false, mailbox: null };
+    connectStatus = { connected: false, mailbox: null, azureConfigured: true };
+  });
+
+  it('shows Azure-not-configured message and disables Connect when azureConfigured is false', async () => {
+    connectStatus = { connected: false, mailbox: null, azureConfigured: false };
+    installApiMock();
+    const { default: EmailPage } = await import('../EmailPage');
+    render(<EmailPage />);
+
+    await waitFor(() => expect(screen.getByText(/Azure AD app registration is not configured yet/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Connect Microsoft 365/i })).toBeDisabled();
   });
 
   it('renders a "Connect your mailbox" prompt when the mailbox is not connected', async () => {
