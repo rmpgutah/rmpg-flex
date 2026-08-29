@@ -149,7 +149,7 @@ export function formatRadioLine(u: {
 export function unitsBoardToCsv(rows: Array<{
   unit_id: string;
   officer_name: string;
-  badge: string;
+  badge?: string;
   status: string;
   role?: string;
   current_call_number?: string | null;

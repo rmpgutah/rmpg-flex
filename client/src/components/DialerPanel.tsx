@@ -255,7 +255,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       } else if (message.type === 'recording_ready' || message.type === 'transcript_ready') {
         ingestDialConnect({
           type: 'call_status',
-          callSid: message.callSid,
+          callSid: 'callSid' in message ? message.callSid : undefined,
           recordingUrl: 'recordingUrl' in message ? message.recordingUrl : undefined,
           transcript: 'transcript' in message ? message.transcript : undefined,
         });
