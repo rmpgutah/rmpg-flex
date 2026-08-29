@@ -27,6 +27,7 @@ export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<Sour
           'Referer': 'https://www.bop.gov/inmateloc/',
           'Origin': 'https://www.bop.gov',
           'Accept': 'application/json',
+          'User-Agent': 'RMPG-Flex/1.0 (Cloudflare Workers; sworn LE; enrichment)',
         },
         body: body.toString(),
       },

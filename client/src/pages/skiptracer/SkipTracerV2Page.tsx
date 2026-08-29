@@ -1176,7 +1176,7 @@ export default function SkipTracerV2Page() {
             </div>
             {result.sourcesFailed && result.sourcesFailed.length > 0 && (
               <div className="text-amber-600">
-                {result.sourcesFailed.length} failed: {result.sourcesFailed.map(f => f.name).join(', ')}
+                {result.sourcesFailed.length} failed: {result.sourcesFailed.map(f => `${f.name}${f.error ? ` (${f.error})` : ''}`).join(', ')}
               </div>
             )}
           </div>
@@ -1344,7 +1344,9 @@ export default function SkipTracerV2Page() {
                   {enrichResult.sources.map((s: SourceResult) => {
                     const label = s.source.replace(/_/g, ' ').toUpperCase();
                     const status = !s.ok
-                      ? <span className="text-red-400">(error)</span>
+                      ? s.error === 'not_configured'
+                        ? <span className="text-text-secondary">(not configured)</span>
+                        : <span className="text-red-400" title={s.error}>(error)</span>
                       : s.records.length === 0
                       ? <span className="text-text-secondary">(0 hits)</span>
                       : <span className="text-green-400">({s.records.length} hit{s.records.length !== 1 ? 's' : ''})</span>;

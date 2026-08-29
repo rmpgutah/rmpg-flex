@@ -467,24 +467,37 @@ async function searchRapidApi(db: D1Database, params: V2SearchParams): Promise<{
     path = '/api/person/reverse';
     urlParams.set('address', q);
   } else {
-    const first = params.firstName || q.split(/\s+/)[0] || '';
-    const last = params.lastName || q.split(/\s+/).slice(1).join(' ') || '';
+    // "Karl Allen Turley" → firstName=Karl, lastName=Turley (not "Allen Turley").
+    const parts = [params.firstName, params.lastName].filter(Boolean).join(' ').trim()
+      || q;
+    const tokens = parts.split(/\s+/).filter(Boolean);
+    const first = tokens[0] || '';
+    const last = tokens.length > 1 ? tokens[tokens.length - 1] : '';
     urlParams.set('firstName', first);
     urlParams.set('lastName', last);
+    if (params.city) urlParams.set('city', params.city);
+    if (params.state) urlParams.set('state', params.state);
+    if (params.dob) urlParams.set('dob', params.dob);
   }
 
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     const res = await fetch(`https://${host}${path}?${urlParams}`, {
       headers: {
         'X-RapidAPI-Key': apiKey,
         'X-RapidAPI-Host': host,
+        Accept: 'application/json',
+        'User-Agent': 'RMPG-Flex/1.0 (Cloudflare Workers; sworn LE)',
       },
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) return { profiles: [], error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const snippet = body.replace(/\s+/g, ' ').slice(0, 120);
+      return { profiles: [], error: `HTTP ${res.status}${snippet ? `: ${snippet}` : ''}` };
+    }
     const data = await res.json() as Record<string, unknown>;
     const records = normalizeResponse(data);
     const mapped = mapSkipTracerRecordsToProfiles(records);
@@ -525,8 +538,12 @@ export function buildEnrichmentSeed(params: V2SearchParams): EnrichmentSeed | nu
     };
   }
 
-  const first = params.firstName || q.split(/\s+/)[0] || '';
-  const last = params.lastName || q.split(/\s+/).slice(1).join(' ') || '';
+  // Prefer explicit first/last; otherwise split "Karl Allen Turley" → Karl / Turley.
+  const tokens = [params.firstName, params.lastName].filter(Boolean).join(' ').trim().split(/\s+/).filter(Boolean);
+  const qTokens = q.split(/\s+/).filter(Boolean);
+  const parts = tokens.length >= 2 ? tokens : qTokens;
+  const first = parts[0] || '';
+  const last = parts.length > 1 ? parts[parts.length - 1] : '';
   if (!first && !last) return null;
   return {
     first_name: first,
