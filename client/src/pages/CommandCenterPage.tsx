@@ -358,7 +358,7 @@ export default function CommandCenterPage() {
                     const hay = `${call.call_number} ${call.location_address ?? call.address ?? ''} ${call.call_type ?? ''} ${call.incident_type ?? ''}`.toLowerCase();
                     return hay.includes(callQuery.trim().toLowerCase());
                   }).length === 0 ? (
-                <div className="text-center text-rmpg-500 text-xs py-8 font-mono">No calls match the current filter</div>
+                <div className="text-center text-fg-muted text-xs py-8 font-mono">No calls match the current filter</div>
               ) : (
                 (data.active_calls ?? [])
                   .filter((call: { call_number?: string; location_address?: string; address?: string; call_type?: string; incident_type?: string }) => {

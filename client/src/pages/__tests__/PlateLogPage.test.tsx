@@ -38,7 +38,7 @@ describe('PlateLogPage', () => {
   it('logs a plate and renders the critical hit banner + recent sightings', async () => {
     render(<MemoryRouter><ToastProvider><PlateLogPage /></ToastProvider></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('XYZ789')).toBeInTheDocument());
-    fireEvent.change(screen.getByPlaceholderText('PLATE'), { target: { value: 'abc123' } });
+    fireEvent.change(screen.getByPlaceholderText(/^PLATE/), { target: { value: 'abc123' } });
     fireEvent.click(screen.getByText('LOG + CHECK'));
     await waitFor(() => expect(screen.getByText(/STOLEN — ABC123/)).toBeInTheDocument());
   });

@@ -803,7 +803,7 @@ export default function CourtTrackerPage() {
           <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-              <input id="ff-courttrackerpage-0" ref={searchRef} value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events... (/)" aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
+              <input id="ff-courttrackerpage-0" ref={searchRef} value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events... (/)" aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-fg-muted focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
             </div>
             <select id="ff-courttrackerpage-1" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
               <option value="">All Types</option>

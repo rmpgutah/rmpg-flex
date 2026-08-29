@@ -362,7 +362,7 @@ export default function FlexCamPage() {
       {!loading && reqs.length === 0 && (
         <div className="text-center py-12 space-y-2">
           <Video className="w-8 h-8 text-rmpg-700 mx-auto" />
-          <div className="text-[11px] text-rmpg-600">{fetchError ? 'Failed to load trip footage — check connection' : 'No trip footage yet.'}</div>
+          <div className="text-[11px] text-fg-muted">{fetchError ? 'Failed to load trip footage — check connection' : 'No trip footage yet.'}</div>
           <div className="text-[9px] text-rmpg-700">Full-drive recordings appear here automatically.</div>
         </div>
       )}

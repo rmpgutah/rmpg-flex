@@ -88,7 +88,7 @@ export default function DocsLibraryPage() {
       {loading ? (
         <div className="flex items-center text-[#888] text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>
       ) : items.length === 0 ? (
-        <div className="text-rmpg-500 text-xs py-8 text-center">
+        <div className="text-fg-muted text-xs py-8 text-center">
           {(q || mine || statusFilter) ? 'No documents match this filter' : 'No documents. Create one to get started.'}
         </div>
       ) : (

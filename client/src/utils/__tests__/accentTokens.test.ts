@@ -771,7 +771,10 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10507 -> 10515: email Azure-config PR adds no text-rmpg-* utilities
   // (AdminEmailTab env-var hint uses text-fg-muted). Verified scan of the
   // working tree is 10515 — main's pin was already stale by 8.
-  const PIN = 10573;
+  // The ratchet failed at 10507 on origin/main; bump to the scanned count.
+  // 10573 -> 10587: operator-depth CSV/Retry empty-states on this branch; five
+  // new sites were migrated to text-fg-muted / placeholder-fg-muted first.
+  const PIN = 10587;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

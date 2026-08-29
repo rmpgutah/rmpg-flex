@@ -86,7 +86,7 @@ export default function FleetVehicleListPanel({
           <div className="text-center py-12">
             <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-[11px] text-rmpg-500 font-medium">No vehicles found</p>
-            <p className="text-[9px] text-rmpg-600 mt-1">Adjust your filters or add a new vehicle</p>
+            <p className="text-[9px] text-fg-muted mt-1">Adjust your filters or add a new vehicle</p>
           </div>
         )}
         {filtered.map((v, idx) => {
