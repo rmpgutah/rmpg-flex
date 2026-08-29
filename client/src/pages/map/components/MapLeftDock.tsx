@@ -51,7 +51,20 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
       <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-brand-gold-500 border-b border-border-default">
         LAYERS
       </div>
-      {sections.map((section) => (
+      <div className="px-2 py-1.5 border-b border-border-subtle">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className="text-[10px] text-fg-muted">{active.length} on</span>
+        </div>
+        <input
+          type="search"
+          aria-label="Find layer"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find layer"
+          className="w-full px-2 py-1 text-[11px] bg-surface-overlay border border-border-subtle rounded text-fg-primary placeholder:text-fg-muted"
+        />
+      </div>
+      {visible.map((section) => (
         <DockSection
           key={section.title}
           title={section.title}
