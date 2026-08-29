@@ -18,6 +18,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openCourtAppearancePdf } from '../utils/courtAppearancePdf';
 import { toDisplayLabel } from '../utils/formatters';
+import { courtDocketToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ============================================================
 // Types
@@ -605,6 +606,13 @@ export default function CourtRecordsPage() {
         >
           <Plus className="w-3 h-3" /> New Event
         </button>
+        <button
+          type="button"
+          className="toolbar-btn text-[10px]"
+          disabled={events.length === 0}
+          onClick={() => downloadTextFile('court-docket.csv', courtDocketToCsv(events))}
+          title="CSV of docket number, type, court — no defendant names"
+        >CSV</button>
       </PanelTitleBar>
 
       {/* ── Filters Bar ── */}
@@ -691,8 +699,8 @@ export default function CourtRecordsPage() {
         <div className="mx-2 mt-1 px-3 py-1.5 bg-red-900/30 border border-red-700/50 text-red-400 text-[10px] flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 flex-shrink-0" />
           {error}
-          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error">
-            <X className="w-3 h-3" />
+          <button type="button" onClick={() => void fetchEvents(pagination.page)} className="ml-auto text-red-300 hover:text-red-100" aria-label="Retry">
+            Retry
           </button>
         </div>
       )}
