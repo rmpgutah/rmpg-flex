@@ -36,6 +36,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/mdt': () => import('../pages/MdtPage'),
   '/ncic': () => import('../pages/NcicPage'),
   '/geography': () => import('../pages/GeographyPage'),
+  '/dialer-connect': () => import('../pages/DialerConnectPage'),
   '/incidents': () => import('../pages/IncidentsPage'),
   '/records': () => import('../pages/RecordsPage'),
   '/field-interviews': () => import('../pages/FieldInterviewsPage'),

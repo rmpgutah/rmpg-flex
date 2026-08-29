@@ -15,6 +15,7 @@ import {
   Settings,
   LogOut,
   Phone,
+  PhoneCall,
   QrCode,
   ScrollText,
   Search,
@@ -194,6 +195,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/national-warrant-search': 'National Warrant Search',
   '/downloads': 'Downloads',
   '/geography': 'Dispatch Geography',
+  '/dialer-connect': 'Dialer Connect',
   '/connections': 'Connections',
   '/intel': 'Intel Search',
   '/intel/plate-log': 'Plate Log',
@@ -254,6 +256,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+    { path: '/dialer-connect', icon: PhoneCall, label: 'Dialer Connect' },
   ]},
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
     { path: '/map', icon: Map, label: 'Live Map' },
@@ -387,7 +390,7 @@ const TOOLBAR_NAV: NavItem[] = [
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/scheduler', '/shift-briefings', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/dialer-connect',
 ]);
 
 // Paths that contract_manager role is NOT allowed to see
@@ -1677,6 +1680,7 @@ export default function Layout() {
                       {item.children!.filter(child => {
                         if (child.adminOnly && !isAdmin) return false;
                         if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(child.path)) return false;
+                        if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(child.path)) return false;
                         return true;
                       }).map((child) => {
                         const ChildIcon = child.icon;

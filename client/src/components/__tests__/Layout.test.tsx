@@ -21,6 +21,7 @@ vi.mock('../mobile/MobileContextBar', () => ({ default: () => null }));
 vi.mock('../AnnouncementBanner', () => ({ default: () => null }));
 vi.mock('../UpdateBanner', () => ({ default: () => null }));
 vi.mock('../CommandPalette', () => ({ default: () => null }));
+vi.mock('../DialerPanel', () => ({ default: () => null }));
 vi.mock('../ForcePasswordChangeModal', () => ({ default: () => null }));
 vi.mock('../Force2FASetupModal', () => ({ default: () => null }));
 vi.mock('../LocationGate', () => ({ default: () => null }));
