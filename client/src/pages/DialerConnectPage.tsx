@@ -9,7 +9,7 @@ import { apiFetch, apiFetchBlob, apiPostForm } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { usePersistedTab } from '../hooks/usePersistedState';
-import { openDialerWindow, postToDialer, normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/DialerPanel';
+import { openDialerWindow, postToDialer, normalizeDialTarget, DIALER_PLACE_CALL_EVENT, DIALER_CHROME_EVENT } from '../components/DialerPanel';
 import { DIALER_HOST_ID } from '../components/dialerConnect';
 import {
   DIALER_FUNCTIONS, VOICEMAIL_FUNCTIONS, CALL_HISTORY_FUNCTIONS,
@@ -98,9 +98,19 @@ export default function DialerConnectPage() {
   const { addToast } = useToast();
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
+  const [liveOpen, setLiveOpen] = useState(true);
 
   useEffect(() => {
     document.title = 'Dialer Connect — RMPG Flex';
+  }, []);
+
+  useEffect(() => {
+    const onChrome = (event: Event) => {
+      const detail = (event as CustomEvent<{ minimized?: boolean; poppedOut?: boolean }>).detail;
+      setLiveOpen(!detail?.minimized && !detail?.poppedOut);
+    };
+    window.addEventListener(DIALER_CHROME_EVENT, onChrome);
+    return () => window.removeEventListener(DIALER_CHROME_EVENT, onChrome);
   }, []);
 
   return (
@@ -116,12 +126,11 @@ export default function DialerConnectPage() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border flex items-center gap-1"
+              className="px-2.5 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1.5 rounded-full"
               style={{
-                borderRadius: 2,
                 color: tab === id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: tab === id ? 'var(--surface-raised)' : 'transparent',
-                borderColor: tab === id ? 'var(--accent-silver-500)' : 'var(--border-subtle)',
+                background: tab === id ? 'color-mix(in srgb, var(--surface-overlay) 80%, transparent)' : 'transparent',
+                boxShadow: tab === id ? 'inset 0 0 0 1px color-mix(in srgb, var(--accent-silver-500) 45%, transparent)' : undefined,
               }}
             >
               <Icon className="w-3 h-3" /> {label}
@@ -132,8 +141,10 @@ export default function DialerConnectPage() {
       <div
         id={DIALER_HOST_ID}
         data-testid="dialer-connect-host"
-        className="relative w-full shrink-0 min-h-[240px] border-b border-border-subtle"
-        style={{ height: 'min(42vh, 680px)' }}
+        className="relative w-full shrink-0 overflow-hidden transition-[height,min-height] duration-300 ease-out"
+        style={liveOpen
+          ? { height: 'min(42vh, 680px)', minHeight: 240 }
+          : { height: 0, minHeight: 0 }}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'dialer' && <DialerTab exportedBy={exportedBy} addToast={addToast} />}
