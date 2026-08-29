@@ -34,7 +34,6 @@ import { useFleetDeleteActions } from './hooks/useFleetDeleteActions';
 import { useFleetPersonnelActions } from './hooks/useFleetPersonnelActions';
 import FleetVehicleListPanel from './components/FleetVehicleListPanel';
 import FleetStatsBar from './components/FleetStatsBar';
-import CorporateLinkageStrip from '../../components/CorporateLinkageStrip';
 import FleetDashboardViews from './components/FleetDashboardViews';
 import FleetPretripModal from './components/FleetPretripModal';
 import type {
@@ -406,7 +405,6 @@ export default function FleetPage() {
           registrationExpiring={registrationExpiring}
           insuranceExpiring={insuranceExpiring}
         />
-        <CorporateLinkageStrip />
       </div>
 
       {/* ── Split layout ── */}

@@ -11,6 +11,7 @@ import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
+import CorporateFleetShell from './components/CorporateFleetShell';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
@@ -613,9 +614,9 @@ function AppRoutes() {
             {/* /fleet serves the v1 tab-based UI permanently — the v2
                 Fleet.io-style shell was retired 2026-07-17 (see
                 docs/superpowers/specs/2026-07-17-fleet-v1-restoration-foundation-design.md). */}
-            <Route path="/fleet/dashboard" element={<RouteErrorBoundary><FleetDashboardPage /></RouteErrorBoundary>} />
-            <Route path="/fleet/reports" element={<RouteErrorBoundary><FleetReportsPage /></RouteErrorBoundary>} />
-            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/dashboard" element={<RouteErrorBoundary><CorporateFleetShell><FleetDashboardPage /></CorporateFleetShell></RouteErrorBoundary>} />
+            <Route path="/fleet/reports" element={<RouteErrorBoundary><CorporateFleetShell><FleetReportsPage /></CorporateFleetShell></RouteErrorBoundary>} />
+            <Route path="/fleet/*" element={<RouteErrorBoundary><CorporateFleetShell><FleetPage /></CorporateFleetShell></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
