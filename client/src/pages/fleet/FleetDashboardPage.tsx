@@ -30,6 +30,7 @@ import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import { toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { downloadTextFile, fleetListToCsv } from '../../utils/rmsListExport';
 
 // ------------------------------------------------------------
 // Types — mirror the JSON shapes returned by src/routes/fleetViz.ts
@@ -166,6 +167,7 @@ export default function FleetDashboardPage() {
 
   const [period, setPeriod] = useState<Period>('30d');
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
   const [kpi, setKpi] = useState<KpiData | null>(null);
   const [readiness, setReadiness] = useState<ReadinessRow[]>([]);
@@ -183,6 +185,7 @@ export default function FleetDashboardPage() {
 
   const load = useCallback(async (p: Period) => {
     setLoading(true);
+    setFetchError(false);
     try {
       const q = `?period=${p}`;
       const [
@@ -208,6 +211,7 @@ export default function FleetDashboardPage() {
       setWoFlow(woRes.nodes || []);
       setFuelAnomalies((anomRes.data || []).filter((r) => r.flagged));
     } catch (err) {
+      setFetchError(true);
       addToast(err instanceof Error ? `Failed to load fleet dashboard: ${err.message}` : 'Failed to load fleet dashboard', 'error');
     } finally {
       setLoading(false);
@@ -337,7 +341,26 @@ export default function FleetDashboardPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={readiness.length === 0}
+          onClick={() => downloadTextFile('fleet-readiness.csv', fleetListToCsv(readiness.map((r) => ({
+            unit: r.vehicle_number,
+            status: r.status,
+            make: '',
+            model: '',
+            plate: '',
+          }))))}
+        >CSV</button>
       </PanelTitleBar>
+
+      {fetchError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load fleet dashboard.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void load(period); }}>Retry</button>
+        </div>
+      )}
 
       {loading && !kpi ? (
         <div className="flex items-center justify-center gap-2 text-fg-muted py-10 text-xs">

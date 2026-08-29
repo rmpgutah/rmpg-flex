@@ -38,6 +38,7 @@ import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { escapeHtml } from '../utils/sanitize';
 import { withAlpha } from '../utils/withAlpha';
 import { isValidLngLat } from './map/utils/mapMarkers';
+import { downloadTextFile, routeStopsToCsv } from '../utils/rmsListExport';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -560,7 +561,18 @@ export default function RouteBuilderPage() {
     <div className="flex h-full" style={{ minHeight: 0 }}>
       {/* ── Left Panel: Controls + Stop List ── */}
       <div className="w-[420px] flex-shrink-0 bg-surface-deep border-r border-[#222222] flex flex-col overflow-hidden">
-        <PanelTitleBar title="CFS ROUTE BUILDER" icon={Route} />
+        <PanelTitleBar title="CFS ROUTE BUILDER" icon={Route}>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={waypoints.length === 0}
+            onClick={() => downloadTextFile('route-stops.csv', routeStopsToCsv(waypoints.map((w) => ({
+              sequence: w.stop_number,
+              label: w.location_address || w.call_number,
+              status: w.completed ? 'completed' : w.status,
+            }))))}
+          >CSV</button>
+        </PanelTitleBar>
 
         {/* Unit Selector */}
         <div className="p-3 border-b border-[#222222] space-y-2">
@@ -684,9 +696,9 @@ export default function RouteBuilderPage() {
 
         {/* Error */}
         {error && (
-          <div className="px-3 py-2 bg-red-900/20 border-b border-red-800/30 text-red-400 text-[11px] flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-            {error}
+          <div className="px-3 py-2 bg-red-900/20 border-b border-red-800/30 text-red-400 text-[11px] flex items-center justify-between">
+            <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{error}</span>
+            <button type="button" className="toolbar-btn" onClick={() => setError(null)}>Retry</button>
           </div>
         )}
 

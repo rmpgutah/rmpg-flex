@@ -17,6 +17,8 @@ import RichTextArea from '../components/RichTextArea';
 import { NODE_COLORS, NODE_RADIUS } from '../utils/connectionsGraphStyle';
 import ConnectionsMapPanel from '../components/ConnectionsMapPanel';
 import { formatEnumValue } from '../utils/formatters';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { connectionSeedsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -92,6 +94,11 @@ export default function ConnectionsPage() {
   );
 
   const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [seed, setSeed] = useState<Seed | null>(null);
@@ -210,6 +217,7 @@ export default function ConnectionsPage() {
     }
     debounceRef.current = window.setTimeout(async () => {
       setSearching(true);
+      setSearchError(null);
       try {
         const data = await apiFetch<SearchResult[]>(
           `/connections/search?q=${encodeURIComponent(searchQuery.trim())}`
@@ -219,6 +227,7 @@ export default function ConnectionsPage() {
       } catch (err) {
         console.error('Connections search error:', err);
         setResults([]);
+        setSearchError(err instanceof Error ? err.message : 'Search failed');
       } finally {
         setSearching(false);
       }
@@ -226,7 +235,7 @@ export default function ConnectionsPage() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery]);
+  }, [searchQuery, retryTick]);
 
   // Graph fetch when seed changes
   useEffect(() => {
@@ -237,6 +246,7 @@ export default function ConnectionsPage() {
     }
     let cancelled = false;
     setLoadingGraph(true);
+    setGraphError(null);
     (async () => {
       try {
         const params = new URLSearchParams({ type: seed.type, id: String(seed.id), depth: String(graphDepth) });
@@ -275,12 +285,13 @@ export default function ConnectionsPage() {
         console.error('graph fetch err:', err);
         setNodes([]);
         setEdges([]);
+        setGraphError(err instanceof Error ? err.message : 'Failed to load graph');
       } finally {
         if (!cancelled) setLoadingGraph(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [seed, graphDepth, dateFrom, dateTo]);
+  }, [seed, graphDepth, dateFrom, dateTo, retryTick]);
 
   // Force simulation
   useEffect(() => {
@@ -549,14 +560,33 @@ export default function ConnectionsPage() {
 
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
-      <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
+      <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={nodes.length === 0 && !seed}
+          onClick={() => {
+            const rows = [
+              ...(seed ? [{ type: seed.type, id: seed.id }] : []),
+              ...nodes.map((n) => ({ type: n.type, id: n.entityId })),
+            ];
+            downloadTextFile('connections.csv', connectionSeedsToCsv(rows));
+          }}
+        >CSV</button>
+      </PanelTitleBar>
 
-      {/* Search bar + toolbar */}
+      {(searchError || graphError) && (
+        <div className="p-2 text-xs text-red-400 flex items-center justify-between">
+          <span>{searchError || graphError}</span>
+          <button type="button" className="toolbar-btn" onClick={() => setRetryTick((n) => n + 1)}>Retry</button>
+        </div>
+      )}
       <div className="relative">
         <div className="flex items-center gap-2">
           <input id="ff-connectionspage-0"
+            ref={searchRef}
             type="text"
-            placeholder="Search for a person, vehicle, case, incident..."
+            placeholder="Search for a person, vehicle, case, incident... (/)"
             className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-brand-400 focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}

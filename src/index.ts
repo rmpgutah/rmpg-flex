@@ -665,6 +665,13 @@ export default {
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
       if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(
+          import('./utils/corporateWorkflows').then((m) =>
+            m.runNightlyBundle(env.DB, null, 'cron', { ALERT_HUB: env.ALERT_HUB }).then((r) =>
+              log.info(`[corporate-ops] nightly bundle run=${r.run_id} children=${JSON.stringify(r.children)}`),
+            ).catch((err) => log.error('Corporate ops nightly bundle failed:', {}, err)),
+          ).catch(() => {}),
+        );
+        ctx.waitUntil(
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();
             return m.runDailyRebalance(env.DB, nowIso).then((r) =>

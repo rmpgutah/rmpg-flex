@@ -50,13 +50,13 @@ const TRIGGER_EVENTS = [
   { value: 'warrant_created', label: 'Warrant Created', desc: 'When a new warrant is entered', live: true },
   { value: 'warrant_served', label: 'Warrant Served', desc: 'When a warrant is served', live: false },
   { value: 'credential_expiring', label: 'Credential Expiring', desc: 'When an officer credential is about to expire', live: false },
-  { value: 'shift_unattended', label: 'Shift Unattended', desc: 'When a scheduled shift has no clock-in', live: false },
+  { value: 'shift_unattended', label: 'Shift Unattended', desc: 'When a scheduled shift has no clock-in', live: true },
   { value: 'invoice_overdue', label: 'Invoice Overdue', desc: 'When an invoice passes its due date', live: false },
   { value: 'incident_submitted', label: 'Incident Submitted', desc: 'When an incident report is submitted for review', live: false },
   { value: 'bolo_created', label: 'BOLO Created', desc: 'When a new BOLO is issued', live: false },
   { value: 'login_failed_threshold', label: 'Login Failures', desc: 'When login failures exceed threshold', live: false },
   { value: 'training_expiring', label: 'Training Expiring', desc: 'When training certification is about to expire', live: false },
-  { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance', live: false },
+  { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance', live: true },
 ];
 
 const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];

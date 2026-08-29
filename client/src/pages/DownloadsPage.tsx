@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Monitor, Apple, Smartphone, Download, ChevronRight, HardDrive } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { copyToClipboard } from '../utils/contextMenuActions';
+import { installerCatalogToCsv, downloadTextFile } from '../utils/rmsListExport';
 import WindowsInstallGuide from '../components/install/WindowsInstallGuide';
 import MacInstallGuide from '../components/install/MacInstallGuide';
 import AndroidInstallGuide from '../components/install/AndroidInstallGuide';
@@ -129,7 +130,9 @@ export default function DownloadsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
+  const loadCatalog = useCallback(() => {
+    setLoading(true);
+    setFetchError(false);
     apiFetch<DownloadsInfo>('/api/downloads/info')
       .then((data) => {
         setInfo(data);
@@ -140,6 +143,8 @@ export default function DownloadsPage() {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => { loadCatalog(); }, [loadCatalog]);
 
   useEffect(() => {
     apiFetch<ReleaseNote[]>('/api/downloads/changelog')
@@ -219,6 +224,19 @@ export default function DownloadsPage() {
               CAD / RMS Dispatch System
             </span>
           </div>
+          <button
+            type="button"
+            className="toolbar-btn ml-auto"
+            disabled={!platforms.some((p) => info[p])}
+            onClick={() => {
+              const rows = platforms.flatMap((p) => {
+                const inst = info[p];
+                if (!inst) return [];
+                return [{ platform: p, filename: inst.filename, version: inst.version, size: inst.size }];
+              });
+              downloadTextFile('installer-catalog.csv', installerCatalogToCsv(rows));
+            }}
+          >CSV</button>
         </div>
       </div>
 
@@ -303,6 +321,7 @@ export default function DownloadsPage() {
             <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
               Could not load download info — check your connection and refresh.
             </span>
+            <button type="button" className="toolbar-btn ml-3" onClick={() => { loadCatalog(); }}>Retry</button>
           </div>
         )}
 

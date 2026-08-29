@@ -12,6 +12,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
 import { toDisplayLabel } from '../utils/formatters';
+import { downloadTextFile, flexcamClipsToCsv } from '../utils/rmsListExport';
 
 interface Req {
   id: number; title: string | null; status: string;
@@ -67,6 +68,7 @@ export default function FlexCamPage() {
 
   const [reqs, setReqs]         = useState<Req[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [lastFetch, setLastFetch] = useState(0);
   const [custodyOpen, setCustodyOpen]     = useState<Record<number, CustodyResult | null>>({});
   const [custodyLoading, setCustodyLoading] = useState<Record<number, boolean>>({});
@@ -87,9 +89,10 @@ export default function FlexCamPage() {
 
   const fetchReqs = useCallback((quiet = false) => {
     if (!quiet) setLoading(true);
+    if (!quiet) setFetchError(false);
     apiFetch<{ requests: Req[] }>('/flexcam/footage')
-      .then((r) => { setReqs(r.requests); setLastFetch(Date.now()); })
-      .catch(console.error)
+      .then((r) => { setReqs(r.requests); setLastFetch(Date.now()); setFetchError(false); })
+      .catch(() => { if (!quiet) setFetchError(true); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -293,6 +296,17 @@ export default function FlexCamPage() {
       <div className="flex items-center gap-3">
         <PanelTitleBar title="FLEXCAM — TRIP FOOTAGE" icon={Video} />
         <div className="flex-1" />
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={reqs.length === 0}
+          onClick={() => downloadTextFile('flexcam-clips.csv', flexcamClipsToCsv(reqs.map((r) => ({
+            id: r.id,
+            recorded_at: String(r.from_ts ?? ''),
+            classification: r.classification ?? '',
+            case_number: r.evidence_number ?? '',
+          }))))}
+        >CSV</button>
         <button onClick={() => fetchReqs()} disabled={loading}
           className="flex items-center gap-1 text-[9px] text-rmpg-400 hover:text-brand-400 transition-colors disabled:opacity-40 px-2 py-1 border border-border-default">
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
@@ -337,11 +351,18 @@ export default function FlexCamPage() {
         </div>
       )}
 
+      {fetchError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load FlexCam footage.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); fetchReqs(); }}>Retry</button>
+        </div>
+      )}
+
       {/* ── No data ──────────────────────────────────────── */}
       {!loading && reqs.length === 0 && (
         <div className="text-center py-12 space-y-2">
           <Video className="w-8 h-8 text-rmpg-700 mx-auto" />
-          <div className="text-[11px] text-rmpg-600">No trip footage yet.</div>
+          <div className="text-[11px] text-rmpg-600">{fetchError ? 'Failed to load trip footage — check connection' : 'No trip footage yet.'}</div>
           <div className="text-[9px] text-rmpg-700">Full-drive recordings appear here automatically.</div>
         </div>
       )}

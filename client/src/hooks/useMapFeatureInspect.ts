@@ -12,7 +12,7 @@
  * below. It was a billed round-trip per click that answered nothing.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import {
   isOverlayLayer, humanLayerLabel, layerGroupLabel, configIdFromLayerId, metresToUsDistance,
@@ -21,31 +21,17 @@ import { OSM_VECTOR_CONFIGS } from './useVectorTileLayers';
 import { OSM_GROUPS } from '../config/osmLayers.generated';
 import { haversineDistance } from '../utils/unitRecommendation';
 import { formatBearing } from '../utils/osmFeatureDescription';
+import {
+  collectCadGeoFeatures, collectCadMarkers,
+  type CadCallHit, type CadUnitHit,
+  type InspectedFeature, type InspectionResult,
+} from '../pages/map/utils/mapCadInspect';
+
+export type { InspectedFeature, InspectionResult };
 
 /** Half-width of the hit box, in screen pixels. An exact-point query makes a
  *  5px miss on a hydrant read as "no hydrant". */
 export const HIT_TOLERANCE_PX = 8;
-
-export interface InspectedFeature {
-  /** Dedupe/React key. */
-  key: string;
-  layerId: string;
-  categoryLabel: string;
-  groupLabel: string | null;
-  coverage?: string;
-  properties: Record<string, unknown>;
-  geometry: GeoJSON.Geometry;
-  /** Set only on the widened nearest-feature path, e.g. "90 ft NE". */
-  awayLabel?: string;
-}
-
-export interface InspectionResult {
-  lngLat: [number, number];
-  features: InspectedFeature[];
-  /** True when nothing was found at the click point and the search widened. */
-  widened: boolean;
-  timestamp: number;
-}
 
 /** configId -> coverage caveat, so a hit can carry its layer's caveat. */
 const COVERAGE_BY_CONFIG_ID: Record<string, string> = (() => {
@@ -84,6 +70,7 @@ export function collectOverlayFeatures(raw: any[]): InspectedFeature[] {
     byKey.set(key, {
       key,
       layerId,
+      kind: 'osm',
       categoryLabel: humanLayerLabel(layerId) ?? layerId,
       groupLabel: layerGroupLabel(layerId),
       coverage: COVERAGE_BY_CONFIG_ID[cfgId],
@@ -139,10 +126,16 @@ export function awayLabelFor(
   return dist ? `${dist}${bearing ? ` ${bearing}` : ''}` : undefined;
 }
 
-export function useMapFeatureInspect(map: mapboxgl.Map | null, mapLoaded: boolean) {
+export function useMapFeatureInspect(
+  map: mapboxgl.Map | null,
+  mapLoaded: boolean,
+  cad?: { units: CadUnitHit[]; calls: CadCallHit[] },
+) {
   const [enabled, setEnabled] = useState(false);
   const [result, setResult] = useState<InspectionResult | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const cadRef = useRef(cad);
+  cadRef.current = cad;
 
   useEffect(() => {
     if (!map || !mapLoaded || !enabled) return;
@@ -150,15 +143,23 @@ export function useMapFeatureInspect(map: mapboxgl.Map | null, mapLoaded: boolea
     const handler = (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat;
       const from: [number, number] = [lng, lat];
+      const project = typeof map.project === 'function'
+        ? (ln: number, la: number) => map.project([ln, la])
+        : undefined;
 
       for (let step = 0; step < WIDEN_STEPS_PX.length; step++) {
-        const raw = map.queryRenderedFeatures(boxAround(e.point, WIDEN_STEPS_PX[step])) as any[];
-        const features = collectOverlayFeatures(raw);
+        const tol = WIDEN_STEPS_PX[step];
+        const raw = map.queryRenderedFeatures(boxAround(e.point, tol)) as any[];
+        const live = cadRef.current;
+        const features = [
+          ...collectCadMarkers(live?.units ?? [], live?.calls ?? [], project, e.point, tol),
+          ...collectCadGeoFeatures(raw),
+          ...collectOverlayFeatures(raw),
+        ];
         if (!features.length) continue;
         const widened = step > 0;
         setResult({
           lngLat: from,
-          // Distance is load-bearing only when we widened to find these.
           features: widened
             ? features.map((f) => ({ ...f, awayLabel: awayLabelFor(from, f.geometry) }))
             : features,

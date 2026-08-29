@@ -118,7 +118,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
         else if (g.type === 'MultiPolygon') for (const poly of g.coordinates) tryRing(poly);
         const prev = groups.get(val);
         if (!prev || area > prev.area) {
-          groups.set(val, { name: get(f.name) || String(val), color: get(f.color) || '#d4a017', area, ring });
+          groups.set(val, { name: get(f.name) || String(val), color: get(f.color) || '#c3ccd6', area, ring });
         }
       };
       for (const ft of tagged.features) {
@@ -218,7 +218,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
             const pop = popupRef.current;
             if (!pop || !e.features || e.features.length === 0) return;
             const p = e.features[0].properties || {};
-            const color = p[f.color] || '#d4a017';
+            const color = p[f.color] || '#c3ccd6';
             const html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:150px;">`
               + `<div style="font-weight:bold;font-size:12px;color:${color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${esc(String(p[f.name] || cfg.label))}</div>`
               + `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${cfg.label}</div>`

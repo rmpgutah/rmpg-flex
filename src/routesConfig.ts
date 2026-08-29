@@ -154,6 +154,7 @@ import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
+import corporateOps from './routes/corporateOps';
 import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
@@ -484,6 +485,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
+  { prefix: '/api/corporate-ops', router: corporateOps, auth: 'required',
+    note: 'Corporate linkage: clock/fleet/HR/dispatch/map/serve snapshot, mileage reconcile, automatic workflow runs.' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/crisis', router: crisisResponse, auth: 'required',

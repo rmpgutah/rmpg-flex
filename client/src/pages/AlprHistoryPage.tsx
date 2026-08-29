@@ -15,6 +15,7 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import PlateScanModal from '../components/PlateScanModal';
 import { copyToClipboard } from '../utils/contextMenuActions';
+import { alprCapturesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface CaptureRow {
   id: number;
@@ -65,23 +66,6 @@ function dateFrom(filter: DateFilter): string | undefined {
   }
   const days = filter === '7d' ? 7 : 30;
   return new Date(now - days * 86_400_000).toISOString(); // new-date-ok — arithmetic on numeric ms
-}
-
-function exportCsv(rows: CaptureRow[]): void {
-  const header = ['ID','Timestamp','Plate','State','Make','Model','Year','Color','Body','Confidence%',
-    'Accepted','Alerted','Call ID','Source'].join(',');
-  const lines = rows.map((r) => [
-    r.id, r.created_at, r.plate ?? '', r.state ?? '', r.make ?? '', r.model ?? '',
-    r.year ?? '', r.color ?? '', r.vehicle_type ?? '',
-    r.confidence != null ? Math.round(r.confidence * 100) : '',
-    r.accepted ? 'yes' : 'no', r.alerted ? 'yes' : 'no', r.call_id ?? '',
-    r.call_id ? 'field' : r.annotated_image_url?.includes('cpg_dashcam') ? 'dashcam' : 'manual',
-  ].map(String).join(','));
-  const csv = [header, ...lines].join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `alpr-history-${Date.now()}.csv`;
-  a.click();
 }
 
 const REVIEW_STATUS_CHIP: Record<string, { label: string; cls: string }> = {
@@ -236,9 +220,19 @@ export default function AlprHistoryPage() {
           {rows.length > 0 && (
             <button
               type="button"
-              onClick={() => exportCsv(rows)}
-              aria-label="Export CSV"
-              className="flex items-center gap-1 text-brand-400 hover:underline"
+              onClick={() => downloadTextFile(`alpr-history-${Date.now()}.csv`, alprCapturesToCsv(rows.map((r) => ({
+                id: r.id,
+                created_at: r.created_at,
+                plate: r.plate,
+                state: r.state,
+                make: r.make,
+                model: r.model,
+                accepted: r.accepted,
+                alerted: r.alerted,
+                call_id: r.call_id,
+              }))))}
+              disabled={rows.length === 0}
+              className="toolbar-btn flex items-center gap-1"
             >
               <Download className="w-3 h-3" /> CSV
             </button>

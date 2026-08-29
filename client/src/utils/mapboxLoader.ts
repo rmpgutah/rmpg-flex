@@ -323,7 +323,7 @@ const TRAIL_LAYER = 'rmpg-mapbox-trail-line';
 export function addMapboxTrail(
   map: mapboxgl.Map,
   coords: [number, number][],
-  color: string = '#d4a017',
+  color: string = '#c3ccd6',
 ): void {
   if (!map || !map.style || !coords?.length) return;
   const data: GeoJSON.Feature<GeoJSON.LineString> = {

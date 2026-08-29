@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { WifiOff, RefreshCw, Trash2, CheckCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { withAlpha } from '../utils/withAlpha';
 import { parseTimestamp } from '../utils/dateUtils';
 import { filterByQuery, syncItemsToCsv } from '../utils/queueWorkbench';
 import { downloadTextFile } from '../utils/intelHitExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 interface SyncQueueItem {
   id: string;
@@ -59,15 +60,23 @@ export default function OfflineQueuePage() {
   const [clearing, setClearing] = useState(false);
   const [q, setQ] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
+  const [queueError, setQueueError] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const fetchQueue = useCallback(async () => {
-    const electronQueue = await window.electron?.getSyncQueueDetail?.();
-    if (Array.isArray(electronQueue)) {
-      setQueue(electronQueue as SyncQueueItem[]);
-    } else {
-      setQueue([]);
+    try {
+      const electronQueue = await window.electron?.getSyncQueueDetail?.();
+      if (Array.isArray(electronQueue)) {
+        setQueue(electronQueue as SyncQueueItem[]);
+      } else {
+        setQueue([]);
+      }
+      setLocalCount(getLocalQueueCount());
+      setQueueError(false);
+    } catch {
+      setQueueError(true);
     }
-    setLocalCount(getLocalQueueCount());
   }, []);
 
   useEffect(() => {
@@ -218,8 +227,7 @@ export default function OfflineQueuePage() {
           </button>
           <button
             type="button"
-            className="px-2 py-1 text-xs border rounded-[2px]"
-            style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}
+            className="toolbar-btn"
             onClick={() => downloadTextFile('offline-queue.csv', syncItemsToCsv(visible))}
           >
             CSV
@@ -229,9 +237,10 @@ export default function OfflineQueuePage() {
 
       <div className="flex gap-2 px-4 py-2 items-center">
         <input
+          ref={searchRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Filter endpoint…"
+          placeholder="Filter endpoint… (/)"
           aria-label="Filter sync queue"
           className="flex-1 text-[11px] px-2 py-1 bg-surface-sunken border border-border-subtle rounded-[2px] text-rmpg-100"
         />
@@ -248,6 +257,12 @@ export default function OfflineQueuePage() {
         ))}
       </div>
 
+      {queueError && (
+        <div className="px-4 py-2 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load sync queue.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchQueue(); }}>Retry</button>
+        </div>
+      )}
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {queue.length === 0 ? (
@@ -261,6 +276,10 @@ export default function OfflineQueuePage() {
                 {localCount} {localCount === 1 ? 'item' : 'items'} in local storage queue
               </span>
             )}
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs" style={{ color: 'var(--text-secondary)' }}>
+            No queue items match the current filter
           </div>
         ) : (
           <table className="w-full text-xs border-collapse">

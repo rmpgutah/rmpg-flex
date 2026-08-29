@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Loader2, Star } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { withAlpha } from '../../../utils/withAlpha';
 import { useMapDensity } from '../hooks/useMapDensity';
@@ -104,6 +104,8 @@ export interface DockToggleItem {
   /** Leading icon from the layer registry. Optional so a row still renders
    *  if a caller supplies an ad-hoc item outside the registry. */
   icon?: LucideIcon;
+  favorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 export function DockToggleRow({ item }: { item: DockToggleItem }) {
@@ -155,10 +157,30 @@ export function DockToggleRow({ item }: { item: DockToggleItem }) {
         />
       )}
       <span className="flex-1 min-w-0 truncate text-left">{item.label}</span>
+      {item.onToggleFavorite && (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={item.favorite ? `Unfavorite ${item.label}` : `Favorite ${item.label}`}
+          aria-pressed={item.favorite}
+          className="shrink-0 p-0.5"
+          style={{ color: item.favorite ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+          onClick={(e) => { e.stopPropagation(); item.onToggleFavorite?.(); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation();
+              e.preventDefault();
+              item.onToggleFavorite?.();
+            }
+          }}
+        >
+          <Star className="w-3 h-3" fill={item.favorite ? 'currentColor' : 'none'} />
+        </span>
+      )}
       {item.error ? (
         <AlertCircle className="w-3 h-3 shrink-0" style={{ color: 'var(--sev-critical)' }} />
       ) : (
-        item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--brand-gold)' }} />
+        item.loading && <Loader2 className="w-3 h-3 shrink-0 animate-spin" style={{ color: 'var(--accent-silver-400)' }} />
       )}
     </button>
   );

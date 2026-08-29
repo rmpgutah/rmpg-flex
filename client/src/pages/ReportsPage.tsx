@@ -46,6 +46,7 @@ import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
 import { chartSeriesColors, chartPriorityColor } from '../utils/chartPalette';
+import { downloadTextFile, reportCatalogToCsv } from '../utils/rmsListExport';
 
 // ============================================================
 // Types
@@ -999,6 +1000,7 @@ export default function ReportsPage() {
   const [customEndDate, setCustomEndDate] = useState(initialCustomEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   // ── URL deep-link: scroll-to-card ─────────────────────────────────
   // Consumes ?card=<id> by scrolling that card into view once the page has
@@ -1187,7 +1189,7 @@ export default function ReportsPage() {
 
     fetchAllData();
     return () => { cancelled = true; };
-  }, [dateRange, customStartDate, customEndDate]);
+  }, [dateRange, customStartDate, customEndDate, reloadTick]);
 
   // Compute stats
   const stats = {
@@ -1372,6 +1374,13 @@ export default function ReportsPage() {
         >
           <Download className="w-3.5 h-3.5" /> Export
         </button>
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => downloadTextFile('report-catalog.csv', reportCatalogToCsv(
+            [...SCROLLABLE_CARDS].map((id) => ({ id, name: id, category: 'dashboard' })),
+          ))}
+        >CSV</button>
       </PanelTitleBar>}
 
       {/* Mobile control bar — desktop hides this and uses the PanelTitleBar above */}
@@ -1447,6 +1456,7 @@ export default function ReportsPage() {
         <div className="bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 text-xs flex items-center gap-2 rounded-sm">
           <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
           <span className="flex-1">{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setError(null); setReloadTick((n) => n + 1); }}>Retry</button>
           <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-300 ml-2 text-[10px]">Dismiss</button>
         </div>
       )}
