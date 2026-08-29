@@ -18,10 +18,11 @@ vi.mock('../components/ToastProvider', () => ({
 }));
 
 describe('DialerConnectPage', () => {
-  test('renders the host dock DialerPanel positions into', () => {
+  test('renders the live Dial Connect dock plus history and voicemail tabs', () => {
     render(<DialerConnectPage />);
     const host = screen.getByTestId('dialer-connect-host');
     expect(host).toHaveAttribute('id', DIALER_HOST_ID);
-    expect(screen.getByTestId('dialer-connect-recordings')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /voicemail/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /call history/i })).toBeInTheDocument();
   });
 });
