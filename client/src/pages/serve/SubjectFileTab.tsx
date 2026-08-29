@@ -11,6 +11,7 @@ import ServeAttemptFileFolders from '../../components/serve/ServeAttemptFileFold
 import type { ServeJob, ServeAttempt, ServeSkipTrace } from '../../types';
 import { formatEnumValue } from '../../utils/formatters';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
+import { splitPersonName } from '../../utils/documentIntakeSaveHandlers';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -299,10 +300,10 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
 
   const handleLocateSubject = useCallback(() => {
     if (!job) return;
-    const parts = (job.recipient_name ?? '').split(' ');
+    const { first, last } = splitPersonName(job.recipient_name ?? '');
     const seed: EnrichmentSeed = {
-      first_name: parts[0] ?? '',
-      last_name:  parts.slice(1).join(' '),
+      first_name: first,
+      last_name:  last,
       dob:        (job.recipient_dob as string | undefined) ?? undefined,
       address:    job.recipient_address ?? undefined,
       city:       job.recipient_city ?? undefined,

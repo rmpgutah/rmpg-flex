@@ -81,19 +81,34 @@ function profilesToServeAddresses(profiles: SkipProfile[]): ServeSkipAddress[] {
   return out;
 }
 
-async function fetchSkipTraceSearch(q: string): Promise<SkipSearchResult> {
+async function fetchSkipTraceSearch(opts: {
+  name?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+}): Promise<SkipSearchResult> {
   const params = new URLSearchParams();
-  params.set('q', q.trim());
   params.set('engine', 'all');
-  return apiFetch<SkipSearchResult>(`/skiptracer-v2/search?${params.toString()}`);
-}
 
-function mergeProfiles(a: SkipProfile[], b: SkipProfile[]): SkipProfile[] {
-  const out = [...a];
-  for (const p of b) {
-    if (!out.some(o => o.id === p.id)) out.push(p);
+  const name = opts.name?.trim();
+  const address = opts.address?.trim();
+  if (name) {
+    params.set('q', name);
+    const tokens = name.split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      params.set('firstName', tokens[0]);
+      params.set('lastName', tokens[tokens.length - 1]);
+    }
+  } else if (address) {
+    params.set('q', address);
+  } else {
+    throw new Error('Enter a name or address to search');
   }
-  return out;
+
+  if (opts.city?.trim()) params.set('city', opts.city.trim());
+  if (opts.state?.trim()) params.set('state', opts.state.trim());
+
+  return apiFetch<SkipSearchResult>(`/skiptracer-v2/search?${params.toString()}`);
 }
 
 // ─── Component ──────────────────────────────────────────────────────────
@@ -147,26 +162,19 @@ export default function ServeSkipTracePanel({
     setFoundAddresses([]);
 
     try {
-      const searches: Promise<SkipSearchResult>[] = [];
-      if (address) searches.push(fetchSkipTraceSearch(address));
-      if (name) searches.push(fetchSkipTraceSearch(name));
+      const outcome = await fetchSkipTraceSearch({
+        name: name || undefined,
+        address: !name ? address : undefined,
+        city: job.recipient_city ?? undefined,
+        state: job.recipient_state ?? undefined,
+      });
 
-      const outcomes = await Promise.all(searches);
-      let profiles: SkipProfile[] = [];
-      const sourcesQueried = new Set<string>();
-      const sourcesResponded = new Set<string>();
-      const sourcesFailed: Array<{ name: string; error: string }> = [];
-      let totalCost = 0;
-      let durationMs = 0;
-
-      for (const outcome of outcomes) {
-        profiles = mergeProfiles(profiles, outcome.profiles ?? []);
-        outcome.sourcesQueried?.forEach(s => sourcesQueried.add(s));
-        outcome.sourcesResponded?.forEach(s => sourcesResponded.add(s));
-        sourcesFailed.push(...(outcome.sourcesFailed ?? []));
-        totalCost += outcome.totalCost ?? 0;
-        durationMs += outcome.durationMs ?? 0;
-      }
+      const profiles = outcome.profiles ?? [];
+      const sourcesQueried = new Set(outcome.sourcesQueried ?? []);
+      const sourcesResponded = new Set(outcome.sourcesResponded ?? []);
+      const sourcesFailed = outcome.sourcesFailed ?? [];
+      const totalCost = outcome.totalCost ?? 0;
+      const durationMs = outcome.durationMs ?? 0;
 
       const merged: SkipSearchResult = {
         profiles,
@@ -219,7 +227,7 @@ export default function ServeSkipTracePanel({
     } finally {
       setLoading(false);
     }
-  }, [job.id, searchName, searchAddress, onLookupComplete]);
+  }, [job.id, job.recipient_city, job.recipient_state, searchName, searchAddress, onLookupComplete]);
 
   if (!isOpen) return null;
 

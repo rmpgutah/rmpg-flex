@@ -1,6 +1,6 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
-import { enrichmentHeaders } from './http';
+import { enrichmentHeaders, splitPersonName } from './http';
 
 async function resolveApiKey(env: Bindings): Promise<string | null> {
   const fromEnv = env.OPENSANCTIONS_API_KEY?.trim();
@@ -25,8 +25,9 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
   }
 
   try {
+    const { first, last } = splitPersonName(seed.first_name, seed.last_name);
     const params = new URLSearchParams({
-      q: `${seed.first_name} ${seed.last_name}`,
+      q: [first, last].filter(Boolean).join(' '),
       schema: 'Person',
       limit: '10',
     });

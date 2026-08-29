@@ -5,6 +5,7 @@ import { normalizeDob } from '../utils/normalizeDob';
 import type { EnrichmentSeed } from '../utils/enrichment/types';
 import { OPEN_SOURCE_ENRICHMENT_SOURCES } from '../utils/enrichment/catalog';
 import { runEnrichmentSearch } from '../utils/enrichment/runSearch';
+import { ensureSkipTracerV2Schema } from '../utils/skiptracerV2/schema';
 
 const enrichment = new Hono<Env>();
 
@@ -29,10 +30,14 @@ enrichment.get('/sources', (c) => {
 });
 
 enrichment.post('/search', async (c) => {
+  await ensureSkipTracerV2Schema(c.env.DB);
   const body = await c.req.json<Partial<EnrichmentSeed>>();
   const first = (body.first_name ?? '').trim();
   const last  = (body.last_name  ?? '').trim();
-  if (!first || !last) return c.json({ error: 'first_name and last_name required' }, 400);
+  const address = (body.address ?? '').trim();
+  if ((!first || !last) && !address) {
+    return c.json({ error: 'first_name and last_name required (or address for property/geocode lookup)' }, 400);
+  }
 
   const seed: EnrichmentSeed = {
     first_name: first,

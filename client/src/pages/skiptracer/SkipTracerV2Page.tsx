@@ -25,6 +25,16 @@ import { INPUT_BADGE_COLORS, CATEGORY_COLORS, ENGINE_COLORS, SECTION_COLORS, STA
 import { useEnrichment } from '../../hooks/useEnrichment';
 import type { EnrichmentSeed, SourceResult } from '../../hooks/useEnrichment';
 
+function historyQueryFromParams(params: Record<string, unknown>): string {
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
+  if (q) return q;
+  for (const key of ['name', 'phone', 'email', 'address'] as const) {
+    const legacy = params[key];
+    if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  }
+  return [params.firstName, params.lastName].filter(v => typeof v === 'string' && v.trim()).join(' ').trim();
+}
+
 // ─── Types ───────────────────────────────────────────────────
 
 interface SourceInfo {
@@ -564,8 +574,19 @@ export default function SkipTracerV2Page() {
 
   const rerunSearch = useCallback((item: SearchHistory) => {
     try {
-      const params = JSON.parse(item.query_params);
-      const q = params.name || params.phone || params.email || params.address || '';
+      const params = JSON.parse(item.query_params) as Record<string, unknown>;
+      const q = historyQueryFromParams(params);
+      if (params.firstName || params.lastName || params.dob || params.engine) {
+        setAdvancedFields(prev => ({
+          ...prev,
+          firstName: String(params.firstName ?? ''),
+          lastName: String(params.lastName ?? ''),
+          dob: String(params.dob ?? ''),
+        }));
+        if (typeof params.engine === 'string' && ['all', 'microbilt', 'rapidapi'].includes(params.engine)) {
+          setSearchEngine(params.engine as 'all' | 'microbilt' | 'rapidapi');
+        }
+      }
       if (q) {
         setQuery(q);
         setActiveTab('search');
@@ -741,7 +762,7 @@ export default function SkipTracerV2Page() {
 
   // ─── Enrichment ─────────────────────────────────────────
 
-  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, error: enrichError, reset: enrichReset } = useEnrichment();
 
   const enrichSeed = useCallback((): EnrichmentSeed | null => {
     if (!selected) return null;
@@ -822,8 +843,8 @@ export default function SkipTracerV2Page() {
   const buildHistoryMenu = useCallback((h: SearchHistory): ContextMenuItem[] => {
     let queryDisplay = '';
     try {
-      const params = JSON.parse(h.query_params);
-      queryDisplay = params.name || params.phone || params.email || params.address || h.query_params;
+      const params = JSON.parse(h.query_params) as Record<string, unknown>;
+      queryDisplay = historyQueryFromParams(params) || h.query_params;
     } catch { queryDisplay = h.query_params; }
     return [
       m.action('Re-run search', () => rerunSearch(h), { icon: <RefreshCw size={12} /> }),
@@ -1329,7 +1350,7 @@ export default function SkipTracerV2Page() {
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { const s = enrichSeed(); if (s) enrichSearch(s); }}
+                  onClick={() => { const s = enrichSeed(); if (s) enrichSearch(s, { refresh: Boolean(enrichResult) }); }}
                   disabled={enrichLoading || !selected}
                   className="px-2 py-1 text-[10px] font-medium rounded bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors"
                 >
@@ -1424,7 +1445,11 @@ export default function SkipTracerV2Page() {
               </div>
             )}
 
-            {!enrichResult && !enrichLoading && (
+            {enrichError && (
+              <p className="px-3 py-2 text-[10px] text-red-400">{enrichError}</p>
+            )}
+
+            {!enrichResult && !enrichLoading && !enrichError && (
               <p className="px-3 py-2 text-[9px] text-text-secondary">Click "Enrich from open sources" to run open-source intelligence search.</p>
             )}
           </div>
@@ -1913,8 +1938,8 @@ export default function SkipTracerV2Page() {
           {history.map(h => {
             let queryDisplay = '';
             try {
-              const params = JSON.parse(h.query_params);
-              queryDisplay = params.name || params.phone || params.email || params.address || JSON.stringify(params);
+              const params = JSON.parse(h.query_params) as Record<string, unknown>;
+              queryDisplay = historyQueryFromParams(params) || JSON.stringify(params);
             } catch { queryDisplay = h.query_params; }
 
             const badgeType = h.search_type === 'name' ? 'Name' : h.search_type === 'phone' ? 'Phone' : h.search_type === 'email' ? 'Email' : 'Address';

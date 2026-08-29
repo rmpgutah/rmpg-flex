@@ -1,14 +1,19 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
+import { splitPersonName } from './http';
 
 export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<SourceResult> {
   const start = Date.now();
   const source = 'bop_inmates';
+  const { first, last } = splitPersonName(seed.first_name, seed.last_name);
+  if (!first && !last) {
+    return { source, ok: true, latency_ms: Date.now() - start, records: [] };
+  }
   try {
     const body = new URLSearchParams({
-      nameFirst: seed.first_name,
+      nameFirst: first,
       nameMiddle: '',
-      nameLast: seed.last_name,
+      nameLast: last,
       age: '',
       race: 'U',
       sex: 'U',
