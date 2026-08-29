@@ -314,6 +314,26 @@ export interface CallForService {
   scene_safety?: string;
   weather_conditions?: string;
   lighting_conditions?: string;
+  /** Live/historical Open-Meteo snapshot stamped at dispatch / on created_at edit. */
+  weather_snapshot?: {
+    temp_f?: number | null;
+    feels_like_f?: number | null;
+    condition?: string;
+    scene_category?: string;
+    weather_code?: number | null;
+    wind_mph?: number | null;
+    wind_gust_mph?: number | null;
+    wind_dir?: string | null;
+    wind_dir_deg?: number | null;
+    humidity?: number | null;
+    visibility_mi?: number | null;
+    precip_in?: number | null;
+    observed_at?: string | null;
+    source?: 'live' | 'historical';
+    lighting?: string;
+    captured_at?: string;
+  } | null;
+  weather_manual?: boolean | number;
   // Flags
   alcohol_involved?: boolean;
   drugs_involved?: boolean;

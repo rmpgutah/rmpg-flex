@@ -5,9 +5,12 @@
 
 /** Weather condition presets for scene documentation */
 export const WEATHER_OPTIONS = [
-  '', 'Clear', 'Partly Cloudy', 'Overcast', 'Rain', 'Snow', 'Fog', 'Sleet/Hail',
+  '', 'Sunny', 'Clear', 'Partly Cloudy', 'Overcast', 'Rain', 'Thunderstorm', 'Snow', 'Fog', 'Sleet/Hail',
   'Windy', 'Extreme Heat', 'Extreme Cold', 'Unknown',
 ] as const;
+
+/** One-tap scene weather chips on the new-call / edit forms. */
+export const WEATHER_QUICK_CHIPS = ['Sunny', 'Overcast', 'Rain', 'Thunderstorm', 'Windy'] as const;
 
 /** Lighting condition presets for scene documentation */
 export const LIGHTING_OPTIONS = [

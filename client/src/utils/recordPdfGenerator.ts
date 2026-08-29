@@ -13,6 +13,7 @@ import { hasValue, toNum } from './sentinel';
 import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
 import { getMeaningfulPersonStatus } from './personStatus';
+import { formatWeatherPdfLine, formatWeatherWind } from './cfsWeatherFormat';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
   addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
@@ -647,6 +648,20 @@ export interface CallPdfData {
   // Scene conditions
   weather_conditions?: string;
   lighting_conditions?: string;
+  weather_snapshot?: {
+    temp_f?: number | null;
+    feels_like_f?: number | null;
+    condition?: string;
+    scene_category?: string;
+    wind_mph?: number | null;
+    wind_gust_mph?: number | null;
+    wind_dir?: string | null;
+    humidity?: number | null;
+    visibility_mi?: number | null;
+    precip_in?: number | null;
+    observed_at?: string | null;
+    source?: 'live' | 'historical';
+  } | string | null;
   scene_safety?: string;
   injuries_reported?: boolean;
   weapons_involved?: string;
@@ -2871,14 +2886,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, flagSec.sectionY, y, undefined, flagSec.sectionPage);
   }
 
-  // Scene Conditions (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
-  y = checkPageBreak(doc, y, 18, prio);
+  // Scene Conditions (header + weather metrics — keep on page 1 when possible)
+  y = checkPageBreak(doc, y, 28, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
-    // All 4 fields in one row
+    const snapRaw = data.weather_snapshot;
+    const snap = typeof snapRaw === 'string'
+      ? (() => { try { return JSON.parse(snapRaw); } catch { return null; } })()
+      : (snapRaw || null);
+    const weatherLabel = formatWeatherPdfLine(snap, data.weather_conditions || '') || data.weather_conditions || '';
     const scW = ffw / 4;
     const scFields = [
-      { label: 'Weather', value: data.weather_conditions || '' },
-      { label: 'Lighting', value: data.lighting_conditions || '' },
+      { label: 'Weather', value: weatherLabel },
+      { label: 'Lighting', value: data.lighting_conditions || (snap?.lighting ?? '') },
       { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'N/A' : data.weapons_involved },
       { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
     ];
@@ -2888,6 +2907,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (fy > maxScY) maxScY = fy;
     }
     y = maxScY;
+    if (snap && (snap.temp_f != null || snap.wind_mph != null || snap.humidity != null || snap.visibility_mi != null)) {
+      const met = [
+        { label: 'Temperature', value: snap.temp_f != null ? `${Math.round(snap.temp_f)} F` : '' },
+        { label: 'Wind', value: formatWeatherWind(snap) },
+        { label: 'Humidity', value: snap.humidity != null ? `${snap.humidity}%` : '' },
+        { label: 'Visibility', value: snap.visibility_mi != null ? `${snap.visibility_mi} mi` : '' },
+      ];
+      let maxMetY = y + SPACING.FIELD_ROW_ADVANCE;
+      for (let i = 0; i < 4; i++) {
+        const fy = addFieldPair(doc, met[i].label, met[i].value, lx + i * scW, y, scW);
+        if (fy > maxMetY) maxMetY = fy;
+      }
+      y = maxMetY;
+      const src = snap.source === 'historical' ? 'Historical observation' : 'Live observation';
+      const when = snap.observed_at ? ` @ ${snap.observed_at}` : '';
+      y = addFieldPair(doc, 'Weather observed', `${src}${when}`, lx, y, ffw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
