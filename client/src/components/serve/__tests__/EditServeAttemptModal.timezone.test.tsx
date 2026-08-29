@@ -16,16 +16,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ServeAttempt } from '../../../types';
 
-const apiFetchMock = vi.fn(async (path: string) => {
-  if (typeof path === 'string' && path.includes('/file-folders')) {
-    return { queue_id: 88, intake: [], folders: [] };
-  }
-  return {};
-});
+const apiFetchMock = vi.fn().mockResolvedValue({});
 vi.mock('../../../hooks/useApi', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
   authedImageUrl: (u: string) => u,
 }));
+
+function mockApiFetchDefault() {
+  apiFetchMock.mockImplementation(async (path: unknown) => {
+    if (typeof path === 'string' && path.includes('/file-folders')) {
+      return { queue_id: 88, intake: [], folders: [] };
+    }
+    return {};
+  });
+}
+mockApiFetchDefault();
 
 import EditServeAttemptModal from '../EditServeAttemptModal';
 
@@ -64,6 +69,7 @@ function renderModal() {
 describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
   beforeEach(() => {
     apiFetchMock.mockClear();
+    mockApiFetchDefault();
     localStorage.clear();
   });
 
@@ -104,6 +110,7 @@ describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
 describe('EditServeAttemptModal — scroll containment', () => {
   beforeEach(() => {
     apiFetchMock.mockClear();
+    mockApiFetchDefault();
     localStorage.clear();
   });
 
