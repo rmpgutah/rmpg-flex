@@ -29,6 +29,7 @@ import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLoo
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import { formatLabel, toDisplayLabel } from '../utils/formatters';
+import { fiCardsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -468,6 +469,13 @@ export default function FieldInterviewsPage() {
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/field-interviews/export/csv" exportFilename="field_interviews_export.csv" />
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={fis.length === 0}
+          onClick={() => downloadTextFile('field-interviews.csv', fiCardsToCsv(fis))}
+          title="CSV of FI number, location, reason — no names, DOB, or narrative"
+        >CSV</button>
         {canManage && (
           <button type="button" onClick={handleOpenNew} className="toolbar-btn">
             <Plus style={{ width: 11, height: 11 }} /> New FI Card
