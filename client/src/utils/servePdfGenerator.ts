@@ -901,12 +901,15 @@ const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
   },
 ];
 
+/** Subject-facing verify QR — one constant for layout reservation + render. */
+const NOTICE_QR_SIZE_MM = 14;
+const NOTICE_QR_LABEL_H_MM = 3;
+const NOTICE_QR_PIXEL_WIDTH = 128;
+
 /** Top of the subject-facing QR block — flowing content must stay above this. */
 function noticeQrZoneTop(pageH: number): number {
   const FOOTER_ACCENT_Y = pageH - 11;
-  const QR_SIZE = 22;
-  const QR_LABEL_H = 3.5;
-  return FOOTER_ACCENT_Y - 2 - QR_LABEL_H - QR_SIZE - 2;
+  return FOOTER_ACCENT_Y - 2 - NOTICE_QR_LABEL_H_MM - NOTICE_QR_SIZE_MM - 2;
 }
 
 /** Pick a starting tier from payload shape so typical jobs render relaxed. */
@@ -1473,21 +1476,19 @@ export async function generateNoticeOfAttempt(
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 1,
-      width: 200,
+      width: NOTICE_QR_PIXEL_WIDTH,
     });
-    const QR_SIZE = 22;
     const qrX = getRailX();
     const pageH = doc.internal.pageSize.getHeight();
     // addPageFooter places the accent line at pageH - 11 (SAFE_PRINT_EDGE_BOTTOM=8, offset=3).
-    // Keep the "Scan to verify" label (3.5mm) + 2mm gap entirely above that line.
+    // Keep the "Scan to verify" label + 2mm gap entirely above that line.
     const FOOTER_ACCENT_Y = pageH - 11;
-    const QR_LABEL_H = 3.5;
-    const qrY = FOOTER_ACCENT_Y - 2 - QR_LABEL_H - QR_SIZE;
-    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, QR_SIZE, QR_SIZE);
+    const qrY = FOOTER_ACCENT_Y - 2 - NOTICE_QR_LABEL_H_MM - NOTICE_QR_SIZE_MM;
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, NOTICE_QR_SIZE_MM, NOTICE_QR_SIZE_MM);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('Scan to verify', qrX + QR_SIZE / 2, qrY + QR_SIZE + 2.5, { align: 'center' });
+    doc.text('Scan to verify', qrX + NOTICE_QR_SIZE_MM / 2, qrY + NOTICE_QR_SIZE_MM + 2, { align: 'center' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   } catch {
     // best-effort
