@@ -10,6 +10,7 @@ export const DIALER_FUNCTIONS = [
   { id: 'transfer', label: 'Blind / Warm Transfer' },
   { id: 'conference', label: 'Add Conference Party' },
   { id: 'record', label: 'Start / Stop Recording' },
+  { id: 'hangup', label: 'Hang Up / Mute' },
   { id: 'lookup', label: 'Caller ID Lookup' },
   { id: 'link_cfs', label: 'Link Call to CFS' },
   { id: 'disposition', label: 'Call Disposition' },
@@ -29,6 +30,8 @@ export const VOICEMAIL_FUNCTIONS = [
   { id: 'search', label: 'Transcript Search' },
   { id: 'urgency', label: 'Urgency Classification' },
   { id: 'bulk_heard', label: 'Bulk Mark Heard' },
+  { id: 'csv', label: 'CSV Export' },
+  { id: 'notes', label: 'Mailbox Notes' },
 ] as const;
 
 export const CALL_HISTORY_FUNCTIONS = [
@@ -44,6 +47,8 @@ export const CALL_HISTORY_FUNCTIONS = [
   { id: 'stats', label: 'Duration Stats' },
   { id: 'duplicates', label: 'Duplicate Clusters' },
   { id: 'tags', label: 'Tags & Notes' },
+  { id: 'starred', label: 'Starred Filter' },
+  { id: 'link_cfs', label: 'Open Linked CFS' },
 ] as const;
 
 export const DISPOSITIONS = [
