@@ -156,7 +156,7 @@ export default function FeatureInspectorPanel({
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-border-default">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--panel-header-color)]">
           {result.features.length === 0
-            ? 'Identify'
+            ? 'Inspector'
             : `${result.features.length} feature${result.features.length === 1 ? '' : 's'}`}
         </div>
         <IconButton aria-label="Close feature inspector" onClick={onClose}>

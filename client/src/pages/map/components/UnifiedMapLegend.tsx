@@ -31,7 +31,7 @@ export interface UnifiedLegendProps {
   visibleOsmConfigs?: VectorTileLayerConfig[];
 }
 
-const HSWATCH: Record<string, string> = { area: '#d4a017', sector: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
+const HSWATCH: Record<string, string> = { area: '#c3ccd6', sector: '#22c55e', zone: '#4ade80', beat: '#22c55e' };
 
 const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boolean }) => (
   <span
@@ -197,10 +197,10 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
             <div>
               <div style={{ color: sub, fontSize: 7, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>Boundaries</div>
               {boundaries.county && (
-                <div className="flex items-center gap-1.5"><Swatch color="#9a9a9a" line /><span style={{ fontSize: 9, color: fg }}>County</span></div>
+                <div className="flex items-center gap-1.5"><Swatch color="#444444" line /><span style={{ fontSize: 9, color: fg }}>County</span></div>
               )}
               {boundaries.municipality && (
-                <div className="flex items-center gap-1.5"><Swatch color="#c9c9c9" line /><span style={{ fontSize: 9, color: fg }}>Municipality</span></div>
+                <div className="flex items-center gap-1.5"><Swatch color="#a855f7" line /><span style={{ fontSize: 9, color: fg }}>Municipality</span></div>
               )}
             </div>
           )}

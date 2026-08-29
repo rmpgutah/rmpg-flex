@@ -11,6 +11,10 @@ import {
   narcCasesToCsv, pawnItemsToCsv, bulletinsToCsv, animalCasesToCsv, impoundsToCsv,
   accreditationStandardsToCsv, crisisIncidentsToCsv, alertTemplatesToCsv, inmateRosterToCsv,
   communityTipsSafeToCsv, darListToCsv, bodyCamerasToCsv, loginHistoryToCsv, cdocResultsToCsv,
+  inboxNotificationsToCsv, codeViolationsToCsv, fiCardsToCsv, courtDocketToCsv, kbHitsToCsv,
+  historyTimelineToCsv, dashcamListToCsv, plateSummaryToCsv, towOrdersToCsv,
+  briefingsToCsv, shiftNotesToCsv, trainingCoursesToCsv, unitsBoardToCsv, unitsBoardToTsv,
+  fileListingToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -117,6 +121,17 @@ describe('rmsListExport', () => {
     const tip = communityTipsSafeToCsv([{ tip_number: 'T-9', is_anonymous: 1, submitter_name: 'Jane Doe', category: 'noise', location: 'Main', status: 'new', priority: 'low' }]);
     expect(tip).toContain('[anonymous]');
     expect(tip).not.toContain('Jane Doe');
+    const inbox = inboxNotificationsToCsv([{ type: 'bolo', title: 'Watch', priority: 'high', is_read: 0, created_at: 't' }]);
+    expect(inbox).toContain('Watch');
+    expect(inbox).not.toContain('body');
+    expect(codeViolationsToCsv([{ violation_number: 'CE-1', violation_type: 'noise', status: 'open', location: 'Main' }])).not.toContain('violator');
+    expect(fiCardsToCsv([{ fi_number: 'FI-1', location: '400 S', contact_reason: 'trespass', contact_type: 'field', action_taken: 'warned', status: 'active' }])).not.toContain('subject');
+    expect(courtDocketToCsv([{ event_number: 'CT-1', event_type: 'arraignment', status: 'scheduled', event_date: '2026-01-01' }])).not.toContain('defendant');
+    expect(kbHitsToCsv([{ type: 'warrant', recordId: 9, route: '/warrants' }])).not.toContain('name');
+    expect(historyTimelineToCsv([{ type: 'warrant', date: 'd', reference_number: 'W-1', status: 'active' }])).not.toContain('officer');
+    expect(dashcamListToCsv([{ id: 1, classification: 'routine', source: 'upload', recorded_at: 't', case_number: '26-1' }])).not.toContain('officer');
+    expect(towOrdersToCsv([{ tow_number: 'TOW-1', status: 'ordered', vehicle_plate: 'ABC123', tow_reason: 'parking' }])).not.toContain('phone');
+    expect(plateSummaryToCsv([{ plate: 'XYZ', reads: 3, last_seen: 't', ever_hit: 1 }])).toContain('XYZ');
   });
 
   it('exports crash reports, briefings, shift notes, and training courses', () => {

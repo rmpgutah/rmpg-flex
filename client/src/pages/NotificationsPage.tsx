@@ -14,6 +14,7 @@ import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { routeForEntity } from '../utils/notificationRouting';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
+import { inboxNotificationsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -104,10 +105,14 @@ export default function NotificationsPage() {
   const [sweepBusy, setSweepBusy] = useState(false);
   // Per-row delete confirmation — gated to admin/manager/supervisor only.
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async (page = 1) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams({ page: String(page), per_page: '25' });
       if (filterType) params.set('type', filterType);
@@ -117,6 +122,7 @@ export default function NotificationsPage() {
       setNotifications(res?.data || []);
       setPagination(res?.pagination || { page: 1, total: 0, totalPages: 0 });
     } catch {
+      setLoadError(true);
       addToast('Failed to load notifications', 'error');
     } finally {
       setLoading(false);
@@ -201,10 +207,14 @@ export default function NotificationsPage() {
         fetchNotifications(1);
         return;
       }
+      if (search.trim()) {
+        setSearch('');
+        return;
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [confirmDeleteId, confirmClearRead, confirmCleanupOld, showPrefs, filterType, filterRead, fetchNotifications]);
+  }, [confirmDeleteId, confirmClearRead, confirmCleanupOld, showPrefs, filterType, filterRead, fetchNotifications, search]);
 
   // \u2500\u2500 Deep-link resolver \u2500\u2500
   // Runs once notifications hydrate. If the target id is in the current
@@ -279,13 +289,18 @@ export default function NotificationsPage() {
   // open, focus is in a form field, or the inbox is already fully read.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'n' && e.key !== 'N') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target;
       if (t instanceof HTMLElement) {
         const tag = t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
       }
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (e.key !== 'n' && e.key !== 'N') return;
       if (confirmClearRead || confirmCleanupOld || showPrefs) return;
       if (!stats || stats.totalUnread === 0) return;
       e.preventDefault();
@@ -418,9 +433,31 @@ export default function NotificationsPage() {
     [categories, pagination.total]
   );
 
+  const visibleNotifications = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return notifications;
+    return notifications.filter((n) => `${n.title} ${n.type} ${n.priority}`.toLowerCase().includes(q));
+  }, [notifications, search]);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       <PanelTitleBar title="NOTIFICATIONS" icon={Bell}>
+        <input
+          ref={searchRef}
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter titles… (/)"
+          className="input-dark text-xs h-7 w-44"
+          aria-label="Filter notifications"
+        />
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={visibleNotifications.length === 0}
+          onClick={() => downloadTextFile('notifications.csv', inboxNotificationsToCsv(visibleNotifications))}
+          title="CSV of type, title, priority — no message body"
+        >CSV</button>
         <button type="button" onClick={markAllRead} className="toolbar-btn" title="Mark all as read (N)">
           <CheckCheck className="w-3.5 h-3.5" /> Mark All Read
         </button>
@@ -438,6 +475,13 @@ export default function NotificationsPage() {
           <Settings className="w-3.5 h-3.5" /> Preferences
         </button>
       </PanelTitleBar>
+
+      {loadError && (
+        <div className="px-4 py-2 text-xs text-red-400 flex items-center justify-between border-b border-red-700/40">
+          <span>Failed to load notifications.</span>
+          <button type="button" className="toolbar-btn" onClick={() => void fetchNotifications(pagination.page)}>Retry</button>
+        </div>
+      )}
 
       {/* Stats Bar */}
       {stats && (
@@ -551,14 +595,14 @@ export default function NotificationsPage() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-6 h-6 animate-spin text-rmpg-400" />
             </div>
-          ) : notifications.length === 0 ? (
-            // Empty-state distinction: a server-empty inbox ("nothing has
-            // happened that targets you") looks identical to a filter-empty
-            // list ("matches exist but your category/unread filter hides
-            // them"). Before, both rendered the same "No notifications"
-            // line and an operator with a stale category filter could not
-            // tell which.
-            (filterType || filterRead === '0') ? (
+          ) : visibleNotifications.length === 0 ? (
+            (search.trim() && notifications.length > 0) ? (
+              <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
+                <FilterIcon className="w-8 h-8 mb-2 opacity-50" />
+                <p className="text-sm">No titles match “{search}”</p>
+                <button type="button" onClick={() => setSearch('')} className="mt-3 toolbar-btn text-[10px]">Clear search</button>
+              </div>
+            ) : (filterType || filterRead === '0') ? (
               <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
                 <FilterIcon className="w-8 h-8 mb-2 opacity-50" />
                 <p className="text-sm">No notifications match this filter</p>
@@ -579,7 +623,7 @@ export default function NotificationsPage() {
             )
           ) : (
             <div className="divide-y divide-rmpg-700/30">
-              {notifications.map(n => (
+              {visibleNotifications.map(n => (
                 <div
                   key={n.id}
                   ref={(el) => {

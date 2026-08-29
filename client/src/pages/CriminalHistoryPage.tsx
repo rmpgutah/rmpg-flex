@@ -42,6 +42,7 @@ import { openCriminalHistoryPdf } from '../utils/criminalHistoryPdf';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { historyTimelineToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -402,7 +403,7 @@ export default function CriminalHistoryPage() {
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
           <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
           <span className="flex-1">{fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
+          <button type="button" onClick={() => { setFetchError(''); void handleSearch(); }} className="ml-auto text-red-300 hover:text-red-100 text-[10px]" aria-label="Retry search">Retry</button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
@@ -434,6 +435,13 @@ export default function CriminalHistoryPage() {
           <button type="button" onClick={() => openUtahCourts()} className="toolbar-btn" title="Search Utah Courts Xchange (opens in new tab)">
             <Scale className="w-3 h-3" /> Utah Courts
           </button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={history.length === 0}
+            onClick={() => downloadTextFile('criminal-history-timeline.csv', historyTimelineToCsv(history))}
+            title="CSV of type, date, reference — no names or DOB"
+          >CSV</button>
         </div>
       </PanelTitleBar>}
 

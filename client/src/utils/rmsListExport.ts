@@ -465,3 +465,65 @@ export function cdocResultsToCsv(rows: Array<{
     rows.map((r) => [r.doc_number, r.facility ?? '', r.status ?? '', r.gender ?? '']));
 }
 
+export function inboxNotificationsToCsv(rows: Array<{
+  type: string; title: string; priority: string; is_read: number; created_at: string;
+}>): string {
+  return rowsToCsv(['type', 'title', 'priority', 'read', 'created_at'],
+    rows.map((r) => [r.type, r.title, r.priority, r.is_read ? 'yes' : 'no', r.created_at]));
+}
+
+export function codeViolationsToCsv(rows: Array<{
+  violation_number: string; violation_type: string; status: string; location: string;
+  code_section?: string; severity?: string;
+}>): string {
+  return rowsToCsv(['number', 'type', 'status', 'location', 'code', 'severity'],
+    rows.map((r) => [r.violation_number, r.violation_type, r.status, r.location, r.code_section ?? '', r.severity ?? '']));
+}
+
+export function towOrdersToCsv(rows: Array<{
+  tow_number: string; status: string; vehicle_plate?: string; tow_reason?: string;
+}>): string {
+  return rowsToCsv(['number', 'status', 'plate', 'reason'],
+    rows.map((r) => [r.tow_number, r.status, r.vehicle_plate ?? '', r.tow_reason ?? '']));
+}
+
+export function fiCardsToCsv(rows: Array<{
+  fi_number: string; location: string; contact_reason: string; contact_type: string;
+  action_taken: string; status: string; created_at?: string;
+}>): string {
+  return rowsToCsv(['number', 'location', 'reason', 'type', 'action', 'status', 'created_at'],
+    rows.map((r) => [r.fi_number, r.location, r.contact_reason, r.contact_type, r.action_taken, r.status, r.created_at ?? '']));
+}
+
+export function courtDocketToCsv(rows: Array<{
+  event_number: string; event_type: string; status: string; event_date: string;
+  court_name?: string | null; court_case_number?: string | null;
+}>): string {
+  return rowsToCsv(['number', 'type', 'status', 'date', 'court', 'case'],
+    rows.map((r) => [r.event_number, r.event_type, r.status, r.event_date, r.court_name ?? '', r.court_case_number ?? '']));
+}
+
+export function historyTimelineToCsv(rows: Array<{
+  type: string; date: string; reference_number: string; status: string; location?: string;
+}>): string {
+  return rowsToCsv(['type', 'date', 'reference', 'status', 'location'],
+    rows.map((r) => [r.type, r.date, r.reference_number, r.status, r.location ?? '']));
+}
+
+export function plateSummaryToCsv(rows: Array<{
+  plate?: string | null; reads?: number | string | null; last_seen?: string | null; ever_hit?: boolean | number | null;
+}>): string {
+  return rowsToCsv(['plate', 'reads', 'last_seen', 'hit'],
+    rows.map((r) => [r.plate ?? '', r.reads ?? '', r.last_seen ?? '', r.ever_hit ? 'yes' : 'no']));
+}
+
+export function kbHitsToCsv(rows: Array<{ type: string; recordId: number; route: string }>): string {
+  return rowsToCsv(['type', 'record_id', 'route'], rows.map((r) => [r.type, r.recordId, r.route]));
+}
+
+export function dashcamListToCsv(rows: Array<{
+  id: number; classification: string; source?: string; recorded_at?: string; case_number?: string;
+}>): string {
+  return rowsToCsv(['id', 'classification', 'source', 'recorded_at', 'case'],
+    rows.map((r) => [r.id, r.classification, r.source ?? '', r.recorded_at ?? '', r.case_number ?? '']));
+}

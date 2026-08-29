@@ -43,6 +43,11 @@ describe('vector tile configs', () => {
     const all = [...VECTOR_TILE_CONFIGS, ...OSM_VECTOR_CONFIGS].map((c) => c.color).join(' ');
     expect(all.toLowerCase()).not.toContain('d4a017');
   });
+
+  it('never leaks CSS var() into Mapbox paint colors', () => {
+    const all = [...VECTOR_TILE_CONFIGS, ...OSM_VECTOR_CONFIGS].map((c) => c.color).join(' ');
+    expect(all).not.toContain('var(');
+  });
 });
 
 describe('osm layer specs', () => {
@@ -97,6 +102,13 @@ describe('osm layer specs', () => {
   it('renders osm_traffic_restriction as line', () => {
     expect(specsFor('osm_traffic_restriction').some((s) => s.type === 'line')).toBe(true);
     expect(specsFor('osm_traffic_restriction').some((s) => s.type === 'circle')).toBe(false);
+  });
+
+  it('dashes speed, clearance, and power so they do not look like basemap roads', () => {
+    for (const id of ['osm_traffic_maxspeed', 'osm_access_clearance', 'osm_utility_power']) {
+      const line = specsFor(id).find((s) => s.type === 'line');
+      expect(line?.paint['line-dasharray'], id).toBeTruthy();
+    }
   });
 
   it('renders osm_terrain_cliff as line', () => {
