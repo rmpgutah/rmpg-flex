@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Megaphone, Send, Clock, AlertTriangle, CheckCircle, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Megaphone, Send, Clock, AlertTriangle, CheckCircle, Copy, Download } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
+import { broadcastsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 type Priority = 'routine' | 'urgent' | 'emergency';
 type Target = 'all' | 'shift' | 'unit';
@@ -74,6 +75,8 @@ export default function BroadcastMessagePage() {
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [histSearch, setHistSearch] = useState('');
+  const [histPriority, setHistPriority] = useState<Priority | ''>('');
 
   const showToast = useCallback((text: string, ok: boolean) => {
     setToast({ text, ok });
@@ -83,7 +86,7 @@ export default function BroadcastMessagePage() {
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const data = await apiFetch<BroadcastRecord[]>('/communications/broadcasts?limit=10');
+      const data = await apiFetch<BroadcastRecord[]>('/communications/broadcasts?limit=50');
       setHistory(Array.isArray(data) ? data : []);
     } catch {
       setHistory([]);
@@ -146,6 +149,33 @@ export default function BroadcastMessagePage() {
     }
     doSend();
   }, [message, priority, role, doSend, showToast]);
+
+  const visibleHistory = useMemo(() => {
+    const q = histSearch.trim().toLowerCase();
+    return history.filter((r) => {
+      if (histPriority && r.priority !== histPriority) return false;
+      if (!q) return true;
+      return r.message.toLowerCase().includes(q) || r.sender_name.toLowerCase().includes(q);
+    });
+  }, [history, histSearch, histPriority]);
+
+  const reuse = useCallback((rec: BroadcastRecord) => {
+    setMessage(rec.message.slice(0, MAX_CHARS));
+    setPriority(rec.priority);
+    setTarget(rec.target);
+    setTargetId(rec.target_id ?? '');
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && confirmOpen) {
+        e.preventDefault();
+        setConfirmOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmOpen]);
 
   if (!canSend(role)) {
     return (
@@ -304,8 +334,14 @@ export default function BroadcastMessagePage() {
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value.slice(0, MAX_CHARS))}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             rows={4}
-            placeholder="Enter broadcast message…"
+            placeholder="Enter broadcast message… (Ctrl+Enter to send)"
             className="w-full rounded border border-rmpg-600 bg-surface-base text-rmpg-100 text-xs px-2 py-2 resize-none focus:outline-none focus:border-brand-500 placeholder:text-fg-muted"
           />
         </div>
@@ -340,19 +376,46 @@ export default function BroadcastMessagePage() {
 
       {/* History */}
       <div className="rounded border border-rmpg-600 bg-surface-raised">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 flex-wrap">
           <Clock size={11} className="text-fg-secondary" />
           <span className="text-[color:var(--panel-header-color)] text-[9px] font-semibold uppercase tracking-wider">
             Recent Broadcasts
           </span>
+          <span className="text-[9px] text-fg-muted">{visibleHistory.length}/{history.length}</span>
+          <input
+            value={histSearch}
+            onChange={(e) => setHistSearch(e.target.value)}
+            placeholder="Search history…"
+            className="ml-auto w-36 rounded border border-rmpg-600 bg-surface-base text-rmpg-100 text-[10px] px-2 py-1"
+          />
+          <select
+            value={histPriority}
+            onChange={(e) => setHistPriority(e.target.value as Priority | '')}
+            className="rounded border border-rmpg-600 bg-surface-base text-rmpg-100 text-[10px] px-1 py-1"
+          >
+            <option value="">All priorities</option>
+            <option value="routine">Routine</option>
+            <option value="urgent">Urgent</option>
+            <option value="emergency">Emergency</option>
+          </select>
+          <button
+            type="button"
+            disabled={visibleHistory.length === 0}
+            onClick={() => downloadTextFile('broadcasts.csv', broadcastsToCsv(visibleHistory))}
+            className="flex items-center gap-1 px-2 py-1 text-[9px] rounded border border-rmpg-600 text-fg-secondary disabled:opacity-40"
+          >
+            <Download size={10} /> CSV
+          </button>
         </div>
         {loadingHistory ? (
           <div className="p-4 text-fg-muted text-xs text-center">Loading…</div>
-        ) : history.length === 0 ? (
-          <div className="p-4 text-fg-muted text-xs text-center">No broadcasts sent yet.</div>
+        ) : visibleHistory.length === 0 ? (
+          <div className="p-4 text-fg-muted text-xs text-center">
+            {history.length === 0 ? 'No broadcasts sent yet.' : 'No broadcasts match the filter.'}
+          </div>
         ) : (
           <div className="divide-y divide-rmpg-700/50">
-            {history.map((rec) => (
+            {visibleHistory.map((rec) => (
               <div key={rec.id} className="px-3 py-2 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-[9px] px-1.5 py-0.5 rounded border ${PRIORITY_BADGE[rec.priority]}`}>
@@ -364,7 +427,23 @@ export default function BroadcastMessagePage() {
                   <span className="text-fg-muted text-[9px] ml-auto">{formatTime(rec.created_at)}</span>
                 </div>
                 <p className="text-rmpg-200 text-[10px] leading-snug">{rec.message}</p>
-                <p className="text-fg-muted text-[9px]">Sent by {rec.sender_name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-fg-muted text-[9px]">Sent by {rec.sender_name}</p>
+                  <button
+                    type="button"
+                    onClick={() => reuse(rec)}
+                    className="text-[9px] text-fg-secondary hover:text-rmpg-100 underline"
+                  >
+                    Reuse
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(rec.message).then(() => showToast('Copied', true)).catch(() => undefined)}
+                    className="flex items-center gap-0.5 text-[9px] text-fg-secondary hover:text-rmpg-100"
+                  >
+                    <Copy size={9} /> Copy
+                  </button>
+                </div>
               </div>
             ))}
           </div>

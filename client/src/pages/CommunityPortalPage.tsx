@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Users, Search, X, Loader2, ChevronLeft, Filter,
+  Users, Search, X, Loader2, ChevronLeft, Copy, Download,
   AlertTriangle, Clock, CheckCircle, Eye,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -18,6 +18,7 @@ import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
 import { toDisplayLabel } from '../utils/formatters';
+import { communityReportsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ export default function CommunityPortalPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [anonFilter, setAnonFilter] = useState<'all' | 'anon' | 'named'>('all');
   const [selected, setSelected] = useState<CommunityReport | null>(null);
   const [saving, setSaving] = useState(false);
   const [editStatus, setEditStatus] = useState<ReportStatus>('submitted');
@@ -126,6 +128,15 @@ export default function CommunityPortalPage() {
   useEffect(() => { fetchReports(); }, [fetchReports]);
   useEffect(() => { fetchOfficers(); }, [fetchOfficers]);
 
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelected(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected]);
+
   // ─── Detail panel ─────────────────────────────────────────
 
   const openDetail = (r: CommunityReport) => {
@@ -161,11 +172,14 @@ export default function CommunityPortalPage() {
   // ─── Filtered list ────────────────────────────────────────
 
   const filtered = reports.filter(r => {
+    if (anonFilter === 'anon' && !r.anonymous) return false;
+    if (anonFilter === 'named' && r.anonymous) return false;
     if (!search) return true;
     const q = search.toLowerCase();
+    const nameMatch = !r.anonymous && r.reporter_name.toLowerCase().includes(q);
     return (
       r.tracking_number.toLowerCase().includes(q) ||
-      r.reporter_name.toLowerCase().includes(q) ||
+      nameMatch ||
       r.location.toLowerCase().includes(q) ||
       r.description.toLowerCase().includes(q)
     );
@@ -217,6 +231,23 @@ export default function CommunityPortalPage() {
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
+        <select
+          value={anonFilter}
+          onChange={e => setAnonFilter(e.target.value as 'all' | 'anon' | 'named')}
+          className="bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-300 px-2 py-1.5 focus:[border-color:var(--field-label-color)] focus:outline-none"
+        >
+          <option value="all">All reporters</option>
+          <option value="anon">Anonymous only</option>
+          <option value="named">Named only</option>
+        </select>
+        <button
+          type="button"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('community-reports.csv', communityReportsToCsv(filtered))}
+          className="flex items-center gap-1 px-2 py-1.5 text-xs border border-border-default rounded-sm text-rmpg-200 disabled:opacity-40"
+        >
+          <Download className="w-3 h-3" /> CSV
+        </button>
       </div>
 
       {/* Table */}
@@ -275,6 +306,9 @@ export default function CommunityPortalPage() {
                   <ChevronLeft className="w-4 h-4" />
                 </IconButton>
                 <span className="[color:var(--panel-header-color)] text-xs font-semibold">{selected.tracking_number}</span>
+                <IconButton aria-label="Copy tracking number" onClick={() => navigator.clipboard.writeText(selected.tracking_number).catch(() => undefined)}>
+                  <Copy className="w-4 h-4" />
+                </IconButton>
               </div>
               <IconButton aria-label="Close detail panel" onClick={() => setSelected(null)}>
                 <X className="w-4 h-4" />
@@ -297,7 +331,7 @@ export default function CommunityPortalPage() {
                 </div>
                 <div>
                   <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Contact</label>
-                  <p>{selected.reporter_phone || selected.reporter_email || '—'}</p>
+                  <p>{selected.anonymous ? '—' : (selected.reporter_phone || selected.reporter_email || '—')}</p>
                 </div>
                 <div className="col-span-2">
                   <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Location</label>
