@@ -24,7 +24,14 @@ export async function safeFetch(url: string, init: RequestInit, timeoutMs = 1500
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    const headers = new Headers(init.headers);
+    if (!headers.has('User-Agent')) {
+      headers.set('User-Agent', 'RMPG-Flex/1.0 (Cloudflare Workers; sworn LE; person-intel)');
+    }
+    if (!headers.has('Accept')) {
+      headers.set('Accept', 'application/json');
+    }
+    const res = await fetch(url, { ...init, headers, signal: ctrl.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } finally {

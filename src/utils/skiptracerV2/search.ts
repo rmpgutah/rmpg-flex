@@ -588,7 +588,7 @@ function enrichmentProfiles(
         const tier = enrichment.match_tier;
         profiles.push(enrichedRecordToProfile(rec, src.source, tier));
       }
-    } else if (!src.ok && src.error) {
+    } else if (!src.ok && src.error && src.error !== 'not_configured') {
       failed.push({ name: src.source, error: src.error });
     }
   }

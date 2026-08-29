@@ -22,6 +22,9 @@ export const SKIPTRACER_V2_SOURCES: SourceDefinition[] = [
   { name: 'bop_inmates', displayName: 'BOP Inmate Locator', category: 'registry', costPerLookup: 0, openSource: true },
   { name: 'census_geocoder', displayName: 'Census Geocoder', category: 'property', costPerLookup: 0, openSource: true },
   { name: 'ofac_sdn', displayName: 'OFAC SDN', category: 'registry', costPerLookup: 0, openSource: true },
+  { name: 'usps', displayName: 'USPS Address', category: 'property', costPerLookup: 0, openSource: false, configKey: 'usps_user_id' },
+  { name: 'open_corporates', displayName: 'OpenCorporates', category: 'business', costPerLookup: 0, openSource: false, configKey: 'opencorporates_api_key' },
+  { name: 'numverify', displayName: 'NumVerify', category: 'osint', costPerLookup: 0, openSource: false, configKey: 'numverify_api_key' },
 ];
 
 async function getConfigValue(db: D1Database, key: string): Promise<string | null> {
@@ -57,6 +60,24 @@ export async function listSourceInfo(
       configured = Boolean(
         (typeof env?.OPENSANCTIONS_API_KEY === 'string' && env.OPENSANCTIONS_API_KEY.trim())
         || (await getConfigValue(db, 'opensanctions_api_key'))?.trim(),
+      );
+    }
+    if (src.name === 'usps') {
+      configured = Boolean(
+        (typeof env?.USPS_USER_ID === 'string' && env.USPS_USER_ID.trim())
+        || (await getConfigValue(db, 'usps_user_id'))?.trim(),
+      );
+    }
+    if (src.name === 'open_corporates') {
+      configured = Boolean(
+        (typeof env?.OPENCORPORATES_API_KEY === 'string' && env.OPENCORPORATES_API_KEY.trim())
+        || (await getConfigValue(db, src.configKey!))?.trim(),
+      );
+    }
+    if (src.name === 'numverify') {
+      configured = Boolean(
+        (typeof env?.NUMVERIFY_API_KEY === 'string' && env.NUMVERIFY_API_KEY.trim())
+        || (await getConfigValue(db, src.configKey!))?.trim(),
       );
     }
     if (src.name === 'vehicle_enrichment') {
