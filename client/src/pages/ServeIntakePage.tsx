@@ -1608,6 +1608,7 @@ export default function ServeIntakePage() {
                     <option value="po_box">PO Box</option>
                   </select>
                   {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
+                  <p className="text-[8px] text-rmpg-500 mt-0.5">Venue (hospice, school, warehouse, hotel…) is inferred into the OPS playbook tree.</p>
                 </div>
                 <div>
                   <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
