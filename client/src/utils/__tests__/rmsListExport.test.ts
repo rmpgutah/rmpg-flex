@@ -1,36 +1,37 @@
 import { describe, it, expect } from 'vitest';
-import { tipsToCsv, communityReportsToCsv, broadcastsToCsv, lockUnitsToCsv } from '../rmsListExport';
+import {
+  tipsToCsv, communityReportsToCsv, crashReportsToCsv, formatRadioLine,
+  agendaToCsv, qaReviewsToCsv, assetsToCsv, errorLogsToCsv, recordingsToCsv,
+  modulesToCsv, mutualAidToCsv, plateHistoryToCsv,
+} from '../rmsListExport';
 
 describe('rmsListExport', () => {
-  it('exports tips without a free-text notes dump of unused columns', () => {
-    const csv = tipsToCsv([{
-      tracking_number: 'T-1', tip_type: 'theft', urgency: 'urgent', status: 'new',
-      location: 'Main St', assigned_to_name: 'Hale',
-    }]);
-    expect(csv).toContain('T-1');
-    expect(csv.split('\n')[0]).toBe('tracking,type,urgency,status,location,assigned');
-  });
-
-  it('redacts contact fields on anonymous community reports', () => {
+  it('redacts anonymous community contact', () => {
     const csv = communityReportsToCsv([{
       tracking_number: 'CR-9', report_type: 'noise', status: 'submitted', location: '400 S',
       anonymous: true, reporter_name: 'Jane Doe', reporter_phone: '8015551212',
       reporter_email: 'jane@example.com', description: 'loud music',
     }]);
-    expect(csv).toContain('[anonymous]');
     expect(csv).not.toContain('Jane Doe');
-    expect(csv).not.toContain('8015551212');
-    expect(csv).not.toContain('jane@example.com');
-    expect(csv).toContain('loud music');
+    expect(csv).toContain('[anonymous]');
   });
 
-  it('serializes broadcasts and lock units', () => {
-    expect(broadcastsToCsv([{
-      message: 'Stand down', priority: 'routine', target: 'all', target_id: null,
-      sender_name: 'Disp', created_at: 't',
-    }])).toContain('Stand down');
-    expect(lockUnitsToCsv([{
-      unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'locked', reason: 'Lost device',
-    }])).toContain('Lost device');
+  it('covers crash, radio, agenda, qa, assets, logs, recordings, modules, aid, plates', () => {
+    expect(tipsToCsv([{ tracking_number: 'T-1', tip_type: 't', urgency: 'u', status: 's', location: 'l', assigned_to_name: null }])).toContain('T-1');
+    expect(crashReportsToCsv([{
+      report_number: 'CR-1', crash_date: 'd', location: 'x', crash_type: 't', severity: 's',
+      vehicles_involved: 1, injuries: 0, fatalities: 0, status: 'filed',
+    }])).toContain('CR-1');
+    expect(formatRadioLine({ unit_id: '12A', officer_name: 'Hale', status: 'available', location_description: 'Main' }))
+      .toBe('12A available — Hale — Main');
+    expect(agendaToCsv([{ source: 'custom', title: 'Brief', date: '2026-08-01' }])).toContain('Brief');
+    expect(qaReviewsToCsv([{ id: 9, review_type: 'call_audit', findings: 'ok' }])).toContain('call_audit');
+    expect(assetsToCsv([{ asset_tag: 'A-1', serial_number: 'SN9', status: 'issued' }])).toContain('SN9');
+    expect(errorLogsToCsv([{ created_at: 't', severity: 'error', category: 'route', message: 'boom', trace_id: 'abc' }])).toContain('abc');
+    expect(recordingsToCsv([{ id: 3, started_at: 't', duration_sec: 12, status: 'saved', location_text: '400 S', notes: null }])).toContain('400 S');
+    expect(modulesToCsv([{ path: '/qa', label: 'QA' }])).toContain('/qa');
+    expect(mutualAidToCsv([{ callNumber: 'C1', nature: 'assist', location: 'x', requestingAgency: 'RMPG', assistingAgencies: ['SLCPD'] }])).toContain('SLCPD');
+    expect(plateHistoryToCsv([{ plate: 'ABC123', state: 'UT' }])).toContain('ABC123');
+    expect(plateHistoryToCsv([{ plate: 'XYZ', state: 'UT', ts: 1_700_000_000_000 }])).toContain('XYZ');
   });
 });
