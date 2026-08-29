@@ -17,6 +17,9 @@ interface Snapshot {
   serve_attempts_today: number;
   fleet_service_due: number;
   mileage_flags_today: number;
+  handbook_pending?: number;
+  cost_per_mile_30d?: number | null;
+  low_fuel_units?: Array<{ id: number; vehicle_number: string | null; fuel_level: number | null }>;
   on_duty: Array<{ officer_id: number; full_name: string; call_sign: string | null; vehicle_number: string | null }>;
   recent_runs: Array<{ id: number; kind: string; status: string; item_count: number; started_at: string }>;
 }
@@ -85,6 +88,9 @@ export default function CorporateOpsTab() {
     { label: 'Serve attempts', value: snap.serve_attempts_today },
     { label: 'Fleet due', value: snap.fleet_service_due },
     { label: 'Mileage flags', value: snap.mileage_flags_today },
+    { label: 'Handbook pending', value: snap.handbook_pending ?? 0 },
+    { label: 'Low fuel cars', value: snap.low_fuel_units?.length ?? 0 },
+    { label: 'CPM 30d', value: snap.cost_per_mile_30d != null ? `$${Number(snap.cost_per_mile_30d).toFixed(2)}` : '—' },
   ] : [];
 
   return (
@@ -97,7 +103,7 @@ export default function CorporateOpsTab() {
       {loading && !snap ? (
         <div className="flex items-center gap-2 text-rmpg-400 text-xs"><Loader2 size={14} className="animate-spin" /> Loading linkage…</div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2">
           {cards.map((c) => (
             <div key={c.label} className="panel-beveled p-2.5 text-center bg-surface-raised">
               <div className="text-sm font-mono font-bold text-rmpg-100">{c.value}</div>

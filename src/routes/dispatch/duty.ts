@@ -34,7 +34,7 @@ import { dbErrorResponse } from '../../utils/dbErrors';
 const duty = new Hono<Env>();
 
 // Dispatch-tier roles may start/end a shift on another officer's behalf.
-const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']);
+const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher', 'human_resources']);
 
 // NOTE: units.vehicle_id is a TEXT column holding the vehicle_NUMBER string
 // (e.g. "PS-D19"), NOT the fleet_vehicles.id. The authoritative unit↔vehicle

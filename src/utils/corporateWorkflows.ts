@@ -225,6 +225,7 @@ export async function enrichTimeEntryOnClockIn(
   schedule_id: number | null;
   service_due: boolean;
   license_expiring: boolean;
+  handbook_pending: boolean;
 }> {
   const unit = await queryFirst<{ id: number }>(
     db,
@@ -270,6 +271,20 @@ export async function enrichTimeEntryOnClockIn(
   } catch { /* optional table */ }
 
   const service_due = !!(veh?.next_service_mileage != null && startMi != null && startMi >= Number(veh.next_service_mileage));
+  let handbook_pending = false;
+  try {
+    const row = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM hr_documents d
+        WHERE LOWER(COALESCE(d.category, '')) = 'handbook'
+          AND NOT EXISTS (
+            SELECT 1 FROM hr_handbook_acknowledgments a
+             WHERE a.document_id = d.id AND a.officer_id = ?
+          )`,
+      officerId,
+    );
+    handbook_pending = (row?.n ?? 0) > 0;
+  } catch { handbook_pending = false; }
   return {
     unit_id: unit?.id ?? null,
     vehicle_id: veh?.id ?? null,
@@ -277,6 +292,7 @@ export async function enrichTimeEntryOnClockIn(
     schedule_id: scheduleId,
     service_due,
     license_expiring,
+    handbook_pending,
   };
 }
 
@@ -818,6 +834,34 @@ export async function loadCorporateSnapshot(db: D1Database): Promise<Record<stri
   const lastRuns = await query<{ id: number; kind: string; status: string; item_count: number; started_at: string }>(
     db, `SELECT id, kind, status, item_count, started_at FROM corporate_ops_runs ORDER BY id DESC LIMIT 12`,
   ).catch(() => []);
+  const handbookPending = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(DISTINCT u.id) AS n
+       FROM users u
+      WHERE u.status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM hr_documents d
+           WHERE LOWER(COALESCE(d.category, '')) = 'handbook'
+             AND NOT EXISTS (
+               SELECT 1 FROM hr_handbook_acknowledgments a
+                WHERE a.document_id = d.id AND a.officer_id = u.id
+             )
+        )`,
+  ).catch(() => ({ n: 0 }));
+  const lowFuel = await query<{ id: number; vehicle_number: string | null; fuel_level: number | null }>(
+    db,
+    `SELECT id, vehicle_number, fuel_level FROM fleet_vehicles
+      WHERE COALESCE(status,'in_service')='in_service' AND fuel_level IS NOT NULL AND fuel_level <= 20
+      ORDER BY fuel_level LIMIT 20`,
+  ).catch(() => []);
+  const cpm = await queryFirst<{ fuel: number | null; miles: number | null }>(
+    db,
+    `SELECT
+       (SELECT COALESCE(SUM(total_cost), 0) FROM fleet_fuel_log WHERE fuel_date >= date('now','-30 days')) AS fuel,
+       (SELECT COALESCE(SUM(total_miles), 0) FROM time_entries WHERE clock_out IS NOT NULL AND date(clock_in) >= date('now','-30 days')) AS miles`,
+  ).catch(() => ({ fuel: 0, miles: 0 }));
+  const fuel = Number(cpm?.fuel ?? 0);
+  const miles = Number(cpm?.miles ?? 0);
   return {
     day,
     clocked_in_now: clocked?.n ?? 0,
@@ -829,5 +873,8 @@ export async function loadCorporateSnapshot(db: D1Database): Promise<Record<stri
     mileage_flags_today: flags?.n ?? 0,
     on_duty: onDutyMap,
     recent_runs: lastRuns,
+    handbook_pending: handbookPending?.n ?? 0,
+    low_fuel_units: lowFuel,
+    cost_per_mile_30d: miles > 0 ? Math.round((fuel / miles) * 100) / 100 : null,
   };
 }

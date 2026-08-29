@@ -199,7 +199,7 @@ export const CORPORATE_ENHANCERS: CorporateEnhancer[] = [
   { id: 6, feature: 'Starting mileage fill-from fleet', change: 'If no odometer is typed, clock-in copies fleet_vehicles.current_mileage.', benefit: 'One-tap clock still records corporate miles.' },
   { id: 7, feature: 'Clock-out ending mileage', change: 'Personnel clock-out fills ending_mileage and total_miles from fleet odometer when omitted.', benefit: 'Duty miles land in HR even from the simple clock widget.' },
   { id: 8, feature: 'Fleet odometer sync on personnel punch', change: 'Clock-out calls setFleetOdometer when an ending reading exists.', benefit: 'Fleet, Map trips, and payroll share one odometer truth.' },
-  { id: 9, feature: 'Leave blocks field duty', change: 'Duty start 409s when approved leave covers today unless override_leave=1.', benefit: 'Officers on PTO cannot silently go 10-8 and bill hours.' },
+  { id: 9, feature: 'Leave blocks field duty', change: 'Duty start 409s ON_LEAVE; admin/manager/supervisor/dispatcher/HR may pass override_leave=1.', benefit: 'Officers on PTO cannot silently go 10-8 and bill hours.' },
   { id: 10, feature: 'Fatigue already on duty — now on personnel too', change: 'Personnel clock-in uses the same <8h rest warning as duty/start.', benefit: 'HR clock path cannot bypass fatigue policy.' },
   { id: 11, feature: 'Break minute cap', change: 'end-break clamps accumulated minutes at 60.', benefit: 'A forgotten break-end cannot zero out a whole shift for payroll.' },
   { id: 12, feature: 'Auto-end break on clock-out', change: 'Clock-out closes an open break and folds minutes into total_hours.', benefit: 'Officers who clock out while on lunch still get a complete timecard.' },
