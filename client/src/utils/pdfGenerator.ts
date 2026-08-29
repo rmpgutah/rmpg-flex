@@ -34,7 +34,7 @@ import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
   getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
-  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
+  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget, getPrintTarget,
 } from './pdfTokens';
 import { brandingFromSystemSettings } from './brandConfig';
 
@@ -2856,6 +2856,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
 /** Page break handler for drawFormSection — forces a page break with continuation header */
 export function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) {
+    return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0) + LAYOUT.HEADER_HEIGHT;
+  }
   // Force a page break by passing a Y beyond the page
   return checkPageBreak(doc, doc.internal.pageSize.getHeight(), 1);
 }

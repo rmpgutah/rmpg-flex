@@ -834,6 +834,10 @@ interface NoticeCompressTier {
   sectionPad: number;
   disclaimerClearance: number;
   stepGapScale: number;
+  /** Drop Section IV on the tightest tier — saves ~35 mm. */
+  omitWhatToDoNext?: boolean;
+  /** Shorter numbered guidance when space is tight but Section IV remains. */
+  useAbbreviatedSteps?: boolean;
 }
 
 const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
@@ -878,6 +882,22 @@ const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
     sectionPad: 1.2,
     disclaimerClearance: 2.2,
     stepGapScale: 0.6,
+    useAbbreviatedSteps: true,
+  },
+  {
+    gapScale: 0.46,
+    proseOffset: -2,
+    maxNoteChars: 52,
+    gpsNoteChars: 36,
+    maxAttempts: 3,
+    sigRowH: 11,
+    statusBandH: 5.2,
+    disclaimerBandH: 6.5,
+    useTightLayout: true,
+    sectionPad: 1,
+    disclaimerClearance: 2,
+    stepGapScale: 0.45,
+    omitWhatToDoNext: true,
   },
 ];
 
@@ -904,6 +924,30 @@ function estimateNoticeCompressTier(data: NoticeOfAttemptData): number {
   if (score >= 7) return 2;
   if (score >= 3) return 1;
   return 0;
+}
+
+/** Shorter Section IV copy for compressed tiers — same meaning, fewer lines. */
+function noticeGuidanceSteps(
+  compress: NoticeCompressTier,
+  company: string,
+  phoneCue: string,
+  headerRef: string,
+): string[] {
+  if (compress.omitWhatToDoNext) return [];
+  if (compress.useAbbreviatedSteps) {
+    return [
+      `Call ${company} ${phoneCue} to schedule delivery and avoid further visits here.`,
+      `Confirm this notice using AGENCY REF # ${headerRef || 'above'} when you call.`,
+      `Read delivered documents promptly — this notice does not extend legal deadlines.`,
+      `Without contact, further attempts may occur here or at other locations tied to you.`,
+    ];
+  }
+  return [
+    `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
+    'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
+    'Read the underlying documents once delivered. The papers we have been engaged to deliver may contain time-sensitive deadlines. This notice does NOT extend, waive, or otherwise affect those deadlines.',
+    'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
+  ];
 }
 
 /**
@@ -1319,35 +1363,31 @@ export async function generateNoticeOfAttempt(
   }
 
   // ── What To Do Next (recipient guidance) ──
-  y = checkPageBreak(doc, y, 30);
-  {
-    const sec = openAutoSection(doc, 'IV. What To Do Next', y);
-    y = sec.contentY + compress.sectionPad;
-    const company = data.serverCompany || 'Rocky Mountain Protective Group';
-    const phoneCue = data.serverPhone
-      ? `at ${data.serverPhone}`
-      : 'at the number printed on this notice';
-    const STEP_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
-    const steps: string[] = [
-      `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
-      'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
-      'Read the underlying documents once delivered. The papers we have been engaged to deliver may contain time-sensitive deadlines. This notice does NOT extend, waive, or otherwise affect those deadlines.',
-      'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
-    ];
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(STEP_FONT);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    steps.forEach((step, i) => {
-      // Number prefix in bold, body in normal — readable hierarchy.
-      const numLabel = `${i + 1}.`;
-      doc.setFont(PDF_VALUE_FONT, 'bold');
-      doc.text(numLabel, lx, y);
-      const numW = doc.getTextWidth(numLabel) + 2;
+  if (!compress.omitWhatToDoNext) {
+    y = checkPageBreak(doc, y, 30);
+    {
+      const sec = openAutoSection(doc, 'IV. What To Do Next', y);
+      y = sec.contentY + compress.sectionPad;
+      const company = data.serverCompany || 'Rocky Mountain Protective Group';
+      const phoneCue = data.serverPhone
+        ? `at ${data.serverPhone}`
+        : 'at the number printed on this notice';
+      const STEP_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
+      const steps = noticeGuidanceSteps(compress, company, phoneCue, headerRef);
       doc.setFont(PDF_VALUE_FONT, 'normal');
-      y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
-      y += ng(SPACING.XS) * compress.stepGapScale;
-    });
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+      doc.setFontSize(STEP_FONT);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      steps.forEach((step, i) => {
+        const numLabel = `${i + 1}.`;
+        doc.setFont(PDF_VALUE_FONT, 'bold');
+        doc.text(numLabel, lx, y);
+        const numW = doc.getTextWidth(numLabel) + 2;
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
+        y += ng(SPACING.XS) * compress.stepGapScale;
+      });
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
@@ -1467,6 +1507,13 @@ export async function generateNoticeOfAttempt(
   finalizePoliceReport(doc, {
     barcode: { disabled: true },
   });
+
+  // Hard one-page contract: retry at the next compression tier if ANY code
+  // path added a continuation page (checkPageBreak miss, stale bundle, etc.).
+  if (doc.getNumberOfPages() > 1 && startTier < NOTICE_COMPRESS_TIERS.length - 1) {
+    tightLayout = false;
+    return generateNoticeOfAttempt(data, options, startTier + 1);
+  }
 
   return doc;
 }
