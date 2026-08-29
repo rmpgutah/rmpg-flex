@@ -500,7 +500,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
       {/* Incoming Panic Alert Overlay */}
       {incomingAlert && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center panic-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming panic alert">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center max-h-screen panic-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming panic alert">
           <div className="absolute inset-0 bg-black/70 animate-emergency-blink" style={{ animationDuration: '0.5s' }} />
           <div
             className="relative max-w-md w-full mx-4 panic-alert-card"

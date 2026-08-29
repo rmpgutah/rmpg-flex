@@ -72,7 +72,6 @@ describe('FleetPage — pre-trip modal', () => {
 
   it('does not discard an answered checklist on a backdrop click', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderPage();
     await user.click(await screen.findByText('PS-D19'));
     await user.click(await screen.findByRole('button', { name: /pre-trip/i }));
@@ -82,19 +81,18 @@ describe('FleetPage — pre-trip modal', () => {
 
     await user.click(screen.getByTestId('pretrip-backdrop'));
 
-    expect(confirmSpy).toHaveBeenCalled();
+    expect(await screen.findByRole('alertdialog', { name: /discard unsaved/i })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: /pre-trip/i })).toBeInTheDocument();
   });
 
   it('closes without a prompt when the checklist is untouched', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm');
     renderPage();
     await user.click(await screen.findByText('PS-D19'));
     await user.click(await screen.findByRole('button', { name: /pre-trip/i }));
     await user.click(screen.getByTestId('pretrip-backdrop'));
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog', { name: /discard unsaved/i })).toBeNull();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /pre-trip/i })).toBeNull());
   });
 });
