@@ -298,7 +298,11 @@ export function clampArrivalToServeWindow(
   let windowStart = denverWallClockToUtcMs(y, (mo || 1) - 1, d || 1, sh || 0, sm || 0);
   let windowEnd = denverWallClockToUtcMs(y, (mo || 1) - 1, d || 1, eh || 0, em || 0);
   if (windowEnd <= windowStart) windowEnd += 86_400_000;
-  if (arrivalMs < windowStart) return windowStart;
+  if (arrivalMs >= windowEnd) return arrivalMs;
+  if (arrivalMs < windowStart) {
+    if (denverYmd(windowStart) !== routeDateYmd) return arrivalMs;
+    return windowStart;
+  }
   return arrivalMs;
 }
 
@@ -337,17 +341,24 @@ function dwellMsForJob(job: ServeJob): number {
   return clampDwellSeconds(type) * 1000;
 }
 
-function serveWindowForJob(job: ServeJob, routeDate: string) {
+function serveWindowForJob(job: ServeJob, routeDate: string, shiftStartMs?: number) {
   const lastAttemptAt = job.attempts?.length
     ? job.attempts[job.attempts.length - 1]?.attempt_at
     : null;
-  return resolveServeWindow({
+  const win = resolveServeWindow({
     routeDate,
     nextAttemptDate: job.next_attempt_date,
     nextAttemptWindow: job.next_attempt_window,
     timeWindow: job.time_window,
     lastAttemptAt,
   });
+  if (!win || shiftStartMs == null || !routeDate) return win;
+  const [y, mo, d] = routeDate.split('-').map(Number);
+  const [eh, em] = win.end.split(':').map(Number);
+  const endMs = denverWallClockToUtcMs(y || 1970, (mo || 1) - 1, d || 1, eh || 0, em || 0);
+  // A 6pm run does not wait until tomorrow for an 08:00–12:00 band.
+  if (shiftStartMs >= endMs) return null;
+  return win;
 }
 
 /** Greedy nearest-neighbor reorder from an optional origin, biased toward
@@ -393,7 +404,7 @@ export function nearestNeighborOrder(
         ? haversineMiles(cursor.lat, cursor.lng, s.job.recipient_lat!, s.job.recipient_lng!)
         : 0;
       let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
-      const win = serveWindowForJob(s.job, routeYmd);
+      const win = serveWindowForJob(s.job, routeYmd, startTimeMs);
       if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end, routeYmd);
       const deadlineMs = s.job.deadline ? parseTimestamp(s.job.deadline).getTime() : NaN;
       return { idx, distanceMiles, arrivalMs, deadlineMs: Number.isNaN(deadlineMs) ? null : deadlineMs };
@@ -608,7 +619,7 @@ export function computeArrivalsInOrder(
     lunchTaken = lunch.lunchTaken;
     lunchMs += lunch.addedMs;
     arrivalMs = lunch.elapsedMs;
-    const win = serveWindowForJob(stop.job, routeYmd);
+    const win = serveWindowForJob(stop.job, routeYmd, startTimeMs);
     const beforeWindow = arrivalMs;
     if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end, routeYmd);
     totalWaitMs += Math.max(0, arrivalMs - beforeWindow);
@@ -667,7 +678,7 @@ export function computeArrivalsFromLegDurations(
     lunchTaken = lunch.lunchTaken;
     lunchMs += lunch.addedMs;
     elapsedMs = lunch.elapsedMs;
-    const win = serveWindowForJob(stop.job, routeYmd);
+    const win = serveWindowForJob(stop.job, routeYmd, startTimeMs);
     const beforeWindow = elapsedMs;
     if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.start, win.end, routeYmd);
     totalWaitMs += Math.max(0, elapsedMs - beforeWindow);
@@ -1311,9 +1322,11 @@ export default function ServeRoutePlanner({
       const ordered = v2Ordered ?? serverOrdered ?? nn.ordered;
       const estimated = computeArrivalsInOrder(ordered, routeOrigin, plannedStartMs, routeDate);
       setRunBreakdown(clockBreakdown(estimated));
-      const arrivals = v2Arrivals.size > 0 ? v2Arrivals : estimated.arrivals;
+      const v2SameDay = v2Arrivals.size > 0
+        && [...v2Arrivals.values()].every((ms) => denverYmd(ms) === routeDate);
+      const arrivals = v2SameDay ? v2Arrivals : estimated.arrivals;
       const missedDeadlineJobIds = estimated.missedDeadlineJobIds;
-      const totalDurationMinutes = v2Arrivals.size > 0 && plannedStartMs
+      const totalDurationMinutes = v2SameDay && plannedStartMs
         ? Math.max(
           estimated.totalDurationMinutes,
           ([...v2Arrivals.values()].reduce((a, b) => Math.max(a, b), plannedStartMs) - plannedStartMs) / 60_000,
