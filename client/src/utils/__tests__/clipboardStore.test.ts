@@ -24,6 +24,9 @@ describe('clipboardStore', () => {
     const csv = clipsToCsv(['hello'], ['hello']);
     expect(csv).toContain('pinned');
     expect(csv).toContain('yes');
+    expect(addClipEntry([], '(801) 555-1212')).toEqual([]);
+    expect(clipsToCsv(['1990-04-12'], [])).toContain('[redacted]');
+    expect(clipsToCsv(['1990-04-12'], [])).not.toContain('1990-04-12');
     expect(localStorage.getItem(CLIP_STORAGE_KEY)).toBeTruthy();
   });
 });

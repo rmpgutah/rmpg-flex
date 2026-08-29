@@ -39,17 +39,27 @@ export function classifyClipboard(text: string): ClipKind {
   return 'text';
 }
 
-/** Deep-link into Flex — never includes raw PII in a new origin. */
+/** Only absolute http(s) URLs. javascript:/data:/vbscript:// scheme-relative are rejected. */
+export function safeHttpUrl(text: string): string | null {
+  const t = text.trim();
+  if (!t || t.startsWith('//')) return null;
+  try {
+    const u = new URL(t);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch { /* not a URL */ }
+  return null;
+}
+
+export function isInAppCadPath(path: string): boolean {
+  return path.startsWith('/') && !path.startsWith('//');
+}
+
+/** Deep-link into Flex. External URLs must pass safeHttpUrl; otherwise search. */
 export function cadPathForClip(kind: ClipKind, text: string): string {
   const q = encodeURIComponent(text.trim().slice(0, 200));
-  switch (kind) {
-    case 'warrant':
-      return `/warrants?q=${q}`;
-    case 'url':
-      return text.trim();
-    default:
-      return `/intel/search?q=${q}`;
-  }
+  if (kind === 'warrant') return `/warrants?q=${q}`;
+  if (kind === 'url') return safeHttpUrl(text) ?? `/intel/search?q=${q}`;
+  return `/intel/search?q=${q}`;
 }
 
 export function clipKindLabel(kind: ClipKind): string {

@@ -1,3 +1,5 @@
+import { classifyClipboard } from './clipboardClassify';
+
 /** Local clipboard history that works outside DesktopSystemProvider. */
 
 export const CLIP_STORAGE_KEY = 'rmpg_clipboard_history';
@@ -36,6 +38,9 @@ export function saveClipHistory(entries: string[]): string[] {
 export function addClipEntry(history: string[], text: string): string[] {
   const trimmed = text.trim();
   if (!trimmed) return history;
+  const kind = classifyClipboard(trimmed);
+  // DOB / phone stay on the system clipboard; do not persist to localStorage.
+  if (kind === 'dob' || kind === 'phone') return history;
   const filtered = history.filter((e) => e !== trimmed);
   return saveClipHistory([trimmed, ...filtered]);
 }
@@ -67,10 +72,12 @@ export function filterClipHistory(history: string[], query: string): string[] {
 }
 
 export function clipsToCsv(history: string[], pins: string[]): string {
-  const header = 'text,pinned,chars';
+  const header = 'kind,text,pinned,chars';
   const lines = history.map((t) => {
-    const escaped = `"${t.replace(/"/g, '""')}"`;
-    return `${escaped},${pins.includes(t) ? 'yes' : 'no'},${t.length}`;
+    const kind = classifyClipboard(t);
+    const body = (kind === 'dob' || kind === 'phone') ? '[redacted]' : t;
+    const escaped = `"${body.replace(/"/g, '""')}"`;
+    return `${kind},${escaped},${pins.includes(t) ? 'yes' : 'no'},${t.length}`;
   });
   return [header, ...lines].join('\n');
 }

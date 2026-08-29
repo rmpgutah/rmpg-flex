@@ -16,7 +16,11 @@ describe('intelHitExport', () => {
 
 describe('intelSourcesFilter', () => {
   const rows = [
-    { id: 1, source_code: 'SRC-2026-001', source_type: 'confidential_informant', display_label: 'CI-A', reliability_grade: 'A', status: 'active', restricted: 1 },
+    {
+      id: 1, source_code: 'SRC-2026-001', source_type: 'confidential_informant', display_label: 'CI-A',
+      reliability_grade: 'A', status: 'active', restricted: 1,
+      true_identity_person_id: 999, notes_restricted: 'CI real name',
+    },
     { id: 2, source_code: 'SRC-2026-002', source_type: 'public', display_label: 'Tip line', reliability_grade: 'C', status: 'inactive', restricted: 0 },
   ];
 
@@ -27,8 +31,11 @@ describe('intelSourcesFilter', () => {
     expect(stats.active).toBe(1);
     expect(stats.restricted).toBe(1);
     const csv = sourcesToCsv(rows);
-    expect(csv).not.toContain('true_identity');
     expect(csv).toContain('SRC-2026-001');
+    expect(csv).not.toMatch(/true_identity|notes_restricted/);
+    expect(csv).not.toContain('999');
+    expect(csv).not.toContain('CI real name');
+    expect(csv.split('\n')[0]).toBe('code,type,label,reliability,status');
   });
 
   it('filters intel products by title or number', () => {

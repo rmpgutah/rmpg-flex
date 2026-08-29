@@ -5,7 +5,7 @@ import {
   addClipEntry, filterClipHistory, loadClipHistory, loadPins, removeClipEntry,
   saveClipHistory, sortClips, togglePin, clipsToCsv,
 } from '../utils/clipboardStore';
-import { cadPathForClip, classifyClipboard, clipKindLabel } from '../utils/clipboardClassify';
+import { cadPathForClip, classifyClipboard, clipKindLabel, isInAppCadPath, safeHttpUrl } from '../utils/clipboardClassify';
 import { downloadTextFile } from '../utils/intelHitExport';
 
 export default function ClipboardManagerPage() {
@@ -157,8 +157,12 @@ export default function ClipboardManagerPage() {
                   className="p-0.5"
                   onClick={() => {
                     const path = cadPathForClip(kind, entry);
-                    if (kind === 'url') window.open(path, '_blank', 'noopener');
-                    else navigate(path);
+                    if (isInAppCadPath(path)) {
+                      navigate(path);
+                      return;
+                    }
+                    const url = safeHttpUrl(path);
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
                   }}
                 >
                   <ExternalLink className="w-3 h-3 text-fg-muted" />
