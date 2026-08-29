@@ -87,10 +87,9 @@ export function resolveServeWindow(input: {
   lastAttemptAt?: string | null;
 }): ServeHhMmWindow | null {
   const scheduled = parseHhMmRange(input.nextAttemptWindow);
-  if (scheduled && (!input.nextAttemptDate || input.nextAttemptDate === input.routeDate)) {
+  if (scheduled && (!input.nextAttemptDate || input.nextAttemptDate <= input.routeDate)) {
     return { ...scheduled, source: 'schedule' };
   }
-  if (scheduled) return { ...scheduled, source: 'schedule' };
 
   const named = namedBandToRange(input.timeWindow);
   if (named) return { ...named, source: 'time_window' };

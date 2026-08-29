@@ -2801,7 +2801,7 @@ export default function ServePage() {
                 const origin = savedRoute?.start_lat != null && savedRoute?.start_lng != null
                   ? { lat: Number(savedRoute.start_lat), lng: Number(savedRoute.start_lng) }
                   : null;
-                return computeArrivalsInOrder(stopItems, origin, routeStartMs).arrivals;
+                return computeArrivalsInOrder(stopItems, origin, routeStartMs, savedRoute?.route_date).arrivals;
               })();
               const eveningOnRun = routeJobs.some(j => hasEveningWindow(j.time_window, j.next_attempt_window));
 

@@ -285,16 +285,20 @@ export function formatEtaDenver(ms: number, routeDateYmd: string): string {
   return time;
 }
 
-function clampArrivalToServeWindow(arrivalMs: number, serveStart: string, serveEnd: string): number {
-  const ymd = denverYmd(arrivalMs);
-  const [y, mo, d] = ymd.split('-').map(Number);
+/** Same-day windows only: wait if early, go now if the band already closed. Never +1d. */
+export function clampArrivalToServeWindow(
+  arrivalMs: number,
+  serveStart: string,
+  serveEnd: string,
+  routeDateYmd: string,
+): number {
+  const [y, mo, d] = routeDateYmd.split('-').map(Number);
   const [sh, sm] = serveStart.split(':').map(Number);
   const [eh, em] = serveEnd.split(':').map(Number);
-  let windowStart = denverWallClockToUtcMs(y, mo - 1, d, sh || 0, sm || 0);
-  let windowEnd = denverWallClockToUtcMs(y, mo - 1, d, eh || 0, em || 0);
+  let windowStart = denverWallClockToUtcMs(y, (mo || 1) - 1, d || 1, sh || 0, sm || 0);
+  let windowEnd = denverWallClockToUtcMs(y, (mo || 1) - 1, d || 1, eh || 0, em || 0);
   if (windowEnd <= windowStart) windowEnd += 86_400_000;
   if (arrivalMs < windowStart) return windowStart;
-  if (arrivalMs > windowEnd) return arrivalMs;
   return arrivalMs;
 }
 
@@ -390,7 +394,7 @@ export function nearestNeighborOrder(
         : 0;
       let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
       const win = serveWindowForJob(s.job, routeYmd);
-      if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end);
+      if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end, routeYmd);
       const deadlineMs = s.job.deadline ? parseTimestamp(s.job.deadline).getTime() : NaN;
       return { idx, distanceMiles, arrivalMs, deadlineMs: Number.isNaN(deadlineMs) ? null : deadlineMs };
     });
@@ -574,6 +578,7 @@ export function computeArrivalsInOrder(
   selected: StopItem[],
   origin: { lat: number; lng: number } | null,
   startTimeMs: number,
+  routeDate?: string,
 ): {
   arrivals: Map<number, number>;
   totalDistanceMiles: number;
@@ -592,6 +597,7 @@ export function computeArrivalsInOrder(
   const arrivals = new Map<number, number>();
   const missedDeadlineJobIds: number[] = [];
   let lunchTaken = denverHourFromMs(startTimeMs) >= 12;
+  const routeYmd = routeDate || denverYmd(startTimeMs);
 
   for (const stop of selected) {
     const distanceMiles = cursor
@@ -602,9 +608,9 @@ export function computeArrivalsInOrder(
     lunchTaken = lunch.lunchTaken;
     lunchMs += lunch.addedMs;
     arrivalMs = lunch.elapsedMs;
-    const win = serveWindowForJob(stop.job, denverYmd(startTimeMs));
+    const win = serveWindowForJob(stop.job, routeYmd);
     const beforeWindow = arrivalMs;
-    if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end);
+    if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end, routeYmd);
     totalWaitMs += Math.max(0, arrivalMs - beforeWindow);
     arrivals.set(stop.job.id, arrivalMs);
 
@@ -636,6 +642,7 @@ export function computeArrivalsFromLegDurations(
   selected: StopItem[],
   startTimeMs: number,
   legDurationsSeconds: number[],
+  routeDate?: string,
 ): {
   arrivals: Map<number, number>;
   totalDurationMinutes: number;
@@ -651,6 +658,7 @@ export function computeArrivalsFromLegDurations(
   let totalDwellMs = 0;
   let totalWaitMs = 0;
   let lunchMs = 0;
+  const routeYmd = routeDate || denverYmd(startTimeMs);
 
   for (let i = 0; i < selected.length; i++) {
     const stop = selected[i];
@@ -659,9 +667,9 @@ export function computeArrivalsFromLegDurations(
     lunchTaken = lunch.lunchTaken;
     lunchMs += lunch.addedMs;
     elapsedMs = lunch.elapsedMs;
-    const win = serveWindowForJob(stop.job, denverYmd(startTimeMs));
+    const win = serveWindowForJob(stop.job, routeYmd);
     const beforeWindow = elapsedMs;
-    if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.start, win.end);
+    if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.start, win.end, routeYmd);
     totalWaitMs += Math.max(0, elapsedMs - beforeWindow);
     arrivals.set(stop.job.id, elapsedMs);
 
@@ -986,7 +994,7 @@ export default function ServeRoutePlanner({
       setRunBreakdown({ drive: 0, dwell: 0, wait: 0, lunch: 0 });
       return;
     }
-    const estimated = computeArrivalsInOrder(selected, routeOrigin, plannedStartMs);
+    const estimated = computeArrivalsInOrder(selected, routeOrigin, plannedStartMs, routeDate);
     const { arrivals, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } = estimated;
     setRunBreakdown(clockBreakdown(estimated));
     let returnMi = 0;
@@ -1301,7 +1309,7 @@ export default function ServeRoutePlanner({
         : null;
       const nn = nearestNeighborOrder(selected, routeOrigin, plannedStartMs, routeDate);
       const ordered = v2Ordered ?? serverOrdered ?? nn.ordered;
-      const estimated = computeArrivalsInOrder(ordered, routeOrigin, plannedStartMs);
+      const estimated = computeArrivalsInOrder(ordered, routeOrigin, plannedStartMs, routeDate);
       setRunBreakdown(clockBreakdown(estimated));
       const arrivals = v2Arrivals.size > 0 ? v2Arrivals : estimated.arrivals;
       const missedDeadlineJobIds = estimated.missedDeadlineJobIds;
@@ -1471,10 +1479,10 @@ export default function ServeRoutePlanner({
         runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
         const clusterLegs = allLegDurationsS.slice(-cluster.length);
         runningElapsedMs = clusterStartElapsedMs
-          + computeArrivalsFromLegDurations(cluster, clusterStartElapsedMs, clusterLegs).totalDurationMinutes * 60_000;
+          + computeArrivalsFromLegDurations(cluster, clusterStartElapsedMs, clusterLegs, routeDate).totalDurationMinutes * 60_000;
       }
 
-      const baked = computeArrivalsFromLegDurations(allOrderedStops, plannedStartMs, allLegDurationsS);
+      const baked = computeArrivalsFromLegDurations(allOrderedStops, plannedStartMs, allLegDurationsS, routeDate);
       setStopArrivalTimes(baked.arrivals);
       lastBakedStartMsRef.current = plannedStartMs;
       allMissedDeadlineJobIds.push(...baked.missedDeadlineJobIds);

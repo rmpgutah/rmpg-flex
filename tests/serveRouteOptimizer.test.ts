@@ -379,6 +379,19 @@ describe('Denver wall-clock conversion', () => {
     const clamped = clampArrivalToServeWindow(arriveEarly, '17:00', '21:00');
     expect(new Date(clamped).toISOString()).toBe('2026-08-28T23:00:00.000Z'); // 17:00 MDT
   });
+
+  it('does not roll a missed morning window to +1d after a 6pm start', () => {
+    const sixPmMdt = Date.parse('2026-08-29T00:00:00.000Z'); // 18:00 MDT Aug 28
+    const clamped = clampArrivalToServeWindow(
+      sixPmMdt + 15 * 60_000,
+      '08:00',
+      '12:00',
+      '2026-08-29T00:00:00.000Z',
+    );
+    expect(clamped).toBe(sixPmMdt + 15 * 60_000);
+    expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(clamped)))
+      .toBe('2026-08-28');
+  });
 });
 
 describe('resolveMapboxDirectionsToken', () => {

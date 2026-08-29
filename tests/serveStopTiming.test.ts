@@ -55,4 +55,14 @@ describe('resolveServeWindow', () => {
     });
     expect(win).toMatchObject({ start: '18:00', end: '21:00', source: 'last_attempt' });
   });
+
+  it('does not import tomorrow morning onto tonight’s run', () => {
+    const win = resolveServeWindow({
+      routeDate: '2026-08-28',
+      nextAttemptDate: '2026-08-29',
+      nextAttemptWindow: '08:00-12:00',
+      timeWindow: 'anytime',
+    });
+    expect(win).toBeNull();
+  });
 });
