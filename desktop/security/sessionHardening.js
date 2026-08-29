@@ -141,7 +141,16 @@ function shouldAllowNewWindow(targetUrl, expectedHost) {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return { action: 'deny' };
   }
-  return parsed.host === expectedHost ? { action: 'allow' } : { action: 'external' };
+  const host = parsed.hostname.toLowerCase();
+  const expected = String(expectedHost || '').toLowerCase();
+  if (host === expected || host === `www.${expected}` || `www.${host}` === expected) {
+    return { action: 'allow' };
+  }
+  // Dial Connect is the inbound phone. Opening it as {action:'external'}
+  // (shell.openExternal) spawned a new OS-browser tab on every click and
+  // denied the WindowProxy — multiple Twilio Clients, none tied to CAD.
+  if (host === DIALER_HOST) return { action: 'allow' };
+  return { action: 'external' };
 }
 
 /**

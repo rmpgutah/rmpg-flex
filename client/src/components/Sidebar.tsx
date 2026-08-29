@@ -10,7 +10,7 @@ import {
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
   Globe, ScanSearch, Film, CalendarDays, Route, Fingerprint, FileSearch,
   Store, PawPrint, Warehouse, UserCog, MessageCircleQuestion, FlaskConical, Handshake,
-  Phone,
+  Phone, PhoneCall,
 } from 'lucide-react';
 import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 
@@ -35,6 +35,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
+      { path: '/dialer-connect', icon: PhoneCall, label: 'Dialer Connect' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
       { path: '/route-builder', icon: Route, label: 'Route Builder' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },

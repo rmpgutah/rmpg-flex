@@ -1,15 +1,34 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
+import { enrichmentHeaders, splitPersonName } from './http';
+
+async function resolveApiKey(env: Bindings): Promise<string | null> {
+  const fromEnv = (env.OPENCORPORATES_API_KEY as string | undefined)?.trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const row = await env.DB.prepare(
+      `SELECT config_value FROM system_config
+        WHERE config_key = 'opencorporates_api_key' AND is_active = 1 LIMIT 1`,
+    ).first<{ config_value: string }>();
+    return row?.config_value?.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function search(seed: EnrichmentSeed, env: Bindings): Promise<SourceResult> {
   const start = Date.now();
   const source = 'open_corporates';
-  const apiKey = (env as any).OPENCORPORATES_API_KEY as string | undefined;
+  const apiKey = await resolveApiKey(env);
   if (!apiKey) return { source, ok: false, latency_ms: 0, records: [], error: 'not_configured' };
+
+  const { first, last } = splitPersonName(seed.first_name, seed.last_name);
+  const q = [first, last].filter(Boolean).join(' ').trim();
+  if (!q) return { source, ok: true, latency_ms: Date.now() - start, records: [] };
 
   try {
     const params = new URLSearchParams({
-      q: `${seed.first_name} ${seed.last_name}`,
+      q,
       api_token: apiKey,
       per_page: '10',
     });
@@ -17,7 +36,7 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
     const timer = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(`https://api.opencorporates.com/v0.4/officers/search?${params}`, {
       signal: ctrl.signal,
-      headers: { Accept: 'application/json' },
+      headers: enrichmentHeaders(),
     }).finally(() => clearTimeout(timer));
 
     if (!res.ok) return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}` };

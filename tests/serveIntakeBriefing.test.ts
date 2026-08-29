@@ -537,3 +537,41 @@ describe('hardening pass 2: self-explaining notes', () => {
     expect(contacts.text).toContain('DANA WHITFIELD');
   });
 });
+
+describe('location-class briefing copy', () => {
+  it('does not print residential default windows on a corporate LLC suite job', () => {
+    const input: BriefingInput = {
+      fields: {
+        documents_to_serve: { value: '20 DAY SUMMONS; VERIFIED COMPLAINT', confidence: 1 },
+        recipient_county: { value: 'Salt Lake', confidence: 1 },
+      },
+      queueRow: {
+        ...baseRow,
+        recipient_name: 'BRISTOL HOSPICE LLC',
+        recipient_type: 'business',
+        recipient_address: '2005 East 2700 South Suite 200',
+        document_type: 'summons',
+      },
+      isBusiness: true,
+      agentName: 'REGISTERED AGENT SOLUTIONS INC',
+      fullLocation: '2005 East 2700 South Suite 200, Salt Lake City, UT 84109',
+      docCount: 3,
+      addressClass: 'corporate',
+      addressClassConfirmed: false,
+      attemptPlan: [
+        { attempt: 1, date: '2026-08-12', weekday: 'Wednesday', window: '09:30-11:30', focus: 'mid-morning', authority: 'corporate default' },
+        { attempt: 2, date: '2026-08-12', weekday: 'Wednesday', window: '13:30-16:00', focus: 'afternoon', authority: 'corporate default' },
+      ],
+    };
+    const briefing = buildPsoBriefing(input, '2026-08-12T08:26:06Z');
+    const joined = briefing.notes.map((n) => n.text).join('\n');
+    expect(joined).toContain('Location type: Corporate / Large Business');
+    expect(joined).toContain('corporate default');
+    expect(joined).not.toContain('[residential default]');
+    expect(joined).not.toContain('evening — highest residential hit rate');
+    expect(joined).toContain('Documents to Serve:');
+    expect(joined).toContain('1. 20 DAY SUMMONS');
+    expect(joined).toContain('CONTRACT DETAILS AND CONTACTS');
+    expect(joined).toContain('Ask for the registered agent or a manager by name');
+  });
+});

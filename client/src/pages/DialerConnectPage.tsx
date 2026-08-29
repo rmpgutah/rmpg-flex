@@ -9,7 +9,8 @@ import { apiFetch, apiFetchBlob, apiPostForm } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { usePersistedTab } from '../hooks/usePersistedState';
-import { openDialerWindow, postToDialer, normalizeDialTarget } from '../components/DialerPanel';
+import { openDialerWindow, postToDialer, normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/DialerPanel';
+import { DIALER_HOST_ID } from '../components/dialerConnect';
 import {
   DIALER_FUNCTIONS, VOICEMAIL_FUNCTIONS, CALL_HISTORY_FUNCTIONS,
   DISPOSITIONS, PRESENCE_STATUSES, displayPhone, formatDuration, audioFilename,
@@ -98,6 +99,10 @@ export default function DialerConnectPage() {
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
 
+  useEffect(() => {
+    document.title = 'Dialer Connect — RMPG Flex';
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="DIAL CONNECT" icon={PhoneCall} statusLed="var(--sev-ok)">
@@ -124,6 +129,12 @@ export default function DialerConnectPage() {
           ))}
         </div>
       </PanelTitleBar>
+      <div
+        id={DIALER_HOST_ID}
+        data-testid="dialer-connect-host"
+        className="relative w-full shrink-0 min-h-[240px] border-b border-border-subtle"
+        style={{ height: 'min(42vh, 680px)' }}
+      />
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'dialer' && <DialerTab exportedBy={exportedBy} addToast={addToast} />}
         {tab === 'voicemail' && <VoicemailTab exportedBy={exportedBy} addToast={addToast} />}
@@ -178,7 +189,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
   const place = (raw: string) => {
     const to = normalizeDialTarget(raw);
     if (!to) { addToast('Enter a valid number', 'error'); return; }
-    postToDialer({ source: 'rmpg-flex', type: 'place_call', to });
+    window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to } }));
     addToast(`Dialing ${displayPhone(to)}`, 'success');
   };
 
@@ -435,7 +446,7 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><Hash className="w-3 h-3" /></IconAction>
               <IconAction label={v.starred ? 'Unstar' : 'Star'} onClick={() => patch(v.id, { starred: !v.starred })}><Star className={`w-3 h-3 ${v.starred ? 'text-brand-400' : ''}`} /></IconAction>
               <IconAction label="Mark heard" onClick={() => patch(v.id, { is_read: !v.is_read })}><CheckCheck className="w-3 h-3" /></IconAction>
-              <IconAction label="Return call" onClick={() => { postToDialer({ source: 'rmpg-flex', type: 'place_call', to: normalizeDialTarget(v.from_number || '') }); addToast('Returning call', 'success'); }}><Phone className="w-3 h-3" /></IconAction>
+              <IconAction label="Return call" onClick={() => { window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(v.from_number || '') } })); addToast('Returning call', 'success'); }}><Phone className="w-3 h-3" /></IconAction>
               <IconAction label="Archive" onClick={() => patch(v.id, { archived: !v.archived })}><Archive className="w-3 h-3" /></IconAction>
               <IconAction label="Assign to me" onClick={() => patch(v.id, { assigned_name: exportedBy })}><UserPlus className="w-3 h-3" /></IconAction>
             </div>
@@ -564,7 +575,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
               <IconAction label="Download recording" onClick={() => downloadAudio('call', c.id).catch((e) => addToast(String(e), 'error'))}><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><Hash className="w-3 h-3" /></IconAction>
-              <IconAction label="Redial" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'place_call', to: normalizeDialTarget(counterparty(c)) })}><PhoneCall className="w-3 h-3" /></IconAction>
+              <IconAction label="Redial" onClick={() => window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(counterparty(c)) } }))}><PhoneCall className="w-3 h-3" /></IconAction>
               <IconAction label="Copy number" onClick={() => navigator.clipboard.writeText(counterparty(c)).then(() => addToast('Copied', 'success'))}><Copy className="w-3 h-3" /></IconAction>
               <IconAction label="Star" onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, { method: 'PATCH', body: JSON.stringify({ starred: !c.starred }) }).then(load)}><Star className={`w-3 h-3 ${c.starred ? 'text-brand-400' : ''}`} /></IconAction>
               <IconAction label="Attach recording" onClick={() => { setUploadId(c.id); fileRef.current?.click(); }}><Link2 className="w-3 h-3" /></IconAction>
@@ -583,4 +594,3 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
     </button>
   );
 }
-

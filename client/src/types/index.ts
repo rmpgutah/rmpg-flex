@@ -314,6 +314,26 @@ export interface CallForService {
   scene_safety?: string;
   weather_conditions?: string;
   lighting_conditions?: string;
+  /** Live/historical Open-Meteo snapshot stamped at dispatch / on created_at edit. */
+  weather_snapshot?: {
+    temp_f?: number | null;
+    feels_like_f?: number | null;
+    condition?: string;
+    scene_category?: string;
+    weather_code?: number | null;
+    wind_mph?: number | null;
+    wind_gust_mph?: number | null;
+    wind_dir?: string | null;
+    wind_dir_deg?: number | null;
+    humidity?: number | null;
+    visibility_mi?: number | null;
+    precip_in?: number | null;
+    observed_at?: string | null;
+    source?: 'live' | 'historical';
+    lighting?: string;
+    captured_at?: string;
+  } | null;
+  weather_manual?: boolean | number;
   // Flags
   alcohol_involved?: boolean;
   drugs_involved?: boolean;
@@ -3429,6 +3449,8 @@ export interface ServeJob {
   quality_status?: string | null;
   quality_reviewed_by?: string | null;
   quality_reviewed_at?: string | null;
+  /** Clamped learned/default on-site seconds for the route planner. */
+  learned_dwell_seconds?: number | null;
 }
 
 // ── Serve folder helpers ───────────────────────────────────────────────────
@@ -3490,7 +3512,7 @@ export interface ServeAttempt {
   officer_name?: string;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
-  result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'bad_address' | 'moved' | 'other';
   /** Structured PS/NN.NN disposition code (migration 0143). Null on legacy rows. */
   disposition_code?: string | null;
   latitude: number | null;
@@ -3540,6 +3562,8 @@ export interface ServeAttemptData {
   // server derives the legacy `result` enum from it via codeToLegacyResult
   // and persists the full code in serve_attempts.disposition_code.
   disposition_code?: string;
+  /** ISO arrival at the door — trains serve_dwell_times. Also accepted as arrived_at. */
+  arrivedAt?: string;
 }
 
 export interface ServeRoute {

@@ -16,7 +16,7 @@
 import type { ServePriority } from './serveIntakeExtract';
 import type { TimeBand } from './serveScheduleParse';
 import type { AddressClass } from './serveAddressClass';
-import { selectWindows, usesBusinessTiming, type WindowAuthority } from './serveAttemptWindows';
+import { selectWindows, usesBusinessTiming, defaultAuthorityForClass, type WindowAuthority } from './serveAttemptWindows';
 import { log } from './logger';
 
 export interface AttemptWindow {
@@ -367,7 +367,7 @@ export function replanAfterFailedAttempt(
       window,
       focus: 'diligence rotation — later band the same day after a failed attempt',
       authority: usesBusinessTiming(queue.addressClass ?? 'unknown', queue.addressClassConfirmed)
-        ? 'business default'
+        ? defaultAuthorityForClass(queue.addressClass ?? 'unknown')
         : 'residential default',
     };
   }

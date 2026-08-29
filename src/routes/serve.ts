@@ -57,7 +57,13 @@ import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 import { parseD1TimestampMs } from '../utils/fleetio/sync';
 import { computeOfficerMileageForDay, computeOfficerMileageSegments } from '../utils/serveMileage';
-import { hashAddress, shouldRecordDwell, dwellSeconds } from '../utils/serveRouteOptimizer';
+import { hashAddress, shouldRecordDwell, dwellSeconds, attachLearnedDwellSeconds } from '../utils/serveRouteOptimizer';
+import {
+  coerceAttemptResult,
+  defaultPsCodeForResult,
+  parseArrivedAtIso,
+  STAMP_ONSCENE_DURATION_SQL,
+} from '../utils/serveAttemptNormalize';
 import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
 import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
 import serveAttemptFiles from './serveAttemptFiles';
@@ -91,6 +97,21 @@ function normalizeFees<T extends Record<string, unknown>>(job: T): T {
   };
 }
 
+function restoreServeOfficerUnit(
+  db: ReturnType<typeof getDb>,
+  officerId: number,
+  serveCallId: number | null | undefined,
+): Promise<unknown> {
+  // Never drop a unit off a different live CFS (patrol/alarm) just because
+  // the officer logged a paper-serve attempt.
+  return execute(db,
+    `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+     WHERE officer_id = ?
+       AND status NOT IN ('off_duty','out_of_service')
+       AND (current_call_id IS NULL OR current_call_id = ?)`,
+    officerId, serveCallId ?? -1,
+  );
+}
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
 const READ = [...WRITE, 'dispatcher'];
 
@@ -929,6 +950,7 @@ sv.get('/', async (c) => {
       for (const j of jobs) j.scans = scansByQueue.get(j.id) ?? [];
     }
   }
+  await attachLearnedDwellSeconds(db, jobs).catch(() => {});
   return c.json(jobs.map(normalizeFees));
 });
 
@@ -1193,7 +1215,21 @@ sv.get('/:id', async (c) => {
        FROM notice_scans WHERE serve_queue_id = ? ORDER BY scanned_at DESC`,
     id,
   );
-  return c.json(normalizeFees({ ...row, attempts, scans }));
+  const skipTraceRows = await query(
+    db,
+    `SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC`,
+    id,
+  ).catch(() => [] as Record<string, unknown>[]);
+  const skipTraces = (skipTraceRows as Record<string, unknown>[]).map(row => {
+    let addresses_found: unknown[] = [];
+    const raw = row.addresses_found_json;
+    if (typeof raw === 'string' && raw.trim()) {
+      try { addresses_found = JSON.parse(raw); } catch { addresses_found = []; }
+    }
+    const { addresses_found_json: _drop, ...rest } = row;
+    return { ...rest, addresses_found };
+  });
+  return c.json(normalizeFees({ ...row, attempts, scans, skipTraces }));
 });
 
 // ── Serve audit trail ──────────────────────────────────────────
@@ -1335,7 +1371,10 @@ sv.patch('/:id/address-class', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
-  const VALID_KLASS = new Set(['residential', 'business', 'unknown']);
+  const VALID_KLASS = new Set([
+    'residential', 'business', 'corporate', 'small_business',
+    'government', 'gated', 'po_box', 'unknown',
+  ]);
   const klass = typeof body.klass === 'string' && VALID_KLASS.has(body.klass) ? body.klass : null;
   const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : null;
   if (klass === null && confirmed === null) return c.json({ error: 'Provide klass and/or confirmed' }, 400);
@@ -1418,12 +1457,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // supplied, it derives both the legacy `result` enum (for the existing
   // CHECK constraint) and the next queue status. When absent, fall back to
   // whatever the caller passed in `result` (legacy path).
-  const psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
+  const coercedResult = coerceAttemptResult(body.result, defaultResult, ATTEMPT_RESULTS);
+  let psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
     ? body.disposition_code.trim().toUpperCase()
     : null;
+  if (!psCode) {
+    const inferred = defaultPsCodeForResult(coercedResult);
+    if (inferred && lookupPsoCode(inferred)) psCode = inferred;
+  }
   const result = psCode
     ? codeToLegacyResult(psCode)
-    : (ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult);
+    : coercedResult;
   const nextNum = (queue.attempt_count ?? 0) + 1;
 
   // Live serve_attempts has no `status` column (migration 0030 drift —
@@ -1504,15 +1548,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     });
   }
 
-  // Dwell-time learning — write path
-  const arrivedAtRaw = body.arrivedAt as string | undefined;
-  // Guard: arrivedAt must be a parseable ISO timestamp. An unvalidated string
-  // causes dwellSeconds() to return NaN, which then passes shouldRecordDwell()
-  // and inserts a corrupt dwell_seconds row. Reject any value that doesn't
-  // parse to a finite timestamp.
-  const arrivedAt = (typeof arrivedAtRaw === 'string' && Number.isFinite(new Date(arrivedAtRaw).getTime()))
-    ? arrivedAtRaw
-    : undefined;
+  // Dwell-time learning — write path. Prefer the device's arrivedAt / arrived_at
+  // (web + iOS); fall back to the linked CFS onscene_at so Dispatch Arrive
+  // still trains the planner when the wizard never sent an arrival stamp.
+  let arrivedAt = parseArrivedAtIso(body as Record<string, unknown>);
+  if (!arrivedAt && queue.call_id) {
+    const cfs = await queryFirst<{ onscene_at: string | null }>(
+      db, 'SELECT onscene_at FROM calls_for_service WHERE id = ?', queue.call_id,
+    ).catch(() => null);
+    const onsceneMs = parseD1TimestampMs(cfs?.onscene_at);
+    if (onsceneMs) arrivedAt = new Date(onsceneMs).toISOString();
+  }
   if (arrivedAt) {
     const loggedAt = new Date().toISOString();
     const dwell = dwellSeconds(arrivedAt, loggedAt);
@@ -1575,7 +1621,8 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // transitions calls that are still open — never re-opens a cleared call.
     if (newStatus === 'served' && queue.call_id) {
       execute(db,
-        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'), updated_at = datetime('now')
+        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'),
+         ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime('now')
          WHERE id = ? AND status NOT IN ('cleared','archived')`,
         queue.call_id,
       ).then(async (r) => {
@@ -1604,23 +1651,23 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // [F3] Restore PSO officer unit to available on terminal status so they
     // show as free in the dispatch units panel.
     if (user?.id) {
-      execute(db,
-        `UPDATE units SET status = 'available', last_status_change = datetime('now'), updated_at = datetime('now')
-         WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service')`,
-        user.id,
-      ).then(() => {
+      restoreServeOfficerUnit(db, user.id, queue.call_id).then(() => {
         broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'available' });
       }).catch(() => {});
     }
   } else if (user?.id) {
-    // [F3] Non-terminal attempt: officer is on-scene at the serve address.
-    execute(db,
-      `UPDATE units SET status = 'onscene', last_status_change = datetime('now'), updated_at = datetime('now')
-       WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service','dispatched')`,
-      user.id,
-    ).then(() => {
-      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'onscene' });
+    // After a logged attempt the officer is rolling to the next stop —
+    // leaving them 'onscene' jammed Dispatch while they still had more papers.
+    restoreServeOfficerUnit(db, user.id, queue.call_id).then(() => {
+      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'available' });
     }).catch(() => {});
+    if (queue.call_id) {
+      execute(db,
+        `UPDATE calls_for_service SET ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime('now')
+         WHERE id = ? AND onscene_at IS NOT NULL`,
+        queue.call_id,
+      ).catch(() => {});
+    }
   }
 
   // [12a] Live dispatch sync — broadcast over WebSocket so ServePage / DispatchPage
@@ -1739,10 +1786,11 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // attempt_threshold_reached: true when the attempt count reaches max_attempts.
     // This is a count-only heuristic — NOT a legal diligence certification.
     // Full Rule 4(d) diligence requires time separation and time-of-day variation
-    // that only the client-side assessDiligence() can evaluate. Renamed from
-    // 'due_diligence_complete' to avoid misleading officers into thinking a
-    // simple count satisfies the legal standard.
+    // that only the client-side assessDiligence() can evaluate. Keep the old
+    // `due_diligence_complete` key as a count-threshold alias so ServeAttemptModal
+    // still offers the non-service affidavit shortcut.
     attempt_threshold_reached: nextNum >= (queue.max_attempts ?? 3),
+    due_diligence_complete: nextNum >= (queue.max_attempts ?? 3),
     proximity_warning: proximityWarning,
   });
 }
@@ -1766,8 +1814,8 @@ sv.post('/:id/substitute-service', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number }>(
-    db, 'SELECT attempt_count, max_attempts FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, call_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
   const nextNum = (queue.attempt_count ?? 0) + 1;
@@ -1804,11 +1852,9 @@ sv.post('/:id/substitute-service', async (c) => {
     attempt_count: nextNum,
   });
   if (user?.id) {
-    execute(db,
-      `UPDATE units SET status = 'available', last_status_change = datetime('now'), updated_at = datetime('now')
-       WHERE user_id = ? AND status = 'on_serve'`,
-      user.id,
-    ).catch(() => {});
+    restoreServeOfficerUnit(db, user.id, queue.call_id).then(() => {
+      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user.id, status: 'available' });
+    }).catch(() => {});
   }
 
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });

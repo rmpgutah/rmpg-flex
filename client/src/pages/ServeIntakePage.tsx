@@ -1600,8 +1600,10 @@ export default function ServeIntakePage() {
                   >
                     <option value="">— unknown —</option>
                     <option value="residential">Residential</option>
-                    <option value="business">Business</option>
-                    <option value="commercial">Commercial</option>
+                    <option value="corporate">Corporate / Large Business</option>
+                    <option value="small_business">Small Business</option>
+                    <option value="government">Government Office</option>
+                    <option value="business">Business (generic)</option>
                     <option value="gated">Gated / HOA</option>
                     <option value="po_box">PO Box</option>
                   </select>

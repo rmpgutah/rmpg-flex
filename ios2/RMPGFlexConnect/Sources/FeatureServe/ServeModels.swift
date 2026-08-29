@@ -113,6 +113,8 @@ public struct ServeAttemptRequest: Encodable, Sendable {
     public var attemptType: String?
     public var photoIds: [Int]
     public var signatureData: String?
+    public var attemptAt: String?
+    public var arrivedAt: String?
 
     public init(
         result: ServeAttemptResult,
@@ -121,7 +123,9 @@ public struct ServeAttemptRequest: Encodable, Sendable {
         longitude: Double? = nil,
         attemptType: String? = nil,
         photoIds: [Int] = [],
-        signatureData: String? = nil
+        signatureData: String? = nil,
+        attemptAt: String? = nil,
+        arrivedAt: String? = nil
     ) {
         self.result = result.rawValue
         self.notes = notes
@@ -130,6 +134,8 @@ public struct ServeAttemptRequest: Encodable, Sendable {
         self.attemptType = attemptType
         self.photoIds = photoIds
         self.signatureData = signatureData
+        self.attemptAt = attemptAt
+        self.arrivedAt = arrivedAt
     }
 }
 

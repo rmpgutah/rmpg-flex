@@ -2792,7 +2792,22 @@ si.get('/:id/skip-trace', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
-  return c.json({ data: rows });
+  const data = rows.map((row: Record<string, unknown>) => {
+    let addresses_found: unknown[] = [];
+    const raw = row.addresses_found_json;
+    if (typeof raw === 'string' && raw.trim()) {
+      try { addresses_found = JSON.parse(raw); } catch { addresses_found = []; }
+    } else if (Array.isArray(row.addresses_found)) {
+      addresses_found = row.addresses_found as unknown[];
+    }
+    let results_json: unknown = row.results_json;
+    if (typeof results_json === 'string' && results_json.trim()) {
+      try { results_json = JSON.parse(results_json); } catch { /* keep string */ }
+    }
+    const { addresses_found_json: _drop, ...rest } = row;
+    return { ...rest, results_json, addresses_found };
+  });
+  return c.json({ data });
 });
 
 // ── POST /:id/skip-trace ────────────────────────────────────

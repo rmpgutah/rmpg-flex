@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { parseTimestamp } from '../utils/dateUtils';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { briefingsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import {
   FileText, Clock, Users, Shield, AlertTriangle,
-  Plus, RefreshCw, Check, Sun, Moon, Sunset
+  Plus, RefreshCw, Check, Sun, Moon, Sunset, Download, Copy, Search,
 } from 'lucide-react';
 
 interface Briefing {
@@ -65,6 +66,9 @@ export default function ShiftBriefingsPage() {
   const [manualTitle, setManualTitle] = useState('');
   const [manualContent, setManualContent] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [histSearch, setHistSearch] = useState('');
+  const [shiftFilter, setShiftFilter] = useState<'all' | 'day' | 'swing' | 'night'>('all');
 
   const currentShift = getCurrentShift();
 
@@ -75,11 +79,12 @@ export default function ShiftBriefingsPage() {
 
   async function loadBriefings() {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await apiFetch<Briefing[]>('/api/shift-briefings');
       setBriefings(asArray<Briefing>(data));
     } catch (err) {
-      console.error('Failed to load briefings', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load briefings');
     } finally {
       setLoading(false);
     }
@@ -100,7 +105,7 @@ export default function ShiftBriefingsPage() {
       const data = await apiFetch<GeneratedBriefing>('/api/shift-briefings/generate');
       setGenerated(data);
     } catch (err) {
-      console.error('Failed to generate briefing', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to generate briefing');
     } finally {
       setGenerating(false);
     }
@@ -152,6 +157,35 @@ export default function ShiftBriefingsPage() {
     }
   }
 
+  const visibleBriefings = useMemo(() => {
+    const q = histSearch.trim().toLowerCase();
+    const filtered = briefings.filter((b) => {
+      if (shiftFilter !== 'all' && b.shift_type !== shiftFilter) return false;
+      if (!q) return true;
+      return b.title.toLowerCase().includes(q) || b.briefing_number.toLowerCase().includes(q) || b.created_by.toLowerCase().includes(q);
+    });
+    return [...filtered].sort((a, b) => {
+      const pin = (x: Briefing) => (x.shift_type === currentShift.type ? 0 : 1);
+      return pin(a) - pin(b);
+    });
+  }, [briefings, histSearch, shiftFilter, currentShift.type]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = ['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName);
+      if (e.key === 'Escape') {
+        setShowManualForm(false);
+        setGenerated(null);
+        setExpandedId(null);
+      }
+      if (typing) return;
+      if (e.key === 'n' || e.key === 'N') setShowManualForm(true);
+      if (e.key === 'g' || e.key === 'G') handleGenerate();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className="p-4 space-y-4 bg-surface-base min-h-screen">
       {/* Header */}
@@ -175,6 +209,13 @@ export default function ShiftBriefingsPage() {
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className="text-[11px] px-3 py-2 border border-red-700/40 bg-red-900/20 text-red-400 flex justify-between" role="alert">
+          <span>{loadError}</span>
+          <button type="button" onClick={loadBriefings} className="underline">Retry</button>
+        </div>
+      )}
 
       {/* Current Shift Info */}
       <div className="bg-surface-raised border border-border-default rounded-sm p-3">
@@ -332,9 +373,35 @@ export default function ShiftBriefingsPage() {
 
       {/* Briefing History */}
       <div className="bg-surface-raised border border-border-default rounded-sm p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <PanelTitleBar title="BRIEFING HISTORY" icon={Users} />
-          <IconButton
+          <div className="flex items-center gap-2">
+            <Search className="w-3 h-3 text-fg-muted" />
+            <input
+              value={histSearch}
+              onChange={(e) => setHistSearch(e.target.value)}
+              placeholder="Search title / # / author"
+              className="w-40 px-2 py-1 text-[10px] bg-surface-sunken border border-border-default rounded-sm text-text-primary"
+            />
+            <select
+              value={shiftFilter}
+              onChange={(e) => setShiftFilter(e.target.value as typeof shiftFilter)}
+              className="px-2 py-1 text-[10px] bg-surface-sunken border border-border-default rounded-sm text-text-primary"
+            >
+              <option value="all">All shifts</option>
+              <option value="day">Day</option>
+              <option value="swing">Swing</option>
+              <option value="night">Night</option>
+            </select>
+            <button
+              type="button"
+              disabled={visibleBriefings.length === 0}
+              onClick={() => downloadTextFile('shift-briefings.csv', briefingsToCsv(visibleBriefings))}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] border border-border-default rounded-sm disabled:opacity-40"
+            >
+              <Download className="w-3 h-3" /> CSV
+            </button>
+            <IconButton
             onClick={loadBriefings}
             disabled={loading}
             aria-label="Refresh briefings"
@@ -342,13 +409,14 @@ export default function ShiftBriefingsPage() {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </IconButton>
+          </div>
         </div>
 
-        {briefings.length === 0 ? (
-          <p className="text-xs text-neutral-500 py-2">No briefings found.</p>
+        {visibleBriefings.length === 0 ? (
+          <p className="text-xs text-neutral-500 py-2">{briefings.length === 0 ? 'No briefings found.' : 'No briefings match the filter.'}</p>
         ) : (
           <div className="space-y-1">
-            {briefings.map((b) => (
+            {visibleBriefings.map((b) => (
               <div key={b.id} className="border border-border-default rounded-sm bg-surface-sunken">
                 <button
                   onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
@@ -369,6 +437,13 @@ export default function ShiftBriefingsPage() {
                 </button>
                 {expandedId === b.id && (
                   <div className="px-3 py-2 border-t border-border-default text-xs text-text-primary whitespace-pre-wrap font-mono">
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(b.content).catch(() => undefined)}
+                      className="mb-2 flex items-center gap-1 text-[10px] text-fg-muted"
+                    >
+                      <Copy className="w-3 h-3" /> Copy body
+                    </button>
                     {b.content}
                   </div>
                 )}
@@ -411,6 +486,13 @@ export default function ShiftBriefingsPage() {
                         {alert.type === 'premise' ? 'PREMISE' : 'WEAPONS CALL'}
                       </span>
                       <span className="text-neutral-500 font-mono">{alert.location}</span>
+                      <button
+                        type="button"
+                        className="text-[10px] text-fg-muted"
+                        onClick={() => navigator.clipboard.writeText(alert.location).catch(() => undefined)}
+                      >
+                        Copy loc
+                      </button>
                     </div>
                     <p className="text-xs text-neutral-400 mt-0.5 truncate">{alert.description}</p>
                   </div>

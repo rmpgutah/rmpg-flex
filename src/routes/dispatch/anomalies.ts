@@ -85,7 +85,7 @@ export default anomalies;
 // Rules use only columns that exist on live D1:
 //   - unassigned_call : status pending/dispatched, aged >20min, no unit
 //                       has current_call_id pointing at it (HIGH).
-//   - overdue_onscene : status onscene, onscene_at >3h ago (MEDIUM).
+//   - overdue_onscene : status onscene; PSO types >25 min (HIGH), others >3h (MEDIUM).
 
 interface AnomalyCandidate {
   dedup_key: string;
@@ -136,22 +136,39 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
   }
 
   // Rule 2 — calls on-scene far past a reasonable duration.
-  const overdue = await query<{ id: number; call_number: string; beat_id: number | null }>(
+  // PSO paper service is planned at ~18–22 min on site; 3 hours is a patrol
+  // welfare check, not a serve. Flag PSO visits after 25 minutes so Dispatch
+  // can bounce the unit to the next client request instead of waiting for 3h.
+  const overdue = await query<{ id: number; call_number: string; beat_id: number | null; incident_type: string | null }>(
     db,
-    `SELECT c.id, c.call_number, c.beat_id
+    `SELECT c.id, c.call_number, c.beat_id, c.incident_type
        FROM calls_for_service c
       WHERE c.status = 'onscene'
         AND c.onscene_at IS NOT NULL
-        AND c.onscene_at <= datetime('now', '-3 hours')
+        AND (
+          (
+            c.incident_type IN ('pso_client_request', 'process_service', 'civil_paper_service')
+            AND c.onscene_at <= datetime('now', '-25 minutes')
+          )
+          OR (
+            c.incident_type NOT IN ('pso_client_request', 'process_service', 'civil_paper_service')
+            AND c.onscene_at <= datetime('now', '-3 hours')
+          )
+        )
       LIMIT 100`,
   );
   for (const c of overdue) {
+    const isPso = ['pso_client_request', 'process_service', 'civil_paper_service'].includes(String(c.incident_type || ''));
     candidates.push({
       dedup_key: `overdue_onscene:${c.id}`,
       alert_type: 'overdue_onscene',
-      severity: 'medium',
-      title: `Call ${c.call_number} on-scene >3 h`,
-      details: `Unit has been on-scene for call ${c.call_number} over 3 hours without clearing — confirm officer status.`,
+      severity: isPso ? 'high' : 'medium',
+      title: isPso
+        ? `PSO ${c.call_number} on-scene >25 min`
+        : `Call ${c.call_number} on-scene >3 h`,
+      details: isPso
+        ? `Process-server visit ${c.call_number} has been on-scene over 25 minutes — log the attempt and roll to the next stop.`
+        : `Unit has been on-scene for call ${c.call_number} over 3 hours without clearing — confirm officer status.`,
       zone_beat: c.beat_id != null ? String(c.beat_id) : null,
     });
   }

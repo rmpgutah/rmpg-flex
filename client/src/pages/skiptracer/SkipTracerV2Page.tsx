@@ -404,7 +404,7 @@ export default function SkipTracerV2Page() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [selected, setSelected] = useState<Profile | null>(null);
-  const ALL_CATEGORIES = ['people', 'court', 'property', 'business', 'osint', 'registry'] as const;
+  const ALL_CATEGORIES = ['people', 'property', 'business', 'osint', 'registry'] as const;
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [searchEngine, setSearchEngine] = useState<'all' | 'microbilt' | 'rapidapi'>('all');
 
@@ -746,11 +746,11 @@ export default function SkipTracerV2Page() {
     if (!activeDossierId || !linkValue.trim()) return;
     setLinkSaving(true);
     try {
-      const body: any = {};
+      const body: Record<string, string> = {};
       if (linkType === 'incident') body.linkedIncidentId = linkValue.trim();
       else body.linkedCaseId = linkValue.trim();
-      await apiFetch('/skiptracer-v2/dossiers', {
-        method: 'POST',
+      await apiFetch(`/skiptracer-v2/dossiers/${activeDossierId}`, {
+        method: 'PUT',
         body: JSON.stringify(body),
       });
       setLinkDropdownOpen(false);

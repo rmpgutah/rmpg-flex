@@ -45,8 +45,18 @@ beforeAll(async () => {
     sector_id INTEGER, sector_name TEXT, zone_id TEXT, zone_name TEXT, zone_beat TEXT,
     beat_id TEXT, beat_name TEXT, beat_descriptor TEXT,
     weapons_involved TEXT, injuries_reported TEXT, domestic_violence TEXT,
+    weather_conditions TEXT,
     starting_mileage REAL, ending_mileage REAL, overdue_notified INTEGER
   )`);
+  // Shared Miniflare D1: an earlier file's CREATE TABLE IF NOT EXISTS can win
+  // with a thinner schema. LIST_VIEW_SELECT then 500s (no such column).
+  for (const sql of [
+    'ALTER TABLE calls_for_service ADD COLUMN weather_conditions TEXT',
+    'ALTER TABLE calls_for_service ADD COLUMN onscene_duration_seconds INTEGER',
+    'ALTER TABLE calls_for_service ADD COLUMN response_time_seconds INTEGER',
+  ]) {
+    await execute(db, sql).catch(() => {});
+  }
   await execute(db, `CREATE TABLE IF NOT EXISTS calls_for_service_ext (id INTEGER PRIMARY KEY, pinned INTEGER DEFAULT 0)`);
   await execute(db, `CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY, name TEXT, client_id INTEGER)`);
   await execute(db, `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, full_name TEXT)`);
