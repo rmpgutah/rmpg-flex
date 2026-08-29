@@ -47,7 +47,7 @@ describe('DialerPanel', () => {
     render(<DialerPanel />);
     fireEvent.click(screen.getByLabelText('Open dialer (disconnected)'));
     expect(open).toHaveBeenCalledWith(DIALER_APP_URL, DIALER_WINDOW_NAME, DIALER_WINDOW_FEATURES);
-    expect(open.mock.calls[0][0]).not.toContain('dialer-embed');
+    expect(DIALER_APP_URL.includes('dialer-embed')).toBe(false);
   });
 
   test('openDialerWindow reuses the named window instead of opening a second one', () => {
