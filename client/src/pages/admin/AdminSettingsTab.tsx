@@ -171,7 +171,7 @@ export default function AdminSettingsTab(_props: Props) {
                           onChange={e => updateValue(setting.key, e.target.checked ? 'true' : 'false')}
                           className="w-3.5 h-3.5"
                         />
-                        <span className="text-[10px] text-[#888]">Enabled</span>
+                        <span className="text-[10px] text-fg-muted">Enabled</span>
                       </label>
                     ) : setting.type === 'select' && setting.options ? (
                       <select id="ff-adminsettingstab-2"

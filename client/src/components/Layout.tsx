@@ -409,9 +409,7 @@ export default function Layout() {
     setProfileDropdownOpen(false);
     const result = await signOut();
     if (!result.ok) {
-      // Shift gate blocked sign-out. Surface via alert() so the operator
-      // can't miss it; the End Shift flow lives on the ShiftCard.
-      try { window.alert(result.message); } catch { /* noop */ }
+      toast?.addToast(result.message, 'error', 8000);
     }
   }, [signOut]);
   const { isConnected, subscribe } = useWebSocket();

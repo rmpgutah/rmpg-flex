@@ -217,7 +217,7 @@ function PreviewModal({
               {item.original_filename ?? item.filename}
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="shrink-0 p-1 rounded-[2px] hover:bg-[color:var(--surface-base)]"
             aria-label="Close preview"
@@ -259,7 +259,7 @@ function PreviewModal({
           <span className="text-[10px] mr-auto" style={{ color: 'var(--text-secondary)' }}>
             {formatBytes(item.file_size)} · {formatDate(item.created_at)}
           </span>
-          <button
+          <button type="button"
             onClick={() => onChainOfCustody(item)}
             className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px] hover:bg-[color:var(--surface-base)]"
             style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
@@ -267,7 +267,7 @@ function PreviewModal({
             <Link2 size={11} /> Chain of Custody
           </button>
           {canAdmin && item.status !== 'sealed' && (
-            <button
+            <button type="button"
               onClick={() => onSeal(item)}
               className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px] hover:bg-[color:var(--surface-base)]"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--sev-critical)' }}
@@ -276,7 +276,7 @@ function PreviewModal({
             </button>
           )}
           {canAdmin && item.status === 'sealed' && (
-            <button
+            <button type="button"
               onClick={() => onRelease(item)}
               className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px] hover:bg-[color:var(--surface-base)]"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--sev-ok)' }}
@@ -284,7 +284,7 @@ function PreviewModal({
               <Unlock size={11} /> Release
             </button>
           )}
-          <button
+          <button type="button"
             onClick={() => onDownload(item)}
             className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px]"
             style={{ background: 'var(--brand-700)', color: 'var(--text-primary)', border: 'none' }}
@@ -333,7 +333,7 @@ function CustodyModal({ item, onClose }: CustodyModalProps) {
           <span className="text-xs font-semibold" style={{ color: 'var(--panel-header-color)' }}>
             Chain of Custody — {item.original_filename ?? item.filename}
           </span>
-          <button onClick={onClose} className="p-1" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-1" aria-label="Close">
             <X size={13} style={{ color: 'var(--text-secondary)' }} />
           </button>
         </div>
@@ -474,7 +474,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           <span className="text-xs font-semibold" style={{ color: 'var(--panel-header-color)' }}>
             Upload Digital Evidence
           </span>
-          <button onClick={onClose} className="p-1" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-1" aria-label="Close">
             <X size={13} style={{ color: 'var(--text-secondary)' }} />
           </button>
         </div>
@@ -509,7 +509,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
                 >
                   <span className="truncate mr-2">{f.name}</span>
                   <span className="shrink-0 mr-2" style={{ color: 'var(--text-secondary)' }}>{formatBytes(f.size)}</span>
-                  <button
+                  <button type="button"
                     onClick={(e) => { e.stopPropagation(); removeFile(i); }}
                     className="shrink-0"
                     aria-label="Remove file"
@@ -571,7 +571,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           className="flex justify-end gap-2 px-3 py-2 shrink-0"
           style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-sunken)' }}
         >
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-3 py-[3px] text-xs rounded-[2px]"
             style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
@@ -579,7 +579,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={handleSubmit}
             disabled={uploading || files.length === 0}
             className="flex items-center gap-1 px-3 py-[3px] text-xs rounded-[2px]"
@@ -748,7 +748,7 @@ export default function DigitalEvidencePage() {
             />
           </div>
           {/* Upload button */}
-          <button
+          <button type="button"
             onClick={() => setShowUpload(true)}
             className="flex items-center gap-1 px-2 py-[3px] text-xs rounded-[2px]"
             style={{ background: 'var(--brand-700)', color: 'var(--text-primary)' }}
@@ -767,7 +767,7 @@ export default function DigitalEvidencePage() {
           const Icon = tab.icon;
           const active = filter === tab.id;
           return (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setFilter(tab.id)}
               className="flex items-center gap-1 px-3 py-[4px] text-[11px] font-semibold transition-colors rounded-t-[2px]"
@@ -804,7 +804,7 @@ export default function DigitalEvidencePage() {
           <div className="flex items-center gap-2 m-4 p-3 rounded-[2px]" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)' }}>
             <AlertTriangle size={14} style={{ color: 'var(--sev-critical)' }} />
             <span className="text-xs" style={{ color: 'var(--sev-critical)' }}>{error}</span>
-            <button
+            <button type="button"
               onClick={fetchItems}
               className="ml-auto text-xs px-2 py-[2px] rounded-[2px]"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
@@ -941,7 +941,7 @@ export default function DigitalEvidencePage() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center gap-1">
-                        <button
+                        <button type="button"
                           onClick={() => setPreviewItem(item)}
                           className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                           aria-label="Preview"
@@ -949,7 +949,7 @@ export default function DigitalEvidencePage() {
                         >
                           <Eye size={11} style={{ color: 'var(--brand-400)' }} />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDownload(item)}
                           className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                           aria-label="Download"
@@ -957,7 +957,7 @@ export default function DigitalEvidencePage() {
                         >
                           <Download size={11} style={{ color: 'var(--text-secondary)' }} />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => setCustodyItem(item)}
                           className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                           aria-label="Chain of custody"
@@ -966,7 +966,7 @@ export default function DigitalEvidencePage() {
                           <Link2 size={11} style={{ color: 'var(--text-secondary)' }} />
                         </button>
                         {canAdmin && item.status !== 'sealed' && (
-                          <button
+                          <button type="button"
                             onClick={() => handleSeal(item)}
                             className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                             aria-label="Seal evidence"
@@ -976,7 +976,7 @@ export default function DigitalEvidencePage() {
                           </button>
                         )}
                         {canAdmin && item.status === 'sealed' && (
-                          <button
+                          <button type="button"
                             onClick={() => handleRelease(item)}
                             className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                             aria-label="Release evidence"
@@ -1003,7 +1003,7 @@ export default function DigitalEvidencePage() {
         >
           <span>{filtered.length} of {items.length} items</span>
           {filter !== 'all' && (
-            <button
+            <button type="button"
               onClick={() => setFilter('all')}
               className="underline"
               style={{ color: 'var(--brand-300)' }}

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { useToast } from './ToastProvider';
+import ConfirmDialog from './ConfirmDialog';
 import { safeTimeStr } from '../utils/dateUtils';
 import { playTone } from '../utils/dispatchTones';
 
@@ -72,6 +73,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const [incomingAlert, setIncomingAlert] = useState<PanicAlert | null>(null);
   const [ownPanicId, setOwnPanicId] = useState<number | null>(null);
   const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
+  const [forceDeactivateOpen, setForceDeactivateOpen] = useState(false);
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -371,7 +373,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const forceDeactivate = useCallback(async () => {
     const panicId = incomingAlert?.panic_id;
     if (!panicId) return;
-    if (!window.confirm('Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles.')) return;
     try {
       await apiFetch(`/dispatch/panic/${panicId}/deactivate`, {
         method: 'POST',
@@ -679,7 +680,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                 {/* Admin fallback — force-deactivate from any state */}
                 {isAdmin && incomingAlert.panic_id && (
                   <button type="button"
-                    onClick={forceDeactivate}
+                    onClick={() => setForceDeactivateOpen(true)}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
                     style={{ background: 'var(--surface-raised)', border: '1px solid rgba(var(--sev-critical-rgb) / 0.5)', color: 'var(--sev-critical)' }}
                   >
@@ -691,6 +692,18 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={forceDeactivateOpen}
+        onClose={() => setForceDeactivateOpen(false)}
+        onConfirm={() => {
+          setForceDeactivateOpen(false);
+          void forceDeactivate();
+        }}
+        title="Force-deactivate panic"
+        message="Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles."
+        confirmLabel="Deactivate"
+        confirmVariant="danger"
+      />
     </>
   );
 }

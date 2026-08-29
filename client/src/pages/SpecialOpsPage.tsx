@@ -257,7 +257,7 @@ export default function SpecialOpsPage() {
       width: '80px',
       render: (r: Callout) => (
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); openEdit(r); }}
             className="text-rmpg-400 hover:text-rmpg-100"
             title="Edit"
@@ -265,7 +265,7 @@ export default function SpecialOpsPage() {
             <Pencil size={12} />
           </button>
           {canCreate && (
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setDeleteTarget({ id: r.id, label: r.call_type || `Callout #${r.id}` });
@@ -314,7 +314,7 @@ export default function SpecialOpsPage() {
       width: '80px',
       render: (r: Equipment) => (
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); openEdit(r); }}
             className="text-rmpg-400 hover:text-rmpg-100"
             title="Edit"
@@ -322,7 +322,7 @@ export default function SpecialOpsPage() {
             <Pencil size={12} />
           </button>
           {canCreate && (
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setDeleteTarget({ id: r.id, label: r.equipment_type || `Equipment #${r.id}` });
@@ -397,7 +397,7 @@ export default function SpecialOpsPage() {
           }}
         >CSV</button>
         {canCreate && (
-          <button
+          <button type="button"
             onClick={openNew}
             className="toolbar-btn flex items-center gap-1.5"
             style={{ height: 28, padding: '0 10px' }}
@@ -431,13 +431,13 @@ export default function SpecialOpsPage() {
       )}
 
       <div className="flex items-center gap-2">
-        <button
+        <button type="button"
           onClick={() => setTab('callouts')}
           className={`text-[10px] px-3 py-1 ${tab === 'callouts' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}
         >
           Callouts
         </button>
-        <button
+        <button type="button"
           onClick={() => setTab('equipment')}
           className={`text-[10px] px-3 py-1 ${tab === 'equipment' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}
         >
@@ -631,10 +631,10 @@ export default function SpecialOpsPage() {
             </div>
 
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>
+              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleSave}
                 disabled={
                   formSubmitting ||

@@ -310,6 +310,7 @@ export default function DeviceHealthPage() {
           )}
         </div>
         <button
+          type="button"
           onClick={fetchAll}
           disabled={loading}
           style={{
@@ -361,6 +362,34 @@ export default function DeviceHealthPage() {
           >Copy host</button>
         )}
       </div>
+
+      {!apiOnline && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: 12,
+            padding: '8px 10px',
+            background: 'rgba(var(--sev-critical-rgb) / 0.12)',
+            border: '1px solid rgba(var(--sev-critical-rgb) / 0.4)',
+            borderRadius: 2,
+            fontSize: 11,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <span>API health check failed — the CAD API looks unreachable from this device.</span>
+          <button
+            type="button"
+            onClick={fetchAll}
+            disabled={loading}
+            className="toolbar-btn"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
