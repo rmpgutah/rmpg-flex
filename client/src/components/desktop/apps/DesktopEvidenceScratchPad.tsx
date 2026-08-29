@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, FileText, Link } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import { apiFetch } from '../../../hooks/useApi';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 const W = 500;
 const H = 400;
@@ -26,6 +27,8 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
 
   const [linkedCall, setLinkedCall] = useState<LinkedCall | null>(null);
   const [content, setContent] = useState('');
+  const [find, setFind] = useState('');
+  const [wrap, setWrap] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,7 +62,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
         method: 'POST',
         body: JSON.stringify({ note: text, source: 'scratch_pad' }),
       });
-      setSavedAt(new Date().toLocaleTimeString());
+      setSavedAt(new Date().toLocaleTimeString()); // new-date-ok — clock stamp, not a D1 string
     } catch { /* degrade silently */ } finally {
       setSaving(false);
     }
@@ -78,7 +81,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
       `─── Incident #${linkedCall.call_number ?? linkedCall.id} ───`,
       linkedCall.incident_type ? `Type: ${linkedCall.incident_type}` : '',
       linkedCall.address ? `Address: ${linkedCall.address}` : '',
-      `Time: ${new Date().toLocaleString()}`,
+      `Time: ${new Date().toLocaleString()}`, // new-date-ok — clock stamp, not a D1 string
       '',
     ].filter(Boolean).join('\n');
     setContent(prev => (prev ? `${header}\n${prev}` : header));
@@ -131,6 +134,31 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
             Stamp header
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => void copyToClipboard(content)}
+          disabled={!content}
+          style={{ fontSize: 10, padding: '2px 8px', background: 'var(--surface-raised)', border: '1px solid var(--border-default)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-muted)', flexShrink: 0 }}
+        >Copy</button>
+        <label style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} />
+          Wrap
+        </label>
+      </div>
+      <div style={{ padding: '4px 10px', borderBottom: '1px solid var(--border-default)', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="search"
+          value={find}
+          onChange={(e) => setFind(e.target.value)}
+          placeholder="Find…"
+          aria-label="Find in notes"
+          style={{ flex: 1, fontSize: 11, padding: '3px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+        />
+        <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+          {find.trim()
+            ? `${content.toLowerCase().split(find.trim().toLowerCase()).length - 1} match(es)`
+            : ''}
+        </span>
       </div>
 
       {/* Editor */}
@@ -143,7 +171,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
           flex: 1, resize: 'none', border: 'none', outline: 'none',
           background: 'var(--surface-base)', color: 'var(--text-primary)',
           fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6,
-          padding: '10px 12px',
+          padding: '10px 12px', whiteSpace: wrap ? 'pre-wrap' : 'pre',
         }}
       />
 

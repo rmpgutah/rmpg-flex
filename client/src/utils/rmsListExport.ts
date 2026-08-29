@@ -226,3 +226,77 @@ export function pingResultsToCsv(rows: Array<{ attempt: number; latencyMs: numbe
 export function networkIfacesToCsv(rows: Array<{ name: string; ipv4?: string; ipv6?: string; status?: string }>): string {
   return rowsToCsv(['name', 'ipv4', 'ipv6', 'status'], rows.map((r) => [r.name, r.ipv4 ?? '', r.ipv6 ?? '', r.status ?? '']));
 }
+
+/** Case/status only — never phone or email. */
+export function victimCasesToCsv(rows: Array<{
+  victim_name: string; case_number?: string; crime_type?: string; status?: string;
+  safety_plan?: number; protective_order?: number;
+}>): string {
+  return rowsToCsv(['name', 'case', 'crime', 'status', 'safety_plan', 'po'],
+    rows.map((r) => [r.victim_name, r.case_number ?? '', r.crime_type ?? '', r.status ?? '', r.safety_plan ? 'yes' : 'no', r.protective_order ? 'yes' : 'no']));
+}
+
+/** Operational account fields — never contact phone. */
+export function alarmAccountsToCsv(rows: Array<{
+  account_number: string; account_name: string; address?: string; alarm_type?: string;
+  permit_status?: string; status?: string; false_alarm_count?: number;
+}>): string {
+  return rowsToCsv(['account', 'name', 'address', 'type', 'permit', 'status', 'false_alarms'],
+    rows.map((r) => [r.account_number, r.account_name, r.address ?? '', r.alarm_type ?? '', r.permit_status ?? '', r.status ?? '', r.false_alarm_count ?? 0]));
+}
+
+/** Hit queue metadata — no display names. */
+export function screeningHitsToCsv(rows: Array<{
+  id: number; source_key: string; match_score: number; status: string;
+}>): string {
+  return rowsToCsv(['id', 'source', 'match_score', 'status'],
+    rows.map((r) => [r.id, r.source_key, r.match_score, r.status]));
+}
+
+export function crimeOffensesToCsv(rows: Array<{ offense_type?: string; count?: number }>): string {
+  return rowsToCsv(['offense', 'count'], rows.map((r) => [r.offense_type ?? '', r.count ?? 0]));
+}
+
+export function crimeHotspotsToCsv(rows: Array<{ location?: string; count?: number }>): string {
+  return rowsToCsv(['location', 'count'], rows.map((r) => [r.location ?? '', r.count ?? 0]));
+}
+
+/** Docket fields only — never name, DOB, or notes. */
+export function warrantDocketToCsv(rows: Array<{
+  warrant_number?: string; warrant_type?: string; type?: string; status?: string; issuing_court?: string;
+}>): string {
+  return rowsToCsv(['warrant', 'type', 'status', 'court'],
+    rows.map((r) => [r.warrant_number ?? '', r.warrant_type ?? r.type ?? '', r.status ?? '', r.issuing_court ?? '']));
+}
+
+export function briefingBolosToCsv(rows: Array<{
+  nature?: string; priority?: string | number; location_address?: string; status?: string;
+}>): string {
+  return rowsToCsv(['nature', 'priority', 'location', 'status'],
+    rows.map((r) => [r.nature ?? '', r.priority ?? '', r.location_address ?? '', r.status ?? '']));
+}
+
+export function briefingWarrantsToCsv(rows: Array<{
+  warrant_number?: string; warrant_type?: string; charge?: string;
+}>): string {
+  return rowsToCsv(['warrant', 'type', 'charge'],
+    rows.map((r) => [r.warrant_number ?? '', r.warrant_type ?? '', r.charge ?? '']));
+}
+
+export function personIntelXrefsToCsv(rows: Array<{
+  source: string; externalRef: string; confidence?: number; isCriminal?: boolean;
+}>): string {
+  return rowsToCsv(['source', 'external_ref', 'confidence', 'criminal'],
+    rows.map((r) => [r.source, r.externalRef, r.confidence ?? '', r.isCriminal ? 'yes' : 'no']));
+}
+
+export function alprCapturesToCsv(rows: Array<{
+  id: number; captured_at: string; plate_number?: string; make?: string; model?: string;
+  color?: string; confidence?: number; is_stolen?: boolean | number; call_id?: number;
+}>): string {
+  return rowsToCsv(['id', 'captured_at', 'plate', 'make', 'model', 'color', 'confidence', 'stolen', 'call_id'],
+    rows.map((r) => [
+      r.id, r.captured_at, r.plate_number ?? '', r.make ?? '', r.model ?? '', r.color ?? '',
+      r.confidence != null ? Math.round(r.confidence * 100) : '', r.is_stolen ? 'yes' : 'no', r.call_id ?? '',
+    ]));
+}

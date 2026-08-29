@@ -4,6 +4,8 @@ import {
   agendaToCsv, qaReviewsToCsv, assetsToCsv, errorLogsToCsv, recordingsToCsv,
   modulesToCsv, mutualAidToCsv, plateHistoryToCsv,
   jailBookingsToCsv, partnersToCsv, recruitmentPipelineToCsv, invoicesToCsv,
+  victimCasesToCsv, alarmAccountsToCsv, screeningHitsToCsv, warrantDocketToCsv,
+  crimeOffensesToCsv, briefingWarrantsToCsv, personIntelXrefsToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -40,5 +42,34 @@ describe('rmsListExport', () => {
     expect(recCsv).toContain('Pat');
     expect(recCsv).not.toContain('email');
     expect(invoicesToCsv([{ invoice_number: 'INV-1', status: 'sent', total_amount: 10, paid_amount: 0 }])).toContain('INV-1');
+  });
+
+  it('omits victim contact and alarm phones from CSV', () => {
+    const v = victimCasesToCsv([{
+      victim_name: 'Pat', case_number: '26-1', crime_type: 'assault', status: 'active',
+      safety_plan: 1, protective_order: 0,
+    }]);
+    expect(v).toContain('26-1');
+    expect(v).not.toContain('email');
+    expect(v).not.toContain('phone');
+    const a = alarmAccountsToCsv([{
+      account_number: 'A-9', account_name: 'Shop', address: '400 S', alarm_type: 'burglary',
+      permit_status: 'active', status: 'active', false_alarm_count: 2,
+    }]);
+    expect(a).toContain('A-9');
+    expect(a).not.toContain('contact');
+  });
+
+  it('omits warrant names and screening display names from CSV', () => {
+    const w = warrantDocketToCsv([{ warrant_number: 'W-1', type: 'arrest', status: 'active', issuing_court: '3rd' }]);
+    expect(w).toContain('W-1');
+    expect(w).not.toContain('name');
+    expect(w).not.toContain('dob');
+    const h = screeningHitsToCsv([{ id: 4, source_key: 'interpol', match_score: 0.9, status: 'pending' }]);
+    expect(h).toContain('interpol');
+    expect(h).not.toContain('display');
+    expect(crimeOffensesToCsv([{ offense_type: 'theft', count: 3 }])).toContain('theft');
+    expect(briefingWarrantsToCsv([{ warrant_number: 'W-2', warrant_type: 'bench', charge: 'FTA' }])).toContain('FTA');
+    expect(personIntelXrefsToCsv([{ source: 'FBI_WANTED', externalRef: 'x-1', confidence: 0.8, isCriminal: true }])).toContain('x-1');
   });
 });

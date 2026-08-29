@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Radio, AlertTriangle, Shield, Users, CheckCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { briefingBolosToCsv, briefingWarrantsToCsv, unitsBoardToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 interface BoloCall {
   id: number;
@@ -63,12 +64,13 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
   const [personsAvail, setPersonsAvail] = useState(true);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [search, setSearch] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
 
-  useEffect(() => {
-    const controllers: AbortController[] = [];
-    const sig = () => { const c = new AbortController(); controllers.push(c); return c.signal; };
-
+  const loadBriefing = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
     Promise.allSettled([
       apiFetch<BoloCall[] | { results?: BoloCall[] }>('/dispatch/calls?nature_contains=BOLO&status=active&limit=10')
         .then(d => setBolos(Array.isArray(d) ? d : (d.results ?? []))),
@@ -79,10 +81,19 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
         .catch(() => setPersonsAvail(false)),
       apiFetch<Unit[] | { results?: Unit[] }>('/dispatch/units?status=active&limit=20')
         .then(d => setUnits(Array.isArray(d) ? d : (d.results ?? []))),
-    ]).finally(() => setLoading(false));
-
-    return () => controllers.forEach(c => c.abort());
+    ]).then((results) => {
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed >= 3) setLoadError(true);
+    }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadBriefing(); }, [loadBriefing]);
+
+  const q = search.trim().toLowerCase();
+  const boloView = q ? bolos.filter((b) => [b.nature, b.location_address, b.status].join(' ').toLowerCase().includes(q)) : bolos;
+  const warrantView = q ? warrants.filter((w) => [w.warrant_number, w.warrant_type, w.charge].join(' ').toLowerCase().includes(q)) : warrants;
+  const unitView = q ? units.filter((u) => [u.unit_id, u.unit_number, u.status].join(' ').toLowerCase().includes(q)) : units;
+  const personView = q ? persons.filter((p) => personName(p).toLowerCase().includes(q) || (p.flag_type ?? '').toLowerCase().includes(q)) : persons;
 
   const sectionHeader = (icon: React.ReactNode, title: string, count: number): React.ReactNode => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -111,6 +122,15 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
     );
   }
 
+  if (loadError) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: 'var(--surface-base)', gap: 12 }}>
+        <p style={{ fontSize: 11, color: 'var(--sev-critical)' }}>Failed to load shift briefing.</p>
+        <button type="button" onClick={loadBriefing} style={{ fontSize: 11, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button>
+      </div>
+    );
+  }
+
   if (acknowledged) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, background: 'var(--surface-base)' }}>
@@ -131,16 +151,35 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
         <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
           {new Date().toLocaleString()}
         </span>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter…"
+          aria-label="Filter briefing"
+          style={{ fontSize: 11, padding: '3px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', borderRadius: 2 }}
+        />
+        <button type="button" disabled={boloView.length === 0} onClick={() => downloadTextFile('briefing-bolos.csv', briefingBolosToCsv(boloView))}
+          style={{ fontSize: 10, padding: '3px 8px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>BOLOs CSV</button>
+        <button type="button" disabled={warrantView.length === 0} onClick={() => downloadTextFile('briefing-warrants.csv', briefingWarrantsToCsv(warrantView))}
+          style={{ fontSize: 10, padding: '3px 8px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Warrants CSV</button>
+        <button type="button" disabled={unitView.length === 0} onClick={() => downloadTextFile('briefing-units.csv', unitsBoardToCsv(unitView.map((u) => ({
+          unit_id: u.unit_id ?? u.unit_number ?? `U${u.id}`,
+          officer_name: u.officer_name ?? u.officer ?? '',
+          badge: '',
+          status: u.status ?? '',
+        }))))}
+          style={{ fontSize: 10, padding: '3px 8px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Units CSV</button>
       </div>
 
       {/* 4 sections */}
       <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* BOLOs */}
         <section style={{ background: 'var(--surface-raised)', borderRadius: 2, padding: 12, border: '1px solid var(--border-default)' }}>
-          {sectionHeader(<AlertTriangle size={12} style={{ color: 'var(--sev-warn)' }} />, 'Active BOLOs', bolos.length)}
-          {bolos.length === 0 ? (
-            <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>No active BOLOs</p>
-          ) : bolos.map(b => (
+          {sectionHeader(<AlertTriangle size={12} style={{ color: 'var(--sev-warn)' }} />, 'Active BOLOs', boloView.length)}
+          {boloView.length === 0 ? (
+            <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>{q ? 'No BOLOs match the filter' : 'No active BOLOs'}</p>
+          ) : boloView.map(b => (
             <div key={b.id} style={itemStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {b.priority && (
@@ -157,10 +196,10 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
 
         {/* Warrants */}
         <section style={{ background: 'var(--surface-raised)', borderRadius: 2, padding: 12, border: '1px solid var(--border-default)' }}>
-          {sectionHeader(<Shield size={12} style={{ color: 'var(--sev-critical)' }} />, 'Active Warrants', warrants.length)}
-          {warrants.length === 0 ? (
-            <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>No active warrants</p>
-          ) : warrants.map(w => (
+          {sectionHeader(<Shield size={12} style={{ color: 'var(--sev-critical)' }} />, 'Active Warrants', warrantView.length)}
+          {warrantView.length === 0 ? (
+            <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>{q ? 'No warrants match the filter' : 'No active warrants'}</p>
+          ) : warrantView.map(w => (
             <div key={w.id} style={itemStyle}>
               <div style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 600 }}>{personName(w)}</div>
               {w.charge && <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{w.charge}</div>}
@@ -172,10 +211,10 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
         {/* Persons of Interest */}
         {personsAvail && (
           <section style={{ background: 'var(--surface-raised)', borderRadius: 2, padding: 12, border: '1px solid var(--border-default)' }}>
-            {sectionHeader(<AlertTriangle size={12} style={{ color: 'var(--sev-critical)' }} />, 'Persons of Interest', persons.length)}
-            {persons.length === 0 ? (
-              <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>None flagged</p>
-            ) : persons.map(p => (
+            {sectionHeader(<AlertTriangle size={12} style={{ color: 'var(--sev-critical)' }} />, 'Persons of Interest', personView.length)}
+            {personView.length === 0 ? (
+              <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>{q ? 'No matches' : 'None flagged'}</p>
+            ) : personView.map(p => (
               <div key={p.id} style={itemStyle}>
                 <div style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 600 }}>{personName(p)}</div>
                 {p.flag_type && <div style={{ fontSize: 9, color: 'var(--sev-critical)', textTransform: 'uppercase' }}>{p.flag_type.replace(/_/g, ' ')}</div>}
@@ -187,12 +226,12 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
 
         {/* On Duty */}
         <section style={{ background: 'var(--surface-raised)', borderRadius: 2, padding: 12, border: '1px solid var(--border-default)', gridColumn: personsAvail ? 'auto' : '1 / -1' }}>
-          {sectionHeader(<Users size={12} style={{ color: 'var(--accent-silver-400)' }} />, "Who's On Duty", units.length)}
-          {units.length === 0 ? (
-            <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>No units active</p>
+          {sectionHeader(<Users size={12} style={{ color: 'var(--accent-silver-400)' }} />, "Who's On Duty", unitView.length)}
+          {unitView.length === 0 ? (
+            <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>{q ? 'No units match the filter' : 'No units active'}</p>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {units.map(u => (
+              {unitView.map(u => (
                 <div key={u.id} style={{
                   padding: '4px 8px', borderRadius: 2, fontSize: 10, fontWeight: 700,
                   background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)',
