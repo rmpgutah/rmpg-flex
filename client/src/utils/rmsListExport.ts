@@ -399,8 +399,8 @@ export function unitsBoardToTsv(rows: Array<{
   return [header, ...lines].join('\n');
 }
 
-function csvLine(cols: unknown[]): string {
-  return cols.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',');
+function csvLine(cells: unknown[]): string {
+  return cells.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',');
 }
 
 export function crashReportsToCsv(rows: Array<{
@@ -409,13 +409,18 @@ export function crashReportsToCsv(rows: Array<{
   location: string;
   crash_type: string;
   severity: string;
+  vehicles_involved: number;
+  injuries: number;
+  fatalities: number;
   status: string;
   investigating_officer: string;
 }>): string {
-  const header = 'report,date,location,type,severity,status,officer';
-  return [header, ...rows.map((r) => csvLine([
-    r.report_number, r.crash_date, r.location, r.crash_type, r.severity, r.status, r.investigating_officer,
-  ]))].join('\n');
+  const header = 'report,date,location,type,severity,vehicles,injuries,fatalities,status,officer';
+  const lines = rows.map((r) => csvLine([
+    r.report_number, r.crash_date, r.location, r.crash_type, r.severity,
+    r.vehicles_involved, r.injuries, r.fatalities, r.status, r.investigating_officer,
+  ]));
+  return [header, ...lines].join('\n');
 }
 
 export function briefingsToCsv(rows: Array<{
@@ -424,37 +429,56 @@ export function briefingsToCsv(rows: Array<{
   shift_type: string;
   created_at: string;
   created_by: string;
+  acknowledged_count: number;
+  total_officers: number;
 }>): string {
-  const header = 'number,title,shift,created_at,author';
-  return [header, ...rows.map((r) => csvLine([
+  const header = 'number,title,shift,created_at,created_by,acked,officers';
+  const lines = rows.map((r) => csvLine([
     r.briefing_number, r.title, r.shift_type, r.created_at, r.created_by,
-  ]))].join('\n');
+    r.acknowledged_count, r.total_officers,
+  ]));
+  return [header, ...lines].join('\n');
 }
 
 export function shiftNotesToCsv(rows: Array<{
   officer_name: string;
   content: string;
   visibility: string;
+  tags: string[];
   created_at: string;
   shift_date: string;
 }>): string {
-  const header = 'officer,visibility,shift_date,created_at,content';
-  return [header, ...rows.map((r) => csvLine([
-    r.officer_name, r.visibility, r.shift_date, r.created_at, r.content,
-  ]))].join('\n');
+  const header = 'shift_date,officer,visibility,tags,content,created_at';
+  const lines = rows.map((r) => csvLine([
+    r.shift_date, r.officer_name, r.visibility, (r.tags ?? []).join('|'), r.content, r.created_at,
+  ]));
+  return [header, ...lines].join('\n');
 }
 
 export function trainingCoursesToCsv(rows: Array<{
   course_name?: string;
   course_code?: string;
   category?: string;
-  duration_hours?: number | string;
-  instructor_name?: string;
+  location?: string;
+  mandatory?: boolean | number;
 }>): string {
-  const header = 'course,code,category,hours,instructor';
-  return [header, ...rows.map((r) => csvLine([
-    r.course_name, r.course_code, r.category, r.duration_hours, r.instructor_name,
-  ]))].join('\n');
+  const header = 'name,code,category,location,mandatory';
+  const lines = rows.map((r) => csvLine([
+    r.course_name ?? '', r.course_code ?? '', r.category ?? '', r.location ?? '',
+    r.mandatory ? 'yes' : 'no',
+  ]));
+  return [header, ...lines].join('\n');
+}
+
+export function fileListingToCsv(rows: Array<{
+  name: string;
+  size: number;
+  modified: string;
+  path: string;
+}>): string {
+  const header = 'name,size,modified,path';
+  const lines = rows.map((r) => csvLine([r.name, r.size, r.modified, r.path]));
+  return [header, ...lines].join('\n');
 }
 
 export function formatRadioLine(unit: {
@@ -465,7 +489,7 @@ export function formatRadioLine(unit: {
   current_call_number?: string | null;
 }): string {
   const call = unit.current_call_number ? ` ${unit.current_call_number}` : '';
-  return `${unit.unit_id} ${unit.officer_name} #${unit.badge} ${unit.status}${call}`;
+  return `${unit.unit_id} ${unit.officer_name} #${unit.badge} ${unit.status}${call}`.replace(/\s+/g, ' ').trim();
 }
 
 export function unitsBoardToCsv(rows: Array<{
@@ -477,9 +501,10 @@ export function unitsBoardToCsv(rows: Array<{
   location_description?: string | null;
 }>): string {
   const header = 'unit,officer,badge,status,call,location';
-  return [header, ...rows.map((r) => csvLine([
-    r.unit_id, r.officer_name, r.badge, r.status, r.current_call_number, r.location_description,
-  ]))].join('\n');
+  const lines = rows.map((r) => csvLine([
+    r.unit_id, r.officer_name, r.badge, r.status, r.current_call_number ?? '', r.location_description ?? '',
+  ]));
+  return [header, ...lines].join('\n');
 }
 
 export function unitsBoardToTsv(rows: Array<{
@@ -488,16 +513,11 @@ export function unitsBoardToTsv(rows: Array<{
   badge: string;
   status: string;
   current_call_number?: string | null;
+  location_description?: string | null;
 }>): string {
-  return rows.map((r) => [r.unit_id, r.officer_name, r.badge, r.status, r.current_call_number ?? ''].join('\t')).join('\n');
-}
-
-export function fileListingToCsv(rows: Array<{
-  name: string;
-  size: number;
-  modified: string;
-  path: string;
-}>): string {
-  const header = 'name,size,modified,path';
-  return [header, ...rows.map((r) => csvLine([r.name, r.size, r.modified, r.path]))].join('\n');
+  const header = 'unit\tofficer\tbadge\tstatus\tcall\tlocation';
+  const lines = rows.map((r) =>
+    [r.unit_id, r.officer_name, r.badge, r.status, r.current_call_number ?? '', r.location_description ?? ''].join('\t'),
+  );
+  return [header, ...lines].join('\n');
 }

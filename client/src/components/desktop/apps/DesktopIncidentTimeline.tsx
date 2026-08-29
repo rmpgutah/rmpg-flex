@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Clock, Search, Printer, FileText, Users, AlertCircle, Image, CheckCircle, StickyNote } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp, formatDateTime } from '../../../utils/dateUtils';
+import { timelineToCsv, downloadTextFile } from '../../../utils/rmsListExport';
+import { copyToClipboard } from '../../../utils/contextMenuActions';
 
 interface CallInfo {
   id: number;
@@ -76,6 +78,7 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState('ALL');
 
   const load = useCallback(async (id: string) => {
     if (!id.trim()) return;
@@ -126,6 +129,8 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
   };
 
   const callLabel = call?.call_number ?? call?.incident_number ?? activeCallId;
+  const types = Array.from(new Set(events.map((e) => e.type)));
+  const visibleEvents = typeFilter === 'ALL' ? events : events.filter((e) => e.type === typeFilter);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)' }}>
@@ -146,6 +151,12 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
         >
           <Printer size={10} /> Print
         </button>
+        <button
+          type="button"
+          disabled={visibleEvents.length === 0}
+          onClick={() => downloadTextFile('incident-timeline.csv', timelineToCsv(visibleEvents))}
+          style={{ fontSize: 10, padding: '3px 10px', borderRadius: 2, border: '1px solid var(--border-default)', cursor: 'pointer', background: 'none', color: 'var(--text-primary)' }}
+        >CSV</button>
       </div>
 
       {/* Search input if no prop callId */}
@@ -182,14 +193,30 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
       {/* Timeline body */}
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
         {loading && <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-secondary)' }}>Loading…</p>}
-        {error && <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--sev-critical)' }}>{error}</p>}
+        {error && (
+          <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--sev-critical)' }}>
+            {error}{' '}
+            <button type="button" onClick={() => void load(activeCallId || callIdInput)} style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button>
+          </p>
+        )}
         {!loading && !error && events.length === 0 && activeCallId && (
           <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-secondary)' }}>No events found for this call</p>
         )}
         {!loading && !error && !activeCallId && !propCallId && (
           <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-secondary)', marginTop: 40 }}>Enter a call ID above to view its timeline</p>
         )}
-        {events.map((evt, i) => (
+        {events.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, padding: '6px 12px', borderBottom: '1px solid var(--border-default)' }}>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter timeline events" style={{ fontSize: 10, padding: '3px 6px', background: 'var(--surface-sunken)', color: 'var(--text-primary)', border: '1px solid var(--border-default)' }}>
+              <option value="ALL">All event types</option>
+              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
+        {events.length > 0 && visibleEvents.length === 0 && (
+          <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-secondary)' }}>No events match this type filter.</p>
+        )}
+        {visibleEvents.map((evt, i) => (
           <div key={evt.id ?? i} style={{ display: 'flex', gap: 14, marginBottom: 16 }}>
             {/* Left: dot + line */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
@@ -199,7 +226,7 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
                 boxShadow: `0 0 0 3px rgba(0 0 0 / 0.2)`,
                 flexShrink: 0,
               }} />
-              {i < events.length - 1 && (
+              {i < visibleEvents.length - 1 && (
                 <div style={{ flex: 1, width: 2, background: 'var(--border-default)', marginTop: 3 }} />
               )}
             </div>
@@ -211,6 +238,7 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
                 <span style={{ fontSize: 9, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
                   {formatDateTime(evt.timestamp)}
                 </span>
+                <button type="button" onClick={() => void copyToClipboard(evt.timestamp)} style={{ fontSize: 9, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>Copy</button>
               </div>
               {evt.detail && (
                 <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{evt.detail}</p>

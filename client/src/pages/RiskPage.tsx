@@ -9,6 +9,7 @@ import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useAuth } from '../context/AuthContext';
 import { Shield, AlertTriangle, ClipboardCheck, FileText, Plus, Pencil, Trash2 } from 'lucide-react';
+import { riskAssessmentsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface RiskAssessment {
   id: number;
@@ -49,6 +50,7 @@ export default function RiskPage() {
   const [deleteBusy, setDeleteBusy]       = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [searchQuery, setSearchQuery]     = useState('');
+  const [levelFilter, setLevelFilter]     = useState('ALL');
   const { addToast }                      = useToast();
   const m                                 = useMenuActions();
   const { user }                          = useAuth();
@@ -175,17 +177,18 @@ export default function RiskPage() {
 
   // ── Filtered list ───────────────────────────────────────────────────
   const q = searchQuery.trim().toLowerCase();
-  const hasSearch = q.length > 0;
-  const filtered = hasSearch
-    ? assessments.filter(
-        (a) =>
-          (a.entity_type       ?? '').toLowerCase().includes(q) ||
-          (a.risk_category     ?? '').toLowerCase().includes(q) ||
-          (a.risk_level        ?? '').toLowerCase().includes(q) ||
-          (a.status            ?? '').toLowerCase().includes(q) ||
-          (a.assessment_number ?? '').toLowerCase().includes(q),
-      )
-    : assessments;
+  const hasSearch = q.length > 0 || levelFilter !== 'ALL';
+  const filtered = assessments.filter((a) => {
+    if (levelFilter !== 'ALL' && (a.risk_level ?? '') !== levelFilter) return false;
+    if (!q) return true;
+    return (
+      (a.entity_type       ?? '').toLowerCase().includes(q) ||
+      (a.risk_category     ?? '').toLowerCase().includes(q) ||
+      (a.risk_level        ?? '').toLowerCase().includes(q) ||
+      (a.status            ?? '').toLowerCase().includes(q) ||
+      (a.assessment_number ?? '').toLowerCase().includes(q)
+    );
+  });
 
   // ── Columns ─────────────────────────────────────────────────────────
   const columns = [
@@ -236,6 +239,17 @@ export default function RiskPage() {
           className="input-dark text-[11px] h-[28px] px-2 w-40"
           aria-label="Filter assessments"
         />
+        <select aria-label="Filter by risk level" className="select-dark text-[11px] h-[28px]" value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)}>
+          <option value="ALL">All levels</option>
+          {['low', 'medium', 'high', 'critical'].map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('risk-assessments.csv', riskAssessmentsToCsv(filtered))}
+        >CSV</button>
         {canWrite && (
           <button
             onClick={openNew}
@@ -249,8 +263,9 @@ export default function RiskPage() {
       </PanelTitleBar>
 
       {error && (
-        <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2" role="alert">
-          {error}
+        <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 flex items-center justify-between" role="alert">
+          <span>{error}</span>
+          <button type="button" className="toolbar-btn" style={{ height: 26 }} onClick={() => { setLoading(true); fetchData().finally(() => { setLoading(false); setHasLoaded(true); }); }}>Retry</button>
         </div>
       )}
 
@@ -281,6 +296,7 @@ export default function RiskPage() {
           m.action('Open / Edit', () => openEdit(row as RiskAssessment), { icon: <Pencil size={12} /> }),
           m.separator(),
           m.copyId((row as RiskAssessment).id),
+          m.copy('Copy assessment #', (row as RiskAssessment).assessment_number ?? ''),
           ...(canWrite
             ? [m.action('Delete', () => setDeleteId((row as RiskAssessment).id), { danger: true, icon: <Trash2 size={12} /> })]
             : []),

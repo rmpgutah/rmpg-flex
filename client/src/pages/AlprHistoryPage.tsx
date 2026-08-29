@@ -14,6 +14,7 @@ import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import PlateScanModal from '../components/PlateScanModal';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 interface CaptureRow {
   id: number;
@@ -102,10 +103,12 @@ export default function AlprHistoryPage() {
   const [accepted, setAccepted] = useState<'' | '0' | '1'>('');
   const [showScanModal, setShowScanModal] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const params = new URLSearchParams({ limit: '100', gallery: '1' });
       const from = dateFrom(dateFilter);
@@ -116,13 +119,35 @@ export default function AlprHistoryPage() {
       const data = await apiFetch<CaptureRow[]>(`/alpr/captures?${params}`);
       setRows(data);
     } catch (err: any) {
-      addToast(err?.message ?? 'Failed to load capture history', 'error');
+      const msg = err?.message ?? 'Failed to load capture history';
+      setLoadError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
   }, [plate, dateFilter, sourceFilter, accepted, addToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      if (e.key === 'Escape') {
+        if (plate) {
+          e.stopPropagation();
+          setPlate('');
+        } else {
+          inputRef.current?.blur();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [plate]);
 
   const handleCreated = useCallback((vehicleRecordId: number) => {
     setShowScanModal(false);
@@ -153,7 +178,7 @@ export default function AlprHistoryPage() {
             value={plate}
             onChange={(e) => setPlate(e.target.value.toUpperCase())}
             onKeyDown={(e) => e.key === 'Enter' && load()}
-            placeholder="Plate…"
+            placeholder="Plate… (/ to focus)"
             className="w-full bg-surface-overlay border border-border-default pl-7 pr-2 py-1.5 text-xs text-rmpg-200 placeholder:text-rmpg-500 outline-none focus:border-brand-400 uppercase"
           />
         </div>
@@ -202,6 +227,9 @@ export default function AlprHistoryPage() {
           <Filter className="w-3 h-3" />
           Filter
         </button>
+        {loadError && (
+          <button type="button" onClick={load} className="text-xs border border-red-700 text-red-400 px-2 py-1.5">Retry</button>
+        )}
 
         <div className="ml-auto flex items-center gap-2 text-[10px] text-rmpg-500">
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>{rows.length} record{rows.length !== 1 ? 's' : ''}</span>}
@@ -222,7 +250,11 @@ export default function AlprHistoryPage() {
       {!loading && rows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 gap-3">
           <ScanSearch className="w-8 h-8 opacity-30" />
-          <span className="text-sm">No captures found for the selected filters</span>
+          <span className="text-sm">
+            {plate.trim() || sourceFilter || accepted
+              ? 'No captures match the current plate / source / accepted filters'
+              : 'No captures found for the selected date range'}
+          </span>
           <button
             type="button"
             onClick={() => setShowScanModal(true)}
@@ -264,8 +296,14 @@ export default function AlprHistoryPage() {
                   <span className="font-mono font-bold text-rmpg-100 text-base tracking-widest">
                     {row.plate ?? '—'}
                   </span>
-                  {row.state && (
-                    <span className="text-[10px] text-rmpg-400 font-mono">{row.state}</span>
+                  {row.plate && (
+                    <button
+                      type="button"
+                      className="text-[9px] border border-border-default px-1.5 py-0.5"
+                      onClick={(e) => { e.stopPropagation(); void copyToClipboard(row.plate!); }}
+                    >
+                      Copy plate
+                    </button>
                   )}
                   {row.alerted ? (
                     <span className="flex items-center gap-0.5 text-[9px] font-bold text-red-400 border border-red-700 px-1.5 py-0.5">
