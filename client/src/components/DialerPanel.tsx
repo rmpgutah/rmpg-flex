@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
-import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { DIALER_CONNECT_PATH, DIALER_HOST_ID, DIAL_RECORDING_READY_EVENT } from './dialerConnect';
+import { apiFetch } from '../hooks/useApi';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 /** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
@@ -23,7 +24,24 @@ const TOAST_DURATION_MS = 7_000;
 type DialConnectMessage =
   | { source: 'dial-connect'; type: 'call_status'; callSid: string; status: string; from?: string }
   | { source: 'dial-connect'; type: 'duress_alert'; dispatcherName: string; timestamp: string }
-  | { source: 'dial-connect'; type: 'heartbeat' };
+  | { source: 'dial-connect'; type: 'heartbeat' }
+  | {
+      source: 'dial-connect';
+      type: 'recording_ready';
+      recordingSid?: string;
+      recording_sid?: string;
+      callSid?: string;
+      call_sid?: string;
+      from?: string;
+      to?: string;
+      direction?: string;
+      startedAt?: string;
+      endedAt?: string;
+      durationSeconds?: number;
+      dispatcherName?: string;
+      transcript?: string;
+      segments?: unknown;
+    };
 
 function isDialConnectMessage(data: unknown): data is DialConnectMessage {
   return (
@@ -169,6 +187,30 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       } else if (message.type === 'duress_alert') {
         if (!poppedOut) openDialerInApp();
         onDuress?.(`Duress alert: ${message.dispatcherName}`);
+      } else if (message.type === 'recording_ready') {
+        const recordingSid = message.recordingSid || message.recording_sid;
+        if (recordingSid) {
+          void apiFetch('/dial-connect-recordings', {
+            method: 'POST',
+            body: JSON.stringify({
+              recordingSid,
+              callSid: message.callSid || message.call_sid,
+              from: message.from,
+              to: message.to,
+              direction: message.direction,
+              startedAt: message.startedAt,
+              endedAt: message.endedAt,
+              durationSeconds: message.durationSeconds,
+              dispatcherName: message.dispatcherName,
+              transcript: message.transcript,
+              segments: message.segments,
+            }),
+          }).then(() => {
+            window.dispatchEvent(new CustomEvent(DIAL_RECORDING_READY_EVENT));
+          }).catch(() => {
+            /* ingest is best-effort; Dial Connect API-key POST is the durable path */
+          });
+        }
       }
     },
     [onRinging, onDuress, addToast, openDialerInApp, poppedOut],
