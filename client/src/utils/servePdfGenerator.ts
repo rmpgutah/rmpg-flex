@@ -47,6 +47,7 @@ import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { formatServiceAddress, flattenServiceAddress } from './formatServiceAddress';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -2010,6 +2011,24 @@ export function agencyJobRef(jobId?: number | string | null): string {
   return /^JOB-/i.test(s) ? s.toUpperCase() : `JOB-${s}`;
 }
 
+/** Person names on this recipient-facing instrument are title case, not shouting. */
+function displayPersonName(name: string, asEntity = false): string {
+  const s = (name || '').trim();
+  if (!s || asEntity) return s;
+  if (/[a-z]/.test(s)) return s;
+  return s.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
+}
+
+function displayPremises(raw: string | undefined): string {
+  const s = (raw || '').trim();
+  if (!s) return 'Residence';
+  const key = s.toLowerCase().replace(/[_-]+/g, ' ');
+  if (key === 'residence') return 'Residence';
+  if (key === 'business') return 'Business';
+  if (key === 'other') return 'Other';
+  return toDisplayLabel(s);
+}
+
 function drawPleadingCaption(
   doc: jsPDF,
   y: number,
@@ -2168,14 +2187,14 @@ function drawSubjectPanel(
   const blankName = !name;
   const nameLines = blankName
     ? ['']
-    : doc.splitTextToSize(sanitizePdfText(name), w - pad * 2) as string[];
+    : (doc.splitTextToSize(sanitizePdfText(name, { preserveCase: true }), w - pad * 2) as string[]);
 
   // Measure wrapped values up front — a row is as tall as its value.
   // 0.38 gives values ~4% more space than 0.42 — enough to prevent a
   // long street address ("…STREET, SALT LAKE CITY, UT…") from splitting
   // mid-city-name. Labels are short fixed strings (≤ 20 chars at 5.5pt)
   // and fit comfortably at this ratio.
-  const labelW = w * 0.38;
+  const labelW = w * 0.42;
   const valueW = w - labelW - pad * 2;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_TABLE_BODY - 0.7);
@@ -2187,7 +2206,7 @@ function drawSubjectPanel(
       // Split on explicit newlines FIRST. A two-line address block is
       // authored, not incidental — wrapping it as one run would break it
       // mid-city, which is what "2 lines" was circling.
-      : sanitizePdfText(r.value || '—').split('\n')
+      : sanitizePdfText(r.value || '—', { preserveCase: true }).split('\n')
           .flatMap((seg) => doc.splitTextToSize(seg, valueW) as string[]),
   }));
   const rowsH = wrapped.reduce(
@@ -2198,7 +2217,7 @@ function drawSubjectPanel(
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   const capLines = capacity
-    ? (doc.splitTextToSize(sanitizePdfText(capacity), w - pad * 2) as string[]).length : 0;
+    ? (doc.splitTextToSize(sanitizePdfText(capacity, { preserveCase: true }), w - pad * 2) as string[]).length : 0;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   const bodyH = pad + nameLines.length * 3.4 + capLines * 2.4 + (capacity ? 0.4 : 0) + 1.4 + rowsH + pad;
@@ -2253,7 +2272,7 @@ function drawSubjectPanel(
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    for (const cl of doc.splitTextToSize(sanitizePdfText(capacity), w - pad * 2) as string[]) {
+    for (const cl of doc.splitTextToSize(sanitizePdfText(capacity, { preserveCase: true }), w - pad * 2) as string[]) {
       doc.text(cl, x + pad, ty);
       ty += 2.4;
     }
@@ -2617,18 +2636,17 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   const partyIsEntity = isBusiness;
   const partyRows: SubjectRow[] = partyIsEntity
     ? [
-        // No "Entity served" row: the panel's name line IS the entity.
-        { label: 'Place of service', value: data.serviceAddress },
-        { label: 'Premises', value: data.premisesType || 'Business' },
-        { label: 'Served via', value: 'Authorized agent' },
+        { label: 'Place of service', value: formatServiceAddress({ address: data.serviceAddress }) },
+        { label: 'Location of service', value: displayPremises(data.premisesType || 'Business') },
+        { label: 'Served via', value: 'Authorized Agent' },
         ...(data.gps
           ? [{ label: 'Geolocation', value: `${data.gps.lat.toFixed(5)}, ${data.gps.lng.toFixed(5)}` }]
           : []),
       ]
     : [
-        { label: 'Place of service', value: data.serviceAddress },
-        { label: 'Premises', value: data.premisesType || 'Residence' },
-        { label: 'Served via', value: isIndividual ? 'Personal delivery' : data.variantLabel },
+        { label: 'Place of service', value: formatServiceAddress({ address: data.serviceAddress }) },
+        { label: 'Location of service', value: displayPremises(data.premisesType || 'Residence') },
+        { label: 'Served via', value: isIndividual ? 'Personal Delivery' : data.variantLabel },
       ];
 
   // Only the ACCEPTOR's side blanks out. The party/entity panel stays
@@ -2636,7 +2654,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // transcribe their own case caption invites errors into a legal record.
   const acceptorRows: SubjectRow[] = isIndividual
     ? [
-        { label: 'Capacity', value: 'Party named' },
+        { label: 'Capacity', value: 'Party Named' },
         { label: 'Telephone', value: data.recipientPhone || 'Not provided', blank },
         { label: 'Accepted', value: withZone(`${signedDate} ${signedTime}`), blank },
       ]
@@ -2662,14 +2680,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     const hA = drawSubjectPanel(
       doc, lx, startY, panelW,
       partyIsEntity ? 'I(a).  Subject of Process / Entity' : 'I(a).  Subject of Process / Party Named',
-      partyIsEntity ? onBehalfOf : (data.defendantName || onBehalfOf),
-      partyIsEntity ? 'Business entity named in the process' : 'Defendant / Respondent named in the process',
+      partyIsEntity ? onBehalfOf : displayPersonName(data.defendantName || onBehalfOf),
+      partyIsEntity ? 'Business entity named in the Process' : 'Defendant / Respondent named in the Process',
       partyRows, undefined, true,
     );
     const hB = drawSubjectPanel(
       doc, lx + panelW + gutter, startY, panelW,
       'I(b).  Person Accepting Service',
-      blank ? '' : data.recipientName,
+      blank ? '' : displayPersonName(data.recipientName, false),
       isIndividual
         ? 'Accepted personally'
         : `${data.variantLabel} accepting on behalf of the party named at left`,
@@ -2680,14 +2698,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     const aEnd = drawSubjectPanel(
       doc, lx, startY, panelW,
       partyIsEntity ? 'I(a).  Subject of Process / Entity' : 'I(a).  Subject of Process / Party Named',
-      partyIsEntity ? onBehalfOf : (data.defendantName || onBehalfOf),
-      partyIsEntity ? 'Business entity named in the process' : 'Defendant / Respondent named in the process',
+      partyIsEntity ? onBehalfOf : displayPersonName(data.defendantName || onBehalfOf),
+      partyIsEntity ? 'Business entity named in the Process' : 'Defendant / Respondent named in the Process',
       partyRows, panelH,
     );
     const bEnd = drawSubjectPanel(
       doc, lx + panelW + gutter, startY, panelW,
       'I(b).  Person Accepting Service',
-      blank ? '' : data.recipientName,
+      blank ? '' : displayPersonName(data.recipientName, false),
       isIndividual
         ? 'Accepted personally'
         : `${data.variantLabel} accepting on behalf of the party named at left`,
@@ -2986,7 +3004,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     y = addWrappedText(doc,
       // Flattened: the execution clause is a sentence, and a newline from
       // the two-line address block would break it mid-clause.
-      `Executed at ${sanitizePdfText((data.executionPlace || data.serviceAddress || 'the place of service').replace(/\n/g, ', '))} `
+      `Executed at ${sanitizePdfText(flattenServiceAddress(data.executionPlace || data.serviceAddress || 'the place of service'), { preserveCase: true })} `
       + `on ${withZone(`${signedDate} at ${signedTime}`)}.`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   }
@@ -3015,7 +3033,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       badgeNumber: blank
         ? ''
         : (data.recipientJobTitle || data.recipientRelationship
-          || (isIndividual ? 'Party named' : data.variantLabel)),
+          || (isIndividual ? 'Party Named' : data.variantLabel)),
       date: blank ? '' : withZone(`${signedDate} ${signedTime}`),
     },
   );
