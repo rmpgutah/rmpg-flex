@@ -12,6 +12,8 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { toDisplayLabel } from '../utils/formatters';
+import { commandCallsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 interface CommandCenterData {
   active_calls: any[];
@@ -56,10 +58,13 @@ export default function CommandCenterPage() {
 
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [activePanel, setActivePanel] = useState<PanelId>(initialPanel);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [callQuery, setCallQuery] = useState('');
   const [unitFilter, setUnitFilter] = useState('');
+  const callSearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(callSearchRef);
   const navigate = useNavigate();
 
   // Strip deep-link param after first mount
@@ -74,7 +79,10 @@ export default function CommandCenterPage() {
     try {
       const result = await apiFetch<CommandCenterData>('/reports/command-center');
       setData(result);
-    } catch { /* stale data stays visible on transient error */ }
+      setFetchError(false);
+    } catch {
+      setFetchError(true);
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -133,7 +141,7 @@ export default function CommandCenterPage() {
         <span className="text-rmpg-400 text-sm font-mono">Command Center data unavailable</span>
         <button
           onClick={fetchData}
-          className="mt-1 px-3 py-1 text-xs font-mono text-brand-400 border border-brand-400/40 hover:bg-brand-400/10"
+          className="mt-1 toolbar-btn"
         >
           Retry
         </button>
@@ -169,8 +177,35 @@ export default function CommandCenterPage() {
             </button>
           )}
           <button type="button" onClick={fetchData} className="toolbar-btn text-[9px] font-mono text-brand-400">REFRESH</button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={(data.active_calls ?? []).length === 0}
+            onClick={() => {
+              const q = callQuery.trim().toLowerCase();
+              const rows = (data.active_calls ?? []).filter((call: { call_number?: string; location_address?: string; address?: string; call_type?: string; incident_type?: string }) => {
+                if (!q) return true;
+                const hay = `${call.call_number} ${call.location_address ?? call.address ?? ''} ${call.call_type ?? ''} ${call.incident_type ?? ''}`.toLowerCase();
+                return hay.includes(q);
+              });
+              downloadTextFile('command-calls.csv', commandCallsToCsv(rows.map((call: { call_number?: string; call_type?: string; incident_type?: string; status?: string; location_address?: string; address?: string; priority?: string }) => ({
+                call_number: call.call_number,
+                nature: call.call_type ?? call.incident_type,
+                status: call.status,
+                location: call.location_address ?? call.address,
+                priority: call.priority,
+              }))));
+            }}
+          >CSV</button>
         </div>
       </div>
+
+      {fetchError && (
+        <div className="px-4 py-1 text-xs text-red-400 flex items-center justify-between border-b border-red-700/40">
+          <span>Failed to refresh command center data.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchData(); }}>Retry</button>
+        </div>
+      )}
 
       <div className="flex gap-1 px-2 py-1 bg-surface-base border-b border-rmpg-700/50">
         {VALID_PANELS.map((p) => (
@@ -188,9 +223,10 @@ export default function CommandCenterPage() {
           </button>
         ))}
         <input
+          ref={callSearchRef}
           value={callQuery}
           onChange={(e) => setCallQuery(e.target.value)}
-          placeholder="Filter calls…"
+          placeholder="Filter calls… (/)"
           aria-label="Filter active calls"
           className="ml-auto text-[10px] px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-[2px] text-rmpg-100 w-40"
         />
@@ -317,9 +353,15 @@ export default function CommandCenterPage() {
             <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-1">
               {(data.active_calls?.length ?? 0) === 0 ? (
                 <div className="text-center text-rmpg-500 text-xs py-8 font-mono">No active calls</div>
+              ) : (data.active_calls ?? []).filter((call: { call_number?: string; location_address?: string; address?: string; call_type?: string; incident_type?: string }) => {
+                    if (!callQuery.trim()) return true;
+                    const hay = `${call.call_number} ${call.location_address ?? call.address ?? ''} ${call.call_type ?? ''} ${call.incident_type ?? ''}`.toLowerCase();
+                    return hay.includes(callQuery.trim().toLowerCase());
+                  }).length === 0 ? (
+                <div className="text-center text-rmpg-500 text-xs py-8 font-mono">No calls match the current filter</div>
               ) : (
                 (data.active_calls ?? [])
-                  .filter((call: any) => {
+                  .filter((call: { call_number?: string; location_address?: string; address?: string; call_type?: string; incident_type?: string }) => {
                     if (!callQuery.trim()) return true;
                     const hay = `${call.call_number} ${call.location_address ?? call.address ?? ''} ${call.call_type ?? ''} ${call.incident_type ?? ''}`.toLowerCase();
                     return hay.includes(callQuery.trim().toLowerCase());

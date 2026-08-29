@@ -37,6 +37,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { helpTopicsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import {
   SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
 } from '../utils/helpReferenceData';
@@ -612,6 +613,14 @@ export default function HelpPage() {
               </button>
             )}
             <span className="text-[9px] text-rmpg-600 font-mono shrink-0">/ to focus</span>
+            <button
+              type="button"
+              className="toolbar-btn shrink-0"
+              onClick={() => downloadTextFile('help-topics.csv', helpTopicsToCsv([
+                ...MODULES.map((m) => ({ id: m.path, title: m.name, category: 'module' })),
+                ...FAQ_ITEMS.map((f, i) => ({ id: `faq-${i}`, title: f.question, category: 'faq' })),
+              ]))}
+            >CSV</button>
           </div>
 
           {/* ── Search results override the section content ── */}

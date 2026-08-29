@@ -62,6 +62,8 @@ import type {
   CrmActivity,
   CrmDashboardStats,
 } from '../types';
+import { crmAccountsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl' | 'deepresearch';
 
@@ -165,6 +167,8 @@ export default function CrmPage() {
   const m = useMenuActions();
   const { user } = useAuth();
   const isIntelUser = INTEL_ROLES.has(user?.role ?? '');
+  const clientSearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(clientSearchRef);
   // Per-user localStorage key — the prior global 'crm_active_section' key
   // leaked the previous operator's last-viewed tab to the next person who
   // logged in on a shared shift workstation. Same data-leak pattern called
@@ -670,7 +674,7 @@ export default function CrmPage() {
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2 shadow-lg">
             <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
             <span className="flex-1">{fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]">Dismiss</button>
+            <button type="button" className="toolbar-btn" onClick={() => { void fetchDashboard(); void fetchClients(); void fetchTasks(); }}>Retry</button>
           </div>
         )}
         {activeSection === 'dashboard' && renderDashboard()}
@@ -1069,7 +1073,17 @@ export default function CrmPage() {
         {/* Client List */}
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
           <PanelTitleBar title="CLIENTS" icon={Building2}>
-            <input id="ff-crmpage-10" className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search..." aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <input id="ff-crmpage-10" ref={clientSearchRef} className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search… (/)" aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <button
+              type="button"
+              className="toolbar-btn"
+              disabled={filteredClients.length === 0}
+              onClick={() => downloadTextFile('crm-accounts.csv', crmAccountsToCsv(filteredClients.map((c) => ({
+                account_name: c.name,
+                type: c.contract_type ?? '',
+                status: c.is_active === false ? 'inactive' : 'active',
+              }))))}
+            >CSV</button>
             <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3 h-3" /> New
             </button>

@@ -291,13 +291,29 @@ export function personIntelXrefsToCsv(rows: Array<{
 }
 
 export function alprCapturesToCsv(rows: Array<{
-  id: number; captured_at: string; plate_number?: string; make?: string; model?: string;
-  color?: string; confidence?: number; is_stolen?: boolean | number; call_id?: number;
+  id: number;
+  created_at?: string;
+  captured_at?: string;
+  plate?: string | null;
+  plate_number?: string;
+  state?: string | null;
+  make?: string | null;
+  model?: string | null;
+  accepted?: number | boolean | null;
+  alerted?: number | boolean | null;
+  call_id?: number | null;
 }>): string {
-  return rowsToCsv(['id', 'captured_at', 'plate', 'make', 'model', 'color', 'confidence', 'stolen', 'call_id'],
+  return rowsToCsv(['id', 'created_at', 'plate', 'state', 'make', 'model', 'accepted', 'alerted', 'call_id'],
     rows.map((r) => [
-      r.id, r.captured_at, r.plate_number ?? '', r.make ?? '', r.model ?? '', r.color ?? '',
-      r.confidence != null ? Math.round(r.confidence * 100) : '', r.is_stolen ? 'yes' : 'no', r.call_id ?? '',
+      r.id,
+      r.created_at ?? r.captured_at ?? '',
+      r.plate ?? r.plate_number ?? '',
+      r.state ?? '',
+      r.make ?? '',
+      r.model ?? '',
+      r.accepted ? 'yes' : 'no',
+      r.alerted ? 'yes' : 'no',
+      r.call_id ?? '',
     ]));
 }
 
@@ -527,3 +543,227 @@ export function dashcamListToCsv(rows: Array<{
   return rowsToCsv(['id', 'classification', 'source', 'recorded_at', 'case'],
     rows.map((r) => [r.id, r.classification, r.source ?? '', r.recorded_at ?? '', r.case_number ?? '']));
 }
+
+export function docsLibraryToCsv(rows: Array<{
+  id: number; title: string; status: string; revision?: number; updated_at?: string | null;
+}>): string {
+  return rowsToCsv(['id', 'title', 'status', 'revision', 'updated_at'],
+    rows.map((r) => [r.id, r.title, r.status, r.revision ?? '', r.updated_at ?? '']));
+}
+
+export function tasksToCsv(rows: Array<{
+  id: number; task_title: string; status: string; priority: string;
+  due_date?: string | null; linked_entity_type?: string | null; linked_entity_id?: number | string | null;
+}>): string {
+  return rowsToCsv(['id', 'title', 'status', 'priority', 'due', 'entity'],
+    rows.map((r) => [r.id, r.task_title, r.status, r.priority, r.due_date ?? '', r.linked_entity_type ? `${r.linked_entity_type}:${r.linked_entity_id ?? ''}` : '']));
+}
+
+export function specialOpsCalloutsToCsv(rows: Array<{
+  date: string; call_type: string; location: string; duration_minutes?: number; team_size?: number;
+}>): string {
+  return rowsToCsv(['date', 'type', 'location', 'duration_min', 'team'],
+    rows.map((r) => [r.date, r.call_type, r.location, r.duration_minutes ?? '', r.team_size ?? '']));
+}
+
+export function specialOpsEquipmentToCsv(rows: Array<{
+  equipment_type: string; serial_number: string; condition: string;
+}>): string {
+  return rowsToCsv(['type', 'serial', 'condition'],
+    rows.map((r) => [r.equipment_type, r.serial_number, r.condition]));
+}
+
+export function trespassOrdersToCsv(rows: Array<{
+  order_number: string; order_type: string; status: string; property_name?: string; location: string;
+  effective_date?: string; expiration_date?: string;
+}>): string {
+  return rowsToCsv(['number', 'type', 'status', 'property', 'location', 'effective', 'expires'],
+    rows.map((r) => [r.order_number, r.order_type, r.status, r.property_name ?? '', r.location, r.effective_date ?? '', r.expiration_date ?? '']));
+}
+
+export function uofReportsToCsv(rows: Array<{
+  id: number; incident_number?: string; force_type: string; force_level?: string; status: string; created_at: string;
+}>): string {
+  return rowsToCsv(['id', 'incident', 'force_type', 'level', 'status', 'created_at'],
+    rows.map((r) => [r.id, r.incident_number ?? '', r.force_type, r.force_level ?? '', r.status, r.created_at]));
+}
+
+export function statuteHitsToCsv(rows: Array<{
+  code?: string; section?: string; title?: string; category?: string; offense_level?: string | null;
+}>): string {
+  return rowsToCsv(['code', 'title', 'category', 'level'],
+    rows.map((r) => [r.code ?? r.section ?? '', r.title ?? '', r.category ?? '', r.offense_level ?? '']));
+}
+
+export function evidencePropertyToCsv(rows: Array<{
+  evidence_number?: string; type?: string; evidence_type?: string; status?: string; storage_location?: string; location_found?: string;
+}>): string {
+  return rowsToCsv(['number', 'type', 'status', 'storage', 'found'],
+    rows.map((r) => [r.evidence_number ?? '', r.evidence_type ?? r.type ?? '', r.status ?? '', r.storage_location ?? '', r.location_found ?? '']));
+}
+
+export function digitalEvidenceToCsv(rows: Array<{
+  filename: string; evidence_type: string; status: string; case_number?: string | null; call_number?: string | null; created_at: string;
+}>): string {
+  return rowsToCsv(['file', 'type', 'status', 'case', 'call', 'created_at'],
+    rows.map((r) => [r.filename, r.evidence_type, r.status, r.case_number ?? '', r.call_number ?? '', r.created_at]));
+}
+
+export function plateSightingsToCsv(rows: Array<{
+  plate: string; location_text?: string | null; created_at: string; state?: string | null; confidence?: number | null;
+}>): string {
+  return rowsToCsv(['plate', 'state', 'location', 'confidence', 'created_at'],
+    rows.map((r) => [r.plate, r.state ?? '', r.location_text ?? '', r.confidence ?? '', r.created_at]));
+}
+
+export function trainingRecordsToCsv(rows: Array<{
+  course_name: string; status: string; completed_at?: string | null; due_date?: string | null;
+}>): string {
+  return rowsToCsv(['course', 'status', 'completed_at', 'due'],
+    rows.map((r) => [r.course_name, r.status, r.completed_at ?? '', r.due_date ?? '']));
+}
+
+export function connectionSeedsToCsv(rows: Array<{ type: string; id: number }>): string {
+  return rowsToCsv(['type', 'id'], rows.map((r) => [r.type, r.id]));
+}
+
+export function commandCallsToCsv(rows: Array<{
+  call_number?: string; nature?: string; type?: string; status?: string; location?: string; priority?: string;
+}>): string {
+  return rowsToCsv(['call', 'nature', 'status', 'priority', 'location'],
+    rows.map((r) => [r.call_number ?? '', r.nature ?? r.type ?? '', r.status ?? '', r.priority ?? '', r.location ?? '']));
+}
+
+export function statuteCountsToCsv(rows: Array<{
+  statute_number: string; title: string; offense_level: string; count: number;
+}>): string {
+  return rowsToCsv(['statute', 'title', 'level', 'count'],
+    rows.map((r) => [r.statute_number, r.title, r.offense_level, r.count]));
+}
+
+export function nationalWarrantsToCsv(rows: Array<{
+  id?: string | number; state?: string; warrant_type?: string | null; status?: string | null;
+  offense_level?: string | null; court?: string; source?: string;
+}>): string {
+  return rowsToCsv(['id', 'state', 'type', 'status', 'level', 'court', 'source'],
+    rows.map((r) => [r.id ?? '', r.state ?? '', r.warrant_type ?? '', r.status ?? '', r.offense_level ?? '', r.court ?? '', r.source ?? '']));
+}
+
+export function auditLogsToCsv(rows: Array<{
+  action: string; entity_type: string; entity_id: string; created_at: string; badge_number?: string;
+}>): string {
+  return rowsToCsv(['created_at', 'action', 'entity', 'entity_id', 'badge'],
+    rows.map((r) => [r.created_at, r.action, r.entity_type, r.entity_id, r.badge_number ?? '']));
+}
+
+export function installerCatalogToCsv(rows: Array<{
+  platform: string; filename: string; version: string; size: string;
+}>): string {
+  return rowsToCsv(['platform', 'filename', 'version', 'size'],
+    rows.map((r) => [r.platform, r.filename, r.version, r.size]));
+}
+
+export function helpTopicsToCsv(rows: Array<{ id: string; title: string; category?: string }>): string {
+  return rowsToCsv(['id', 'title', 'category'], rows.map((r) => [r.id, r.title, r.category ?? '']));
+}
+
+export function courtTrackerToCsv(rows: Array<{
+  case_number?: string; hearing_type?: string; status?: string; hearing_date?: string; court?: string;
+}>): string {
+  return rowsToCsv(['case', 'hearing', 'status', 'date', 'court'],
+    rows.map((r) => [r.case_number ?? '', r.hearing_type ?? '', r.status ?? '', r.hearing_date ?? '', r.court ?? '']));
+}
+
+export function geoLayersToCsv(rows: Array<{ id?: string; name?: string; type?: string; visible?: boolean }>): string {
+  return rowsToCsv(['id', 'name', 'type', 'visible'],
+    rows.map((r) => [r.id ?? '', r.name ?? '', r.type ?? '', r.visible ? 'yes' : 'no']));
+}
+
+export function fleetListToCsv(rows: Array<{
+  unit?: string; unit_number?: string; status?: string; make?: string; model?: string; plate?: string;
+}>): string {
+  return rowsToCsv(['unit', 'status', 'make', 'model', 'plate'],
+    rows.map((r) => [r.unit ?? r.unit_number ?? '', r.status ?? '', r.make ?? '', r.model ?? '', r.plate ?? '']));
+}
+
+export function shiftPlansToCsv(rows: Array<{
+  plan_date?: string; shift?: string; status?: string; district?: string;
+}>): string {
+  return rowsToCsv(['date', 'shift', 'status', 'district'],
+    rows.map((r) => [r.plan_date ?? '', r.shift ?? '', r.status ?? '', r.district ?? '']));
+}
+
+export function serveScheduleToCsv(rows: Array<{
+  job_number?: string; status?: string; court?: string; hearing_date?: string;
+}>): string {
+  return rowsToCsv(['job', 'status', 'court', 'hearing'],
+    rows.map((r) => [r.job_number ?? '', r.status ?? '', r.court ?? '', r.hearing_date ?? '']));
+}
+
+export function intakeBatchesToCsv(rows: Array<{
+  id?: number | string; status?: string; created_at?: string; file_count?: number;
+}>): string {
+  return rowsToCsv(['id', 'status', 'created_at', 'files'],
+    rows.map((r) => [r.id ?? '', r.status ?? '', r.created_at ?? '', r.file_count ?? '']));
+}
+
+export function flexcamClipsToCsv(rows: Array<{
+  id?: number | string; recorded_at?: string; classification?: string; case_number?: string;
+}>): string {
+  return rowsToCsv(['id', 'recorded_at', 'classification', 'case'],
+    rows.map((r) => [r.id ?? '', r.recorded_at ?? '', r.classification ?? '', r.case_number ?? '']));
+}
+
+export function webResearchHitsToCsv(rows: Array<{ url: string; title?: string }>): string {
+  return rowsToCsv(['title', 'url'], rows.map((r) => [r.title ?? '', r.url]));
+}
+
+export function ipedCasesToCsv(rows: Array<{
+  case_number?: string; status?: string; device_type?: string; created_at?: string;
+}>): string {
+  return rowsToCsv(['case', 'status', 'device', 'created_at'],
+    rows.map((r) => [r.case_number ?? '', r.status ?? '', r.device_type ?? '', r.created_at ?? '']));
+}
+
+export function reportCatalogToCsv(rows: Array<{ id?: string; name?: string; category?: string }>): string {
+  return rowsToCsv(['id', 'name', 'category'], rows.map((r) => [r.id ?? '', r.name ?? '', r.category ?? '']));
+}
+
+export function recordsIndexToCsv(rows: Array<{ type: string; number?: string; status?: string }>): string {
+  return rowsToCsv(['type', 'number', 'status'], rows.map((r) => [r.type, r.number ?? '', r.status ?? '']));
+}
+
+export function crmAccountsToCsv(rows: Array<{
+  account_name?: string; status?: string; type?: string;
+}>): string {
+  return rowsToCsv(['account', 'type', 'status'],
+    rows.map((r) => [r.account_name ?? '', r.type ?? '', r.status ?? '']));
+}
+
+export function commsThreadsToCsv(rows: Array<{
+  subject?: string; channel?: string; status?: string; updated_at?: string;
+}>): string {
+  return rowsToCsv(['subject', 'channel', 'status', 'updated_at'],
+    rows.map((r) => [r.subject ?? '', r.channel ?? '', r.status ?? '', r.updated_at ?? '']));
+}
+
+export function companyHitsToCsv(rows: Array<{ name?: string; state?: string; status?: string }>): string {
+  return rowsToCsv(['name', 'state', 'status'], rows.map((r) => [r.name ?? '', r.state ?? '', r.status ?? '']));
+}
+
+export function trainingDocsToCsv(rows: Array<{ title?: string; category?: string; updated_at?: string }>): string {
+  return rowsToCsv(['title', 'category', 'updated_at'],
+    rows.map((r) => [r.title ?? '', r.category ?? '', r.updated_at ?? '']));
+}
+
+export function routeStopsToCsv(rows: Array<{ sequence?: number; label?: string; status?: string }>): string {
+  return rowsToCsv(['seq', 'label', 'status'], rows.map((r) => [r.sequence ?? '', r.label ?? '', r.status ?? '']));
+}
+
+export function fuelRowsToCsv(rows: Array<{
+  vehicle?: string; gallons?: number | string; cost?: number | string; filled_at?: string;
+}>): string {
+  return rowsToCsv(['vehicle', 'gallons', 'cost', 'filled_at'],
+    rows.map((r) => [r.vehicle ?? '', r.gallons ?? '', r.cost ?? '', r.filled_at ?? '']));
+}
+

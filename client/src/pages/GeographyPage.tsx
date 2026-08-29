@@ -34,6 +34,8 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Area, Beat, Sector, TierId, Zone } from '../types/geography';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { downloadTextFile, geoLayersToCsv } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -108,6 +110,8 @@ export default function GeographyPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const userId = user?.id;
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   // Role gate: admin / manager / supervisor may create, edit, and delete
   // geography tiers. Officers and dispatchers get read-only access.
@@ -840,7 +844,7 @@ export default function GeographyPage() {
           <p className="text-red-400 text-sm">{error}</p>
           <button
             onClick={refetch}
-            className="mt-3 px-3 py-1 text-xs border border-border-subtle hover:bg-surface-raised text-[var(--text-primary)]"
+            className="mt-3 toolbar-btn"
           >
             Retry
           </button>
@@ -871,12 +875,25 @@ export default function GeographyPage() {
       <PanelTitleBar
         title="DISPATCH GEOGRAPHY — AREAS / SECTORS / ZONES / BEATS"
         icon={MapPin}
-      />
+      >
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={!tree}
+          onClick={() => downloadTextFile('geography-layers.csv', geoLayersToCsv([
+            ...currentAreas.map((a) => ({ id: String(a.id), name: a.area_name, type: 'area', visible: state.selectedAreaId === a.id })),
+            ...currentSectors.map((s) => ({ id: String(s.id), name: s.sector_name, type: 'sector', visible: state.selectedSectorId === s.id })),
+            ...currentZones.map((z) => ({ id: String(z.id), name: z.zone_name, type: 'zone', visible: state.selectedZoneId === z.id })),
+            ...currentBeats.map((b) => ({ id: String(b.id), name: b.beat_name, type: 'beat', visible: state.selectedBeatId === b.id })),
+          ]))}
+        >CSV</button>
+      </PanelTitleBar>
 
       {/* Search + refresh + export bar */}
       <div className="flex items-center gap-2 px-2">
         <input
           id="geography-search-input"
+          ref={searchRef}
           type="text"
           value={state.searchQuery}
           onChange={(e) => setState((s) => ({ ...s, searchQuery: e.target.value }))}
