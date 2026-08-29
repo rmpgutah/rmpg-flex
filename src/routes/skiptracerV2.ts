@@ -258,7 +258,13 @@ skiptracerV2.put('/dossiers/:id', async (c) => {
     await ensureSkipTracerV2Schema(c.env.DB);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
-    const body = await c.req.json<{ notes?: string; profileSnapshot?: unknown; tags?: string[] }>();
+    const body = await c.req.json<{
+      notes?: string;
+      profileSnapshot?: unknown;
+      tags?: string[];
+      linkedIncidentId?: string;
+      linkedCaseId?: string;
+    }>();
     const sets: string[] = ['updated_at = datetime(\'now\')'];
     const binds: unknown[] = [];
     if (body.notes !== undefined) { sets.push('notes = ?'); binds.push(body.notes); }
@@ -267,6 +273,14 @@ skiptracerV2.put('/dossiers/:id', async (c) => {
       const snapshotCol = await profileSnapshotColumn(c.env.DB);
       sets.push(`${snapshotCol} = ?`);
       binds.push(JSON.stringify(body.profileSnapshot));
+    }
+    if (body.linkedIncidentId !== undefined) {
+      sets.push('linked_incident_id = ?');
+      binds.push(body.linkedIncidentId || null);
+    }
+    if (body.linkedCaseId !== undefined) {
+      sets.push('linked_case_id = ?');
+      binds.push(body.linkedCaseId || null);
     }
     binds.push(id);
     await execute(c.env.DB, `UPDATE skiptracer_dossiers SET ${sets.join(', ')} WHERE id = ?`, ...binds);

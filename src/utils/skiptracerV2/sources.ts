@@ -13,11 +13,11 @@ export interface SourceDefinition {
 export const SKIPTRACER_V2_SOURCES: SourceDefinition[] = [
   { name: 'local_rms', displayName: 'Local RMS', category: 'people', costPerLookup: 0, openSource: true },
   { name: 'rapidapi_skiptrace', displayName: 'RapidAPI Skip Trace', category: 'people', costPerLookup: 0.05, openSource: false, configKey: 'skiptracer_rapidapi_key' },
-  { name: 'vehicle_enrichment', displayName: 'Vehicle Enrichment (Plate→VIN)', category: 'osint', costPerLookup: 0.05, openSource: false },
-  { name: 'vehicle_vin_decoder', displayName: 'VIN Decoder', category: 'osint', costPerLookup: 0.03, openSource: false },
+  { name: 'vehicle_enrichment', displayName: 'Vehicle Enrichment (Plate→VIN)', category: 'osint', costPerLookup: 0.05, openSource: false, configKey: 'plate_to_vin_api_key' },
+  { name: 'vehicle_vin_decoder', displayName: 'VIN Decoder', category: 'osint', costPerLookup: 0.03, openSource: false, configKey: 'vin_decoder_api_key' },
   { name: 'nsopw', displayName: 'NSOPW Registry', category: 'registry', costPerLookup: 0, openSource: true },
   { name: 'sl_assessor', displayName: 'SL County Assessor', category: 'property', costPerLookup: 0, openSource: true },
-  { name: 'open_sanctions', displayName: 'OpenSanctions', category: 'registry', costPerLookup: 0, openSource: true },
+  { name: 'open_sanctions', displayName: 'OpenSanctions', category: 'registry', costPerLookup: 0, openSource: true, configKey: 'opensanctions_api_key' },
   { name: 'fbi_wanted', displayName: 'FBI Most Wanted', category: 'registry', costPerLookup: 0, openSource: true },
   { name: 'bop_inmates', displayName: 'BOP Inmate Locator', category: 'registry', costPerLookup: 0, openSource: true },
   { name: 'census_geocoder', displayName: 'Census Geocoder', category: 'property', costPerLookup: 0, openSource: true },
@@ -81,10 +81,19 @@ export async function listSourceInfo(
       );
     }
     if (src.name === 'vehicle_enrichment') {
-      configured = !!(env?.PLATE_TO_VIN_API_KEY || env?.VIN_DECODER_API_KEY || env?.PLATE_DECODER_API_KEY);
+      configured = Boolean(
+        env?.PLATE_TO_VIN_API_KEY || env?.VIN_DECODER_API_KEY || env?.PLATE_DECODER_API_KEY
+        || (await getConfigValue(db, 'plate_to_vin_api_key'))?.trim()
+        || (await getConfigValue(db, 'vin_decoder_api_key'))?.trim()
+        || (await getConfigValue(db, 'plate_decoder_api_key'))?.trim()
+        || (await getConfigValue(db, 'plate_check_rapidapi_key'))?.trim(),
+      );
     }
     if (src.name === 'vehicle_vin_decoder') {
-      configured = !!env?.VIN_DECODER_API_KEY;
+      configured = Boolean(
+        env?.VIN_DECODER_API_KEY
+        || (await getConfigValue(db, 'vin_decoder_api_key'))?.trim(),
+      );
     }
 
     out.push({

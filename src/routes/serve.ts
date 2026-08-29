@@ -1193,7 +1193,21 @@ sv.get('/:id', async (c) => {
        FROM notice_scans WHERE serve_queue_id = ? ORDER BY scanned_at DESC`,
     id,
   );
-  return c.json(normalizeFees({ ...row, attempts, scans }));
+  const skipTraceRows = await query(
+    db,
+    `SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC`,
+    id,
+  ).catch(() => [] as Record<string, unknown>[]);
+  const skipTraces = (skipTraceRows as Record<string, unknown>[]).map(row => {
+    let addresses_found: unknown[] = [];
+    const raw = row.addresses_found_json;
+    if (typeof raw === 'string' && raw.trim()) {
+      try { addresses_found = JSON.parse(raw); } catch { addresses_found = []; }
+    }
+    const { addresses_found_json: _drop, ...rest } = row;
+    return { ...rest, addresses_found };
+  });
+  return c.json(normalizeFees({ ...row, attempts, scans, skipTraces }));
 });
 
 // ── Serve audit trail ──────────────────────────────────────────

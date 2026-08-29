@@ -390,7 +390,21 @@ async function searchVehicleEnrichment(
   const parsed = parseVehicleQuery(params.q.trim(), params.state);
   const sourcesResponded: string[] = [];
   const sourcesFailed: Array<{ name: string; error: string }> = [];
-  const enrichEnv = env as EnrichEnv;
+
+  // Secrets preferred; Admin → Skip Tracer can also store keys in system_config.
+  const plateToVin = (env.PLATE_TO_VIN_API_KEY as string | undefined)?.trim()
+    || (await getConfigValue(db, 'plate_to_vin_api_key'))
+    || (await getConfigValue(db, 'plate_check_rapidapi_key'));
+  const vinDecoder = (env.VIN_DECODER_API_KEY as string | undefined)?.trim()
+    || (await getConfigValue(db, 'vin_decoder_api_key'));
+  const plateDecoder = (env.PLATE_DECODER_API_KEY as string | undefined)?.trim()
+    || (await getConfigValue(db, 'plate_decoder_api_key'));
+  const enrichEnv = {
+    ...env,
+    PLATE_TO_VIN_API_KEY: plateToVin || undefined,
+    VIN_DECODER_API_KEY: vinDecoder || undefined,
+    PLATE_DECODER_API_KEY: plateDecoder || undefined,
+  } as EnrichEnv;
 
   if (parsed.plate && parsed.state) {
     const hasAnyKey = enrichEnv.PLATE_TO_VIN_API_KEY || enrichEnv.VIN_DECODER_API_KEY || enrichEnv.PLATE_DECODER_API_KEY;
