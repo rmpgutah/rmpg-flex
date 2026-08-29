@@ -3,6 +3,7 @@ import {
   tipsToCsv, communityReportsToCsv, crashReportsToCsv, formatRadioLine,
   agendaToCsv, qaReviewsToCsv, assetsToCsv, errorLogsToCsv, recordingsToCsv,
   modulesToCsv, mutualAidToCsv, plateHistoryToCsv,
+  jailBookingsToCsv, partnersToCsv, recruitmentPipelineToCsv, invoicesToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -33,5 +34,11 @@ describe('rmsListExport', () => {
     expect(mutualAidToCsv([{ callNumber: 'C1', nature: 'assist', location: 'x', requestingAgency: 'RMPG', assistingAgencies: ['SLCPD'] }])).toContain('SLCPD');
     expect(plateHistoryToCsv([{ plate: 'ABC123', state: 'UT' }])).toContain('ABC123');
     expect(plateHistoryToCsv([{ plate: 'XYZ', state: 'UT', ts: 1_700_000_000_000 }])).toContain('XYZ');
+    expect(jailBookingsToCsv([{ full_name: 'Ada', booking_date: '2026-01-01', charges: 'x', county: 'SL' }])).toContain('Ada');
+    expect(partnersToCsv([{ agency_name: 'SLCPD', data_share_level: 'full' }])).toContain('SLCPD');
+    const recCsv = recruitmentPipelineToCsv([{ candidate_name: 'Pat', position: 'officer', stage: 'applied', applied_date: '2026-01-01' }]);
+    expect(recCsv).toContain('Pat');
+    expect(recCsv).not.toContain('email');
+    expect(invoicesToCsv([{ invoice_number: 'INV-1', status: 'sent', total_amount: 10, paid_amount: 0 }])).toContain('INV-1');
   });
 });

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FileText, Printer, Trash2, PenLine } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../hooks/useApi';
+import { copyToClipboard } from '../../../utils/contextMenuActions';
 
 const COURTS = [
   'Salt Lake County District Court (3rd District)',
@@ -40,11 +41,45 @@ const BLANK = {
   courtDate: '', court: COURTS[0],
 };
 
+const DRAFT_KEY = 'rmpg_citation_ops_draft';
+const PLATES_KEY = 'rmpg_citation_recent_plates';
+
+function loadOpsDraft(): Partial<typeof BLANK> {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    const allowed = [
+      'plate', 'plateState', 'make', 'model', 'year', 'color',
+      'violationCode', 'violationDesc', 'speed', 'speedLimit', 'violationLocation',
+      'courtDate', 'court',
+    ] as const;
+    const next: Partial<typeof BLANK> = {};
+    for (const k of allowed) {
+      if (typeof parsed[k] === 'string') next[k] = parsed[k];
+    }
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function loadRecentPlates(): string[] {
+  try {
+    const raw = localStorage.getItem(PLATES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string').slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function DesktopCitationGenerator({ onClose: _onClose }: Props) {
   const { user } = useAuth();
-  const [form, setForm] = useState({ ...BLANK });
+  const [form, setForm] = useState({ ...BLANK, ...loadOpsDraft() });
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [recentPlates, setRecentPlates] = useState<string[]>(loadRecentPlates);
 
   // Signature canvas
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -98,6 +133,17 @@ export default function DesktopCitationGenerator({ onClose: _onClose }: Props) {
 
   const handlePrint = () => window.print();
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        plate: form.plate, plateState: form.plateState, make: form.make, model: form.model,
+        year: form.year, color: form.color, violationCode: form.violationCode, violationDesc: form.violationDesc,
+        speed: form.speed, speedLimit: form.speedLimit, violationLocation: form.violationLocation,
+        courtDate: form.courtDate, court: form.court,
+      }));
+    } catch { /* quota */ }
+  }, [form.plate, form.plateState, form.make, form.model, form.year, form.color, form.violationCode, form.violationDesc, form.speed, form.speedLimit, form.violationLocation, form.courtDate, form.court]);
+
   const handleSave = async () => {
     setSaving(true);
     setSaveStatus(null);
@@ -111,6 +157,11 @@ export default function DesktopCitationGenerator({ onClose: _onClose }: Props) {
         }),
       });
       setSaveStatus('Saved');
+      if (form.plate.trim()) {
+        const next = [form.plate.trim().toUpperCase(), ...loadRecentPlates().filter((p) => p !== form.plate.trim().toUpperCase())].slice(0, 8);
+        try { localStorage.setItem(PLATES_KEY, JSON.stringify(next)); } catch { /* quota */ }
+        setRecentPlates(next);
+      }
     } catch {
       // endpoint may not exist — soft fail
       setSaveStatus('(record not saved — endpoint unavailable)');
@@ -189,6 +240,13 @@ export default function DesktopCitationGenerator({ onClose: _onClose }: Props) {
           <p style={sectionTitle}>Vehicle</p>
           <div style={row(1, 1, 1, 1, 1, 1)}>
             {field('Plate', <input type="text" value={form.plate} onChange={set('plate')} style={inputStyle} />)}
+            {recentPlates.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                {recentPlates.map((p) => (
+                  <button key={p} type="button" onClick={() => setForm((prev) => ({ ...prev, plate: p }))} style={{ fontSize: 9, padding: '2px 6px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>{p}</button>
+                ))}
+              </div>
+            )}
             {field('St', <select value={form.plateState} onChange={set('plateState')} style={inputStyle}>{DL_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select>)}
             {field('Make', <input type="text" value={form.make} onChange={set('make')} style={inputStyle} />)}
             {field('Model', <input type="text" value={form.model} onChange={set('model')} style={inputStyle} />)}
@@ -199,7 +257,12 @@ export default function DesktopCitationGenerator({ onClose: _onClose }: Props) {
           {/* Violation */}
           <p style={sectionTitle}>Violation</p>
           <div style={row(1, 2)}>
-            {field('Code', <input type="text" value={form.violationCode} onChange={set('violationCode')} style={inputStyle} placeholder="e.g. 41-6a-601" />)}
+            {field('Code', (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input type="text" value={form.violationCode} onChange={set('violationCode')} style={inputStyle} placeholder="e.g. 41-6a-601" />
+                <button type="button" disabled={!form.violationCode} onClick={() => void copyToClipboard(form.violationCode)} style={{ fontSize: 9, padding: '0 8px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Copy</button>
+              </div>
+            ))}
             {field('Description', <input type="text" value={form.violationDesc} onChange={set('violationDesc')} style={inputStyle} />)}
           </div>
           <div style={row(1, 1, 1, 2)}>

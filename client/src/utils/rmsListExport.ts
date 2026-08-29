@@ -164,3 +164,65 @@ export function shiftsToCsv(rows: Array<{ date: string; start_time?: string; end
 export function sessionsToCsv(rows: Array<{ username: string; role: string; last_active?: string }>): string {
   return rowsToCsv(['username', 'role', 'last_active'], rows.map((r) => [r.username, r.role, r.last_active ?? '']));
 }
+
+export function jailBookingsToCsv(rows: Array<{
+  full_name: string; booking_date: string | null; charges: string | null; county: string | null; entry_source?: string; person_id?: number | null;
+}>): string {
+  return rowsToCsv(['name', 'date', 'charges', 'county', 'source', 'known_person'],
+    rows.map((r) => [r.full_name, r.booking_date ?? '', r.charges ?? '', r.county ?? '', r.entry_source ?? '', r.person_id ? 'yes' : 'no']));
+}
+
+export function jailSourcesToCsv(rows: Array<{
+  source_key: string; display_name: string; kind: string; status: string; row_count?: number; last_status?: string | null;
+}>): string {
+  return rowsToCsv(['key', 'name', 'kind', 'status', 'rows', 'last_status'],
+    rows.map((r) => [r.source_key, r.display_name, r.kind, r.status, r.row_count ?? 0, r.last_status ?? '']));
+}
+
+export function partnersToCsv(rows: Array<{
+  agency_name: string; agency_type?: string; jurisdiction?: string; data_share_level?: string; status?: string;
+}>): string {
+  return rowsToCsv(['agency', 'type', 'jurisdiction', 'share_level', 'status'],
+    rows.map((r) => [r.agency_name, r.agency_type ?? '', r.jurisdiction ?? '', r.data_share_level ?? '', r.status ?? '']));
+}
+
+export function accreditationsToCsv(rows: Array<{
+  officer_name: string; badge_number?: string; type: string; issuing_body?: string; certificate_number?: string;
+  expiration_date?: string; status?: string;
+}>): string {
+  return rowsToCsv(['officer', 'badge', 'type', 'issuer', 'certificate', 'expires', 'status'],
+    rows.map((r) => [r.officer_name, r.badge_number ?? '', r.type, r.issuing_body ?? '', r.certificate_number ?? '', r.expiration_date ?? '', r.status ?? '']));
+}
+
+export function recruitmentPipelineToCsv(rows: Array<{
+  candidate_name: string; position?: string; stage?: string; applied_date?: string;
+}>): string {
+  return rowsToCsv(['name', 'position', 'stage', 'applied'],
+    rows.map((r) => [r.candidate_name, r.position ?? '', r.stage ?? '', r.applied_date ?? '']));
+}
+
+export function riskAssessmentsToCsv(rows: Array<{
+  assessment_number?: string; entity_type?: string; risk_level?: string; risk_category?: string; status?: string; assessed_date?: string;
+}>): string {
+  return rowsToCsv(['number', 'entity', 'level', 'category', 'status', 'date'],
+    rows.map((r) => [r.assessment_number ?? '', r.entity_type ?? '', r.risk_level ?? '', r.risk_category ?? '', r.status ?? '', r.assessed_date ?? '']));
+}
+
+export function invoicesToCsv(rows: Array<{
+  invoice_number?: string; status?: string; due_date?: string | null; issue_date?: string; total_amount?: number; paid_amount?: number;
+}>): string {
+  return rowsToCsv(['invoice', 'status', 'issued', 'due', 'total', 'paid'],
+    rows.map((r) => [r.invoice_number ?? '', r.status ?? '', r.issue_date ?? '', r.due_date ?? '', r.total_amount ?? 0, r.paid_amount ?? 0]));
+}
+
+export function timelineToCsv(rows: Array<{ timestamp: string; type: string; label: string; detail?: string }>): string {
+  return rowsToCsv(['timestamp', 'type', 'label', 'detail'], rows.map((r) => [r.timestamp, r.type, r.label, r.detail ?? '']));
+}
+
+export function pingResultsToCsv(rows: Array<{ attempt: number; latencyMs: number; ok: boolean }>): string {
+  return rowsToCsv(['attempt', 'latency_ms', 'ok'], rows.map((r) => [r.attempt, Math.round(r.latencyMs), r.ok ? 'yes' : 'no']));
+}
+
+export function networkIfacesToCsv(rows: Array<{ name: string; ipv4?: string; ipv6?: string; status?: string }>): string {
+  return rowsToCsv(['name', 'ipv4', 'ipv6', 'status'], rows.map((r) => [r.name, r.ipv4 ?? '', r.ipv6 ?? '', r.status ?? '']));
+}
