@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import { X, Loader2, Star, Shield } from 'lucide-react';
 import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity } from '../../../types';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import { DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
@@ -61,6 +62,7 @@ export default function DisciplinaryFormModal({
     isActive: isOpen,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -92,18 +94,18 @@ export default function DisciplinaryFormModal({
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !submitting) {
-        if (isDirty) {
-          if (window.confirm('You have unsaved changes. Close anyway?')) onClose();
-        } else {
-          onClose();
-        }
+        if (isDirty) setDiscardOpen(true);
+        else onClose();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, submitting, onClose, isDirty]);
 
-  if (!isOpen) return null;
+  const guardedClose = () => {
+    if (isDirty && !submitting) setDiscardOpen(true);
+    else onClose();
+  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -134,12 +136,14 @@ export default function DisciplinaryFormModal({
   const accentHeader = isCommendation ? 'bg-amber-900/20' : 'bg-surface-raised';
   const HeaderIcon = isCommendation ? Star : Shield;
 
+  if (!isOpen) return null;
+
   return (
     <>
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={submitting ? undefined : onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={submitting ? undefined : guardedClose} />
 
       {/* Dialog */}
       <div
@@ -157,7 +161,7 @@ export default function DisciplinaryFormModal({
               {isEditing ? 'Edit' : 'New'} {isCommendation ? 'Commendation' : 'Disciplinary Record'}
             </h2>
           </div>
-          <button type="button" onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-rmpg-100">
+          <button type="button" onClick={guardedClose} disabled={submitting} className="text-rmpg-400 hover:text-rmpg-100">
             <X size={16} />
           </button>
         </div>
@@ -307,7 +311,7 @@ export default function DisciplinaryFormModal({
           <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
             <button
               type="button"
-              onClick={onClose}
+              onClick={guardedClose}
               disabled={submitting}
               className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100 border border-rmpg-700 rounded-sm"
             >
@@ -329,6 +333,7 @@ export default function DisciplinaryFormModal({
         </form>
       </div>
     </div>
+    <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={() => { setDiscardOpen(false); onClose(); }} message="You have unsaved changes. Close anyway?" />
     </>
   );
 }

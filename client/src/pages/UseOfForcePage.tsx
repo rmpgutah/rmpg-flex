@@ -614,6 +614,7 @@ export default function UseOfForcePage() {
             id="ff-useofforcepage-0"
             className="input-dark text-[10px] pl-7 w-full py-[3px]"
             placeholder="Search..."
+            aria-label="Search use-of-force reports"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
           />

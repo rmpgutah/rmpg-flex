@@ -41,6 +41,7 @@ import PageLabelsDialog from './components/PageLabelsDialog';
 import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl, uploadsUrl } from '../../hooks/useApi';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { importWithRetry } from '../../utils/importWithRetry';
 
@@ -193,6 +194,8 @@ export default function PdfEditorPage() {
   const [labelsOpen, setLabelsOpen] = useState(false);   // custom page-label rules
   const [calibrationOpen, setCalibrationOpen] = useState(false); // measurement scale
   const [insertPdfOpen, setInsertPdfOpen] = useState(false);     // insert another PDF at a position
+  const [clearPageOpen, setClearPageOpen] = useState(false);
+  const [clearPageCount, setClearPageCount] = useState(0);
   // Default category applied to new sticky notes (toolbar dropdown).
   const [stickyCategory, setStickyCategory] = useState<StickyCategory>('general');
   const [showBookmarks, setShowBookmarks] = useState(false);
@@ -572,11 +575,8 @@ export default function PdfEditorPage() {
   const clearAllOnPage = () => {
     const count = state.annotations.filter(a => a.page === activePage).length;
     if (count === 0) { pushToast('No annotations on this page', 'info'); return; }
-    if (!window.confirm(`Delete all ${count} annotation(s) on page ${activePage}?`)) return;
-    mutate({ annotations: state.annotations.filter(a => a.page !== activePage) });
-    setSelectedIds(new Set());
-    setActiveId(null);
-    pushToast(`Cleared ${count} annotation(s) on page ${activePage}`, 'ok');
+    setClearPageCount(count);
+    setClearPageOpen(true);
   };
 
   // Toggle the simple "Page N of M" footer (distinct from Bates numbering).
@@ -2371,6 +2371,21 @@ export default function PdfEditorPage() {
         forcePdfjs={forcePdfjs}
         onClose={() => setPresentationOpen(false)}
         onPageChange={(p) => setActivePage(p)}
+      />
+      <ConfirmDialog
+        isOpen={clearPageOpen}
+        onClose={() => setClearPageOpen(false)}
+        onConfirm={() => {
+          mutate({ annotations: state.annotations.filter(a => a.page !== activePage) });
+          setSelectedIds(new Set());
+          setActiveId(null);
+          pushToast(`Cleared ${clearPageCount} annotation(s) on page ${activePage}`, 'ok');
+          setClearPageOpen(false);
+        }}
+        title="Clear page annotations"
+        message={`Delete all ${clearPageCount} annotation(s) on page ${activePage}?`}
+        confirmLabel="Clear"
+        confirmVariant="danger"
       />
     </div>
   );

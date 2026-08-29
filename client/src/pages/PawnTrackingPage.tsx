@@ -284,6 +284,7 @@ export default function PawnTrackingPage() {
           <input
             type="text"
             placeholder="Search serial #, seller name, shop name…"
+            aria-label="Search pawn records by serial, seller, or shop"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 placeholder-rmpg-500 focus:border-accent-silver-600/50 focus:outline-none"

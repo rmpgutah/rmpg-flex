@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router';
 import { FileText, FilePlus2, FileCode, Sparkles, Clock, Eye } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { useToast } from '../../components/ToastProvider';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { importWithRetry } from '../../utils/importWithRetry';
 
 // Documents Apps shelf — a row of integrated applications that operate
@@ -38,6 +40,9 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [creatingBlank, setCreatingBlank] = useState(false);
   const [creatingText, setCreatingText] = useState(false);
+  const [nameOpen, setNameOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState('notes.txt');
+  const { addToast } = useToast();
 
   // Open a recent file in the PDF editor (shared by the chip onClick + its
   // right-click "Open" menu action).
@@ -95,16 +100,21 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
       navigate(`/pdf-editor?${params.toString()}`);
     } catch (err) {
       console.error('[apps-shelf] new blank PDF failed', err);
-      alert(`Could not create blank PDF: ${err instanceof Error ? err.message : 'unknown'}`);
+      addToast(`Could not create blank PDF: ${err instanceof Error ? err.message : 'unknown'}`, 'error');
     } finally {
       setCreatingBlank(false);
     }
   };
 
   const createTextFile = async () => {
-    const rawName = window.prompt('File name (include extension, e.g. notes.txt, config.json, script.py):');
-    if (!rawName?.trim()) return;
-    const name = rawName.trim();
+    setNameOpen(true);
+    setNewFileName('notes.txt');
+  };
+
+  const confirmCreateTextFile = async () => {
+    const name = newFileName.trim();
+    if (!name) return;
+    setNameOpen(false);
     const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
     const mimeMap: Record<string, string> = {
       txt: 'text/plain', md: 'text/markdown', markdown: 'text/markdown',
@@ -125,7 +135,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
       navigate(`/text-editor?${params.toString()}`);
     } catch (err) {
       console.error('[apps-shelf] new text file failed', err);
-      alert(`Could not create file: ${err instanceof Error ? err.message : 'unknown'}`);
+      addToast(`Could not create file: ${err instanceof Error ? err.message : 'unknown'}`, 'error');
     } finally {
       setCreatingText(false);
     }
@@ -134,6 +144,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
   const cardCls = 'group bg-surface-base hover:bg-surface-base border border-border-default hover:border-accent-gold-300/40 rounded-[2px] p-3 transition-colors text-left flex items-start gap-2 min-w-[200px]';
 
   return (
+    <>
     <div className="mb-3">
       <div className="flex items-center gap-2 mb-2">
         <Sparkles className="w-3.5 h-3.5 text-[color:var(--field-label-color)]" />
@@ -197,6 +208,33 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
         </div>
       )}
     </div>
+    <ConfirmDialog
+      isOpen={nameOpen}
+      onClose={() => setNameOpen(false)}
+      onConfirm={() => { void confirmCreateTextFile(); }}
+      title="New text file"
+      message="Name the file. Include an extension such as .txt, .md, or .json."
+      confirmLabel="Create"
+      confirmVariant="default"
+      confirmDisabled={!newFileName.trim()}
+      details={
+        <input
+          autoFocus
+          type="text"
+          value={newFileName}
+          onChange={(e) => setNewFileName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && newFileName.trim()) {
+              e.preventDefault();
+              void confirmCreateTextFile();
+            }
+          }}
+          className="input-dark text-[12px] w-full mt-1"
+          aria-label="New file name"
+        />
+      }
+    />
+    </>
   );
 }
 

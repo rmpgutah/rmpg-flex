@@ -725,6 +725,7 @@ export default function DigitalEvidencePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search evidence…"
+              aria-label="Search digital evidence"
               className="bg-transparent text-xs outline-none w-40"
               style={{ color: 'var(--text-primary)' }}
             />

@@ -112,11 +112,12 @@ export default function AdminSettingsTab(_props: Props) {
         <span className="text-[10px] font-bold uppercase text-[color:var(--panel-header-color)] tracking-wider flex-1">System Settings</span>
         <input id="ff-adminsettingstab-0"
           type="text" placeholder="Search settings..."
+          aria-label="Search system settings"
           value={search} onChange={e => setSearch(e.target.value)}
           className="px-3 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 w-48 focus:border-accent-silver-500"
         />
-        <button onClick={resetAll} disabled={saving} className="btn-secondary btn-xs flex items-center gap-1"><RotateCcw size={10} />Reset</button>
-        <button onClick={saveAll} disabled={saving} className="btn-gold btn-xs flex items-center gap-1"><Save size={10} />{saving ? 'Saving...' : 'Save All'}</button>
+        <button type="button" onClick={resetAll} disabled={saving} className="btn-secondary btn-xs flex items-center gap-1"><RotateCcw size={10} />Reset</button>
+        <button type="button" onClick={saveAll} disabled={saving} className="btn-gold btn-xs flex items-center gap-1"><Save size={10} />{saving ? 'Saving...' : 'Save All'}</button>
       </div>
 
       {/* Honesty note: which categories are wired to actually affect the app. */}

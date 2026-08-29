@@ -10,6 +10,7 @@ import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { fetchMapboxDrivingRoute } from '../../utils/mapboxDepartAt';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
@@ -734,6 +735,7 @@ function orderStopsByJobIds(selected: StopItem[], jobIds: number[]): StopItem[] 
 export default function ServeRoutePlanner({
   isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress, mileageRate, initialDate,
 }: ServeRoutePlannerProps) {
+  const { addToast } = useToast();
   const IRS_MILEAGE_RATE = mileageRate ?? 0.67;
   const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
   // All non-terminal jobs appear in the list. Un-geocoded ones are visible but
@@ -1679,8 +1681,8 @@ export default function ServeRoutePlanner({
         eta: etaStr,
         bufferMinutes: dwellMin,
       };
-    })).catch(() => { window.alert('Failed to export route sheet.'); });
-  }, [stops, stopArrivalTimes, routeDate]);
+    })).catch(() => { addToast('Failed to export route sheet.', 'error'); });
+  }, [stops, stopArrivalTimes, routeDate, addToast]);
 
   // F4: split into two days
   const saveSplitRoute = useCallback(async () => {

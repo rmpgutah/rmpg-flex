@@ -41,7 +41,7 @@ export default function DocsLibraryPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-          <input className="input-dark w-full text-xs pl-7" placeholder="Search titles…" value={q}
+          <input className="input-dark w-full text-xs pl-7" placeholder="Search titles…" aria-label="Search document titles" value={q}
             onChange={(e) => setQ(e.target.value)} />
         </div>
         <label className="flex items-center gap-1 text-[10px] text-fg-muted">

@@ -461,6 +461,7 @@ export default function LawBookPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"… (press / to focus)'
+              aria-label="Search Utah Code"
               className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder:text-rmpg-500"
               style={{ borderRadius: 2 }}
             />

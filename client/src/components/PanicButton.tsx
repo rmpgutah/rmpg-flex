@@ -74,6 +74,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const [ownPanicId, setOwnPanicId] = useState<number | null>(null);
   const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
   const [forceDeactivateOpen, setForceDeactivateOpen] = useState(false);
+  const [notesKind, setNotesKind] = useState<'false-alarm' | 'code4' | null>(null);
+  const [notesText, setNotesText] = useState('');
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -325,47 +327,21 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   }, [ownPanicId, addToast]);
 
   // False alarm (supervisor+ only)
-  const markFalseAlarm = useCallback(async () => {
-    const panicId = incomingAlert?.panic_id;
-    if (!panicId) return;
-    const notes = window.prompt('Enter false alarm notes:');
-    if (notes === null) return; // User cancelled prompt
-    try {
-      await apiFetch(`/dispatch/panic/${panicId}/false-alarm`, {
-        method: 'POST',
-        body: JSON.stringify({ notes: notes || 'No notes provided' }),
-      });
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-    } catch (err) {
-      console.error('Failed to mark false alarm:', err);
-      addToast('Failed to mark false alarm', 'error', 5000);
-    }
-  }, [incomingAlert?.panic_id, addToast]);
+  const markFalseAlarm = useCallback(() => {
+    if (!incomingAlert?.panic_id) return;
+    setNotesText('');
+    setNotesKind('false-alarm');
+  }, [incomingAlert?.panic_id]);
 
   // Code 4 — resolve (supervisor+). Spillman: after acknowledging, the
   // dispatcher explicitly clears the emergency once the officer is code 4;
   // this is the normal terminal transition (false-alarm is the exception
   // path). Clears the alert row + the unit's EMERGENCY overlay fleet-wide.
-  const resolveCode4 = useCallback(async () => {
-    const panicId = incomingAlert?.panic_id;
-    if (!panicId) return;
-    const notes = window.prompt('Code 4 — resolution notes:');
-    if (notes === null) return; // user cancelled prompt
-    try {
-      await apiFetch(`/dispatch/panic/${panicId}/resolve`, {
-        method: 'POST',
-        body: JSON.stringify({ notes: notes || 'Code 4 — emergency resolved' }),
-      });
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-    } catch (err) {
-      console.error('Failed to resolve panic:', err);
-      addToast('Failed to resolve panic', 'error', 5000);
-    }
-  }, [incomingAlert?.panic_id, addToast]);
+  const resolveCode4 = useCallback(() => {
+    if (!incomingAlert?.panic_id) return;
+    setNotesText('');
+    setNotesKind('code4');
+  }, [incomingAlert?.panic_id]);
 
   // Admin fallback — force-deactivate sweeps ALL panic state server-side
   // (alert row, unit EMERGENCY overlay, P1 CAD call, AlertHubDO nag), even
@@ -387,6 +363,33 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       addToast('Failed to force-deactivate panic', 'error', 5000);
     }
   }, [incomingAlert?.panic_id, addToast]);
+
+  const submitPanicNotes = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId || !notesKind) return;
+    const kind = notesKind;
+    const notes = notesText.trim();
+    setNotesKind(null);
+    try {
+      if (kind === 'false-alarm') {
+        await apiFetch(`/dispatch/panic/${panicId}/false-alarm`, {
+          method: 'POST',
+          body: JSON.stringify({ notes: notes || 'No notes provided' }),
+        });
+      } else {
+        await apiFetch(`/dispatch/panic/${panicId}/resolve`, {
+          method: 'POST',
+          body: JSON.stringify({ notes: notes || 'Code 4 — emergency resolved' }),
+        });
+      }
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+    } catch (err) {
+      console.error(kind === 'false-alarm' ? 'Failed to mark false alarm:' : 'Failed to resolve panic:', err);
+      addToast(kind === 'false-alarm' ? 'Failed to mark false alarm' : 'Failed to resolve panic', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, notesKind, notesText, addToast]);
 
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
@@ -703,6 +706,27 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
         message="Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles."
         confirmLabel="Deactivate"
         confirmVariant="danger"
+      />
+      <ConfirmDialog
+        isOpen={notesKind != null}
+        onClose={() => setNotesKind(null)}
+        onConfirm={() => { void submitPanicNotes(); }}
+        title={notesKind === 'code4' ? 'Code 4 — resolve' : 'Mark false alarm'}
+        message={notesKind === 'code4'
+          ? 'Optional resolution notes. Clearing this panic notifies all consoles that the officer is Code 4.'
+          : 'Optional notes for this false-alarm classification.'}
+        confirmLabel={notesKind === 'code4' ? 'Resolve' : 'Mark false alarm'}
+        confirmVariant={notesKind === 'code4' ? 'default' : 'warning'}
+        details={
+          <textarea
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            rows={3}
+            className="input-dark text-[12px] w-full mt-1"
+            aria-label="Panic notes"
+            placeholder="Notes (optional)"
+          />
+        }
       />
     </>
   );
