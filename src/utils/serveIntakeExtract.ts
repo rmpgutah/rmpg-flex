@@ -101,7 +101,7 @@ export const TARGET_FIELDS = [
   // address_class is a property of the LOCATION, never the recipient —
   // a registered agent may sit at a residence and must then get
   // residential attempt windows (operator decision D-2).
-  'address_class',                  // residential | business | unknown
+  'address_class',                  // residential | corporate | small_business | government | business | unknown
   'service_days_allowed',           // 'all' | 'weekdays' | 'friday' | 'no_sunday' | free text
   'client_attempt_schedule',        // 'HH:MM-HH:MM;HH:MM-HH:MM' verbatim bands
   'attempt_start_not_before',       // ISO date — "start attempts on or after X"
@@ -224,10 +224,13 @@ EXTRACTION RULES (learned from real packets):
     municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).
 
 TIMING & SERVICE CONSTRAINTS — read the Instructions block carefully:
-• address_class — 'business' ONLY when the document says the service address is a business,
-  office, suite, or place of employment. 'residential' for a residence/abode/dwelling.
-  'unknown' otherwise. A "registered agent" mention is NOT evidence of a business address —
-  agents are frequently at residences.
+• address_class — classify the SERVICE LOCATION, not the recipient:
+  'residential' for a home/abode/dwelling/apartment;
+  'corporate' for an LLC/Inc/Corp at a suite, floor, or office tower;
+  'small_business' for a shop/store/DBA/storefront without a corporate suite;
+  'government' for a courthouse, city hall, county/federal building, or agency counter;
+  'unknown' otherwise.
+  A "registered agent" mention is NOT evidence of a business address — agents are frequently at residences.
 • service_days_allowed — e.g. "Service allowed 7 days a week" → 'all';
   "NO SERVICE ON SUNDAY" → 'no_sunday'; "SERVE ON FRIDAY" → 'friday'.
 • client_attempt_schedule — when the client dictates attempt bands ("1 between 6AM-9AM,
@@ -1113,22 +1116,18 @@ const RESIDENTIAL_HINTS = /\b(residen\w*|abode|dwelling|home address|apartment|a
 export function normalizeAddressClass(raw: string): string {
   const s = (raw || '').trim();
   if (!s) return 'unknown';
-  const lower = s.toLowerCase();
+  const lower = s.toLowerCase().replace(/\s+/g, '_');
   if (lower === 'business' || lower === 'residential' || lower === 'unknown') return lower;
-  // Intake review UI uses commercial / gated / po_box. Those must resolve
-  // onto the three-class planner vocabulary, not stay as unknown.
-  if (lower === 'commercial' || lower === 'office') return 'business';
-  if (lower === 'gated' || lower === 'hoa' || lower === 'gated / hoa') return 'residential';
-  if (lower === 'po_box' || lower === 'po box' || lower === 'pobox') return 'unknown';
-  // RESIDENTIAL IS TESTED FIRST, DELIBERATELY. Spec decision D-2: an
-  // unconfirmed address must never yield business timing. Real instructions
-  // mix both vocabularies — "SERVE AT HOME ADDRESS — apartment complex, use
-  // the leasing office entrance" contains "office" — and with business first
-  // that string returned 'business', which schedules weekday-only business
-  // windows at a residence and misses every evening and weekend attempt.
-  // Being wrong the other way costs one wasted window; being wrong this way
-  // costs the service.
+  if (lower === 'corporate' || lower === 'corporate_business' || lower === 'large_business') return 'corporate';
+  if (lower === 'small_business' || lower === 'small_businesses') return 'small_business';
+  if (lower === 'government' || lower === 'government_office' || lower === 'government_offices') return 'government';
+  if (lower === 'commercial') return 'small_business';
+  if (lower === 'office') return 'corporate';
+  if (lower === 'gated' || lower === 'hoa' || lower === 'gated_/_hoa') return 'gated';
+  if (lower === 'po_box' || lower === 'pobox' || lower === 'po-box') return 'po_box';
   if (RESIDENTIAL_HINTS.test(s)) return 'residential';
+  if (/\b(city hall|courthouse|county (?:building|clerk)|government office)\b/i.test(s)) return 'government';
+  if (/\b(corporate address|llc|incorporated)\b/i.test(s) && /\b(suite|floor|office)\b/i.test(s)) return 'corporate';
   if (BUSINESS_HINTS.test(s)) return 'business';
   return 'unknown';
 }

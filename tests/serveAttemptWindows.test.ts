@@ -106,6 +106,25 @@ describe('selectWindows precedence', () => {
     expect(out.every((w) => w.authority === 'site note')).toBe(true);
   });
 
+  it('uses corporate office hours for an unconfirmed corporate location (suite + LLC)', () => {
+    const out = selectWindows({
+      addressClass: 'corporate', addressClassConfirmed: false,
+      clientBands: [], locationNote: null,
+    });
+    expect(out.every((w) => w.authority === 'corporate default')).toBe(true);
+    expect(out.map((w) => w.window)).toEqual(['09:30-11:30', '13:30-16:00']);
+    expect(out.some((w) => w.window === '17:00-20:30')).toBe(false);
+  });
+
+  it('uses government counter hours, not residential evenings', () => {
+    const out = selectWindows({
+      addressClass: 'government', addressClassConfirmed: false,
+      clientBands: [], locationNote: null,
+    });
+    expect(out.every((w) => w.authority === 'government default')).toBe(true);
+    expect(out.map((w) => w.window)).toEqual(['08:30-11:30', '13:00-15:30']);
+  });
+
   it('uses residential defaults for a residence', () => {
     const out = selectWindows({ addressClass: 'residential', clientBands: [], locationNote: null });
     expect(out.every((w) => w.authority === 'residential default')).toBe(true);
