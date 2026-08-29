@@ -1,15 +1,15 @@
 {
   "name": "RMPG Flex",
-  "install": "bash scripts/cloud-agent-setup.sh",
+  "install": "bash /agent/repos/rmpg-flex/scripts/cloud-agent-setup.sh",
   "terminals": [
     {
       "name": "worker-api",
-      "command": "npm run dev -- --local --enable-containers=false",
+      "command": "cd /agent/repos/rmpg-flex && npm run dev -- --local --enable-containers=false",
       "description": "Cloudflare Worker API (Hono) on http://localhost:8787. Runs fully local: --local disables remote-only bindings (Workers AI has no local emulator and would otherwise require CLOUDFLARE_API_TOKEN); --enable-containers=false skips the PDF/OCR container images that need Docker."
     },
     {
       "name": "client-web",
-      "command": "cd client && npm run dev",
+      "command": "cd /agent/repos/rmpg-flex/client && npm run dev",
       "description": "React SPA (Vite) on http://localhost:5173. Proxies /api and /ws to the Worker on :8787. Local dev login: devadmin / DevPass123!"
     }
   ],
