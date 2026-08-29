@@ -51,7 +51,8 @@ export async function syncOfacSdn(db: D1Database): Promise<OfacSyncResult> {
 
     // Collect individual rows
     type SdnRow = { source_row_id: string; sdn_name: string; sdn_type: string;
-                    program: string | null; dob: string | null; remarks: string | null };
+                    program: string | null; dob: string | null; remarks: string | null;
+                    aliases_json: string | null };
     const individuals: SdnRow[] = [];
 
     for (let i = 1; i < lines.length; i++) {
@@ -66,6 +67,7 @@ export async function syncOfacSdn(db: D1Database): Promise<OfacSyncResult> {
 
       const remarks = idxRemarks >= 0 ? (cols[idxRemarks] ?? '').trim() : null;
       const dob = extractDob(remarks ?? '');
+      const aliases = extractAliases(remarks ?? '');
 
       individuals.push({
         source_row_id: (cols[idxEntNum] ?? `row_${i}`).trim(),
@@ -74,22 +76,23 @@ export async function syncOfacSdn(db: D1Database): Promise<OfacSyncResult> {
         program:       idxProgram >= 0 ? ((cols[idxProgram] ?? '').trim() || null) : null,
         dob,
         remarks:       remarks || null,
+        aliases_json:  aliases.length ? JSON.stringify(aliases) : null,
       });
     }
 
-    // Upsert in chunks of 10 rows (10 × 6 params = 60 ≤ 100-param D1 limit)
-    const CHUNK = 10;
+    // Upsert in chunks of 8 rows (8 × 7 params = 56 ≤ 100-param D1 limit)
+    const CHUNK = 8;
     let rowsUpserted = 0;
     for (let i = 0; i < individuals.length; i += CHUNK) {
       const chunk = individuals.slice(i, i + CHUNK);
       const params: (string | null)[] = [];
       for (const r of chunk) {
-        params.push(r.source_row_id, r.sdn_name, r.sdn_type, r.program, r.dob, r.remarks);
+        params.push(r.source_row_id, r.sdn_name, r.sdn_type, r.program, r.dob, r.remarks, r.aliases_json);
       }
       await db.prepare(
         `INSERT OR REPLACE INTO ofac_sdn
-           (source_row_id, sdn_name, sdn_type, program, dob, remarks, last_refreshed)
-         VALUES ${chunk.map(() => "(?,?,?,?,?,?,datetime('now'))").join(',')}`,
+           (source_row_id, sdn_name, sdn_type, program, dob, remarks, aliases_json, last_refreshed)
+         VALUES ${chunk.map(() => "(?,?,?,?,?,?,?,datetime('now'))").join(',')}`,
       ).bind(...params).run();
       rowsUpserted += chunk.length;
     }
@@ -142,4 +145,17 @@ function extractDob(remarks: string): string | null {
   const yearMatch = remarks.match(/DOB\s+(\d{4})/i);
   if (yearMatch) return yearMatch[1];
   return null;
+}
+
+/** Pull a.k.a. / f.k.a. aliases from OFAC remarks into a searchable list. */
+export function extractAliases(remarks: string): string[] {
+  if (!remarks) return [];
+  const out: string[] = [];
+  const re = /\b(?:a\.?k\.?a\.?|f\.?k\.?a\.?|aka|fka)\s+['"]?([^;'"]+)['"]?/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(remarks)) !== null) {
+    const alias = m[1].replace(/\s+/g, ' ').trim();
+    if (alias && !out.includes(alias)) out.push(alias);
+  }
+  return out;
 }

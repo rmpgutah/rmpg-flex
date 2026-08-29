@@ -116,7 +116,7 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
             source, ok: true, latency_ms: Date.now() - start, records: local,
             error: local.length === 0
               ? `live_unavailable:${err instanceof Error ? err.message : 'unknown'};local_0`
-              : `live_unavailable_local_${local.length}`,
+              : undefined,
           };
         } catch { /* fall through to error */ }
       }

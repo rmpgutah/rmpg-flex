@@ -33,7 +33,7 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
     });
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
-    const res = await fetch(`https://api.opensanctions.org/entities/?${params}`, {
+    const res = await fetch(`https://api.opensanctions.org/search/default?${params}`, {
       signal: ctrl.signal,
       headers: enrichmentHeaders({ Authorization: `ApiKey ${apiKey}` }),
     }).finally(() => clearTimeout(timer));

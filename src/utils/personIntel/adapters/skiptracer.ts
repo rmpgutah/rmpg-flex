@@ -391,7 +391,7 @@ export function mapSkipTracerRecordsToProfiles(records: unknown[]): Array<{
       dob: name.born || undefined,
       age: name.age ? Number(name.age) : undefined,
       addresses: extractAddresses(rec).map(a => ({
-        address: [a.street, a.city, a.state, a.zip].filter(Boolean).join(', ') || a.street,
+        address: a.street || [a.city, a.state, a.zip].filter(Boolean).join(', '),
         city: a.city,
         state: a.state,
         zip: a.zip,
