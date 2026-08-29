@@ -72,6 +72,7 @@ const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
 const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
 const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
+const DialerConnectPage = lazyRetry(() => import('./pages/DialerConnectPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
@@ -142,7 +143,6 @@ const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'))
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
-const DialerConnectPage = lazyRetry(() => import('./pages/DialerConnectPage'));
 const RouteBuilderPage = lazyRetry(() => import('./pages/RouteBuilderPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
