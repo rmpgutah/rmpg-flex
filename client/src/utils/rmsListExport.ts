@@ -463,3 +463,143 @@ export function sessionsToCsv(rows: Array<{
     rows.map((r) => [r.id, r.user_id, r.username, r.role, r.last_active ?? '']),
   );
 }
+
+function csvCell(v: unknown): string {
+  return `"${String(v ?? '').replace(/"/g, '""')}"`;
+}
+
+export function crashReportsToCsv(rows: Array<{
+  report_number: string;
+  crash_date: string;
+  location: string;
+  crash_type: string;
+  severity: string;
+  vehicles_involved: number;
+  injuries: number;
+  fatalities: number;
+  status: string;
+  investigating_officer: string;
+}>): string {
+  const header = 'report,date,location,type,severity,vehicles,injuries,fatalities,status,officer';
+  const lines = rows.map((r) =>
+    [
+      r.report_number, r.crash_date, r.location, r.crash_type, r.severity,
+      r.vehicles_involved, r.injuries, r.fatalities, r.status, r.investigating_officer,
+    ].map(csvCell).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export function briefingsToCsv(rows: Array<{
+  briefing_number: string;
+  title: string;
+  shift_type: string;
+  created_at: string;
+  created_by: string;
+  acknowledged_count: number;
+  total_officers: number;
+}>): string {
+  const header = 'number,title,shift,created_at,created_by,acked,officers';
+  const lines = rows.map((r) =>
+    [
+      r.briefing_number, r.title, r.shift_type, r.created_at, r.created_by,
+      r.acknowledged_count, r.total_officers,
+    ].map(csvCell).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export function shiftNotesToCsv(rows: Array<{
+  officer_name: string;
+  content: string;
+  visibility: string;
+  tags: string[];
+  created_at: string;
+  shift_date: string;
+}>): string {
+  const header = 'shift_date,created_at,officer,visibility,tags,content';
+  const lines = rows.map((r) =>
+    [
+      r.shift_date, r.created_at, r.officer_name, r.visibility,
+      (r.tags ?? []).join('|'), r.content,
+    ].map(csvCell).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export function trainingCoursesToCsv(rows: Array<{
+  course_name?: string;
+  course_code?: string;
+  category?: string;
+  duration_hours?: string | number;
+  location?: string;
+  instructor_name?: string;
+  is_mandatory?: number | boolean;
+}>): string {
+  const header = 'name,code,category,hours,location,instructor,mandatory';
+  const lines = rows.map((r) =>
+    [
+      r.course_name ?? '', r.course_code ?? '', r.category ?? '',
+      r.duration_hours ?? '', r.location ?? '', r.instructor_name ?? '',
+      r.is_mandatory ? 'yes' : 'no',
+    ].map(csvCell).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export type UnitsBoardRow = {
+  unit_id: string;
+  officer_name: string;
+  badge: string;
+  status: string;
+  current_call_number?: string | null;
+  location_description?: string | null;
+};
+
+/** Compact line for radio / clipboard: "U12 Hale #42 available CFS-9 Main St". */
+export function formatRadioLine(unit: UnitsBoardRow): string {
+  const parts = [
+    unit.unit_id,
+    unit.officer_name,
+    unit.badge ? `#${unit.badge}` : '',
+    unit.status,
+    unit.current_call_number || '',
+    unit.location_description || '',
+  ].filter((p) => String(p).trim().length > 0);
+  return parts.join(' ');
+}
+
+export function unitsBoardToCsv(rows: UnitsBoardRow[]): string {
+  const header = 'unit,officer,badge,status,call,location';
+  const lines = rows.map((r) =>
+    [
+      r.unit_id, r.officer_name, r.badge, r.status,
+      r.current_call_number ?? '', r.location_description ?? '',
+    ].map(csvCell).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export function unitsBoardToTsv(rows: UnitsBoardRow[]): string {
+  const header = ['unit', 'officer', 'badge', 'status', 'call', 'location'].join('\t');
+  const lines = rows.map((r) =>
+    [
+      r.unit_id, r.officer_name, r.badge, r.status,
+      r.current_call_number ?? '', r.location_description ?? '',
+    ].map((c) => String(c).replace(/\t|\n|\r/g, ' ')).join('\t'),
+  );
+  return [header, ...lines].join('\n');
+}
+
+export function fileListingToCsv(rows: Array<{
+  name: string;
+  size: number;
+  modified: string;
+  path: string;
+}>): string {
+  const header = 'name,size,modified,path';
+  const lines = rows.map((r) =>
+    [r.name, r.size, r.modified, r.path].map(csvCell).join(','),
+  );
+  return [header, ...lines].join('\n');
+}
