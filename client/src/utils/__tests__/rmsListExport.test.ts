@@ -63,4 +63,27 @@ describe('rmsListExport', () => {
       unit_id: 'Adam-1', officer_name: 'Hale', badge: '12', status: 'available',
     }]).split('\t').length).toBeGreaterThan(3);
   });
+
+  it('exports crash reports, briefings, notes, courses, files, and the unit board', () => {
+    expect(crashReportsToCsv([{
+      report_number: 'CR-1', crash_date: '2026-08-01', location: '500 W', crash_type: 'rear',
+      severity: 'pdo', vehicles_involved: 2, injuries: 0, fatalities: 0, status: 'open',
+      investigating_officer: 'Hale',
+    }])).toContain('CR-1');
+    expect(briefingsToCsv([{
+      briefing_number: 'B-1', title: 'Day', shift_type: 'day', created_at: 't', created_by: 'Disp',
+      acknowledged_count: 2, total_officers: 8,
+    }])).toContain('B-1');
+    expect(shiftNotesToCsv([{
+      officer_name: 'Hale', content: 'FI at 400 S', visibility: 'all', tags: ['FI'],
+      created_at: 't', shift_date: '2026-08-01',
+    }])).toContain('FI at 400 S');
+    expect(trainingCoursesToCsv([{ course_name: 'Firearms', course_code: 'FA-1', category: 'firearms', location: 'Range', mandatory: true }]))
+      .toContain('Firearms');
+    expect(fileListingToCsv([{ name: 'a.log', size: 12, modified: 't', path: '/logs/a.log' }])).toContain('a.log');
+    expect(formatRadioLine({ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }))
+      .toBe('U1 Hale #12 available');
+    expect(unitsBoardToCsv([{ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }])).toContain('U1');
+    expect(unitsBoardToTsv([{ unit_id: 'U1', officer_name: 'Hale', badge: '12', status: 'available' }])).toContain('\t');
+  });
 });

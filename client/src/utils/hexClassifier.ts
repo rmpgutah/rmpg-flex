@@ -20,7 +20,7 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // transparent bitmap and the symbol layer renders nothing, silently. The
   // material ramps (7-stop cylinder shading, specular bands) are also art, not
   // chrome: re-theming them onto a navy ramp would flatten the illustrations.
-  mapboxPaint: /(^|\/)(mapboxBasemap|mapboxSafeLayer|mapMarkers|mapboxMap|osmIconArt|osmIcons|AssignmentArcLayer)\.tsx?$/,
+  mapboxPaint: /(^|\/)(mapboxBasemap|mapboxSafeLayer|mapMarkers|mapboxMap|osmIconArt|osmIcons|osmCamera|osmOverlayStyle|AssignmentArcLayer)\.tsx?$/,
   // Canvas fingerprinting uses deliberately arbitrary sentinel colors; migrating
   // them to CSS vars changes the fingerprint signal and defeats the purpose.
   canvasFingerprint: /(^|\/)VerifyNoticePage\.tsx$|(^|\/)deviceCapture\.ts$/,
