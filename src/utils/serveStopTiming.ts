@@ -105,12 +105,9 @@ export function resolveServeWindow(input: {
   lastAttemptAt?: string | null;
 }): ServeHhMmWindow | null {
   const scheduled = parseHhMmRange(input.nextAttemptWindow);
-  if (scheduled && (!input.nextAttemptDate || input.nextAttemptDate === input.routeDate)) {
+  if (scheduled && (!input.nextAttemptDate || input.nextAttemptDate <= input.routeDate)) {
     return { ...scheduled, source: 'schedule' };
   }
-  // Slot is a later date — still apply its clock on today's run so we don't
-  // knock at 14:30 when diligence says evening.
-  if (scheduled) return { ...scheduled, source: 'schedule' };
 
   const named = namedBandToRange(input.timeWindow);
   if (named) return { ...named, source: 'time_window' };

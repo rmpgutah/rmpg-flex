@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected, reorderList,
   describeMissedDeadlines, plannedStartToMs, formatEtaDenver, computeArrivalsFromLegDurations,
+  clampArrivalToServeWindow, computeArrivalsInOrder,
 } from './ServeRoutePlanner';
 
 function stop(id: number, lat: number, lng: number, deadline: string | null = null, recipient_name = `Recipient ${id}`) {
@@ -219,5 +220,38 @@ describe('computeArrivalsFromLegDurations', () => {
     // 10 min drive + 12 min individual dwell + 5 min drive
     expect(arrivals.get(2)).toBe(start + 600_000 + 12 * 60_000 + 300_000);
     expect(totalDurationMinutes).toBeCloseTo(10 + 12 + 5 + 12, 5);
+  });
+});
+
+describe('same-day windows at a 6pm start', () => {
+  it('does not label a missed morning band as +1d', () => {
+    const start = plannedStartToMs('2026-08-28', '18:00');
+    const evening = start + 15 * 60_000;
+    const clamped = clampArrivalToServeWindow(evening, '08:00', '12:00', '2026-08-28');
+    expect(clamped).toBe(evening);
+    expect(formatEtaDenver(clamped, '2026-08-28')).not.toMatch(/\+1d/);
+  });
+
+  it('keeps a 3-stop evening run on tonight’s clock', () => {
+    const start = plannedStartToMs('2026-08-28', '18:00');
+    const a = stop(1, 40.6945, -111.8819);
+    a.job.time_window = 'evening';
+    a.job.next_attempt_window = '18:00-21:00';
+    const b = stop(2, 40.70, -111.88);
+    b.job.time_window = 'morning';
+    b.job.next_attempt_window = '08:00-12:00';
+    b.job.next_attempt_date = '2026-08-29';
+    const c = stop(3, 40.71, -111.87);
+    c.job.time_window = 'morning';
+    c.job.next_attempt_window = '08:00-12:00';
+    const { arrivals, totalDurationMinutes } = computeArrivalsInOrder(
+      [a, b, c],
+      { lat: 40.6945, lng: -111.8819 },
+      start,
+      '2026-08-28',
+    );
+    expect(formatEtaDenver(arrivals.get(2)!, '2026-08-28')).not.toMatch(/\+1d/);
+    expect(formatEtaDenver(arrivals.get(3)!, '2026-08-28')).not.toMatch(/\+1d/);
+    expect(totalDurationMinutes).toBeLessThan(180);
   });
 });

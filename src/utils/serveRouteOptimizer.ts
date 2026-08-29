@@ -750,20 +750,21 @@ function parseTimeOfDay(timeStr: string, referenceDate: string): number {
   return denverWallClockToUtcMs(year, month, day, h || 0, m || 0);
 }
 
-/** If arrival is before the window, wait; if after the window, roll to the next day. */
+/** If arrival is before today's window, wait; if the window already closed, go now (never +1d). */
 export function clampArrivalToServeWindow(
   arrivalMs: number,
   serveStart: string | null | undefined,
   serveEnd: string | null | undefined,
+  routeRefIso?: string,
 ): number {
   if (!serveStart) return arrivalMs;
-  let windowStart = parseTimeOfDay(serveStart, new Date(arrivalMs).toISOString());
+  const refIso = routeRefIso || new Date(arrivalMs).toISOString();
+  let windowStart = parseTimeOfDay(serveStart, refIso);
   let windowEnd = serveEnd
-    ? parseTimeOfDay(serveEnd, new Date(arrivalMs).toISOString())
+    ? parseTimeOfDay(serveEnd, refIso)
     : windowStart + 24 * 3600_000;
   if (windowEnd <= windowStart) windowEnd += 86_400_000;
   if (arrivalMs < windowStart) return windowStart;
-  if (arrivalMs > windowEnd) return windowStart + 86_400_000;
   return arrivalMs;
 }
 
@@ -921,10 +922,10 @@ export function optimizeRoute(
 }
 
 export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
+  if (stop.lat == null || stop.lng == null) return 'none';
   if (stop.geocodeSource === 'point') return 'high';
   if (stop.geocodeSource === 'centroid') return 'low';
-  if (stop.geocodeSource === null) return 'high'; // null = benefit of the doubt; don't warn on pre-existing jobs
-  if (stop.lat == null || stop.lng == null) return 'none';
+  if (stop.geocodeSource === null) return 'low';
   return 'high';
 }
 
@@ -1057,7 +1058,7 @@ export function computeEtas(
     currentMs += travelSeconds * 1000;
     const note = stops?.[idx]?.locationNote;
     if (note?.serveStart) {
-      currentMs = clampArrivalToServeWindow(currentMs, note.serveStart, note.serveEnd);
+      currentMs = clampArrivalToServeWindow(currentMs, note.serveStart, note.serveEnd, departAt);
     }
     etas.push(new Date(currentMs).toISOString());
     currentMs += (dwellSeconds[idx] ?? 0) * 1000;

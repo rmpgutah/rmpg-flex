@@ -111,6 +111,18 @@ describe('buildServeRunProblem', () => {
     const open = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END, { circular: false });
     expect(open.vehicles[0].end_location).toBeUndefined();
   });
+
+  it('schedules an unpaid lunch break 12:00–13:00 Denver', () => {
+    const doc = buildServeRunProblem(stops, officer, '2026-08-28T14:00:00.000Z', SHIFT_END);
+    const brk = doc.vehicles[0].breaks?.[0];
+    expect(brk?.duration).toBe(1800);
+    expect(brk?.earliest_start).toBeDefined();
+    expect(brk?.latest_end).toBeDefined();
+    const startHour = Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver', hour: 'numeric', hourCycle: 'h23',
+    }).format(new Date(brk!.earliest_start)));
+    expect(startHour).toBe(12);
+  });
 });
 
 describe('resolveOptimizationV2Token', () => {

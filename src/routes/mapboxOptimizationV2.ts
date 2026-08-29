@@ -116,8 +116,8 @@ app.post('/submit', async (c) => {
       let officer: UnitRow | null = null;
       if (officer_unit_id) {
         const officerRow = await db
-          .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? LIMIT 1')
-          .bind(officer_unit_id)
+          .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? OR officer_id = ? LIMIT 1')
+          .bind(officer_unit_id, officer_unit_id)
           .first();
         if (officerRow) officer = officerRow as unknown as UnitRow;
       }

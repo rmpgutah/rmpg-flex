@@ -222,25 +222,20 @@ describe('geocodeQualityScore', () => {
   it('returns low for centroid geocode', () => {
     expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'centroid' })).toBe('low');
   });
-  it('returns none when geocodeSource is null', () => {
-    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('high');
+  it('returns low when geocodeSource is null (unverified pin)', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('low');
   });
 });
 
 describe('collectGeocodeWarnings', () => {
-  it('includes low and none stops, excludes high and null (null = high by policy)', () => {
-    // null geocodeSource is treated as 'high' (benefit of the doubt for pre-existing jobs)
-    // A stop with no coords at all (lat/lng null) is 'none' and should warn.
+  it('includes centroid and null geocode sources', () => {
     const stops: RouteStop[] = [
       { ...STOPS_3[0], geocodeSource: 'point' },
       { ...STOPS_3[1], geocodeSource: 'centroid' },
       { ...STOPS_3[2], geocodeSource: null },
     ];
     const warnings = collectGeocodeWarnings(stops);
-    // Only the centroid stop should warn; null and point are both 'high'.
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].jobId).toBe(2);
-    expect(warnings[0].quality).toBe('low');
+    expect(warnings.map((w) => w.jobId).sort()).toEqual([2, 3]);
   });
 
   it('returns empty array when all stops have high quality', () => {
@@ -383,6 +378,19 @@ describe('Denver wall-clock conversion', () => {
     const arriveEarly = Date.parse('2026-08-28T20:00:00.000Z'); // 14:00 MDT
     const clamped = clampArrivalToServeWindow(arriveEarly, '17:00', '21:00');
     expect(new Date(clamped).toISOString()).toBe('2026-08-28T23:00:00.000Z'); // 17:00 MDT
+  });
+
+  it('does not roll a missed morning window to +1d after a 6pm start', () => {
+    const sixPmMdt = Date.parse('2026-08-29T00:00:00.000Z'); // 18:00 MDT Aug 28
+    const clamped = clampArrivalToServeWindow(
+      sixPmMdt + 15 * 60_000,
+      '08:00',
+      '12:00',
+      '2026-08-29T00:00:00.000Z',
+    );
+    expect(clamped).toBe(sixPmMdt + 15 * 60_000);
+    expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(clamped)))
+      .toBe('2026-08-28');
   });
 });
 
