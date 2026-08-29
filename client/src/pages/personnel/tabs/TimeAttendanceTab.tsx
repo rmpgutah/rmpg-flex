@@ -27,6 +27,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     const clockedOut = timeEntries.filter((te) => te.status === 'clocked_out');
 
     const totalHours = timeEntries.reduce((sum, te) => sum + (te.total_hours || 0), 0);
+    const totalMiles = timeEntries.reduce((sum, te) => sum + (te.total_miles || 0), 0);
     const officerCount = new Set(timeEntries.map((te) => te.officer_id)).size;
     const avgHours = officerCount > 0 ? totalHours / officerCount : 0;
 
@@ -36,6 +37,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       clockedOutCount: clockedOut.length,
       totalHours: totalHours.toFixed(1),
       avgHours: avgHours.toFixed(1),
+      totalMiles: totalMiles.toFixed(1),
     };
   }, [timeEntries]);
 
@@ -56,6 +58,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-surface-base', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
+    { label: 'Duty Miles', value: stats.totalMiles, icon: BarChart3, color: 'text-rmpg-200', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-accent-silver-500' },
   ];
 
   // Right-click context menu
@@ -84,7 +87,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.label}
@@ -139,13 +142,14 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
               <th className="text-left">Status</th>
               <th className="text-right">Break (min)</th>
               <th className="text-right">Hours</th>
+              <th className="text-right">Miles</th>
               {(onEditTimeEntry || onDeleteTimeEntry) && <th className="w-16"></th>}
             </tr>
           </thead>
           <tbody>
             {timeEntries.length === 0 ? (
               <tr>
-                <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 7 : 6} className="text-center py-8 text-rmpg-500 text-[10px]">
+                <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 8 : 7} className="text-center py-8 text-rmpg-500 text-[10px]">
                   No time entries to display.
                 </td>
               </tr>
@@ -211,6 +215,11 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       {te.total_hours != null ? Number(te.total_hours).toFixed(1) : (
                         (te.status === 'clocked_in' || te.status === 'on_break') ? getElapsedHours(te.clock_in) : '-'
                       )}
+                    </span>
+                  </td>
+                  <td className="text-right">
+                    <span className="text-xs font-mono text-rmpg-300">
+                      {te.total_miles != null ? Number(te.total_miles).toFixed(1) : '-'}
                     </span>
                   </td>
                   {(onEditTimeEntry || onDeleteTimeEntry) && (
