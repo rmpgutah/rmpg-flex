@@ -34,4 +34,19 @@ describe('MapLeftDock', () => {
     fireEvent.click(screen.getByText('Live Conditions'));
     expect(screen.getByText('P1 Audio Alert')).toBeInTheDocument();
   });
+
+  it('filters layers by the find box and reports how many are on', () => {
+    const sections = [
+      { title: 'OSM Fire & Safety', items: [
+        { id: 'osm_safety_hydrant', label: 'Fire hydrants', active: true, onToggle: vi.fn() },
+        { id: 'osm_safety_station', label: 'Stations', active: false, onToggle: vi.fn() },
+      ] },
+      { title: 'Live Conditions', items: [{ id: 'traffic', label: 'Live Traffic', active: false, onToggle: vi.fn() }] },
+    ];
+    render(<MapLeftDock sections={sections} />);
+    expect(screen.getByText(/1 on/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: /find layer/i }), { target: { value: 'hydrant' } });
+    expect(screen.getByText('Fire hydrants')).toBeInTheDocument();
+    expect(screen.queryByText('Live Traffic')).not.toBeInTheDocument();
+  });
 });

@@ -82,7 +82,7 @@ export function findBeatAt(features: any[], lng: number, lat: number): any | nul
   return uninc;
 }
 
-export const AREA_PALETTE = ['#d4a017', '#22c55e', '#ef4444', '#a855f7', '#f59e0b', '#14b8a6', '#ec4899', '#84cc16', '#fb923c', '#eab308'];
+export const AREA_PALETTE = ['#c3ccd6', '#22c55e', '#ef4444', '#a855f7', '#f59e0b', '#14b8a6', '#ec4899', '#84cc16', '#fb923c', '#eab308'];
 
 export function getAreaColor(code: string): string {
   if (!code) return AREA_PALETTE[0];

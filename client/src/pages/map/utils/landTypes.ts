@@ -45,11 +45,11 @@ export const PROPERTY_TYPES: PropertyType[] = [
   { code: 'REC', label: 'Recreation',     color: '#34d399', match: ['recreation', 'park', 'golf', 'sport', 'trail', 'pool', 'stadium', 'arena', 'campground', 'marina'] },
   { code: 'UTL', label: 'Utility',        color: '#eab308', match: ['utility', 'power', 'water', 'sewer', 'electric', 'gas', 'substation', 'wastewater', 'treatment plant', 'pump', 'tower', 'antenna'] },
   { code: 'TRN', label: 'Transportation', color: '#fb923c', match: ['transport', 'airport', 'transit', 'rail', 'station', 'parking', 'depot', 'hangar', 'terminal'] },
-  { code: 'IND', label: 'Industrial',     color: 'var(--sev-critical)', match: ['industr', 'warehouse', 'manufact', 'factory', 'distribution', 'storage', 'mining', 'refinery', 'plant'] },
+  { code: 'IND', label: 'Industrial',     color: '#ef4444', match: ['industr', 'warehouse', 'manufact', 'factory', 'distribution', 'storage', 'mining', 'refinery', 'plant'] },
   { code: 'AGR', label: 'Agricultural',   color: '#84cc16', match: ['agricult', 'agri', 'farm', 'ranch', 'dairy', 'orchard', 'barn', 'feedlot', 'livestock'] },
-  { code: 'COM', label: 'Commercial',     color: 'var(--sev-warn)', match: ['commercial', 'business', 'retail', 'office', 'store', 'shop', 'restaurant', 'hotel', 'motel', 'bank', 'mall', 'gas station'] },
+  { code: 'COM', label: 'Commercial',     color: '#f59e0b', match: ['commercial', 'business', 'retail', 'office', 'store', 'shop', 'restaurant', 'hotel', 'motel', 'bank', 'mall', 'gas station'] },
   { code: 'MIX', label: 'Mixed Use',      color: '#14b8a6', match: ['mixed'] },
-  { code: 'RES', label: 'Residential',    color: 'var(--sev-ok)', match: ['residen', 'single family', 'sfr', 'duplex', 'tri-plex', 'fourplex', 'apartment', 'multi', 'condo', 'townhome', 'townhouse', 'mobile', 'manufactured home', 'dwelling', 'home', 'house', 'cabin'] },
+  { code: 'RES', label: 'Residential',    color: '#22c55e', match: ['residen', 'single family', 'sfr', 'duplex', 'tri-plex', 'fourplex', 'apartment', 'multi', 'condo', 'townhome', 'townhouse', 'mobile', 'manufactured home', 'dwelling', 'home', 'house', 'cabin'] },
   { code: 'VAC', label: 'Vacant',         color: '#9ca3af', match: ['vacant', 'undeveloped', 'unimproved', 'empty', 'open space'] },
 ];
 
@@ -122,11 +122,11 @@ export interface RoadClass {
 }
 
 export const ROAD_CLASSES: RoadClass[] = [
-  { code: '1',  label: 'Interstate',    color: 'var(--sev-critical)', tier: 5, legend: true },
-  { code: '2',  label: 'US Highway',    color: 'var(--sev-warn)', tier: 4, legend: true },
+  { code: '1',  label: 'Interstate',    color: '#ef4444', tier: 5, legend: true },
+  { code: '2',  label: 'US Highway',    color: '#f59e0b', tier: 4, legend: true },
   { code: '3',  label: 'State Highway', color: '#e8b84b', tier: 3, legend: true },
   { code: '4',  label: 'Ramp',          color: '#caa53a', tier: 3 },
-  { code: '5',  label: 'Major Road',    color: 'var(--field-label-color)', tier: 2, legend: true },
+  { code: '5',  label: 'Major Road',    color: '#c3ccd6', tier: 2, legend: true },
   { code: '6',  label: 'Arterial',      color: '#b8901a', tier: 2 },
   { code: '7',  label: 'Collector',     color: '#a07d17', tier: 1 },
   { code: '8',  label: 'Local',         color: '#8a6f1e', tier: 0, legend: true },

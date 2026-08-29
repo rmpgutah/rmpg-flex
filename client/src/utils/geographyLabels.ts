@@ -20,7 +20,7 @@ export const TIER_LABELS = {
 export type GeographyTier = keyof typeof TIER_LABELS;
 
 const SECTOR_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#d4a017', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#fbbf24',
+  SL1: '#22c55e', SL2: '#c3ccd6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#fbbf24',
   DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
   WB1: '#8b5cf6', WB2: '#10b981',
   UC1: '#facc15', UC2: '#eab308', UC3: '#f43f5e',
