@@ -3366,6 +3366,7 @@ export interface ServeJob {
   case_number: string | null;
   court_name: string | null;
   jurisdiction: string | null;
+  court_date?: string | null;
   client_name: string | null;
   attorney_name: string | null;
   attorney_phone?: string | null;

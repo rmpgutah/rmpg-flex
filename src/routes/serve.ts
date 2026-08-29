@@ -67,6 +67,12 @@ import {
 import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
 import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
 import serveAttemptFiles from './serveAttemptFiles';
+import {
+  intakePatchFromPreview,
+  parseServeParsedData,
+  previewServeOps,
+  type ServeJobOps,
+} from '../utils/serveJobOps';
 
 const sv = new Hono<Env>();
 sv.route('/', serveAttemptFiles);
@@ -95,6 +101,96 @@ function normalizeFees<T extends Record<string, unknown>>(job: T): T {
     serve_fee: sf == null ? null : Number(sf),
     rush_fee: rf == null ? null : Number(rf),
   };
+}
+
+async function persistJobOps(
+  db: D1Database,
+  id: number,
+  body: Record<string, unknown>,
+) {
+  const row = await queryFirst<{
+    parsed_data: string | null;
+    recipient_name: string | null;
+    recipient_address: string | null;
+    recipient_city: string | null;
+    recipient_state: string | null;
+    recipient_zip: string | null;
+    recipient_type: string | null;
+    business_name: string | null;
+    registered_agent_name: string | null;
+    document_type: string | null;
+    case_number: string | null;
+    court_name: string | null;
+    jurisdiction: string | null;
+    client_name: string | null;
+    attorney_name: string | null;
+    priority: string | null;
+    deadline: string | null;
+    service_instructions: string | null;
+    notes: string | null;
+    plaintiff_name: string | null;
+    defendant_name: string | null;
+    court_date: string | null;
+  }>(db, `SELECT parsed_data, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+      recipient_type, business_name, registered_agent_name, document_type, case_number, court_name, jurisdiction,
+      client_name, attorney_name, priority, deadline, service_instructions, notes,
+      plaintiff_name, defendant_name, court_date
+     FROM serve_queue WHERE id = ?`, id);
+  if (!row) return null;
+  const meta = parseServeParsedData(row.parsed_data);
+  const opsFromBody = (body.ops && typeof body.ops === 'object')
+    ? body.ops as Partial<ServeJobOps>
+    : (body as Partial<ServeJobOps>);
+  const mergedOps = { ...meta.ops, ...normalizePartialOps(opsFromBody) };
+  const klass = typeof body.address_class === 'string' ? body.address_class
+    : typeof body.klass === 'string' ? body.klass
+    : meta.addressClass;
+  const confirmed = body.address_class_confirmed !== undefined
+    ? body.address_class_confirmed === true || body.address_class_confirmed === 1
+    : typeof body.confirmed === 'boolean' ? body.confirmed
+    : meta.addressClassConfirmed;
+  const preview = previewServeOps({
+    addressClass: klass,
+    addressClassConfirmed: confirmed,
+    recipient_name: strOrNull(body.recipient_name) ?? row.recipient_name,
+    recipient_address: strOrNull(body.recipient_address) ?? row.recipient_address,
+    recipient_city: strOrNull(body.recipient_city) ?? row.recipient_city,
+    recipient_state: strOrNull(body.recipient_state) ?? row.recipient_state,
+    recipient_zip: strOrNull(body.recipient_zip) ?? row.recipient_zip,
+    recipient_type: strOrNull(body.recipient_type) ?? row.recipient_type,
+    business_name: strOrNull(body.business_name) ?? row.business_name,
+    registered_agent_name: strOrNull(body.registered_agent_name) ?? row.registered_agent_name,
+    document_type: strOrNull(body.document_type) ?? row.document_type,
+    case_number: strOrNull(body.case_number) ?? row.case_number,
+    court_name: strOrNull(body.court_name) ?? row.court_name,
+    jurisdiction: strOrNull(body.jurisdiction) ?? row.jurisdiction,
+    client_name: strOrNull(body.client_name) ?? row.client_name,
+    attorney_name: strOrNull(body.attorney_name) ?? row.attorney_name,
+    priority: strOrNull(body.priority) ?? row.priority,
+    deadline: strOrNull(body.deadline) ?? row.deadline,
+    service_instructions: strOrNull(body.service_instructions) ?? row.service_instructions,
+    notes: strOrNull(body.notes) ?? row.notes,
+    plaintiff_name: strOrNull(body.plaintiff_name) ?? row.plaintiff_name,
+    defendant_name: strOrNull(body.defendant_name) ?? row.defendant_name,
+    court_date: strOrNull(body.court_date) ?? row.court_date,
+    ops: mergedOps,
+  });
+  const json = intakePatchFromPreview(row.parsed_data, preview);
+  await execute(db, `UPDATE serve_queue SET parsed_data = ?, updated_at = datetime('now') WHERE id = ?`, json, id);
+  return preview;
+}
+
+function normalizePartialOps(raw: Partial<ServeJobOps>): Partial<ServeJobOps> {
+  const out: Partial<ServeJobOps> = {};
+  const keys: (keyof ServeJobOps)[] = [
+    'documents_to_serve', 'venue_kind', 'gate_code', 'dogs_on_site', 'cameras_on_site',
+    'language_needed', 'authorized_acceptor', 'photo_required', 'physical_description',
+    'vehicle_description', 'best_contact_window', 'no_sunday', 'no_saturday', 'sub_service_first',
+  ];
+  for (const k of keys) {
+    if (raw[k] !== undefined) (out as Record<string, unknown>)[k] = raw[k];
+  }
+  return out;
 }
 
 function restoreServeOfficerUnit(
@@ -814,6 +910,58 @@ sv.put('/assignments/settings', async (c) => {
   return c.json({ data: after });
 });
 
+// POST /preview-ops — live venue / windows / OPS tree from the job form.
+// Static path must be registered before /:id so it is never captured as an id.
+sv.post('/preview-ops', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const preview = previewServeOps({
+    addressClass: typeof body.address_class === 'string' ? body.address_class : null,
+    addressClassConfirmed: body.address_class_confirmed === true || body.address_class_confirmed === 1,
+    recipient_name: strOrNull(body.recipient_name),
+    recipient_address: strOrNull(body.recipient_address),
+    recipient_city: strOrNull(body.recipient_city),
+    recipient_state: strOrNull(body.recipient_state),
+    recipient_zip: strOrNull(body.recipient_zip),
+    recipient_type: strOrNull(body.recipient_type),
+    business_name: strOrNull(body.business_name),
+    registered_agent_name: strOrNull(body.registered_agent_name),
+    document_type: strOrNull(body.document_type),
+    case_number: strOrNull(body.case_number),
+    court_name: strOrNull(body.court_name),
+    jurisdiction: strOrNull(body.jurisdiction),
+    client_name: strOrNull(body.client_name),
+    attorney_name: strOrNull(body.attorney_name),
+    priority: strOrNull(body.priority),
+    deadline: strOrNull(body.deadline),
+    service_instructions: strOrNull(body.service_instructions),
+    notes: strOrNull(body.notes),
+    plaintiff_name: strOrNull(body.plaintiff_name),
+    defendant_name: strOrNull(body.defendant_name),
+    court_date: strOrNull(body.court_date),
+    ops: (body.ops && typeof body.ops === 'object') ? body.ops as Partial<ServeJobOps> : null,
+  });
+  return c.json({
+    address_class: preview.addressClass,
+    address_class_confirmed: preview.addressClassConfirmed,
+    venue: preview.venue,
+    venue_inferred: preview.venueInferred,
+    venue_label: preview.venueLabel,
+    windows: preview.windows,
+    fired_ids: preview.tree.firedIds,
+    fired_count: preview.tree.features.length,
+    catalog_size: preview.tree.catalogSize,
+    features: preview.tree.features,
+    note: preview.note,
+    ops: preview.ops,
+  });
+});
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
 sv.get('/', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
@@ -992,6 +1140,7 @@ sv.post('/', async (c) => {
     'max_attempts', 'service_instructions', 'notes', 'status', 'contract_id',
     'serve_fee', 'rush_fee', 'payment_status',
     'diligence_required', 'contact_restrictions', 'building_access_notes',
+    'court_date', 'document_text',
   ];
   const insertVals: any[] = [
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
@@ -1006,6 +1155,7 @@ sv.post('/', async (c) => {
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
     body.serve_fee ?? null, body.rush_fee ?? null, body.payment_status ?? 'unpaid',
     body.diligence_required ? 1 : 0, body.contact_restrictions ?? null, body.building_access_notes ?? null,
+    body.court_date ?? null, body.document_text ?? null,
   ];
   if (hasRecipientTypeOnCreate) {
     insertCols.push(
@@ -1034,7 +1184,11 @@ sv.post('/', async (c) => {
     `INSERT INTO serve_queue (${insertCols.join(', ')}) VALUES (${placeholders})`,
     ...insertVals,
   );
-  return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  const newId = r.meta.last_row_id;
+  if (newId && (body.ops || body.address_class)) {
+    await persistJobOps(dbPost, Number(newId), body).catch(() => {});
+  }
+  return c.json({ success: true, id: newId }, 201);
 });
 
 // ── Bulk status update ────────────────────────────────────────────────────────
@@ -1277,6 +1431,7 @@ sv.put('/:id', async (c) => {
     'next_attempt_note', 'urgency_tier',
     'serve_fee', 'rush_fee', 'payment_status',
     'diligence_required', 'mileage_actual', 'contact_restrictions', 'building_access_notes',
+    'court_date', 'document_text',
     'recipient_type',
     'business_name', 'business_dba', 'business_ein', 'business_sos_filing',
     'business_state_of_inc', 'registered_agent_name', 'registered_agent_title',
@@ -1353,6 +1508,7 @@ sv.put('/:id', async (c) => {
   }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  await persistJobOps(getDb(c.env), id, body).catch(() => {});
   // Fire-and-forget: if status was explicitly set to a terminal outcome,
   // sync back to the originating CFS call (if one exists).
   if (body.status === 'served' || body.status === 'failed') {
@@ -1366,7 +1522,7 @@ sv.put('/:id', async (c) => {
 // Updates parsed_data._intake.address_class in-place via json_set; leaves every
 // other key in parsed_data untouched.
 sv.patch('/:id/address-class', async (c) => {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
@@ -1393,7 +1549,35 @@ sv.patch('/:id/address-class', async (c) => {
   }
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  await persistJobOps(db, id, {
+    address_class: klass,
+    address_class_confirmed: confirmed,
+  }).catch(() => {});
   return c.json({ success: true, klass, confirmed });
+});
+
+// PATCH /:id/ops — scene/packet fields + rebuild venue/windows/tree in parsed_data.
+sv.patch('/:id/ops', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const db = getDb(c.env);
+  const preview = await persistJobOps(db, id, body);
+  if (!preview) return c.json({ error: 'Not found' }, 404);
+  if (typeof body.court_date === 'string' && await columnExists(db, 'serve_queue', 'court_date')) {
+    await execute(db, `UPDATE serve_queue SET court_date = ?, updated_at = datetime('now') WHERE id = ?`, body.court_date || null, id);
+  }
+  return c.json({
+    success: true,
+    venue: preview.venue,
+    venue_label: preview.venueLabel,
+    windows: preview.windows,
+    fired_ids: preview.tree.firedIds,
+    note: preview.note,
+    ops: preview.ops,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────

@@ -123,6 +123,14 @@ export interface TreeBuildInput {
   nowIso: string;
   gateCode?: string | null;
   hazardNotes?: string | null;
+  /** Operator override. `undefined` infers. `'none'` forces no overlay. */
+  venueOverride?: VenueKind | null;
+  dogsOnSite?: boolean;
+  camerasOnSite?: boolean;
+  noSunday?: boolean;
+  authorizedAcceptor?: string | null;
+  languageNeeded?: string | null;
+  physicalDescription?: string | null;
 }
 
 const get = (fields: Record<string, ExtractedField>, k: string) =>
@@ -135,6 +143,12 @@ function haystack(input: TreeBuildInput): string {
     input.queueRow.document_type, get(input.fields, 'document_subtype'),
     get(input.fields, 'documents_to_serve'), input.queueRow.service_instructions,
     input.queueRow.notes, get(input.fields, 'process_type'),
+    input.noSunday ? 'do not serve on sunday' : '',
+    input.authorizedAcceptor ? 'anyone authorized to accept' : '',
+    input.languageNeeded ? `bilingual ${input.languageNeeded}` : '',
+    input.dogsOnSite ? 'dog aggressive animal' : '',
+    input.gateCode ? `gate code ${input.gateCode}` : '',
+    input.camerasOnSite ? 'cameras on site' : '',
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -316,9 +330,21 @@ const DETECTORS: Detector[] = [
   ({ input }) => input.addressClass === 'po_box' ? feat('access.po_box', 'access', 'PO Box — Not a Service Address', [
     'A PO box is not a lawful place of personal service. Identify the physical street address and re-plan.',
   ]) : null,
-  ({ input }) => /\b(dog|canine|aggressive animal)\b/i.test(input.hazardNotes || '')
+  ({ input }) => input.dogsOnSite || /\b(dog|canine|aggressive animal)\b/i.test(input.hazardNotes || '')
     ? feat('access.animal_hazard', 'access', 'Animal / Dog Hazard On File', [
-      `Property hazard notes: ${input.hazardNotes}. Approach from cover; do not reach over a fence.`,
+      input.hazardNotes
+        ? `Property hazard notes: ${input.hazardNotes}. Approach from cover; do not reach over a fence.`
+        : 'Dogs flagged on this job. Approach from cover; do not reach over a fence. Announce from the vehicle if a gate is closed.',
+    ])
+    : null,
+  ({ input }) => input.camerasOnSite
+    ? feat('access.cameras', 'access', 'Cameras / Recording On Site', [
+      'Treat the approach as recorded. Stay professional, do not discuss case merits on camera, and photograph posted recording notices for the file.',
+    ])
+    : null,
+  ({ input }) => (input.physicalDescription || '').trim()
+    ? feat('identity.description', 'identity', 'Subject Description On File', [
+      `Match before tender: ${input.physicalDescription}. If they do not match, do not serve — log a failed identity check.`,
     ])
     : null,
   ({ h }) => includesAny(h, ['gate code', 'call box', 'buzzer', 'buzz unit'])
@@ -372,7 +398,12 @@ function feat(id: string, branch: TreeBranch, label: string, playbook: string[])
 export const OUTPUT_TREE_CATALOG_SIZE = DETECTORS.length;
 
 export function buildOutputTree(input: TreeBuildInput): OutputTree {
-  const venue = inferVenueKind(input.fullLocation, input.queueRow.recipient_name || get(input.fields, 'recipient_business_name'), input.queueRow.service_instructions);
+  const inferred = inferVenueKind(
+    input.fullLocation,
+    input.queueRow.recipient_name || get(input.fields, 'recipient_business_name'),
+    input.queueRow.service_instructions,
+  );
+  const venue = input.venueOverride != null ? input.venueOverride : inferred;
   const h = haystack(input);
   const features: TreeFeature[] = [];
   for (const det of DETECTORS) {
