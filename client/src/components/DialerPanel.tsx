@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { DIAL_RECORDING_READY_EVENT, DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 /** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
@@ -255,35 +255,10 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       } else if (message.type === 'recording_ready' || message.type === 'transcript_ready') {
         ingestDialConnect({
           type: 'call_status',
-          callSid: message.callSid,
+          callSid: 'callSid' in message ? message.callSid : undefined,
           recordingUrl: 'recordingUrl' in message ? message.recordingUrl : undefined,
           transcript: 'transcript' in message ? message.transcript : undefined,
         });
-        if (message.type === 'recording_ready') {
-          const recordingSid = message.recordingSid || message.recording_sid;
-          if (recordingSid) {
-            void apiFetch('/dial-connect-recordings', {
-              method: 'POST',
-              body: JSON.stringify({
-                recordingSid,
-                callSid: message.callSid || message.call_sid,
-                from: message.from,
-                to: message.to,
-                direction: message.direction,
-                startedAt: message.startedAt,
-                endedAt: message.endedAt,
-                durationSeconds: message.durationSeconds,
-                dispatcherName: message.dispatcherName,
-                transcript: message.transcript,
-                segments: message.segments,
-              }),
-            }).then(() => {
-              window.dispatchEvent(new CustomEvent(DIAL_RECORDING_READY_EVENT));
-            }).catch(() => {
-              /* ingest is best-effort; Dial Connect API-key POST is the durable path */
-            });
-          }
-        }
       } else if (message.type === 'duress_alert') {
         if (!poppedOut) revealDialer();
         onDuress?.(`Duress alert: ${message.dispatcherName}`);

@@ -23,10 +23,6 @@ vi.mock('../hooks/useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue({ ok: true, id: 1, created: true }),
 }));
 
-vi.mock('../hooks/useApi', () => ({
-  apiFetch: vi.fn().mockResolvedValue({}),
-}));
-
 function LocationProbe() {
   const loc = useLocation();
   return <div data-testid="loc">{loc.pathname}</div>;
@@ -258,24 +254,23 @@ describe('DialerPanel', () => {
     expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
   });
 
-  test('recording_ready posts the transcript into Flex', async () => {
+  test('recording_ready archives the call on Dialer Connect events', async () => {
     renderPanel();
     postDialConnectMessage({
       source: 'dial-connect',
       type: 'recording_ready',
-      recordingSid: 'REabcd1234',
-      transcript: 'Need an officer',
-      from: '+18015550100',
+      callSid: 'CAabcd1234',
+      recordingUrl: 'https://dialer.rmpgutah.us/rec.mp3',
     });
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/dial-connect-recordings',
+        '/dialer-connect/events',
         expect.objectContaining({ method: 'POST' }),
       );
     });
     const last = vi.mocked(apiFetch).mock.calls[vi.mocked(apiFetch).mock.calls.length - 1];
     const body = JSON.parse((last?.[1] as { body: string }).body);
-    expect(body.recordingSid).toBe('REabcd1234');
-    expect(body.transcript).toBe('Need an officer');
+    expect(body.callSid).toBe('CAabcd1234');
+    expect(body.recordingUrl).toBe('https://dialer.rmpgutah.us/rec.mp3');
   });
 });

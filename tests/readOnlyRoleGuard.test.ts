@@ -54,7 +54,7 @@ describe('client_viewer cannot READ sensitive resources', () => {
     ['/api/use-of-force/1', 'use-of-force reports'],
     ['/api/hr/disciplinary', 'HR disciplinary records'],
     ['/api/personnel/credentials', 'officer credentials'],
-    ['/api/dial-connect-recordings', 'Dial Connect call recordings and transcripts'],
+    ['/api/dialer-connect/calls', 'Dial Connect call recordings and transcripts'],
   ] as const;
 
   for (const [path, what] of SAMPLES) {

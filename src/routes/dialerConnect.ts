@@ -22,8 +22,10 @@ import {
   parseTagList,
   serializeTags,
   callsToCsv,
+  voicemailsToCsv,
   timingSafeEqual,
   DISPOSITIONS,
+  assertMinFunctions,
 } from '../utils/dialerConnect';
 
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
@@ -231,11 +233,7 @@ dialerConnectIngest.post('/', async (c) => {
 dialerConnect.use('*', operational);
 
 dialerConnect.get('/functions', (c) => {
-  return c.json({
-    dialer: 12,
-    voicemail: 12,
-    history: 12,
-  });
+  return c.json(assertMinFunctions());
 });
 
 dialerConnect.post('/events', async (c) => {
@@ -272,7 +270,7 @@ dialerConnect.get('/calls', async (c) => {
   if (missed) { where.push("status IN ('missed','failed','busy')"); }
   if (starred) { where.push('starred = 1'); }
   if (from) { where.push('started_at >= ?'); binds.push(from); }
-  if (to) { where.push('started_at <= ?'); binds.push(to); }
+  if (to) { where.push('started_at <= ?'); binds.push(to.includes(' ') ? to : `${to} 23:59:59`); }
   if (q) {
     const digits = last10Digits(q);
     const text = containsAnyClause(['from_name', 'to_name', 'agent_name', 'notes', 'transcript', 'from_number', 'to_number']);
@@ -296,8 +294,11 @@ dialerConnect.get('/calls/summary', async (c) => {
   const db = getDb(c.env);
   await ensureSchema(db);
   const from = c.req.query('from') || '';
-  const extra = from ? 'AND started_at >= ?' : '';
-  const binds = from ? [from] : [];
+  const to = c.req.query('to') || '';
+  const extra: string[] = [];
+  const binds: unknown[] = [];
+  if (from) { extra.push('AND started_at >= ?'); binds.push(from); }
+  if (to) { extra.push('AND started_at <= ?'); binds.push(to.includes(' ') ? to : `${to} 23:59:59`); }
   const row = await queryFirst<{
     total: number; inbound: number; outbound: number; missed: number; recorded: number;
     avg_duration: number | null;
@@ -308,17 +309,43 @@ dialerConnect.get('/calls/summary', async (c) => {
       SUM(CASE WHEN status IN ('missed','failed','busy') THEN 1 ELSE 0 END) AS missed,
       SUM(CASE WHEN recording_r2_key IS NOT NULL OR recording_source_url IS NOT NULL THEN 1 ELSE 0 END) AS recorded,
       AVG(duration_seconds) AS avg_duration
-    FROM dialer_calls WHERE 1=1 ${extra}`, ...binds);
+    FROM dialer_calls WHERE 1=1 ${extra.join(' ')}`, ...binds);
   return c.json({ data: row });
 });
 
 dialerConnect.get('/calls/export.csv', async (c) => {
   const db = getDb(c.env);
   await ensureSchema(db);
+  const q = (c.req.query('q') || '').trim();
+  const direction = c.req.query('direction') || '';
+  const missed = c.req.query('missed') === '1';
+  const from = c.req.query('from') || '';
+  const to = c.req.query('to') || '';
+  const starred = c.req.query('starred') === '1';
+  const where: string[] = ['1=1'];
+  const binds: unknown[] = [];
+  if (isCallDirection(direction)) { where.push('direction = ?'); binds.push(direction); }
+  if (missed) { where.push("status IN ('missed','failed','busy')"); }
+  if (starred) { where.push('starred = 1'); }
+  if (from) { where.push('started_at >= ?'); binds.push(from); }
+  if (to) { where.push('started_at <= ?'); binds.push(to.includes(' ') ? to : `${to} 23:59:59`); }
+  if (q) {
+    const digits = last10Digits(q);
+    const text = containsAnyClause(['from_name', 'to_name', 'agent_name', 'notes', 'transcript', 'from_number', 'to_number']);
+    if (digits.length >= 4) {
+      where.push(`(${text.sql} OR instr(replace(ifnull(from_number,''),'+',''), ?) > 0 OR instr(replace(ifnull(to_number,''),'+',''), ?) > 0)`);
+      binds.push(...text.binds(q), digits, digits);
+    } else {
+      where.push(text.sql);
+      binds.push(...text.binds(q));
+    }
+  }
   const rows = await query<Record<string, unknown>>(db,
     `SELECT id, call_sid, direction, status, from_number, to_number, from_name, to_name,
             agent_name, started_at, ended_at, duration_seconds, disposition, starred, call_id, notes
-     FROM dialer_calls ORDER BY datetime(COALESCE(started_at, created_at)) DESC LIMIT 2000`);
+     FROM dialer_calls WHERE ${where.join(' AND ')}
+     ORDER BY datetime(COALESCE(started_at, created_at)) DESC LIMIT 2000`,
+    ...binds);
   const csv = callsToCsv(rows);
   return new Response(csv, {
     headers: {
@@ -414,6 +441,36 @@ dialerConnect.get('/voicemails', async (c) => {
     ...binds, limit,
   );
   return c.json({ data: rows });
+});
+
+dialerConnect.get('/voicemails/summary', async (c) => {
+  const db = getDb(c.env);
+  await ensureSchema(db);
+  const row = await queryFirst<{ unread: number; total: number; urgent: number }>(db, `SELECT
+      SUM(CASE WHEN is_read = 0 AND archived = 0 THEN 1 ELSE 0 END) AS unread,
+      SUM(CASE WHEN archived = 0 THEN 1 ELSE 0 END) AS total,
+      SUM(CASE WHEN archived = 0 AND urgency IN ('urgent','emergency') THEN 1 ELSE 0 END) AS urgent
+    FROM dialer_voicemails`);
+  return c.json({ data: row });
+});
+
+dialerConnect.get('/voicemails/export.csv', async (c) => {
+  const db = getDb(c.env);
+  await ensureSchema(db);
+  const archived = c.req.query('archived') === '1';
+  const rows = await query<Record<string, unknown>>(db,
+    `SELECT id, call_sid, from_number, from_name, to_number, mailbox, duration_seconds,
+            urgency, is_read, starred, archived, assigned_name, received_at, call_id, notes, transcript
+     FROM dialer_voicemails WHERE archived = ?
+     ORDER BY datetime(COALESCE(received_at, created_at)) DESC LIMIT 2000`,
+    archived ? 1 : 0,
+  );
+  return new Response(voicemailsToCsv(rows), {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="dialer-voicemail.csv"',
+    },
+  });
 });
 
 dialerConnect.post('/voicemails', async (c) => {
