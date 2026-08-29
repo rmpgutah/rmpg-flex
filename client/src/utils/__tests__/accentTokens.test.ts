@@ -771,7 +771,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10507 -> 10515: email Azure-config PR adds no text-rmpg-* utilities
   // (AdminEmailTab env-var hint uses text-fg-muted). Verified scan of the
   // working tree is 10515 — main's pin was already stale by 8.
-  const PIN = 10515;
+  // 10515 -> 10525: FlexOS/dispatcher workbench depth (#3959) added CSV
+  // export UI that still uses text-rmpg-*; pin was stale on main by 10.
+  const PIN = 10525;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
