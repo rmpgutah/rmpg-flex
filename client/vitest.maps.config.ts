@@ -24,7 +24,8 @@ export default defineConfig({
       'src/hooks/__tests__/useVectorTileLayers.labels.test.ts',
       'src/hooks/__tests__/useVectorTileLayers.osm.test.ts',
       'src/hooks/__tests__/weatherAlertFeatures.test.ts',
-      'src/hooks/__tests__/mapInfoPanelWeather.test.ts',
+      'src/hooks/__tests__/useMapFeatureInspect.test.ts',
+      'src/pages/map/hooks/__tests__/useLayerFavorites.test.ts',
     ],
     // Exclude desktop components to avoid duplicating the desktop job's scope.
     exclude: ['src/components/desktop/**'],

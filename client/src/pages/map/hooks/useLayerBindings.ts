@@ -48,6 +48,7 @@ const NON_COLLAPSIBLE_GROUPS: ReadonlySet<MapLayerGroup> = new Set<MapLayerGroup
 export function buildDockSections(
   groups: MapLayerGroup[],
   bindings: LayerBindingMap,
+  favorites?: { ids: ReadonlySet<string>; onToggle: (id: string) => void },
 ): DockSectionData[] {
   return groups.map((group) => {
     const items = MAP_LAYER_REGISTRY
@@ -65,6 +66,8 @@ export function buildDockSections(
           onToggle: binding.onToggle,
           loading: binding.loading,
           error: binding.error,
+          favorite: favorites?.ids.has(layer.id),
+          onToggleFavorite: favorites ? () => favorites.onToggle(layer.id) : undefined,
         };
       });
     const osm = group.startsWith('OSM');

@@ -21,7 +21,7 @@ import {
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
-  Navigation, Globe, Zap, Hash, BarChart3, X,
+  Navigation, Globe, Zap, Hash, BarChart3, X, Pencil,
 } from 'lucide-react';
 
 import {
@@ -117,6 +117,7 @@ import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './ho
 import { useEnRouteEta } from './hooks/useEnRouteEta';
 import { useMapWelfare } from './hooks/useMapWelfare';
 import { useMapBeatOverlay } from './hooks/useMapBeatOverlay';
+import { useLayerFavorites } from './hooks/useLayerFavorites';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import { MapContext } from './MapContext';
@@ -643,7 +644,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   } | null>(null);
   const [visibleOsmGroups, setVisibleOsmGroups] = useState<string[]>([]);
   const osmOverrides = useOsmOverrides(visibleOsmGroups);
-  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
+  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded, { units, calls });
 
   const vectorTiles = useVectorTileLayers({
     map: mapRef.current,
@@ -771,6 +772,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
   const [showWeatherMenu, setShowWeatherMenu] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [editingBookmarkId, setEditingBookmarkId] = useState<string | null>(null);
+  const [editingBookmarkName, setEditingBookmarkName] = useState('');
   const [legendOpen, setLegendOpen] = useState(false);
   const [gpsHudOpen, setGpsHudOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -1476,13 +1479,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     }
   }, [layerBindings]);
 
+  const layerFavorites = useLayerFavorites();
   const mapLeftDockSections = useMemo(
-    () => buildDockSections(LEFT_DOCK_GROUPS, layerBindings),
-    [layerBindings],
+    () => buildDockSections(LEFT_DOCK_GROUPS, layerBindings, {
+      ids: layerFavorites.set,
+      onToggle: layerFavorites.toggle,
+    }),
+    [layerBindings, layerFavorites.set, layerFavorites.toggle],
   );
   const mapRightDockSections = useMemo(
-    () => buildDockSections(RIGHT_DOCK_GROUPS, layerBindings),
-    [layerBindings],
+    () => buildDockSections(RIGHT_DOCK_GROUPS, layerBindings, {
+      ids: layerFavorites.set,
+      onToggle: layerFavorites.toggle,
+    }),
+    [layerBindings, layerFavorites.set, layerFavorites.toggle],
   );
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
@@ -2158,9 +2168,41 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     style={{ borderRadius: '50%', background: bm.color, boxShadow: `0 0 4px ${withAlpha(bm.color, '80')}` }}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
+                    {editingBookmarkId === bm.id ? (
+                      <input
+                        aria-label={`Rename ${bm.name}`}
+                        value={editingBookmarkName}
+                        autoFocus
+                        className="w-full bg-surface-sunken border border-border-subtle px-1 text-[10px] text-rmpg-200"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingBookmarkName(e.target.value)}
+                        onBlur={() => {
+                          const name = editingBookmarkName.trim();
+                          if (name) mapBookmarks.updateBookmark(bm.id, { name });
+                          setEditingBookmarkId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') setEditingBookmarkId(null);
+                        }}
+                      />
+                    ) : (
+                      <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
+                    )}
                     <div className="text-[8px] text-rmpg-500">{bmDate}</div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingBookmarkId(bm.id);
+                      setEditingBookmarkName(bm.name);
+                    }}
+                    aria-label={`Rename bookmark ${bm.name}`}
+                    className="text-rmpg-500 hover:text-rmpg-200 shrink-0 p-0.5"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); mapBookmarks.removeBookmark(bm.id); }}
                     aria-label={`Remove bookmark ${bm.name}`}

@@ -9,6 +9,9 @@
 import { useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 
+/** Utilitarian CAD ink — not field-label gold. */
+export const PRINT_WATERMARK_INK = '#c3ccd6';
+
 // ── Hook ──────────────────────────────────────────────────
 
 export function useMapPrintExport(
@@ -56,7 +59,7 @@ export function useMapPrintExport(
 
         // Text
         ctx.font = '11px ui-monospace, monospace';
-        ctx.fillStyle = '#d4a017';
+        ctx.fillStyle = PRINT_WATERMARK_INK;
         ctx.textBaseline = 'middle';
         ctx.fillText(watermark, 10, height - 14);
 
