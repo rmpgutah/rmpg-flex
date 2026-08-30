@@ -1,11 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent } from '@testing-library/react';
 import PromptDialog from '../PromptDialog';
 
 describe('PromptDialog', () => {
-  it('submits trimmed text and closes via Confirm', async () => {
-    const user = userEvent.setup();
+  it('submits trimmed text and closes via Confirm', () => {
     const onSubmit = vi.fn();
     const onClose = vi.fn();
     render(
@@ -22,14 +20,12 @@ describe('PromptDialog', () => {
     );
     const input = screen.getByLabelText('Name');
     expect(input).toHaveValue('New Group');
-    await user.clear(input);
-    await user.type(input, '  Patrol  ');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.change(input, { target: { value: '  Patrol  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     expect(onSubmit).toHaveBeenCalledWith('Patrol');
   });
 
-  it('disables Confirm when empty unless allowEmpty', async () => {
-    const user = userEvent.setup();
+  it('disables Confirm when empty unless allowEmpty', () => {
     const onSubmit = vi.fn();
     render(
       <PromptDialog
@@ -43,12 +39,11 @@ describe('PromptDialog', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'OK' })).toBeDisabled();
-    await user.type(screen.getByLabelText('URL'), 'https://example.com');
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://example.com' } });
     expect(screen.getByRole('button', { name: 'OK' })).toBeEnabled();
   });
 
-  it('allows a blank submit when allowEmpty is set', async () => {
-    const user = userEvent.setup();
+  it('allows a blank submit when allowEmpty is set', () => {
     const onSubmit = vi.fn();
     render(
       <PromptDialog
@@ -63,8 +58,8 @@ describe('PromptDialog', () => {
         confirmLabel="Set"
       />,
     );
-    await user.clear(screen.getByLabelText('Goal'));
-    await user.click(screen.getByRole('button', { name: 'Set' }));
+    fireEvent.change(screen.getByLabelText('Goal'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set' }));
     expect(onSubmit).toHaveBeenCalledWith('');
   });
 });
