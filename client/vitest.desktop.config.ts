@@ -10,6 +10,7 @@ export default defineConfig({
     include: [
       'src/components/desktop/**/*.test.ts',
       'src/components/desktop/**/*.test.tsx',
+      'src/pages/DesktopPage.test.tsx',
     ],
     testTimeout: 20_000,
   },

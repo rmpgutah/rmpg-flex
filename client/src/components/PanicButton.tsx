@@ -6,7 +6,6 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { useToast } from './ToastProvider';
 import ConfirmDialog from './ConfirmDialog';
-import PromptDialog from './PromptDialog';
 import { safeTimeStr } from '../utils/dateUtils';
 import { playTone } from '../utils/dispatchTones';
 
