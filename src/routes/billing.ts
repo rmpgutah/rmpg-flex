@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, executeBatch } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { log } from '../utils/logger';
@@ -20,6 +20,78 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
   if (!u || !roles.includes(u.role)) return 'Insufficient role';
   return null;
 }
+
+const VALID_LINE_TYPES = new Set([
+  'custom', 'contract', 'contract_base', 'service_hours', 'incident_response',
+  'dispatch_call', 'citation', 'late_fee', 'discount', 'pso_client_request',
+]);
+
+let _invoiceSchemaEnsured = false;
+export async function ensureInvoiceSchema(db: ReturnType<typeof getDb>): Promise<void> {
+  if (_invoiceSchemaEnsured) return;
+  const invoiceCols: Array<[string, string]> = [
+    ['period_start', 'TEXT'],
+    ['period_end', 'TEXT'],
+    ['internal_notes', 'TEXT'],
+  ];
+  const itemCols: Array<[string, string]> = [
+    ['line_type', "TEXT DEFAULT 'custom'"],
+    ['linked_entity_type', 'TEXT'],
+    ['linked_entity_id', 'INTEGER'],
+  ];
+  for (const [col, type] of invoiceCols) {
+    try {
+      if (!(await columnExists(db, 'invoices', col))) {
+        await db.prepare(`ALTER TABLE invoices ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch { /* race / already-applied — tolerated */ }
+  }
+  for (const [col, type] of itemCols) {
+    try {
+      if (!(await columnExists(db, 'invoice_line_items', col))) {
+        await db.prepare(`ALTER TABLE invoice_line_items ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch { /* race / already-applied — tolerated */ }
+  }
+  _invoiceSchemaEnsured = true;
+}
+
+function roundCents(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function computeLineTotal(lineType: string, qty: number, price: number): number {
+  const raw = roundCents(qty * price);
+  if (lineType === 'discount') return -Math.abs(raw);
+  return raw;
+}
+
+function normalizeLineType(raw: unknown): string {
+  const t = String(raw ?? 'custom').trim() || 'custom';
+  return VALID_LINE_TYPES.has(t) ? t : 'custom';
+}
+
+/** Map live D1 invoice columns onto the shape InvoicesPage / AdminInvoiceTab render. */
+function shapeInvoice(row: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!row) return null;
+  const total = Number(row.total_amount ?? row.total ?? 0) || 0;
+  const paid = Number(row.paid_amount ?? row.amount_paid ?? 0) || 0;
+  return {
+    ...row,
+    total,
+    amount_paid: paid,
+    balance_due: roundCents(total - paid),
+    period_start: row.period_start || row.issue_date || '',
+    period_end: row.period_end || row.due_date || '',
+    discount_amount: Number(row.discount_amount ?? 0) || 0,
+    late_fee_amount: Number(row.late_fee_amount ?? 0) || 0,
+  };
+}
+
+const INVOICE_LIST_SQL = `SELECT i.*, cl.name AS client_name,
+         cl.billing_email AS billing_email, cl.billing_address AS billing_address,
+         COALESCE(cl.payment_terms, 'Net 30') AS payment_terms
+       FROM invoices i LEFT JOIN clients cl ON i.client_id = cl.id`;
 
 async function generateInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
   const yy = String(new Date().getFullYear()).slice(-2);
@@ -116,6 +188,7 @@ billing.post('/contracts', async (c) => {
 billing.get('/invoices', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='invoices'");
     if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
@@ -131,9 +204,9 @@ billing.get('/invoices', async (c) => {
     const offset = (page - 1) * perPage;
     const count = await queryFirst<{ total: number }>(db, `SELECT COUNT(*) as total FROM invoices i ${where}`, ...params);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT i.*, cl.name AS client_name FROM invoices i LEFT JOIN clients cl ON i.client_id = cl.id ${where} ORDER BY i.issue_date DESC LIMIT ? OFFSET ?`, ...params, perPage, offset);
+      `${INVOICE_LIST_SQL} ${where} ORDER BY i.issue_date DESC LIMIT ? OFFSET ?`, ...params, perPage, offset);
     const total = count?.total ?? 0;
-    return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
+    return c.json({ data: rows.map((r) => shapeInvoice(r)!), pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
     log.error('GET /invoices failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to list invoices' }, 500);
@@ -150,22 +223,36 @@ billing.get('/invoices', async (c) => {
 billing.get('/invoices/:id', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const invoice = await queryFirst<Record<string, unknown>>(db,
-      `SELECT i.*, cl.name AS client_name FROM invoices i
+      `SELECT i.*, cl.name AS client_name,
+              cl.billing_email AS billing_email, cl.billing_address AS billing_address,
+              COALESCE(cl.payment_terms, 'Net 30') AS payment_terms,
+              u.full_name AS created_by_name
+       FROM invoices i
        LEFT JOIN clients cl ON i.client_id = cl.id
+       LEFT JOIN users u ON u.id = i.created_by
        WHERE i.id = ?`, id);
     if (!invoice) return c.json({ error: 'Invoice not found', code: 'NOT_FOUND' }, 404);
     const lineItems = await query<Record<string, unknown>>(db,
-      `SELECT id, invoice_id, line_type, description, quantity, unit_price,
-              line_total AS amount, sort_order, created_at
+      `SELECT id, invoice_id, COALESCE(line_type, 'custom') AS line_type, description, quantity, unit_price,
+              line_total AS amount, sort_order, created_at, linked_entity_type, linked_entity_id
        FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id`, id);
+    const discountAmount = roundCents(lineItems.filter((i) => i.line_type === 'discount').reduce((s, i) => s + Math.abs(Number(i.amount) || 0), 0));
+    const lateFeeAmount = roundCents(lineItems.filter((i) => i.line_type === 'late_fee').reduce((s, i) => s + (Number(i.amount) || 0), 0));
     const payments = await query<Record<string, unknown>>(db,
       `SELECT p.*, u.full_name AS recorded_by_name FROM payments p
        LEFT JOIN users u ON p.recorded_by = u.id
        WHERE p.invoice_id = ? ORDER BY p.payment_date DESC`, id);
-    return c.json({ data: { ...invoice, line_items: lineItems, payments } });
+    return c.json({ data: {
+      ...shapeInvoice(invoice),
+      discount_amount: discountAmount,
+      late_fee_amount: lateFeeAmount,
+      line_items: lineItems,
+      payments,
+    } });
   } catch (err) {
     log.error('GET /invoices/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to fetch invoice' }, 500);
@@ -177,18 +264,21 @@ billing.post('/invoices', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const userId = c.get('userId') as number;
     const b = await c.req.json<Record<string, unknown>>();
     if (!b.client_id) return c.json({ error: 'client_id required' }, 400);
     const invoiceNumber = await generateInvoiceNumber(db);
+    const issueDate = typeof b.issue_date === 'string' && b.issue_date ? b.issue_date : null;
     const dueDate = b.due_date ?? new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     const result = await execute(db,
-      `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, due_date, tax_rate, status, notes, created_by)
-       VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, ?)`,
-      invoiceNumber, b.client_id, b.contract_id ?? null, dueDate, b.tax_rate ?? 0, 'draft', b.notes ?? null, userId);
+      `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, due_date, tax_rate, status, notes, created_by, period_start, period_end, internal_notes)
+       VALUES (?, ?, ?, COALESCE(?, date('now')), ?, ?, ?, ?, ?, ?, ?, ?)`,
+      invoiceNumber, b.client_id, b.contract_id ?? null, issueDate, dueDate, b.tax_rate ?? 0, 'draft', b.notes ?? null, userId,
+      b.period_start ?? null, b.period_end ?? null, b.internal_notes ?? null);
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', newId);
-    return c.json({ data: created, invoice_number: invoiceNumber }, 201);
+    return c.json({ data: shapeInvoice(created), invoice_number: invoiceNumber }, 201);
   } catch (err) {
     log.error('POST /invoices failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to create invoice' }, 500);
@@ -207,6 +297,7 @@ billing.put('/invoices/:id', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const userId = c.get('userId') as number;
     const id = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
@@ -252,7 +343,7 @@ billing.put('/invoices/:id', async (c) => {
       }
     }
 
-    const updatable = new Set(['client_id','contract_id','due_date','tax_rate','status','notes']);
+    const updatable = new Set(['client_id','contract_id','due_date','tax_rate','status','notes','period_start','period_end','internal_notes','issue_date']);
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
@@ -270,7 +361,7 @@ billing.put('/invoices/:id', async (c) => {
         actorId: userId,
       });
     } catch { /* best-effort */ }
-    return c.json({ data: updated });
+    return c.json({ data: shapeInvoice(updated) });
   } catch (err) {
     log.error('PUT /invoices/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to update invoice' }, 500);
@@ -316,19 +407,25 @@ billing.post('/invoices/:id/items', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const invoiceId = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.description !== 'string' || !b.description.trim()) return c.json({ error: 'description required' }, 400);
-    const qty = typeof b.quantity === 'number' ? b.quantity : 1;
-    const price = typeof b.unit_price === 'number' ? b.unit_price : 0;
-    const lineTotal = Math.round(qty * price * 100) / 100;
+    const qty = b.quantity == null || b.quantity === '' ? 1 : Number(b.quantity);
+    const price = b.unit_price == null || b.unit_price === '' ? 0 : Number(b.unit_price);
+    if (!Number.isFinite(qty) || qty <= 0) return c.json({ error: 'quantity must be a positive number' }, 400);
+    if (!Number.isFinite(price)) return c.json({ error: 'unit_price must be a number' }, 400);
+    const lineType = normalizeLineType(b.line_type);
+    const lineTotal = computeLineTotal(lineType, qty, price);
+    const taxApplied = lineType === 'discount' ? 0 : (b.tax_applied ?? 1);
     await execute(db,
-      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      invoiceId, b.description, qty, price, lineTotal, b.tax_applied ?? 1, b.sort_order ?? 0, b.line_type ?? 'custom');
+      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type, linked_entity_type, linked_entity_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      invoiceId, b.description.trim(), qty, price, lineTotal, taxApplied, b.sort_order ?? 0, lineType,
+      b.linked_entity_type ?? null, b.linked_entity_id ?? null);
     await recalcInvoiceTotal(db, invoiceId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
-    return c.json({ data: updated }, 201);
+    return c.json({ data: shapeInvoice(updated) }, 201);
   } catch (err) {
     log.error('POST /invoices/:id/items failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to add line item' }, 500);
@@ -345,54 +442,103 @@ billing.delete('/invoices/:id/items/:itemId', async (c) => {
     await execute(db, 'DELETE FROM invoice_line_items WHERE id = ? AND invoice_id = ?', itemId, invoiceId);
     await recalcInvoiceTotal(db, invoiceId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
-    return c.json({ data: updated });
+    return c.json({ data: shapeInvoice(updated) });
   } catch (err) {
     log.error('DELETE /invoices/:id/items/:itemId failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to delete line item' }, 500);
   }
 });
 
-// POST /invoices/:id/generate — AdminInvoiceTab.tsx's "Regenerate" button
-// called this and it 404'd (route never existed). Only 'flat' rate_type
-// contracts can be safely auto-priced without additional data (hourly/
-// per_call/per_officer would need real hours/call-count/officer-count
-// records this endpoint has no access to) — returns a clear 400 for those
-// rather than guessing at a wrong amount.
+// POST /invoices/:id/generate — rebuild auto-priced lines:
+//   • flat-rate contract line (line_type contract_base)
+//   • one PSO Client Request line per unbilled CFS of that type in the
+//     invoice period (line_type pso_client_request, linked to the call)
+// Manual custom lines are left in place. Hourly/per-call contracts still
+// cannot be auto-priced and are skipped (not a 400) when PSO lines exist.
 billing.post('/invoices/:id/generate', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'contract_manager');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const invoiceId = parseInt(c.req.param('id'), 10);
-    const invoice = await queryFirst<{ contract_id: number | null; status: string }>(db, 'SELECT contract_id, status FROM invoices WHERE id = ?', invoiceId);
+    const invoice = await queryFirst<{
+      contract_id: number | null; status: string; client_id: number | null;
+      period_start: string | null; period_end: string | null;
+      issue_date: string | null; due_date: string | null;
+    }>(db, 'SELECT contract_id, status, client_id, period_start, period_end, issue_date, due_date FROM invoices WHERE id = ?', invoiceId);
     if (!invoice) return c.json({ error: 'Invoice not found' }, 404);
     if (invoice.status !== 'draft') {
       return c.json({ error: `Cannot regenerate a '${invoice.status}' invoice — only draft invoices can be regenerated (regenerating a sent/paid invoice would silently invalidate recorded payments).` }, 400);
     }
-    if (!invoice.contract_id) {
-      return c.json({ error: 'Invoice has no linked contract to regenerate line items from' }, 400);
+
+    const stmts: { sql: string; bindings?: unknown[] }[] = [
+      { sql: `DELETE FROM invoice_line_items WHERE invoice_id = ? AND (
+                line_type IN ('contract', 'contract_base')
+                OR (line_type = 'pso_client_request' AND linked_entity_type = 'call')
+              )`, bindings: [invoiceId] },
+    ];
+    let inserted = 0;
+
+    if (invoice.contract_id) {
+      const contract = await queryFirst<{ contract_number: string | null; billing_cycle: string; rate_amount: number | null; rate_type: string }>(
+        db, 'SELECT contract_number, billing_cycle, rate_amount, rate_type FROM client_contracts WHERE id = ?', invoice.contract_id);
+      if (!contract) return c.json({ error: 'Linked contract not found' }, 404);
+      if (contract.rate_type === 'flat' && contract.rate_amount != null) {
+        const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
+        stmts.push({
+          sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+                VALUES (?, ?, 1, ?, ?, 1, 0, 'contract_base')`,
+          bindings: [invoiceId, description, contract.rate_amount, contract.rate_amount],
+        });
+        inserted++;
+      }
     }
-    const contract = await queryFirst<{ contract_number: string | null; billing_cycle: string; rate_amount: number | null; rate_type: string }>(
-      db, 'SELECT contract_number, billing_cycle, rate_amount, rate_type FROM client_contracts WHERE id = ?', invoice.contract_id);
-    if (!contract) return c.json({ error: 'Linked contract not found' }, 404);
-    if (contract.rate_type !== 'flat' || contract.rate_amount == null) {
+
+    const periodStart = invoice.period_start || invoice.issue_date;
+    const periodEnd = invoice.period_end || invoice.due_date || invoice.issue_date;
+    if (invoice.client_id && periodStart && periodEnd) {
+      const clientRates = await queryFirst<{ rate_per_cfs: number | null; rate_per_incident: number | null }>(
+        db, 'SELECT rate_per_cfs, rate_per_incident FROM clients WHERE id = ?', invoice.client_id);
+      const unitPrice = Number(clientRates?.rate_per_cfs || clientRates?.rate_per_incident || 0) || 0;
+      const billed = await query<{ linked_entity_id: number }>(db,
+        `SELECT linked_entity_id FROM invoice_line_items
+         WHERE line_type = 'pso_client_request' AND linked_entity_type = 'call'
+           AND linked_entity_id IS NOT NULL AND invoice_id != ?`, invoiceId);
+      const billedSet = new Set(billed.map((r) => Number(r.linked_entity_id)));
+      const calls = await query<{ id: number; call_number: string | null; location_address: string | null }>(db,
+        `SELECT id, call_number, location_address FROM calls_for_service
+         WHERE client_id = ? AND incident_type = 'pso_client_request'
+           AND date(COALESCE(received_at, created_at)) >= date(?)
+           AND date(COALESCE(received_at, created_at)) <= date(?)
+         ORDER BY id`,
+        invoice.client_id, periodStart, periodEnd);
+      let sort = 10;
+      for (const call of calls) {
+        if (billedSet.has(call.id)) continue;
+        const num = call.call_number || `#${call.id}`;
+        const addr = call.location_address ? ` — ${call.location_address}` : '';
+        const description = `PSO Client Request ${num}${addr}`;
+        stmts.push({
+          sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type, linked_entity_type, linked_entity_id)
+                VALUES (?, ?, 1, ?, ?, 1, ?, 'pso_client_request', 'call', ?)`,
+          bindings: [invoiceId, description, unitPrice, unitPrice, sort, call.id],
+        });
+        sort++;
+        inserted++;
+      }
+    }
+
+    if (inserted === 0) {
       return c.json({
-        error: `Cannot auto-regenerate line items for rate_type '${contract.rate_type}' — only 'flat' contracts can be priced without additional usage data (hours/calls/officers). Add line items manually.`,
+        error: 'Nothing to auto-generate. Link a flat-rate contract, or add a billing period covering PSO Client Request calls for this client (or add line items manually).',
       }, 400);
     }
-    // Only remove previously auto-generated ('contract') lines — a user who
-    // added custom manual lines shouldn't lose them when clicking Regenerate.
-    // DELETE + INSERT batched atomically so a failure never leaves the
-    // invoice with its old lines gone and no new ones.
-    const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
-    await executeBatch(db, [
-      { sql: "DELETE FROM invoice_line_items WHERE invoice_id = ? AND line_type = 'contract'", bindings: [invoiceId] },
-      { sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
-              VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`, bindings: [invoiceId, description, contract.rate_amount, contract.rate_amount] },
-    ]);
+
+    await executeBatch(db, stmts);
     await recalcInvoiceTotal(db, invoiceId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
-    return c.json({ data: updated });
+    return c.json({ data: shapeInvoice(updated) });
   } catch (err) {
     log.error('POST /invoices/:id/generate failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to regenerate line items' }, 500);
