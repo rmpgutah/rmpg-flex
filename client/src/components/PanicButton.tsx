@@ -672,7 +672,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                       style={{ border: '1px solid var(--border-default)' }}
                     />
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => { void submitPanicNotes(); }} className="flex-1 btn-primary py-1.5 text-[10px] font-bold uppercase">
+                      <button type="button" onClick={() => { void submitPanicNotes(notesText); }} className="flex-1 btn-primary py-1.5 text-[10px] font-bold uppercase">
                         Submit
                       </button>
                       <button
@@ -730,7 +730,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => void submitPanicNotes()}
+                        onClick={() => void submitPanicNotes(notesText)}
                         className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider"
                         style={{ background: 'var(--surface-raised)', border: '1px solid rgba(var(--sev-ok-rgb) / 0.5)', color: 'var(--sev-ok)' }}
                       >
@@ -770,7 +770,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
         isOpen={notesKind !== null}
         onClose={() => setNotesKind(null)}
         onConfirm={() => {
-          void submitPanicNotes();
+          void submitPanicNotes(notesText);
         }}
         title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — resolve'}
         message={
