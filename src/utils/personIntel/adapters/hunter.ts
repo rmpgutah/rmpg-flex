@@ -7,7 +7,8 @@ const SRC = 'HunterIO';
 export async function queryHunter(db: D1Database, seed: IntelSeed): Promise<SourceResult> {
   const t0 = Date.now();
   if (!seed.email) return makeSourceResult(SRC, 2, 'skipped', [], [], Date.now() - t0);
-  const apiKey = await getKey(db, 'hunter_api_key');
+  let apiKey = await getKey(db, 'hunter_api_key');
+  if (!apiKey?.trim()) apiKey = await getKey(db, 'hunter_io_api_key');
   if (!apiKey) return makeSourceResult(SRC, 2, 'not_configured', [], [], Date.now() - t0);
 
   try {

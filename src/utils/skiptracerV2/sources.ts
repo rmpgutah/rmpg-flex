@@ -25,6 +25,12 @@ export const SKIPTRACER_V2_SOURCES: SourceDefinition[] = [
   { name: 'usps', displayName: 'USPS Address', category: 'property', costPerLookup: 0, openSource: false, configKey: 'usps_user_id' },
   { name: 'open_corporates', displayName: 'OpenCorporates', category: 'business', costPerLookup: 0, openSource: false, configKey: 'opencorporates_api_key' },
   { name: 'numverify', displayName: 'NumVerify', category: 'osint', costPerLookup: 0, openSource: false, configKey: 'numverify_api_key' },
+  { name: 'usa_people_search', displayName: 'USA People Search (RapidAPI)', category: 'people', costPerLookup: 0, openSource: false, configKey: 'usa_people_search_rapidapi_key' },
+  { name: 'hunter', displayName: 'Hunter.io', category: 'people', costPerLookup: 0, openSource: false, configKey: 'hunter_io_api_key' },
+  { name: 'pdl', displayName: 'People Data Labs', category: 'people', costPerLookup: 0, openSource: false, configKey: 'pdl_api_key' },
+  { name: 'apollo', displayName: 'Apollo People Search', category: 'people', costPerLookup: 0, openSource: false, configKey: 'apollo_api_key' },
+  { name: 'hibp', displayName: 'Have I Been Pwned', category: 'osint', costPerLookup: 0, openSource: false, configKey: 'hibp_api_key' },
+  { name: 'courtlistener', displayName: 'CourtListener', category: 'registry', costPerLookup: 0, openSource: true, configKey: 'courtlistener_token' },
 ];
 
 async function getConfigValue(db: D1Database, key: string): Promise<string | null> {
@@ -79,6 +85,43 @@ export async function listSourceInfo(
         (typeof env?.NUMVERIFY_API_KEY === 'string' && env.NUMVERIFY_API_KEY.trim())
         || (await getConfigValue(db, src.configKey!))?.trim(),
       );
+    }
+    if (src.name === 'usa_people_search') {
+      configured = Boolean(
+        (typeof env?.USA_PEOPLE_SEARCH_RAPIDAPI_KEY === 'string' && env.USA_PEOPLE_SEARCH_RAPIDAPI_KEY.trim())
+        || (await getConfigValue(db, 'usa_people_search_rapidapi_key'))?.trim()
+        || (await getConfigValue(db, 'skiptracer_rapidapi_key'))?.trim()
+        || (await getConfigValue(db, 'plate_check_rapidapi_key'))?.trim(),
+      );
+    }
+    if (src.name === 'hunter') {
+      configured = Boolean(
+        (typeof env?.HUNTER_API_KEY === 'string' && env.HUNTER_API_KEY.trim())
+        || (await getConfigValue(db, 'hunter_io_api_key'))?.trim()
+        || (await getConfigValue(db, 'hunter_api_key'))?.trim(),
+      );
+    }
+    if (src.name === 'pdl') {
+      configured = Boolean(
+        (typeof env?.PDL_API_KEY === 'string' && env.PDL_API_KEY.trim())
+        || (await getConfigValue(db, 'pdl_api_key'))?.trim(),
+      );
+    }
+    if (src.name === 'apollo') {
+      configured = Boolean(
+        (typeof env?.APOLLO_API_KEY === 'string' && env.APOLLO_API_KEY.trim())
+        || (await getConfigValue(db, 'apollo_api_key'))?.trim(),
+      );
+    }
+    if (src.name === 'hibp') {
+      configured = Boolean(
+        (typeof env?.HIBP_API_KEY === 'string' && env.HIBP_API_KEY.trim())
+        || (await getConfigValue(db, 'hibp_api_key'))?.trim()
+        || (await getConfigValue(db, 'have_i_been_pwned_key'))?.trim(),
+      );
+    }
+    if (src.name === 'courtlistener') {
+      configured = true;
     }
     if (src.name === 'vehicle_enrichment') {
       configured = Boolean(

@@ -123,6 +123,14 @@ export type Bindings = {
   OPENCORPORATES_API_KEY?: string;
   OPENSANCTIONS_API_KEY?: string;
   NUMVERIFY_API_KEY?: string;
+  USA_PEOPLE_SEARCH_RAPIDAPI_KEY?: string;
+  USA_PEOPLE_SEARCH_HOST?: string;
+  USA_PEOPLE_SEARCH_PATH?: string;
+  HUNTER_API_KEY?: string;
+  PDL_API_KEY?: string;
+  APOLLO_API_KEY?: string;
+  HIBP_API_KEY?: string;
+  COURTLISTENER_TOKEN?: string;
   CARXE_API_KEY?: string;
   CARXE_API_BASE?: string;
   PLATE_TO_VIN_API_KEY?: string;

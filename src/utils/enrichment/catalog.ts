@@ -10,6 +10,12 @@ import * as ofacSrc from './sources/ofac';
 import * as uspsSrc from './sources/usps';
 import * as openCorporatesSrc from './sources/openCorporates';
 import * as numverifySrc from './sources/numverify';
+import * as usaPeopleSearchSrc from './sources/usaPeopleSearch';
+import * as hunterSrc from './sources/hunter';
+import * as pdlSrc from './sources/pdl';
+import * as apolloSrc from './sources/apollo';
+import * as hibpSrc from './sources/hibp';
+import * as courtlistenerSrc from './sources/courtlistener';
 
 export interface EnrichmentSourceDefinition {
   key: string;
@@ -31,7 +37,13 @@ export const OPEN_SOURCE_ENRICHMENT_SOURCES: EnrichmentSourceDefinition[] = [
   { key: 'ofac_sdn',        label: 'OFAC SDN',           category: 'registry', openSource: true,  mod: ofacSrc },
   { key: 'usps',            label: 'USPS Address',       category: 'property', openSource: false, mod: uspsSrc },
   { key: 'open_corporates', label: 'OpenCorporates',     category: 'business', openSource: false, mod: openCorporatesSrc },
-  { key: 'numverify',       label: 'NumVerify',          category: 'osint',    openSource: false, mod: numverifySrc },
+  { key: 'numverify',          label: 'NumVerify',                    category: 'osint',    openSource: false, mod: numverifySrc },
+  { key: 'usa_people_search',  label: 'USA People Search (RapidAPI)',  category: 'people',   openSource: false, mod: usaPeopleSearchSrc },
+  { key: 'hunter',             label: 'Hunter.io',                    category: 'people',   openSource: false, mod: hunterSrc },
+  { key: 'pdl',               label: 'People Data Labs',            category: 'people',   openSource: false, mod: pdlSrc },
+  { key: 'apollo',             label: 'Apollo People Search',         category: 'people',   openSource: false, mod: apolloSrc },
+  { key: 'hibp',               label: 'Have I Been Pwned',          category: 'osint',    openSource: false, mod: hibpSrc },
+  { key: 'courtlistener',      label: 'CourtListener',                 category: 'registry', openSource: true,  mod: courtlistenerSrc },
 ];
 
 export const ENRICHMENT_SOURCE_CATEGORIES: Record<string, EnrichmentSourceDefinition['category']> =

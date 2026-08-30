@@ -8,6 +8,7 @@ import {
   detectSearchTypeFromParams,
   historyQueryFromParams,
 } from '../src/utils/skiptracerV2/search';
+import { SKIPTRACER_V2_SOURCES } from '../src/utils/skiptracerV2/sources';
 
 describe('skiptracerV2 search helpers', () => {
   it('maps a local person row to a V2 profile', () => {
@@ -124,5 +125,12 @@ describe('skiptracerV2 search helpers', () => {
     expect(profile.fullName).toBe('John Smith');
     expect(profile.sources).toEqual(['nsopw']);
     expect(profile.watchlistFlags?.[0]?.listName).toBe('OFAC');
+  });
+
+  it('registers the free-tier skip-trace adapters', () => {
+    const names = SKIPTRACER_V2_SOURCES.map(s => s.name);
+    expect(names).toEqual(expect.arrayContaining([
+      'usa_people_search', 'hunter', 'pdl', 'apollo', 'hibp', 'courtlistener',
+    ]));
   });
 });
