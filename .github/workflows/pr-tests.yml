@@ -93,7 +93,11 @@ jobs:
     runs-on: ubuntu-latest
     # maxWorkers:1 + forks is required to avoid OOM on the 7 GB runner, but
     # makes the suite wall-clock ~35–40 min. 30 was cancelling healthy green runs.
-    timeout-minutes: 45
+    # 2026-08-29: a worker still hit the 8192 MB V8 cap (~8.0 GB Mark-Compact)
+    # after 32 min of GC, then "Worker exited unexpectedly". ubuntu-latest is
+    # 16 GB now — give the parent more heap and extra wall clock so one heavy
+    # file cannot fail the whole job.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -104,7 +108,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
 
   client-pdf-tests:
     name: Client PDF tests

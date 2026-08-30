@@ -32,6 +32,10 @@ describe('Pages CSP is not the Observatory starter policy', () => {
     expect(src).toContain("'self'");
     expect(src).not.toContain('https://static.cloudflareinsights.com');
     expect(src).toContain('https://challenges.cloudflare.com');
+    // Chrome 109+ gates WebAssembly compile on this token separately from
+    // 'unsafe-eval'. Without it, zxing-wasm never instantiates and every
+    // PDF417 ID scan fails in Chromium (the documented field failure).
+    expect(src).toContain("'wasm-unsafe-eval'");
   });
 
   it('index.html meta connect-src is not none', () => {
@@ -43,6 +47,7 @@ describe('Pages CSP is not the Observatory starter policy', () => {
   it('Pages middleware FULL_CSP includes self and a real connect-src', () => {
     const policyBlock = MIDDLEWARE.slice(MIDDLEWARE.indexOf('const FULL_CSP'));
     expect(policyBlock).toMatch(/script-src 'self'/);
+    expect(policyBlock).toContain("'wasm-unsafe-eval'");
     expect(policyBlock).not.toContain('https://static.cloudflareinsights.com');
     expect(policyBlock).toContain('https://challenges.cloudflare.com');
     expect(policyBlock).toContain('https://dialer.rmpgutah.us');

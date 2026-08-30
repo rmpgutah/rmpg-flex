@@ -16,6 +16,7 @@ test('buildCspHeaderValue: returns a policy scoped to self plus known integratio
   assert.doesNotMatch(policy, /static\.cloudflareinsights\.com/);
   assert.doesNotMatch(policy, /connect-src 'none'/);
   assert.match(policy, /script-src[^;]*'self'/);
+  assert.match(policy, /script-src[^;]*'wasm-unsafe-eval'/);
 });
 
 const { shouldAttachDesktopCspReportOnly } = require('../sessionHardening');

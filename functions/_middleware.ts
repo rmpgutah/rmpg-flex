@@ -107,7 +107,7 @@ const ALLOWED_CONNECT = [
 
 const FULL_CSP = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://challenges.cloudflare.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://challenges.cloudflare.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
   `style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com`,
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,

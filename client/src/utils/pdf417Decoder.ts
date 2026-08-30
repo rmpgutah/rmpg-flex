@@ -9,42 +9,53 @@
 // The .wasm binary is bundled by Vite (`?url` import) and served
 // same-origin — the package's default CDN locateFile would violate
 // our `connect-src 'self'` CSP and break offline/MDT use.
+//
+// `prepareZXingModule` MUST be awaited before the first `readBarcodes`.
+// If the locateFile override is not in place yet, zxing-wasm fetches
+// from jsDelivr, which CSP blocks, and every ID scan fails.
 // ============================================================
 
 import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
 // Vite emits the wasm as a hashed asset and gives us its URL.
 // eslint-disable-next-line import/no-unresolved
 import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
+import {
+  extractZxingText,
+  cropImageData,
+  LIVE_PDF417_CROP,
+} from './pdf417Payload';
 
-let prepared = false;
+let prepared: Promise<void> | null = null;
 let moduleError: string | null = null;
 
-function ensureModule(): void {
-  if (prepared) return;
-  prepared = true;
-  try {
-    prepareZXingModule({
-      overrides: {
-        locateFile: (path: string, prefix: string) =>
-          path.endsWith('.wasm') ? wasmUrl : prefix + path,
-      },
-    });
-  } catch (err) {
-    moduleError = (err as Error)?.message ?? String(err);
-    console.error('[pdf417] WASM module init failed:', err);
+async function ensureModule(): Promise<void> {
+  if (!prepared) {
+    prepared = (async () => {
+      try {
+        await prepareZXingModule({
+          overrides: {
+            locateFile: (path: string, prefix: string) =>
+              path.endsWith('.wasm') ? wasmUrl : prefix + path,
+          },
+        });
+      } catch (err) {
+        moduleError = (err as Error)?.message ?? String(err);
+        console.error('[pdf417] WASM module init failed:', err);
+        throw err;
+      }
+    })();
   }
+  await prepared;
 }
 
 /** Returns the WASM init error message, or null if init succeeded. */
-export function getModuleError(): string | null {
-  ensureModule();
+export async function getModuleError(): Promise<string | null> {
+  try {
+    await ensureModule();
+  } catch {
+    /* moduleError already set */
+  }
   return moduleError;
-}
-
-function extractText(r: { isValid: boolean; bytes: Uint8Array }): string | null {
-  if (!r?.isValid) return null;
-  const text = new TextDecoder('latin1').decode(r.bytes);
-  return text.length > 20 ? text : null;
 }
 
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -163,30 +174,99 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
   return data;
 }
 
-/**
- * Fast single-pass decode for live camera frames. No preprocessing —
- * called many times per second, so each attempt must be cheap; the
- * camera supplies fresh framing/focus variation between attempts.
- */
-export async function decodePdf417Frame(imageData: ImageData): Promise<string | null> {
-  ensureModule();
+type ZxingBinarizer = 'LocalAverage' | 'GlobalHistogram' | 'FixedThreshold' | 'BoolCast';
+
+async function tryNativeDecode(
+  input: Blob | ImageData,
+  binarizer: ZxingBinarizer,
+  tryDenoise: boolean,
+  tryHarder: boolean,
+): Promise<string | null> {
   try {
-    const results = await readBarcodes(imageData, {
+    const results = await readBarcodes(input, {
       formats: ['PDF417'],
-      tryHarder: false,
+      tryHarder,
       tryRotate: true,
       tryInvert: true,
       tryDownscale: true,
+      tryDenoise,
+      binarizer,
       textMode: 'Plain',
       maxNumberOfSymbols: 1,
     });
-    const r = results[0];
-    if (!r?.isValid) return null;
-    const raw = new TextDecoder('latin1').decode(r.bytes);
-    return raw.length > 20 ? raw : null;
+    return extractZxingText(results[0] as { isValid?: boolean; bytes?: Uint8Array; text?: string });
   } catch {
     return null;
   }
+}
+
+/**
+ * Chromium's BarcodeDetector can read PDF417 natively (Safari cannot).
+ * Try it first so we don't pay the WASM cost on Android Chrome when the
+ * platform decoder already has the payload.
+ */
+type BarcodeDetectorCtor = {
+  new (opts: { formats: string[] }): { detect: (s: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> };
+  getSupportedFormats?: () => Promise<string[]>;
+};
+
+async function tryBarcodeDetector(source: ImageBitmapSource): Promise<string | null> {
+  const BD = (globalThis as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
+  if (!BD) return null;
+  try {
+    if (typeof BD.getSupportedFormats === 'function') {
+      const formats = await BD.getSupportedFormats();
+      if (!formats.map((f) => f.toLowerCase()).includes('pdf417')) return null;
+    }
+    const detector = new BD({ formats: ['pdf417'] });
+    const codes = await detector.detect(source);
+    const raw = codes[0]?.rawValue;
+    return raw && raw.length >= 20 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function downscaleIfNeeded(imageData: ImageData, maxWidth: number): ImageData {
+  if (imageData.width <= maxWidth) return imageData;
+  const scale = maxWidth / imageData.width;
+  const w = Math.max(1, Math.round(imageData.width * scale));
+  const h = Math.max(1, Math.round(imageData.height * scale));
+  const src = document.createElement('canvas');
+  src.width = imageData.width;
+  src.height = imageData.height;
+  src.getContext('2d')!.putImageData(imageData, 0, 0);
+  const dst = document.createElement('canvas');
+  dst.width = w;
+  dst.height = h;
+  const ctx = dst.getContext('2d', { willReadFrequently: true })!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+/**
+ * Fast-ish live-camera decode. Crops to the ID-back barcode strip and
+ * runs tryHarder on the ROI — a full 1080p frame with tryHarder:false
+ * is the combination that never hits on a real Utah DL in the field.
+ */
+export async function decodePdf417Frame(imageData: ImageData): Promise<string | null> {
+  const native = await tryBarcodeDetector(imageData as unknown as ImageBitmapSource);
+  if (native) return native;
+
+  try {
+    await ensureModule();
+  } catch {
+    return null;
+  }
+
+  const roi = downscaleIfNeeded(cropImageData(imageData, LIVE_PDF417_CROP), 1280);
+  const cropped = await tryNativeDecode(roi, 'LocalAverage', false, true);
+  if (cropped) return cropped;
+
+  const scaled = downscaleIfNeeded(imageData, 1280);
+  return tryNativeDecode(scaled, 'LocalAverage', false, true);
 }
 
 /**
@@ -195,7 +275,11 @@ export async function decodePdf417Frame(imageData: ImageData): Promise<string | 
  * one-time zxing module init as the PDF417 path so the wasm is prepared once.
  */
 export async function decodeQrFrame(imageData: ImageData): Promise<string | null> {
-  ensureModule();
+  try {
+    await ensureModule();
+  } catch {
+    return null;
+  }
   try {
     const results = await readBarcodes(imageData, {
       formats: ['QRCode'],
@@ -217,40 +301,15 @@ export interface Pdf417DecodeOutcome {
   passes: number;
 }
 
-// Phase 1: pass raw file bytes to ZXing's native C++ decoder with each
-// built-in binarizer. This skips the lossy File→Image→Canvas→ImageData
-// round-trip — ZXing decodes the JPEG/PNG natively at full fidelity.
-type ZxingBinarizer = 'LocalAverage' | 'GlobalHistogram' | 'FixedThreshold' | 'BoolCast';
 const NATIVE_BINARIZERS: ZxingBinarizer[] = ['LocalAverage', 'GlobalHistogram', 'FixedThreshold'];
-
-async function tryNativeDecode(
-  input: Blob | ImageData,
-  binarizer: ZxingBinarizer,
-  tryDenoise: boolean,
-): Promise<string | null> {
-  try {
-    const results = await readBarcodes(input, {
-      formats: ['PDF417'],
-      tryHarder: true,
-      tryRotate: true,
-      tryInvert: true,
-      tryDownscale: true,
-      tryDenoise,
-      binarizer,
-      textMode: 'Plain',
-      maxNumberOfSymbols: 1,
-    });
-    return extractText(results[0] as any);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Decode a PDF417 barcode from an uploaded/captured photo.
  * Returns null if no barcode could be found after all passes.
  *
  * Strategy (ordered by likelihood of success and cost):
+ *
+ * Phase 0 — Platform BarcodeDetector (Chromium PDF417).
  *
  * Phase 1 — Native decode: pass the raw Blob to ZXing with each
  * built-in binarizer. ZXing's C++ core handles JPEG decode natively,
@@ -261,19 +320,25 @@ async function tryNativeDecode(
  * custom preprocessing modes at multiple scales.
  */
 export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | null> {
-  ensureModule();
   let passes = 0;
 
-  // ── Phase 1: native Blob decode ──
+  const platform = await tryBarcodeDetector(file);
+  if (platform) return { text: platform, passes: 0 };
+
+  try {
+    await ensureModule();
+  } catch {
+    return null;
+  }
+
   for (const binarizer of NATIVE_BINARIZERS) {
     for (const denoise of [false, true]) {
       passes++;
-      const text = await tryNativeDecode(file, binarizer, denoise);
+      const text = await tryNativeDecode(file, binarizer, denoise, true);
       if (text) return { text, passes };
     }
   }
 
-  // ── Phase 2: canvas preprocessing fallback ──
   const img = await loadImage(file);
   const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
   if (!maxDim) return null;
@@ -293,7 +358,7 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
       passes++;
       try {
         const imageData = toImageData(img, scale, mode);
-        const text = await tryNativeDecode(imageData, 'LocalAverage', false);
+        const text = await tryNativeDecode(imageData, 'LocalAverage', false, true);
         if (text) return { text, passes };
       } catch {
         // preprocessing or decode error — try next
