@@ -21,4 +21,11 @@ describe('parseServeJobMeta', () => {
     expect(meta.ops.no_sunday).toBe(true);
     expect(meta.ops.gate_code).toBe('200');
   });
+
+  it('always returns ops so the job form can read venue_kind', () => {
+    expect(parseServeJobMeta(undefined).ops.venue_kind).toBe('');
+    expect(parseServeJobMeta('not-json').ops.venue_kind).toBe('');
+    expect(parseServeJobMeta('{}').ops.venue_kind).toBe('');
+    expect(parseServeJobMeta(JSON.stringify({ _ops: null })).ops.venue_kind).toBe('');
+  });
 });

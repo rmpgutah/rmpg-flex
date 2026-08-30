@@ -62,6 +62,31 @@ interface UseFormDraftReturn<T> {
 }
 
 /**
+ * Overlay a stored draft onto the current defaultValue so newly added form
+ * fields (nested objects included) exist after schema evolution. A draft
+ * saved before `ops` was added must still produce `ops.venue_kind`, not
+ * crash the page that always evaluates the form JSX.
+ */
+export function mergeFormDraft<T>(defaultValue: T, draft: unknown): T {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return defaultValue;
+  const defaults = defaultValue as Record<string, unknown>;
+  const src = draft as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...defaults, ...src };
+  for (const key of Object.keys(defaults)) {
+    const d = defaults[key];
+    const m = merged[key];
+    if (d != null && typeof d === 'object' && !Array.isArray(d)) {
+      if (m == null || typeof m !== 'object' || Array.isArray(m)) {
+        merged[key] = d;
+      } else {
+        merged[key] = { ...(d as Record<string, unknown>), ...(m as Record<string, unknown>) };
+      }
+    }
+  }
+  return merged as T;
+}
+
+/**
  * A comprehensive form persistence hook that:
  * 1. Auto-saves form state to localStorage with debounce
  * 2. Restores drafts on mount (with TTL expiry)
@@ -100,7 +125,7 @@ export function useFormDraft<T>({
           const age = Date.now() - parsed._savedAt;
           if (age < ttlMs) {
             const { _savedAt, ...draft } = parsed;
-            return draft as T;
+            return mergeFormDraft(defaultValue, draft);
           }
         }
       }
@@ -139,7 +164,7 @@ export function useFormDraft<T>({
         try {
           const parsed = JSON.parse(raw);
           const { _savedAt, ...draft } = parsed;
-          onRestore(draft as T);
+          onRestore(mergeFormDraft(defaultValue, draft));
         } catch { /* ignore */ }
       }
     } else if (!wasRestored) {
@@ -147,10 +172,11 @@ export function useFormDraft<T>({
       // fall back to the D1-mirrored copy so in-progress edits aren't lost.
       apiFetch<{ data: T | null }>(draftPath(storageKey)).then((res) => {
         if (res.data == null) return;
+        const merged = mergeFormDraft(defaultValue, res.data);
         clearedRef.current = false;
-        setFormRaw(res.data);
+        setFormRaw(merged);
         setWasRestored(true);
-        if (onRestore) onRestore(res.data);
+        if (onRestore) onRestore(merged);
       }).catch(() => { /* offline or no D1 draft — stay on defaultValue */ });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

@@ -708,6 +708,38 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     Mark False Alarm
                   </button>
                 )}
+                {notesKind && (
+                  <div className="space-y-1.5 p-2" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)' }}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                      {notesKind === 'false-alarm' ? 'False alarm notes' : 'Code 4 notes'}
+                    </div>
+                    <textarea
+                      value={notesText}
+                      onChange={(e) => setNotesText(e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1.5 text-[11px] bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none"
+                      placeholder="Optional notes"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setNotesKind(null); setNotesText(''); }}
+                        className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider"
+                        style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void submitPanicNotes()}
+                        className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider"
+                        style={{ background: 'var(--surface-raised)', border: '1px solid rgba(var(--sev-ok-rgb) / 0.5)', color: 'var(--sev-ok)' }}
+                      >
+                        Submit
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* Admin fallback — force-deactivate from any state */}
                 {isAdmin && incomingAlert.panic_id && (
                   <button type="button"
