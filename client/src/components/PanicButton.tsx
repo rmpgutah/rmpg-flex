@@ -710,19 +710,27 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       <ConfirmDialog
         isOpen={notesKind !== null}
         onClose={() => setNotesKind(null)}
-        onConfirm={() => { void submitPanicNotes(); }}
-        title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — Resolve'}
-        message={notesKind === 'false-alarm' ? 'Enter false alarm notes:' : 'Code 4 — resolution notes:'}
-        details={(
-          <textarea
-            aria-label={notesKind === 'false-alarm' ? 'False alarm notes' : 'Resolution notes'}
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            rows={3}
-            className="w-full px-2 py-1.5 text-xs bg-surface-overlay border border-border-default text-fg-primary placeholder:text-fg-muted"
-            placeholder="Optional notes"
-          />
-        )}
+        onConfirm={() => {
+          void submitPanicNotes();
+        }}
+        title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — resolve'}
+        message={
+          notesKind === 'false-alarm'
+            ? 'Optional notes for the false-alarm record. This clears the emergency for all consoles.'
+            : 'Optional notes for the Code 4 resolve. This clears the emergency for all consoles.'
+        }
+        details={
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+            Notes
+            <textarea
+              value={notesText}
+              onChange={(e) => setNotesText(e.target.value)}
+              rows={3}
+              className="mt-1 w-full text-xs bg-surface-sunken text-rmpg-100 border border-border-default p-2"
+              aria-label="Panic resolution notes"
+            />
+          </label>
+        }
         confirmLabel={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Resolve'}
         confirmVariant={notesKind === 'false-alarm' ? 'warning' : 'default'}
       />
