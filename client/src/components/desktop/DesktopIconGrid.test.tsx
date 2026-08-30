@@ -53,7 +53,6 @@ function renderGrid(overrides: Partial<React.ComponentProps<typeof DesktopIconGr
 
 describe('DesktopIconGrid — multi-select + grouping', () => {
   beforeEach(() => {
-    vi.spyOn(window, 'prompt').mockReturnValue('Patrol Tools');
     navigateSpy.mockClear();
   });
 
@@ -71,6 +70,8 @@ describe('DesktopIconGrid — multi-select + grouping', () => {
     fireEvent.click(screen.getByText('Live Map'), { ctrlKey: true });
     fireEvent.contextMenu(screen.getByText('Live Map'));
     fireEvent.click(screen.getByText('Group as...'));
+    fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Patrol Tools' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     expect(props.onCreateGroup).toHaveBeenCalledWith(
       expect.arrayContaining(['/dispatch', '/map']),
       'Patrol Tools',
