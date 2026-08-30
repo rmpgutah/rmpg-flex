@@ -3,10 +3,10 @@
 // Provides offline caching for static assets and API GET responses.
 // API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
-// v1107: Serve page crash + SW FetchEvent rejections. Never take ownership of
-//        cross-origin requests (Cloudflare beacon, Mapbox events, dialer
-//        iframe). Every respondWith chain must settle — a rejected promise
-//        becomes "The FetchEvent for <url> resulted in a network error".
+// v1108: FetchEvent rejections still fire from stale controllers AND from
+//        dialer.rmpgutah.us/sw.js (separate origin). Wrap the Flex fetch
+//        handler so a throw never rejects respondWith. Never take ownership
+//        of Cloudflare Insights or any other cross-origin URL.
 // v1106: Login navigations must not become an empty 503 Offline when the
 //        document URL has a query string (`/login?return=%2F`) that missed
 //        the precached `/` shell. Match ignoreSearch and always stash `/`.
@@ -524,10 +524,21 @@ async function flushClientFirings() {
 
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
+  try {
   var url;
   try {
     url = new URL(event.request.url);
   } catch {
+    return;
+  }
+
+  // Cloudflare Insights is injected on both rmpgutah.us and dialer.rmpgutah.us.
+  // Taking ownership (204 or fetch()) either fails SRI or rejects the
+  // FetchEvent when the beacon is blocked. Never respondWith these.
+  if (
+    url.hostname === 'static.cloudflareinsights.com' ||
+    url.hostname.endsWith('.cloudflareinsights.com')
+  ) {
     return;
   }
 
@@ -757,7 +768,7 @@ self.addEventListener('fetch', (event) => {
           ));
         if (cached) {
           // Serve the cached version immediately; refresh in the background.
-          event.waitUntil(networkFetch);
+          event.waitUntil(networkFetch.catch(function () {}));
           return cached;
         }
         return networkFetch;
@@ -780,6 +791,16 @@ self.addEventListener('fetch', (event) => {
         .catch(() => new Response('', { status: 503, statusText: 'Offline' }));
     })
   );
+  } catch (err) {
+    // A throw from the fetch handler after respondWith is not possible, but a
+    // throw BEFORE respondWith is silent. After respondWith, an uncaught
+    // exception is logged as FetchEvent network error. Never let either leak.
+    try {
+      event.respondWith(new Response('', { status: 503, statusText: 'Offline' }));
+    } catch {
+      /* respondWith already called */
+    }
+  }
 });
 
 // ─── Background Sync ────────────────────────────────────────

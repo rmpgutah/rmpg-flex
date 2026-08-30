@@ -26,6 +26,7 @@ import {
   timingSafeEqual,
   DISPOSITIONS,
   assertMinFunctions,
+  isAllowedRecordingSourceUrl,
 } from '../utils/dialerConnect';
 
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
@@ -689,28 +690,55 @@ async function serveAudio(
 ) {
   const db = getDb(c.env);
   const table = kind === 'call' ? 'dialer_calls' : 'dialer_voicemails';
-  const row = await queryFirst<{ recording_r2_key: string | null; recording_content_type: string | null }>(
-    db, `SELECT recording_r2_key, recording_content_type FROM ${table} WHERE id = ?`, id,
+  const row = await queryFirst<{
+    recording_r2_key: string | null;
+    recording_content_type: string | null;
+    recording_source_url: string | null;
+  }>(
+    db, `SELECT recording_r2_key, recording_content_type, recording_source_url FROM ${table} WHERE id = ?`, id,
   );
-  if (!row?.recording_r2_key) return c.json({ error: 'No recording' }, 404);
-  if (!c.env.UPLOADS) return c.json({ error: 'Storage unavailable' }, 503);
-  try {
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, row.recording_r2_key);
-    if (!decrypted) return c.json({ error: 'Recording missing' }, 404);
-    const bytes = decrypted.bytes;
-    const copy = new Uint8Array(bytes.byteLength);
-    copy.set(bytes);
-    return new Response(copy, {
-      headers: {
-        'Content-Type': row.recording_content_type || 'audio/mpeg',
-        'Content-Disposition': `attachment; filename="dialer-${kind}-${id}.mp3"`,
-        'Cache-Control': 'private, no-store',
-      },
-    });
-  } catch (err) {
-    if (err instanceof FileEncryptionError) return c.json({ error: 'Decrypt failed' }, 503);
-    throw err;
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.recording_r2_key) {
+    if (!c.env.UPLOADS) return c.json({ error: 'Storage unavailable' }, 503);
+    try {
+      const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, row.recording_r2_key);
+      if (!decrypted) return c.json({ error: 'Recording missing' }, 404);
+      const bytes = decrypted.bytes;
+      const copy = new Uint8Array(bytes.byteLength);
+      copy.set(bytes);
+      return new Response(copy, {
+        headers: {
+          'Content-Type': row.recording_content_type || 'audio/mpeg',
+          'Content-Disposition': `attachment; filename="dialer-${kind}-${id}.mp3"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    } catch (err) {
+      if (err instanceof FileEncryptionError) return c.json({ error: 'Decrypt failed' }, 503);
+      throw err;
+    }
   }
+  if (isAllowedRecordingSourceUrl(row.recording_source_url)) {
+    try {
+      const upstream = await fetch(row.recording_source_url!, { redirect: 'follow' });
+      if (!upstream.ok) return c.json({ error: 'Recording unavailable' }, 404);
+      const buf = await upstream.arrayBuffer();
+      const type = row.recording_content_type
+        || upstream.headers.get('content-type')
+        || 'audio/mpeg';
+      return new Response(buf, {
+        headers: {
+          'Content-Type': type,
+          'Content-Disposition': `attachment; filename="dialer-${kind}-${id}.mp3"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    } catch (err) {
+      log.error('dialer source-url audio proxy failed', { kind, id }, err as Error);
+      return c.json({ error: 'Recording unavailable' }, 404);
+    }
+  }
+  return c.json({ error: 'No recording' }, 404);
 }
 
 dialerConnect.get('/calls/:id/audio', async (c) => {

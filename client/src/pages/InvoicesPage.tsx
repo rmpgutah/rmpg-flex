@@ -398,9 +398,13 @@ export default function InvoicesPage() {
     setSaving(true);
     setSaveError('');
     try {
-      const res = await apiFetch<{ data: Invoice }>('/invoices', {
+      const res = await apiFetch<{ data: Invoice }>('/billing/invoices', {
         method: 'POST',
-        body: JSON.stringify(createForm),
+        body: JSON.stringify({
+          client_id: createForm.client_id,
+          notes: createForm.notes,
+          due_date: createForm.period_end || undefined,
+        }),
       });
       // Switch to detail view of the new invoice
       await fetchDetail(res.data.id);
@@ -418,7 +422,7 @@ export default function InvoicesPage() {
   const handleStatusChange = async (invoiceId: number, newStatus: string) => {
     setActionLoading(`status-${invoiceId}`);
     try {
-      await apiFetch(`/invoices/${invoiceId}/status`, {
+      await apiFetch(`/billing/invoices/${invoiceId}`, {
         method: 'PUT',
         body: JSON.stringify({ status: newStatus }),
       });
@@ -435,7 +439,7 @@ export default function InvoicesPage() {
   const handleGenerate = async (invoiceId: number) => {
     setActionLoading(`generate-${invoiceId}`);
     try {
-      await apiFetch(`/invoices/${invoiceId}/generate`, { method: 'POST' });
+      await apiFetch(`/billing/invoices/${invoiceId}/generate`, { method: 'POST' });
       await fetchDetail(invoiceId);
       fetchInvoices({ silent: true });
       fetchStats();
@@ -450,9 +454,13 @@ export default function InvoicesPage() {
     if (!selectedInvoice || !paymentForm.amount || !paymentForm.payment_date) return;
     setPaymentSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/payments`, {
+      await apiFetch(`/billing/payments`, {
         method: 'POST',
-        body: JSON.stringify({ ...paymentForm, amount: parseFloat(paymentForm.amount) }),
+        body: JSON.stringify({
+          invoice_id: selectedInvoice.id,
+          ...paymentForm,
+          amount: parseFloat(paymentForm.amount),
+        }),
       });
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
@@ -470,7 +478,7 @@ export default function InvoicesPage() {
     if (!selectedInvoice) return;
     setConfirmDeleting(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/payments/${paymentId}`, { method: 'DELETE' });
+      await apiFetch(`/billing/payments/${paymentId}`, { method: 'DELETE' });
       setConfirmDeletePayment(null);
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
@@ -487,7 +495,7 @@ export default function InvoicesPage() {
     if (!selectedInvoice || !lineItemForm.description) return;
     setLineItemSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/line-items`, {
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/items`, {
         method: 'POST',
         body: JSON.stringify({
           ...lineItemForm,
@@ -511,7 +519,7 @@ export default function InvoicesPage() {
     if (!selectedInvoice) return;
     setConfirmDeleting(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/line-items/${itemId}`, { method: 'DELETE' });
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/items/${itemId}`, { method: 'DELETE' });
       setConfirmDeleteLineItem(null);
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });

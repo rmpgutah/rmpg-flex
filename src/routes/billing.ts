@@ -21,7 +21,7 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
   return null;
 }
 
-async function generateInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
+export async function generateInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
   const yy = String(new Date().getFullYear()).slice(-2);
   const prefix = `INV-${yy}-`;
   const last = await queryFirst<{ invoice_number: string }>(
@@ -43,6 +43,44 @@ async function recalcInvoiceTotal(db: ReturnType<typeof getDb>, invoiceId: numbe
   const taxAmount = Math.round(taxableSubtotal * taxRate * 100) / 100;
   const total = subtotal + taxAmount;
   await execute(db, 'UPDATE invoices SET subtotal = ?, tax_amount = ?, total_amount = ? WHERE id = ?', subtotal, taxAmount, total, invoiceId);
+}
+
+export type InvoiceGenerateResult =
+  | { ok: true; data: Record<string, unknown> | null }
+  | { ok: false; status: 400 | 404; error: string };
+
+/** Shared by POST /api/billing/invoices/:id/generate and the /api/invoices alias. */
+export async function regenerateDraftInvoiceLines(
+  db: ReturnType<typeof getDb>,
+  invoiceId: number,
+): Promise<InvoiceGenerateResult> {
+  const invoice = await queryFirst<{ contract_id: number | null; status: string }>(db, 'SELECT contract_id, status FROM invoices WHERE id = ?', invoiceId);
+  if (!invoice) return { ok: false, status: 404, error: 'Invoice not found' };
+  if (invoice.status !== 'draft') {
+    return { ok: false, status: 400, error: `Cannot regenerate a '${invoice.status}' invoice — only draft invoices can be regenerated (regenerating a sent/paid invoice would silently invalidate recorded payments).` };
+  }
+  if (!invoice.contract_id) {
+    return { ok: false, status: 400, error: 'Invoice has no linked contract to regenerate line items from' };
+  }
+  const contract = await queryFirst<{ contract_number: string | null; billing_cycle: string; rate_amount: number | null; rate_type: string }>(
+    db, 'SELECT contract_number, billing_cycle, rate_amount, rate_type FROM client_contracts WHERE id = ?', invoice.contract_id);
+  if (!contract) return { ok: false, status: 404, error: 'Linked contract not found' };
+  if (contract.rate_type !== 'flat' || contract.rate_amount == null) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Cannot auto-regenerate line items for rate_type '${contract.rate_type}' — only 'flat' contracts can be priced without additional usage data (hours/calls/officers). Add line items manually.`,
+    };
+  }
+  const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
+  await executeBatch(db, [
+    { sql: "DELETE FROM invoice_line_items WHERE invoice_id = ? AND line_type = 'contract'", bindings: [invoiceId] },
+    { sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+            VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`, bindings: [invoiceId, description, contract.rate_amount, contract.rate_amount] },
+  ]);
+  await recalcInvoiceTotal(db, invoiceId);
+  const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
+  return { ok: true, data: updated };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -362,37 +400,11 @@ billing.post('/invoices/:id/generate', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'contract_manager');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
-    const db = getDb(c.env);
     const invoiceId = parseInt(c.req.param('id'), 10);
-    const invoice = await queryFirst<{ contract_id: number | null; status: string }>(db, 'SELECT contract_id, status FROM invoices WHERE id = ?', invoiceId);
-    if (!invoice) return c.json({ error: 'Invoice not found' }, 404);
-    if (invoice.status !== 'draft') {
-      return c.json({ error: `Cannot regenerate a '${invoice.status}' invoice — only draft invoices can be regenerated (regenerating a sent/paid invoice would silently invalidate recorded payments).` }, 400);
-    }
-    if (!invoice.contract_id) {
-      return c.json({ error: 'Invoice has no linked contract to regenerate line items from' }, 400);
-    }
-    const contract = await queryFirst<{ contract_number: string | null; billing_cycle: string; rate_amount: number | null; rate_type: string }>(
-      db, 'SELECT contract_number, billing_cycle, rate_amount, rate_type FROM client_contracts WHERE id = ?', invoice.contract_id);
-    if (!contract) return c.json({ error: 'Linked contract not found' }, 404);
-    if (contract.rate_type !== 'flat' || contract.rate_amount == null) {
-      return c.json({
-        error: `Cannot auto-regenerate line items for rate_type '${contract.rate_type}' — only 'flat' contracts can be priced without additional usage data (hours/calls/officers). Add line items manually.`,
-      }, 400);
-    }
-    // Only remove previously auto-generated ('contract') lines — a user who
-    // added custom manual lines shouldn't lose them when clicking Regenerate.
-    // DELETE + INSERT batched atomically so a failure never leaves the
-    // invoice with its old lines gone and no new ones.
-    const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
-    await executeBatch(db, [
-      { sql: "DELETE FROM invoice_line_items WHERE invoice_id = ? AND line_type = 'contract'", bindings: [invoiceId] },
-      { sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
-              VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`, bindings: [invoiceId, description, contract.rate_amount, contract.rate_amount] },
-    ]);
-    await recalcInvoiceTotal(db, invoiceId);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
-    return c.json({ data: updated });
+    if (!Number.isFinite(invoiceId)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const result = await regenerateDraftInvoiceLines(getDb(c.env), invoiceId);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ data: result.data });
   } catch (err) {
     log.error('POST /invoices/:id/generate failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to regenerate line items' }, 500);
