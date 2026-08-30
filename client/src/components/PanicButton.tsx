@@ -76,6 +76,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const [ownPanicTime, setOwnPanicTime] = useState<number | null>(null);
   const [forceDeactivateOpen, setForceDeactivateOpen] = useState(false);
   const [notesKind, setNotesKind] = useState<'false-alarm' | 'code4' | null>(null);
+  const [notesText, setNotesText] = useState('');
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -705,19 +706,32 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
         confirmLabel="Deactivate"
         confirmVariant="danger"
       />
-      <PromptDialog
-        isOpen={notesKind != null}
+      <ConfirmDialog
+        isOpen={notesKind !== null}
         onClose={() => setNotesKind(null)}
-        onSubmit={(value) => { void submitPanicNotes(value); }}
-        title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — Resolve'}
-        message={notesKind === 'false-alarm'
-          ? 'Optional notes for the false-alarm record. This clears the panic for all consoles.'
-          : 'Optional notes for the Code 4 resolution. This clears the emergency for all consoles.'}
-        label="Notes"
-        defaultValue=""
-        allowEmpty
+        onConfirm={() => {
+          void submitPanicNotes();
+        }}
+        title={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Code 4 — resolve'}
+        message={
+          notesKind === 'false-alarm'
+            ? 'Optional notes for the false-alarm record. This clears the emergency for all consoles.'
+            : 'Optional notes for the Code 4 resolve. This clears the emergency for all consoles.'
+        }
+        details={
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted">
+            Notes
+            <textarea
+              value={notesText}
+              onChange={(e) => setNotesText(e.target.value)}
+              rows={3}
+              className="mt-1 w-full text-xs bg-surface-sunken text-rmpg-100 border border-border-default p-2"
+              aria-label="Panic resolution notes"
+            />
+          </label>
+        }
         confirmLabel={notesKind === 'false-alarm' ? 'Mark false alarm' : 'Resolve'}
-        placeholder="Optional notes"
+        confirmVariant={notesKind === 'false-alarm' ? 'warning' : 'default'}
       />
     </>
   );
