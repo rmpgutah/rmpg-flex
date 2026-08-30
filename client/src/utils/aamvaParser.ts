@@ -78,7 +78,13 @@ const RACE_MAP: Record<string, string> = {
 
 /** True if a decoded string looks like an AAMVA DL/ID payload. */
 export function looksLikeAamva(raw: string): boolean {
-  return /ANSI |AAMVA/.test(raw) && /\bD(AQ|CS|AA|AB)/.test(raw);
+  if (!raw) return false;
+  if (!/ANSI\s|AAMVA/.test(raw)) return false;
+  // Subfile bodies often glue the designator to the first element (`DLDAQ…`)
+  // with no whitespace, so a `\b` word-boundary before DAQ/DCS never matches
+  // even on a valid card. Accept a line/record separator *or* the DL/ID
+  // designator as the prefix.
+  return /(?:^|[\n\r\x1e\x1c]|DL|ID)D(AQ|CS|AA|AB)/.test(raw);
 }
 
 // ── date handling ────────────────────────────────────────────
@@ -132,6 +138,46 @@ function parseWeight(lbs?: string, kg?: string): string {
 }
 
 // AAMVA pads/terminates with "NONE", "UNAVL", "UNK" filler values.
+// AAMVA element IDs we will split on when a reader strips separators.
+// Must NOT be every `[DZ][A-Z]{2}` — values like DCJ "AUDIT123" contain
+// incidental "DIT" which is not an element.
+const AAMVA_ELEMENT_IDS = new Set([
+  'DAQ', 'DCS', 'DAC', 'DAD', 'DAA', 'DAB', 'DCT', 'DCU', 'DBN', 'DAF',
+  'DBA', 'DBB', 'DBC', 'DBD', 'DBI',
+  'DAG', 'DAH', 'DAI', 'DAJ', 'DAK', 'DAL', 'DAM', 'DAN', 'DAO', 'DAP',
+  'DAU', 'DAW', 'DAX', 'DAY', 'DAZ', 'DCE',
+  'DCA', 'DCB', 'DCD', 'DAR', 'DAS', 'DAT',
+  'DCF', 'DCG', 'DCI', 'DCJ', 'DCL',
+  'DDA', 'DDB', 'DDC', 'DDD', 'DDH', 'DDI', 'DDK', 'DDL',
+  'DDE', 'DDF', 'DDG', 'DBK', 'DBM',
+]);
+
+function expandAamvaSegments(body: string, subfileType: string): string[] {
+  const parts = body.split(/[\n\r\x1e]+/).map((s) => s.trim()).filter((s) => s.length >= 3);
+  const out: string[] = [];
+  for (const part of parts) {
+    const idxs: number[] = [];
+    for (let i = 0; i <= part.length - 3; i++) {
+      const code = part.slice(i, i + 3);
+      if (AAMVA_ELEMENT_IDS.has(code)) {
+        idxs.push(i);
+        i += 2;
+      }
+    }
+    const prefixOk = idxs.length >= 2 && (idxs[0] === 0 || (!!subfileType && idxs[0] === subfileType.length));
+    if (prefixOk) {
+      for (let i = 0; i < idxs.length; i++) {
+        const seg = part.slice(idxs[i], idxs[i + 1]);
+        if (seg.length >= 3) out.push(seg);
+      }
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+// AAMVA pads/terminates with "NONE", "UNAVL", "UNK" filler values.
 function clean(v: string | undefined): string {
   const s = (v || '').trim();
   if (/^(NONE|UNAVL|UNAVAILABLE|UNK|UNKNOWN)$/i.test(s)) return '';
@@ -177,7 +223,7 @@ export function parseAamva(raw: string): AamvaResult {
     // Body may begin with its own subfile-type prefix (e.g. "DLDAQ...").
     let b = body;
     if (b.startsWith(subfileType)) b = b.slice(subfileType.length);
-    for (let seg of b.split(/[\n\r\x1e]+/)) {
+    for (let seg of expandAamvaSegments(b, subfileType)) {
       // A subfile's first segment carries its 2-char type prefix
       // ("ZUZUA01" = subfile ZU, element ZUA) — strip it when the bare
       // segment isn't element-shaped but the stripped one is.
