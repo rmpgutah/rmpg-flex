@@ -14,6 +14,7 @@ import {
   insertSignatureFromFile, insertQRCode,
 } from '../features';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import PromptDialog from '../../../components/PromptDialog';
 
 type Tab = 'snippets' | 'statutes' | 'persons' | 'calls' | 'tools' | 'userTemplates';
 
@@ -50,6 +51,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
   const [readout, setReadout] = useState<string | null>(null);
   const [userTpls, setUserTpls] = useState(listUserTemplates());
   const [deleteTpl, setDeleteTpl] = useState<{ id: string; name: string } | null>(null);
+  const [promptKind, setPromptKind] = useState<'template' | 'qr' | 'footnote' | null>(null);
 
   const toggleFav = (id: string) => {
     setFavs(prev => {
@@ -108,10 +110,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
 
   const doSaveAsTemplate = () => {
     if (!editor) return;
-    const name = window.prompt('Template name:');
-    if (!name) return;
-    saveUserTemplate(name, editor.getHTML());
-    setUserTpls(listUserTemplates());
+    setPromptKind('template');
   };
 
   const doSigUpload = () => {
@@ -121,19 +120,13 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
     inp.click();
   };
 
-  const doQR = async () => {
-    const url = window.prompt('URL to encode (QR linkback):', caseUrl || window.location.href);
-    if (url) await insertQRCode(editor, url);
-  };
+  const doQR = () => setPromptKind('qr');
 
-  const doFootnote = () => {
-    const t = window.prompt('Footnote text:');
-    if (t) insertFootnote(editor, t);
-  };
+  const doFootnote = () => setPromptKind('footnote');
 
   const doDictation = () => {
     if (dictation) { dictation.stop(); setDictation(null); return; }
-    const s = startDictation(editor, (m) => window.alert(m));
+    const s = startDictation(editor, (m) => setReadout(m));
     if (s) setDictation(s);
   };
 
@@ -317,6 +310,45 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
       message={`Delete "${deleteTpl?.name ?? ''}"?`}
       confirmLabel="Delete"
       confirmVariant="danger"
+    />
+    <PromptDialog
+      isOpen={promptKind === 'template'}
+      onClose={() => setPromptKind(null)}
+      onSubmit={(name) => {
+        if (!editor) return;
+        saveUserTemplate(name, editor.getHTML());
+        setUserTpls(listUserTemplates());
+        setPromptKind(null);
+      }}
+      title="Save template"
+      message="Name this document template."
+      label="Template name"
+      confirmLabel="Save"
+    />
+    <PromptDialog
+      isOpen={promptKind === 'qr'}
+      onClose={() => setPromptKind(null)}
+      onSubmit={(url) => {
+        void insertQRCode(editor, url);
+        setPromptKind(null);
+      }}
+      title="QR linkback"
+      message="URL to encode in the QR code."
+      label="URL"
+      defaultValue={caseUrl || (typeof window !== 'undefined' ? window.location.href : '')}
+      confirmLabel="Insert"
+    />
+    <PromptDialog
+      isOpen={promptKind === 'footnote'}
+      onClose={() => setPromptKind(null)}
+      onSubmit={(t) => {
+        insertFootnote(editor, t);
+        setPromptKind(null);
+      }}
+      title="Footnote"
+      message="Footnote text inserted at the caret."
+      label="Text"
+      confirmLabel="Insert"
     />
     </>
   );

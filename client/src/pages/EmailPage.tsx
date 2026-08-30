@@ -2058,16 +2058,8 @@ export default function EmailPage() {
     }
   };
 
-  const handleDisconnectMailbox = async () => {
-    if (!window.confirm('Disconnect your Microsoft 365 mailbox? You can reconnect at any time.')) return;
-    try {
-      await apiFetch('/email/connect', { method: 'DELETE' });
-      setConnectStatus({ connected: false, mailbox: null });
-      setMessages([]);
-      setFolders([]);
-    } catch (err: any) {
-      addToast(err.message || 'Failed to disconnect mailbox', 'error');
-    }
+  const handleDisconnectMailbox = () => {
+    setConfirmAction({ kind: 'disconnect-mailbox' });
   };
 
   // ─── URL deep-link contract ──────────────────────────────────────────
@@ -2298,7 +2290,8 @@ export default function EmailPage() {
     | { kind: 'block-sender'; message: EmailMessage }
     | { kind: 'sweep-sender'; message: EmailMessage; folder: string }
     | { kind: 'empty-folder'; folder: string }
-    | { kind: 'delete-folder'; folder: EmailFolder };
+    | { kind: 'delete-folder'; folder: EmailFolder }
+    | { kind: 'disconnect-mailbox' };
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -2889,6 +2882,22 @@ export default function EmailPage() {
       fetchFolders(); showSnackbar('Folder deleted');
     } catch { showSnackbar('Failed to delete folder', 'error'); }
     finally { setConfirmLoading(false); setConfirmAction(null); }
+  };
+
+  const confirmDisconnectMailbox = async () => {
+    if (confirmAction?.kind !== 'disconnect-mailbox') return;
+    setConfirmLoading(true);
+    try {
+      await apiFetch('/email/connect', { method: 'DELETE' });
+      setConnectStatus({ connected: false, mailbox: null });
+      setMessages([]);
+      setFolders([]);
+    } catch (err: any) {
+      addToast(err.message || 'Failed to disconnect mailbox', 'error');
+    } finally {
+      setConfirmLoading(false);
+      setConfirmAction(null);
+    }
   };
 
   const toggleFolderExpand = (folderId: string) => {
@@ -3822,6 +3831,16 @@ export default function EmailPage() {
         confirmLabel="Delete folder"
         confirmVariant="danger"
         isLoading={confirmLoading && confirmAction?.kind === 'delete-folder'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'disconnect-mailbox'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmDisconnectMailbox}
+        title="Disconnect mailbox"
+        message="Disconnect your Microsoft 365 mailbox? You can reconnect at any time."
+        confirmLabel="Disconnect"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'disconnect-mailbox'}
       />
     </div>
   );

@@ -305,10 +305,10 @@ export default function RecruitmentPage() {
         <input
           type="search"
           placeholder="Search candidates…"
+          aria-label="Search candidates"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input-dark text-xs h-7 px-2 w-44"
-          aria-label="Search candidates"
         />
         <select
           aria-label="Filter by stage"

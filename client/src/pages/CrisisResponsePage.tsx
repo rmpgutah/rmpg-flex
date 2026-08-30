@@ -344,9 +344,9 @@ export default function CrisisResponsePage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search incidents… (/)"
+          aria-label="Search crisis incidents"
           className="input-dark text-xs"
           style={{ width: 220 }}
-          aria-label="Search crisis incidents"
         />
         <select
           aria-label="Filter by incident type"

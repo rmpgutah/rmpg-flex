@@ -508,7 +508,7 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
       {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1.5 items-center shrink-0">
         <Search className="w-3 h-3 text-rmpg-500" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search transcript / number" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search transcript / number" aria-label="Search transcripts or numbers" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={unread} onChange={(e) => setUnread(e.target.checked)} /> Unheard</label>
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={starred} onChange={(e) => setStarred(e.target.checked)} /> Starred</label>
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Archive</label>

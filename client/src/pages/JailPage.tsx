@@ -516,9 +516,9 @@ export default function JailPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search booking #, name, unit… (/)"
+            aria-label="Search bookings by number, name, or unit"
             className="input-dark w-full pl-7 pr-2"
             style={{ height: 28 }}
-            aria-label="Search inmates"
           />
         </div>
         <select

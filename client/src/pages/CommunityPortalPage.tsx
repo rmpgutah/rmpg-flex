@@ -206,6 +206,7 @@ export default function CommunityPortalPage() {
           <input
             type="text"
             placeholder="Search tracking #, reporter, location…"
+            aria-label="Search community reports by tracking number, reporter, or location"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-200 placeholder-rmpg-500 focus:[border-color:var(--field-label-color)] focus:outline-none"

@@ -42,6 +42,7 @@ import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, mat
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl, uploadsUrl } from '../../hooks/useApi';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PromptDialog from '../../components/PromptDialog';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { importWithRetry } from '../../utils/importWithRetry';
 
@@ -196,6 +197,7 @@ export default function PdfEditorPage() {
   const [insertPdfOpen, setInsertPdfOpen] = useState(false);     // insert another PDF at a position
   const [clearPageOpen, setClearPageOpen] = useState(false);
   const [clearPageCount, setClearPageCount] = useState(0);
+  const [goToPageOpen, setGoToPageOpen] = useState(false);
   // Default category applied to new sticky notes (toolbar dropdown).
   const [stickyCategory, setStickyCategory] = useState<StickyCategory>('general');
   const [showBookmarks, setShowBookmarks] = useState(false);
@@ -1648,9 +1650,7 @@ export default function PdfEditorPage() {
       if (meta && k === 'a') { e.preventDefault(); selectAllOnPage(); return; }
       if (meta && k === 'g') {
         e.preventDefault();
-        const target = window.prompt(`Go to page (1–${state.pageOrder.length}):`, String(activePage));
-        const n = target ? parseInt(target, 10) : NaN;
-        if (!Number.isNaN(n) && n >= 1 && n <= state.pageOrder.length) jumpToPage(n - 1);
+        setGoToPageOpen(true);
         return;
       }
       // Stroke width Cmd/Ctrl + ] / [ adjust by 1, clamped 1–20.
@@ -2386,6 +2386,22 @@ export default function PdfEditorPage() {
         message={`Delete all ${clearPageCount} annotation(s) on page ${activePage}?`}
         confirmLabel="Clear"
         confirmVariant="danger"
+      />
+      <PromptDialog
+        isOpen={goToPageOpen}
+        onClose={() => setGoToPageOpen(false)}
+        onSubmit={(raw) => {
+          const n = parseInt(raw, 10);
+          if (!Number.isNaN(n) && n >= 1 && n <= state.pageOrder.length) jumpToPage(n - 1);
+          setGoToPageOpen(false);
+        }}
+        title="Go to page"
+        message={`Jump to a page (1–${state.pageOrder.length || 1}).`}
+        label="Page"
+        defaultValue={String(activePage)}
+        inputType="number"
+        inputMode="numeric"
+        confirmLabel="Go"
       />
     </div>
   );

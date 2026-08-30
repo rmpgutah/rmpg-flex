@@ -316,6 +316,7 @@ export default function QAPage() {
                       value={formData.reviewed_officer_id ? Number(formData.reviewed_officer_id) : null}
                       onChange={(id) => setFormData({ ...formData, reviewed_officer_id: id ? String(id) : '' })}
                       placeholder="Search officer by name, badge…"
+                      aria-label="Search officer by name or badge"
                     />
                   </div>
                 </div>

@@ -587,12 +587,12 @@ export default function ConnectionsPage() {
             ref={searchRef}
             type="text"
             placeholder="Search for a person, vehicle, case, incident... (/)"
+            aria-label="Seed search"
             className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-brand-400 focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => { if (results.length) setDropdownOpen(true); }}
-            aria-label="Seed search"
           />
           {searching && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
           {canManage && (

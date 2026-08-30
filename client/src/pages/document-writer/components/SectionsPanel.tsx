@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { X, ListChecks, Target } from 'lucide-react';
 import { computeSectionStats, setSectionGoal, type SectionStat } from '../sectionStats';
+import PromptDialog from '../../../components/PromptDialog';
 
 /** Per-heading section word-count panel. Lists every heading-delimited section
  *  with its word count, lets the user set a per-section word goal (shown as a
@@ -9,6 +10,7 @@ import { computeSectionStats, setSectionGoal, type SectionStat } from '../sectio
 export default function SectionsPanel({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   const [version, setVersion] = useState(0);
   const [goalTick, setGoalTick] = useState(0);
+  const [goalTarget, setGoalTarget] = useState<SectionStat | null>(null);
 
   useEffect(() => {
     const bump = () => setVersion((v) => v + 1);
@@ -22,12 +24,7 @@ export default function SectionsPanel({ editor, onClose }: { editor: Editor; onC
   const goTo = (s: SectionStat) => {
     if (s.pos > 0) editor.chain().focus().setTextSelection(s.pos + 1).scrollIntoView().run();
   };
-  const editGoal = (s: SectionStat) => {
-    const input = window.prompt(`Word goal for "${s.title}" (blank/0 to clear):`, s.goal ? String(s.goal) : '');
-    if (input === null) return;
-    setSectionGoal(s.title, Math.max(0, Math.round(Number(input) || 0)));
-    setGoalTick((t) => t + 1);
-  };
+  const editGoal = (s: SectionStat) => setGoalTarget(s);
 
   return (
     <div className="w-56 sm:w-72 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
@@ -66,6 +63,24 @@ export default function SectionsPanel({ editor, onClose }: { editor: Editor; onC
           </div>
         ))}
       </div>
+      <PromptDialog
+        isOpen={goalTarget != null}
+        onClose={() => setGoalTarget(null)}
+        onSubmit={(input) => {
+          if (!goalTarget) return;
+          setSectionGoal(goalTarget.title, Math.max(0, Math.round(Number(input) || 0)));
+          setGoalTick((t) => t + 1);
+          setGoalTarget(null);
+        }}
+        title="Section word goal"
+        message={`Word goal for "${goalTarget?.title ?? ''}". Blank or 0 clears the goal.`}
+        label="Goal"
+        defaultValue={goalTarget?.goal ? String(goalTarget.goal) : ''}
+        allowEmpty
+        inputType="number"
+        inputMode="numeric"
+        confirmLabel="Set"
+      />
     </div>
   );
 }

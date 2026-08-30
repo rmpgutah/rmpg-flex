@@ -210,6 +210,7 @@ export default function TrainingManagementPage() {
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input id="training-course-search" value={courseQuery} onChange={e => setCourseQuery(e.target.value)} placeholder="Search name / code / location"
+            aria-label="Search courses by name, code, or location"
             className="w-full pl-7 pr-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-rmpg-100" />
         </div>
         <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="select-dark text-xs">

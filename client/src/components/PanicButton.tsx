@@ -6,6 +6,7 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { useToast } from './ToastProvider';
 import ConfirmDialog from './ConfirmDialog';
+import PromptDialog from './PromptDialog';
 import { safeTimeStr } from '../utils/dateUtils';
 import { playTone } from '../utils/dispatchTones';
 
@@ -329,7 +330,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   // False alarm (supervisor+ only)
   const markFalseAlarm = useCallback(() => {
     if (!incomingAlert?.panic_id) return;
-    setNotesText('');
     setNotesKind('false-alarm');
   }, [incomingAlert?.panic_id]);
 
@@ -339,7 +339,6 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   // path). Clears the alert row + the unit's EMERGENCY overlay fleet-wide.
   const resolveCode4 = useCallback(() => {
     if (!incomingAlert?.panic_id) return;
-    setNotesText('');
     setNotesKind('code4');
   }, [incomingAlert?.panic_id]);
 
@@ -364,11 +363,11 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     }
   }, [incomingAlert?.panic_id, addToast]);
 
-  const submitPanicNotes = useCallback(async () => {
+  const submitPanicNotes = useCallback(async (raw: string) => {
     const panicId = incomingAlert?.panic_id;
     if (!panicId || !notesKind) return;
     const kind = notesKind;
-    const notes = notesText.trim();
+    const notes = raw.trim();
     setNotesKind(null);
     try {
       if (kind === 'false-alarm') {
@@ -389,7 +388,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       console.error(kind === 'false-alarm' ? 'Failed to mark false alarm:' : 'Failed to resolve panic:', err);
       addToast(kind === 'false-alarm' ? 'Failed to mark false alarm' : 'Failed to resolve panic', 'error', 5000);
     }
-  }, [incomingAlert?.panic_id, notesKind, notesText, addToast]);
+  }, [incomingAlert?.panic_id, notesKind, addToast]);
 
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { Target } from 'lucide-react';
 import { computeStats, getWordGoal, setWordGoal, type DocStats } from '../docActions';
+import PromptDialog from '../../../components/PromptDialog';
 
 /** Live document status bar — word / character counts, reading time, and average
  *  words-per-sentence, refreshed on every editor transaction. Sits below the page
@@ -10,14 +11,9 @@ import { computeStats, getWordGoal, setWordGoal, type DocStats } from '../docAct
 export default function StatusBar({ editor }: { editor: Editor }) {
   const [stats, setStats] = useState<DocStats>(() => computeStats(editor));
   const [goal, setGoal] = useState<number>(() => getWordGoal());
+  const [goalOpen, setGoalOpen] = useState(false);
 
-  const editGoal = () => {
-    const input = window.prompt('Word-count goal (blank or 0 to clear):', goal ? String(goal) : '');
-    if (input === null) return;
-    const n = Math.max(0, Math.round(Number(input) || 0));
-    setWordGoal(n);
-    setGoal(n);
-  };
+  const editGoal = () => setGoalOpen(true);
   const pct = goal > 0 ? Math.min(100, Math.round((stats.words / goal) * 100)) : 0;
 
   useEffect(() => {
@@ -73,6 +69,24 @@ export default function StatusBar({ editor }: { editor: Editor }) {
           <span className="ml-1 opacity-80">words selected</span>
         </span>
       )}
+      <PromptDialog
+        isOpen={goalOpen}
+        onClose={() => setGoalOpen(false)}
+        onSubmit={(input) => {
+          const n = Math.max(0, Math.round(Number(input) || 0));
+          setWordGoal(n);
+          setGoal(n);
+          setGoalOpen(false);
+        }}
+        title="Word-count goal"
+        message="Enter a target word count. Blank or 0 clears the goal."
+        label="Goal"
+        defaultValue={goal ? String(goal) : ''}
+        allowEmpty
+        inputType="number"
+        inputMode="numeric"
+        confirmLabel="Set"
+      />
     </div>
   );
 }

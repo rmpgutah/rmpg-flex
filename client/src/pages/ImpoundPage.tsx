@@ -298,6 +298,7 @@ export default function ImpoundPage() {
           <input
             type="text"
             placeholder="Search VIN, plate, owner…"
+            aria-label="Search impound records by VIN, plate, or owner"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-transparent text-[11px] text-white placeholder-rmpg-500 flex-1 outline-none"
