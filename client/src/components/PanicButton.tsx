@@ -363,11 +363,11 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     }
   }, [incomingAlert?.panic_id, addToast]);
 
-  const submitPanicNotes = useCallback(async (raw: string) => {
+  const submitPanicNotes = useCallback(async (raw?: string) => {
     const panicId = incomingAlert?.panic_id;
     if (!panicId || !notesKind) return;
     const kind = notesKind;
-    const notes = raw.trim();
+    const notes = (raw ?? notesText).trim();
     setNotesKind(null);
     try {
       if (kind === 'false-alarm') {
@@ -388,7 +388,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       console.error(kind === 'false-alarm' ? 'Failed to mark false alarm:' : 'Failed to resolve panic:', err);
       addToast(kind === 'false-alarm' ? 'Failed to mark false alarm' : 'Failed to resolve panic', 'error', 5000);
     }
-  }, [incomingAlert?.panic_id, notesKind, addToast]);
+  }, [incomingAlert?.panic_id, notesKind, notesText, addToast]);
 
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
