@@ -2294,7 +2294,7 @@ export interface PresenceUpdate {
 // --- Invoices ---
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'partial' | 'overdue' | 'void' | 'cancelled';
-export type LineItemType = 'contract_base' | 'service_hours' | 'incident_response' | 'dispatch_call' | 'citation' | 'custom' | 'late_fee' | 'discount';
+export type LineItemType = 'contract_base' | 'service_hours' | 'incident_response' | 'dispatch_call' | 'citation' | 'custom' | 'late_fee' | 'discount' | 'pso_client_request';
 export type PaymentMethod = 'check' | 'ach' | 'wire' | 'credit_card' | 'cash' | 'other';
 
 export interface Invoice {

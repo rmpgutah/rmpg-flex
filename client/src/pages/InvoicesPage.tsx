@@ -51,6 +51,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
 import { useSlashFocus } from '../hooks/useSlashFocus';
+import { INVOICE_LINE_TYPES, INVOICE_LINE_TYPE_LABELS } from '../utils/invoiceLineTypes';
 import { invoicesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ── Types ──────────────────────────────────────────────────
@@ -160,16 +161,7 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-rmpg-800/50 text-rmpg-500 border-rmpg-700/50',
 };
 
-const LINE_TYPE_LABELS: Record<string, string> = {
-  contract_base: 'Contract Base',
-  service_hours: 'Service Hours',
-  dispatch_call: 'Dispatch Call',
-  incident_response: 'Incident Response',
-  citation: 'Citation',
-  discount: 'Discount',
-  late_fee: 'Late Fee',
-  custom: 'Custom',
-};
+const LINE_TYPE_LABELS: Record<string, string> = INVOICE_LINE_TYPE_LABELS;
 
 const PAYMENT_METHODS = [
   { value: 'check', label: 'Check', icon: 'CHK' },
@@ -398,7 +390,7 @@ export default function InvoicesPage() {
     setSaving(true);
     setSaveError('');
     try {
-      const res = await apiFetch<{ data: Invoice }>('/invoices', {
+      const res = await apiFetch<{ data: Invoice }>('/billing/invoices', {
         method: 'POST',
         body: JSON.stringify(createForm),
       });
@@ -418,7 +410,7 @@ export default function InvoicesPage() {
   const handleStatusChange = async (invoiceId: number, newStatus: string) => {
     setActionLoading(`status-${invoiceId}`);
     try {
-      await apiFetch(`/invoices/${invoiceId}/status`, {
+      await apiFetch(`/billing/invoices/${invoiceId}`, {
         method: 'PUT',
         body: JSON.stringify({ status: newStatus }),
       });
@@ -435,7 +427,7 @@ export default function InvoicesPage() {
   const handleGenerate = async (invoiceId: number) => {
     setActionLoading(`generate-${invoiceId}`);
     try {
-      await apiFetch(`/invoices/${invoiceId}/generate`, { method: 'POST' });
+      await apiFetch(`/billing/invoices/${invoiceId}/generate`, { method: 'POST' });
       await fetchDetail(invoiceId);
       fetchInvoices({ silent: true });
       fetchStats();
@@ -450,9 +442,9 @@ export default function InvoicesPage() {
     if (!selectedInvoice || !paymentForm.amount || !paymentForm.payment_date) return;
     setPaymentSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/payments`, {
+      await apiFetch('/billing/payments', {
         method: 'POST',
-        body: JSON.stringify({ ...paymentForm, amount: parseFloat(paymentForm.amount) }),
+        body: JSON.stringify({ ...paymentForm, invoice_id: selectedInvoice.id, amount: parseFloat(paymentForm.amount) }),
       });
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
@@ -470,7 +462,7 @@ export default function InvoicesPage() {
     if (!selectedInvoice) return;
     setConfirmDeleting(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/payments/${paymentId}`, { method: 'DELETE' });
+      await apiFetch(`/billing/payments/${paymentId}`, { method: 'DELETE' });
       setConfirmDeletePayment(null);
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
@@ -487,7 +479,7 @@ export default function InvoicesPage() {
     if (!selectedInvoice || !lineItemForm.description) return;
     setLineItemSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/line-items`, {
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/items`, {
         method: 'POST',
         body: JSON.stringify({
           ...lineItemForm,
@@ -511,7 +503,7 @@ export default function InvoicesPage() {
     if (!selectedInvoice) return;
     setConfirmDeleting(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/line-items/${itemId}`, { method: 'DELETE' });
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/items/${itemId}`, { method: 'DELETE' });
       setConfirmDeleteLineItem(null);
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
@@ -842,12 +834,9 @@ export default function InvoicesPage() {
                 onChange={e => setLineItemForm(f => ({ ...f, line_type: e.target.value }))}
                 className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
               >
-                <option value="custom">Custom</option>
-                <option value="service_hours">Service Hours</option>
-                <option value="dispatch_call">Dispatch Call</option>
-                <option value="incident_response">Incident Response</option>
-                <option value="late_fee">Late Fee</option>
-                <option value="discount">Discount</option>
+                {INVOICE_LINE_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
               </select>
               <input id="ff-invoicespage-5"
                 type="text"
