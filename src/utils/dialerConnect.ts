@@ -259,3 +259,18 @@ export function timingSafeEqual(a: string, b: string): boolean {
   for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return out === 0;
 }
+
+/** SSRF gate for proxying Dial Connect / Twilio recording URLs through the Worker. */
+export function isAllowedRecordingSourceUrl(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.toLowerCase();
+    return host === 'dialer.rmpgutah.us'
+      || host === 'api.twilio.com'
+      || host.endsWith('.twilio.com');
+  } catch {
+    return false;
+  }
+}

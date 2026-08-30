@@ -392,7 +392,11 @@ export default function InvoicesPage() {
     try {
       const res = await apiFetch<{ data: Invoice }>('/billing/invoices', {
         method: 'POST',
-        body: JSON.stringify(createForm),
+        body: JSON.stringify({
+          client_id: createForm.client_id,
+          notes: createForm.notes,
+          due_date: createForm.period_end || undefined,
+        }),
       });
       // Switch to detail view of the new invoice
       await fetchDetail(res.data.id);

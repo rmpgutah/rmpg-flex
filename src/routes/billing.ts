@@ -117,6 +117,44 @@ async function recalcInvoiceTotal(db: ReturnType<typeof getDb>, invoiceId: numbe
   await execute(db, 'UPDATE invoices SET subtotal = ?, tax_amount = ?, total_amount = ? WHERE id = ?', subtotal, taxAmount, total, invoiceId);
 }
 
+export type InvoiceGenerateResult =
+  | { ok: true; data: Record<string, unknown> | null }
+  | { ok: false; status: 400 | 404; error: string };
+
+/** Shared by POST /api/billing/invoices/:id/generate and the /api/invoices alias. */
+export async function regenerateDraftInvoiceLines(
+  db: ReturnType<typeof getDb>,
+  invoiceId: number,
+): Promise<InvoiceGenerateResult> {
+  const invoice = await queryFirst<{ contract_id: number | null; status: string }>(db, 'SELECT contract_id, status FROM invoices WHERE id = ?', invoiceId);
+  if (!invoice) return { ok: false, status: 404, error: 'Invoice not found' };
+  if (invoice.status !== 'draft') {
+    return { ok: false, status: 400, error: `Cannot regenerate a '${invoice.status}' invoice — only draft invoices can be regenerated (regenerating a sent/paid invoice would silently invalidate recorded payments).` };
+  }
+  if (!invoice.contract_id) {
+    return { ok: false, status: 400, error: 'Invoice has no linked contract to regenerate line items from' };
+  }
+  const contract = await queryFirst<{ contract_number: string | null; billing_cycle: string; rate_amount: number | null; rate_type: string }>(
+    db, 'SELECT contract_number, billing_cycle, rate_amount, rate_type FROM client_contracts WHERE id = ?', invoice.contract_id);
+  if (!contract) return { ok: false, status: 404, error: 'Linked contract not found' };
+  if (contract.rate_type !== 'flat' || contract.rate_amount == null) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Cannot auto-regenerate line items for rate_type '${contract.rate_type}' — only 'flat' contracts can be priced without additional usage data (hours/calls/officers). Add line items manually.`,
+    };
+  }
+  const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
+  await executeBatch(db, [
+    { sql: "DELETE FROM invoice_line_items WHERE invoice_id = ? AND line_type = 'contract'", bindings: [invoiceId] },
+    { sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+            VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`, bindings: [invoiceId, description, contract.rate_amount, contract.rate_amount] },
+  ]);
+  await recalcInvoiceTotal(db, invoiceId);
+  const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
+  return { ok: true, data: updated };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CLIENT CONTRACTS
 // ═══════════════════════════════════════════════════════════════
