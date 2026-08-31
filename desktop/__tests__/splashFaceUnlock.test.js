@@ -42,14 +42,17 @@ test('splashPreload.js: faceUnlockSuccess is exposed via contextBridge', () => {
 // ── 2: main.js has the face:unlock-success ipcMain.on handler ─────────────────
 test('main.js: ipcMain.on face:unlock-success handler exists', () => {
   const src = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
-  assert.match(src, /ipcMain\.on\(\s*['"]face:unlock-success['"]/,
+  // The handler is registered through guardedSplashOn (createLocalFileIpcGuards),
+  // which wraps ipcMain.on internally — accept both forms so this audit test
+  // matches the real, sender-validated registration.
+  assert.match(src, /(?:ipcMain\.on|guardedSplashOn)\(\s*['"]face:unlock-success['"]/,
     'main.js must register ipcMain.on handler for face:unlock-success');
 });
 
 test('main.js: face:unlock-success handler closes splashWindow', () => {
   const src = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
   // Verify the handler block contains splashWindow close logic
-  const handlerStart = src.indexOf("ipcMain.on('face:unlock-success'");
+  const handlerStart = src.indexOf("guardedSplashOn('face:unlock-success'");
   assert.ok(handlerStart !== -1, 'handler must exist');
   const handlerBlock = src.slice(handlerStart, handlerStart + 400);
   assert.match(handlerBlock, /splashWindow/,

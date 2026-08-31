@@ -30,6 +30,7 @@ const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTray
 const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse, validateFlexOsLoginResponse } = require('./kioskShell');
 const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
 const { runRfScan } = require('./rfScanner');
+const { parseNetshScanNetworks, parseNetshListProfiles, parseNetshGetDetail } = require('./wifiInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -4868,50 +4869,15 @@ guardedHandle('wifi:get-detail', async () => {
   const { execSync } = require('child_process');
   const os = require('os');
 
-  const field = (text, label) => {
-    const m = text.match(new RegExp(`^\\s+${label}\\s+:\\s+(.+)`, 'm'));
-    return m ? m[1].trim() : null;
-  };
-  const intField = (text, label) => {
-    const v = field(text, label);
-    return v ? parseInt(v, 10) : null;
-  };
-
   // --- netsh wlan show interfaces ---
   let wlanOut = '';
   try { wlanOut = execSync('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8', windowsHide: true }); } catch { /* no adapter */ }
 
-  const state = (() => {
-    const m = field(wlanOut, 'State');
-    if (!m) return null;
-    return m.toLowerCase().includes('connect') ? 'connected' : 'disconnected';
-  })();
-  const ssid       = field(wlanOut, 'SSID');
-  const bssid      = field(wlanOut, 'BSSID');
-  const signal     = intField(wlanOut, 'Signal');
-  const channel    = intField(wlanOut, 'Channel');
-  const radioType  = field(wlanOut, 'Radio type');
-  const auth       = field(wlanOut, 'Authentication');
-  const cipher     = field(wlanOut, 'Cipher');
-  const profile    = field(wlanOut, 'Profile');
-  const adapter    = field(wlanOut, 'Description');
-  const mac        = field(wlanOut, 'Physical address');
-  const rxMbpsRaw  = field(wlanOut, 'Receive rate \\(Mbps\\)');
-  const txMbpsRaw  = field(wlanOut, 'Transmit rate \\(Mbps\\)');
-  const rxMbps     = rxMbpsRaw ? parseFloat(rxMbpsRaw) : null;
-  const txMbps     = txMbpsRaw ? parseFloat(txMbpsRaw) : null;
-
-  const band = (() => {
-    if (!channel) return null;
-    if (channel >= 1  && channel <= 14)  return '2.4 GHz';
-    if (channel >= 32 && channel <= 177) return '5 GHz';
-    if (channel >= 1  && radioType && radioType.includes('6E')) return '6 GHz';
-    return null;
-  })();
+  const parsed = parseNetshGetDetail(wlanOut) || {};
 
   // --- IP info from os.networkInterfaces() matched by MAC ---
   let ip = null, ipv6 = null, subnet = null;
-  const normalMac = mac ? mac.toLowerCase().replace(/-/g, ':') : null;
+  const normalMac = parsed.mac ? parsed.mac.toLowerCase().replace(/-/g, ':') : null;
   if (normalMac) {
     const ifaces = os.networkInterfaces();
     for (const ifAddrs of Object.values(ifaces)) {
@@ -4937,12 +4903,12 @@ guardedHandle('wifi:get-detail', async () => {
         'ConvertTo-Json -Compress"',
       { timeout: 5000, encoding: 'utf8', windowsHide: true }
     );
-    const parsed = JSON.parse(psOut.trim());
-    gateway = parsed.gw || null;
-    dns = parsed.dns ? parsed.dns.split(',').filter(Boolean) : [];
+    const parsedPs = JSON.parse(psOut.trim());
+    gateway = parsedPs.gw || null;
+    dns = parsedPs.dns ? parsedPs.dns.split(',').filter(Boolean) : [];
   } catch { /* not critical */ }
 
-  return { state, ssid, bssid, signal, channel, band, radioType, auth, cipher, profile, adapter, mac, ip, ipv6, subnet, gateway, dns, rxMbps, txMbps };
+  return { ...parsed, ip, ipv6, subnet, gateway, dns };
 });
 
 // ── WiFi: scan available networks (Windows only) ──────────────
@@ -4954,47 +4920,7 @@ guardedHandle('wifi:scan-networks', async () => {
       'netsh wlan show networks mode=Bssid',
       { timeout: 8000, encoding: 'utf8', windowsHide: true }
     );
-
-    // Each SSID block starts with "SSID N :"
-    const blocks = out.split(/(?=^SSID \d+ :)/m).filter(b => b.trim().startsWith('SSID'));
-    const networks = blocks.map(block => {
-      const ssidM  = block.match(/^SSID \d+ +: (.+)/m);
-      const authM  = block.match(/Authentication +: (.+)/m);
-      const encM   = block.match(/Encryption +: (.+)/m);
-      const ssid   = ssidM  ? ssidM[1].trim()  : '';
-      const auth   = authM  ? authM[1].trim()  : 'Unknown';
-      const enc    = encM   ? encM[1].trim()   : 'Unknown';
-
-      // Parse each BSSID sub-block
-      const bssidBlocks = block.split(/(?=^ +BSSID \d+ +:)/m).slice(1);
-      const bssids = bssidBlocks.map(bb => {
-        const bM  = bb.match(/BSSID \d+ +: (.+)/m);
-        const sM  = bb.match(/Signal +: (\d+)%/m);
-        const rtM = bb.match(/Radio type +: (.+)/m);
-        const chM = bb.match(/Channel +: (\d+)/m);
-        return {
-          bssid:     bM  ? bM[1].trim()         : null,
-          signal:    sM  ? parseInt(sM[1], 10)  : 0,
-          radioType: rtM ? rtM[1].trim()         : null,
-          channel:   chM ? parseInt(chM[1], 10) : null,
-        };
-      });
-
-      const maxSignal = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
-      const bestBssid = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
-
-      const channel = bestBssid.channel ?? null;
-      const band = (() => {
-        if (!channel) return null;
-        if (channel >= 1 && channel <= 14)  return '2.4 GHz';
-        if (channel >= 32 && channel <= 177) return '5 GHz';
-        return null;
-      })();
-
-      return { ssid, auth, enc, signal: maxSignal, channel, band, radioType: bestBssid.radioType ?? null, bssids };
-    }).filter(n => n.ssid);
-
-    return networks;
+    return parseNetshScanNetworks(out);
   } catch { return []; }
 });
 
@@ -5004,8 +4930,7 @@ guardedHandle('wifi:list-profiles', async () => {
   const { execSync } = require('child_process');
   try {
     const out = execSync('netsh wlan show profiles', { timeout: 3000, encoding: 'utf8', windowsHide: true });
-    const matches = [...out.matchAll(/All User Profile\s+: (.+)/g)];
-    return matches.map(m => m[1].trim());
+    return parseNetshListProfiles(out);
   } catch { return []; }
 });
 
