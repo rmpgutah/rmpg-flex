@@ -750,6 +750,7 @@ export default function ServeRoutePlanner({
   const [mapReady, setMapReady] = useState(false);
   const [totalDistance, setTotalDistance] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
+  const [vehicleMpg, setVehicleMpg] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedOfficerId, setSelectedOfficerId] = useState<number>(currentUserId || 0);
   const [routeDate, setRouteDate] = useState(
@@ -1287,6 +1288,7 @@ export default function ServeRoutePlanner({
       ? orderStopsByJobIds(selected, v2.orderedJobIds)
       : null;
     const v2Arrivals = v2 ? v2EtasToArrivalMs(v2.etaByJobId) : new Map<number, number>();
+    if (v2?.avgMpg) setVehicleMpg(v2.avgMpg);
     const droppedWarning = v2?.droppedJobIds?.length
       ? `${v2.droppedJobIds.length} stop${v2.droppedJobIds.length === 1 ? '' : 's'} could not be fit into the optimized schedule.`
       : null;
@@ -1297,6 +1299,7 @@ export default function ServeRoutePlanner({
       matrixFallback: boolean;
       fallbackReason?: string;
       geocodeWarnings: GeocodeWarning[];
+      avg_mpg?: number | null;
     } | null> = v2Ordered
       ? Promise.resolve(null)
       : apiFetch<{
@@ -1305,6 +1308,7 @@ export default function ServeRoutePlanner({
           matrixFallback: boolean;
           fallbackReason?: string;
           geocodeWarnings: GeocodeWarning[];
+          avg_mpg?: number | null;
         }>('/serve-queue/optimize-route', {
           method: 'POST',
           body: JSON.stringify({
@@ -1312,6 +1316,7 @@ export default function ServeRoutePlanner({
             departAt: shiftStartIso,
             origin: routeOrigin,
             circular: returnToStart,
+            officer_id: selectedOfficerId || currentUserId,
           }),
         }).catch(() => null);
 
@@ -1353,6 +1358,7 @@ export default function ServeRoutePlanner({
       );
       setReturnLegMiles(returnMi);
       setTotalDuration(totalDurMin);
+      if (serverResult?.avg_mpg) setVehicleMpg(serverResult.avg_mpg);
       setStopArrivalTimes(arrivals);
       setShowSplitBanner(totalDurMin > 480);
       setMissedDeadlineIds(missedDeadlineJobIds);
@@ -1401,6 +1407,7 @@ export default function ServeRoutePlanner({
       } else if (serverResult?.orderedStops?.length) {
         selectedOrdered = orderStopsByJobIds(selected, serverResult.orderedStops.map(s => s.jobId));
         setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
+        if (serverResult.avg_mpg) setVehicleMpg(serverResult.avg_mpg);
         const newFallback = serverResult.matrixFallback ?? false;
         setMatrixFallback(newFallback);
         setMatrixFallbackReason(newFallback ? humanizeMatrixFallback(serverResult.fallbackReason) : undefined);
@@ -2270,7 +2277,7 @@ export default function ServeRoutePlanner({
                     : '--'}
                 </span>
               </div>
-              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}{gallonsForMiles(totalDistance) > 0 ? ` · ${gallonsForMiles(totalDistance).toFixed(1)} gal @ 18 mpg` : ''}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}{vehicleMpg > 0 && gallonsForMiles(totalDistance, vehicleMpg) > 0 ? ` · ${gallonsForMiles(totalDistance, vehicleMpg).toFixed(1)} gal @ ${vehicleMpg} mpg` : gallonsForMiles(totalDistance) > 0 ? ` · ${gallonsForMiles(totalDistance).toFixed(1)} gal @ 18 mpg` : ''}</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '—'}</span></div>
 
               {/* F5: deadline miss warning */}

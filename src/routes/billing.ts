@@ -93,7 +93,7 @@ const INVOICE_LIST_SQL = `SELECT i.*, cl.name AS client_name,
          COALESCE(cl.payment_terms, 'Net 30') AS payment_terms
        FROM invoices i LEFT JOIN clients cl ON i.client_id = cl.id`;
 
-async function generateInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
+export async function generateInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
   const yy = String(new Date().getFullYear()).slice(-2);
   const prefix = `INV-${yy}-`;
   const last = await queryFirst<{ invoice_number: string }>(

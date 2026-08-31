@@ -21,8 +21,9 @@
 import { Hono } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
-import { ensureInvoiceSchema } from './billing';
+import { getDb, query, queryFirst, execute } from '../utils/db';
+import { ensureInvoiceSchema, generateInvoiceNumber, regenerateDraftInvoiceLines } from './billing';
+import { requireRole } from '../middleware/auth';
 
 import { log } from '../utils/logger';
 const invoices = new Hono<Env>();

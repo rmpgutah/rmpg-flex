@@ -55,6 +55,10 @@ export interface OptimizeOrigin {
 export interface OptimizeOptions {
   origin?: OptimizeOrigin | null;
   circular?: boolean;
+  /** Vehicle fuel efficiency from fleet_vehicles.avg_mpg. Enables fuel-cost-aware routing. */
+  avgMpg?: number | null;
+  /** Price per gallon of fuel (default $3.50). Used with avgMpg to compute fuel cost. */
+  fuelPricePerGallon?: number;
 }
 
 export interface OptimizeResult {
@@ -775,11 +779,28 @@ export function applyTimeWindowPenalties(
   dwellSeconds: number[]
 ): number[][] {
   const n = stops.length;
+  if (n === 0) return matrix.map(row => [...row]);
   const flat = matrix.flat();
   const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
   const PENALTY = 10 * maxCost;
   const result = matrix.map(row => [...row]);
   const departMs = new Date(departAt).getTime();
+
+  // Compute cumulative arrival times along a greedy (nearest-neighbor) path
+  // so penalties reflect WHEN the officer actually arrives at each stop,
+  // not just the direct travel from origin.
+  const path = nearestNeighborOrder(matrix, n);
+  const cumulativeArrivalMs: number[] = new Array(n).fill(0);
+  let currentTimeMs = departMs;
+  for (let step = 0; step < path.length; step++) {
+    const idx = path[step];
+    if (step > 0) {
+      const prevIdx = path[step - 1];
+      currentTimeMs += (matrix[prevIdx]?.[idx] ?? 0) * 1000;
+      currentTimeMs += (dwellSeconds[prevIdx] ?? 0) * 1000;
+    }
+    cumulativeArrivalMs[idx] = currentTimeMs;
+  }
 
   for (let j = 0; j < n; j++) {
     const note = stops[j].locationNote;
@@ -788,12 +809,10 @@ export function applyTimeWindowPenalties(
     let windowEnd = parseTimeOfDay(note.serveEnd, departAt);
     if (windowEnd <= windowStart) windowEnd += 86_400_000;
 
-    for (let i = 0; i < n; i++) {
-      if (i === j) continue;
-      const travelS = matrix[i][j] ?? 0;
-      const dwellS = dwellSeconds[i] ?? 0;
-      const arrivalMs = departMs + (travelS + dwellS) * 1000;
-      if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+    const arrivalMs = cumulativeArrivalMs[j];
+    if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+      for (let i = 0; i < n; i++) {
+        if (i === j) continue;
         result[i][j] += PENALTY;
       }
     }
@@ -821,23 +840,109 @@ export function applyBusinessHoursPenalties(
   dwellSeconds: number[]
 ): number[][] {
   const n = stops.length;
+  if (n === 0) return matrix.map(row => [...row]);
   const flat = matrix.flat();
   const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
-  const PENALTY = 5 * maxCost;
+  const FULL_PENALTY = 5 * maxCost;
   const result = matrix.map(row => [...row]);
   const departMs = new Date(departAt).getTime();
 
+  // Use cumulative arrival times (same greedy path as time-window penalties)
+  // so business-hour penalties reflect when the officer actually reaches the stop.
+  const path = nearestNeighborOrder(matrix, n);
+  const cumulativeArrivalMs: number[] = new Array(n).fill(0);
+  let currentTimeMs = departMs;
+  for (let step = 0; step < path.length; step++) {
+    const idx = path[step];
+    if (step > 0) {
+      const prevIdx = path[step - 1];
+      currentTimeMs += (matrix[prevIdx]?.[idx] ?? 0) * 1000;
+      currentTimeMs += (dwellSeconds[prevIdx] ?? 0) * 1000;
+    }
+    cumulativeArrivalMs[idx] = currentTimeMs;
+  }
+
+  const denverFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  });
+
   for (let j = 0; j < n; j++) {
     if (stops[j].defendantType !== 'business') continue;
-    for (let i = 0; i < n; i++) {
-      if (i === j) continue;
-      const travelS = matrix[i][j] ?? 0;
-      const dwellS = dwellSeconds[i] ?? 0;
-      const arrivalMs = departMs + (travelS + dwellS) * 1000;
-      const arrivalIso = new Date(arrivalMs).toISOString();
-      if (!isWithinBusinessHours(arrivalIso)) {
-        result[i][j] += PENALTY;
+    const arrivalMs = cumulativeArrivalMs[j];
+    const arrivalHour = Number(denverFmt.format(new Date(arrivalMs)));
+
+    // Gradient penalty: full for early/late, reduced for near-boundary.
+    // Before 7 AM or after 8 PM: full penalty (business definitely closed).
+    // 5–7 PM: reduced penalty (many businesses still open, don't penalize hard).
+    // 7–8 AM: reduced penalty (businesses may open early).
+    let penaltyFraction = 0;
+    if (arrivalHour < 7 || arrivalHour >= 20) {
+      penaltyFraction = 1.0;
+    } else if (arrivalHour >= 17) {
+      // 5–8 PM: linearly decay from 100% at 5 PM to 0% at 8 PM
+      penaltyFraction = (20 - arrivalHour) / 3;
+    } else if (arrivalHour < 8) {
+      // 7–8 AM: linearly decay from 100% at 7 AM to 0% at 8 AM
+      penaltyFraction = 8 - arrivalHour;
+    }
+
+    if (penaltyFraction > 0) {
+      const penalty = Math.round(FULL_PENALTY * penaltyFraction);
+      for (let i = 0; i < n; i++) {
+        if (i === j) continue;
+        result[i][j] += penalty;
       }
+    }
+  }
+  return result;
+}
+
+// ── Fuel cost penalty ────────────────────────────────────────────────────────
+
+const DEFAULT_FUEL_PRICE_PER_GALLON = 3.50;
+/** Value of time in $/hour — used to convert fuel cost ($) into a time-equivalent
+ *  penalty (seconds) so it can be blended into the time-based cost matrix.
+ *  At $25/hr (≈ a Process Server's loaded cost), $1 of fuel ≈ 2.4 min. */
+const VALUE_OF_TIME_PER_HOUR = 25;
+
+/**
+ * Blend fuel cost into the time-based cost matrix.
+ *
+ * For each edge (i→j), the travel time in seconds is converted to an estimated
+ * distance (using the average urban speed), then to a fuel cost in gallons, then
+ * to a dollar amount. The dollar amount is converted to a time-equivalent penalty
+ * (seconds) and added to the matrix cell, so the optimizer naturally favors
+ * routes that burn less fuel — without changing the fundamental time-based
+ * optimization.
+ *
+ * @param avgMpg  Vehicle's average MPG from fleet_vehicles.avg_mpg
+ * @param fuelPrice  Price per gallon (default $3.50)
+ */
+export function applyFuelCostPenalties(
+  matrix: number[][],
+  avgMpg: number,
+  fuelPrice: number = DEFAULT_FUEL_PRICE_PER_GALLON,
+): number[][] {
+  if (avgMpg <= 0) return matrix.map(row => [...row]);
+  const n = matrix.length;
+  const result = matrix.map(row => [...row]);
+  const gallonsPerMile = 1 / avgMpg;
+  const fuelCostPerMile = gallonsPerMile * fuelPrice;
+  // Convert fuel cost ($/mile) to time-equivalent seconds per mile:
+  // $cost / ($/hour) * 3600 = seconds
+  const fuelSecPerMile = (fuelCostPerMile / VALUE_OF_TIME_PER_HOUR) * 3600;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      const travelSeconds = matrix[i][j];
+      if (!isFinite(travelSeconds) || travelSeconds <= 0) continue;
+      // Estimate distance from travel time using average urban speed
+      const distanceMiles = (travelSeconds / 3600) * URBAN_AVG_MPH;
+      const fuelPenalty = distanceMiles * fuelSecPerMile;
+      result[i][j] += fuelPenalty;
     }
   }
   return result;
@@ -895,7 +1000,7 @@ export function optimizeRoute(
   departAt: string,
   now: Date,
   dwellSeconds: number[],
-  options: { circular?: boolean; lockStart?: boolean } = {},
+  options: { circular?: boolean; lockStart?: boolean; avgMpg?: number | null; fuelPricePerGallon?: number } = {},
 ): number[] {
   const n = stops.length;
   if (n === 0) return [];
@@ -905,15 +1010,30 @@ export function optimizeRoute(
     row.map((cost, j) => cost * deadlineCoefficient(stops[j], now))
   );
 
-  const penalized = applyTimeWindowPenalties(weighted, stops, departAt, dwellSeconds);
+  // Blend fuel cost into the matrix when vehicle MPG is known.
+  // This runs BEFORE time-window/business-hours penalties so that fuel-aware
+  // ordering is further shaped by constraint penalties.
+  const fuelAware = options.avgMpg && options.avgMpg > 0
+    ? applyFuelCostPenalties(weighted, options.avgMpg, options.fuelPricePerGallon)
+    : weighted;
+
+  const penalized = applyTimeWindowPenalties(fuelAware, stops, departAt, dwellSeconds);
   const bizPenalized = applyBusinessHoursPenalties(penalized, stops, departAt, dwellSeconds);
 
   let startIdx = 0;
   if (!options.lockStart) {
-    let lowestCoeff = deadlineCoefficient(stops[0], now);
-    for (let i = 1; i < n; i++) {
-      const c = deadlineCoefficient(stops[i], now);
-      if (c < lowestCoeff) { lowestCoeff = c; startIdx = i; }
+    // Pick the deadline-urgent stop closest to the cluster centroid so the
+    // route starts near the geographic center while still prioritizing urgency.
+    const centroidLat = stops.reduce((s, st) => s + st.lat, 0) / n;
+    const centroidLng = stops.reduce((s, st) => s + st.lng, 0) / n;
+    let bestScore = Infinity;
+    for (let i = 0; i < n; i++) {
+      const coeff = deadlineCoefficient(stops[i], now);
+      const distSq = (stops[i].lat - centroidLat) ** 2 + (stops[i].lng - centroidLng) ** 2;
+      // Score: deadline urgency × 1000 + distance to centroid.
+      // Urgency wins, but ties are broken by proximity.
+      const score = coeff * 1000 + distSq;
+      if (score < bestScore) { bestScore = score; startIdx = i; }
     }
   }
 
@@ -975,6 +1095,8 @@ export async function optimizeRouteFullPipeline(
   const orderedIndices = optimizeRoute(allStops, matrix, departAt, now, allDwell, {
     circular: options.circular === true,
     lockStart: origin != null,
+    avgMpg: options.avgMpg,
+    fuelPricePerGallon: options.fuelPricePerGallon,
   });
   const visitOrder = origin ? orderedIndices.filter(i => i !== 0) : orderedIndices;
   const orderedStops = visitOrder.map(i => (origin ? allStops[i] : stops[i]));
@@ -1127,6 +1249,7 @@ export async function checkTrafficDegradation(
   originalEtas: string[],
   db: D1Database,
   mapboxToken: string,
+  optimizeOptions?: OptimizeOptions,
 ): Promise<TrafficCheckResult> {
   if (remainingStops.length === 0) {
     return {
@@ -1227,7 +1350,7 @@ export async function checkTrafficDegradation(
   const dwellSecs = await fetchDwellSeconds(db, remainingStops);
   const allDwell = [0, ...dwellSecs];
   const newOrderAll = degraded
-    ? optimizeRoute(allStops, matrix, nowIso, now, allDwell, { lockStart: true })
+    ? optimizeRoute(allStops, matrix, nowIso, now, allDwell, { lockStart: true, ...optimizeOptions })
     : [0, ...currentOrder.map(i => i + 1)];
   const newOrderIndices = newOrderAll.filter(i => i !== 0).map(i => i - 1);
 

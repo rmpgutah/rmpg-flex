@@ -50,7 +50,7 @@ describe('buildServeRunProblem', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
     const svc11 = doc.services.find((s) => s.name === '11');
     expect(svc11?.service_times).toBeDefined();
-    expect(svc11?.service_times![0].type).toBe('soft');
+    expect(svc11?.service_times![0].type).toBe('strict');
     expect(svc11?.service_times![0].earliest).toContain('09:00');
     expect(svc11?.service_times![0].latest).toContain('11:00');
   });
@@ -89,9 +89,10 @@ describe('buildServeRunProblem', () => {
       id: 20, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
       time_window: 'morning',
     };
-    const doc = buildServeRunProblem([morning], officer, '2026-08-28T14:00:00.000Z', SHIFT_END);
+    // Shift starts at 14:00 UTC = 08:00 Denver (MDT) — morning window (06-12) is valid
+    const doc = buildServeRunProblem([morning], officer, '2026-08-28T14:00:00.000Z', '2026-08-28T23:00:00.000Z');
     const tw = doc.services[0].service_times![0];
-    expect(tw.type).toBe('soft');
+    expect(tw.type).toBe('strict');
     expect(tw.earliest).toBe('2026-08-28T06:00:00-06:00');
     expect(tw.latest).toBe('2026-08-28T12:00:00-06:00');
   });
@@ -101,7 +102,8 @@ describe('buildServeRunProblem', () => {
       id: 22, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
       time_window: 'morning',
     };
-    const doc = buildServeRunProblem([morning], officer, '2026-08-29T00:15:00.000Z', SHIFT_END);
+    // Shift starts at 00:15 UTC Aug 29 = 6:15 PM Denver — well after morning window
+    const doc = buildServeRunProblem([morning], officer, '2026-08-29T00:15:00.000Z', '2026-08-29T08:00:00.000Z');
     expect(doc.services[0].service_times).toBeUndefined();
   });
 

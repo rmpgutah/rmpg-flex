@@ -36,7 +36,7 @@ export interface V2ProblemDocument {
   locations: V2Location[];
   vehicles: V2Vehicle[];
   services: V2Service[];
-  options?: { objectives?: string[] };
+  options?: { objectives?: string[]; avg_mpg?: number | null };
 }
 
 export interface V2Stop {
@@ -52,6 +52,8 @@ export interface V2Stop {
 export interface V2Route {
   vehicle: string;
   stops: V2Stop[];
+  distance?: number;  // meters, from Mapbox V2 route summary
+  duration?: number;  // seconds, from Mapbox V2 route summary
 }
 
 export interface V2Solution {
@@ -138,22 +140,49 @@ function denverYmdFromIso(iso: string): string {
   }).format(new Date(ms));
 }
 
+/** Detect the correct UTC offset for America/Denver on a given date.
+ *  Mountain Daylight Time (MDT = UTC-6) second Sunday of March → first Sunday of November.
+ *  Mountain Standard Time (MST = UTC-7) the rest of the year. */
+function denverUtcOffset(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '-06:00'; // safe fallback
+  const d = new Date(ms);
+  // DST starts: second Sunday of March at 2:00 AM local
+  const mar = new Date(d.getUTCFullYear(), 2, 1);
+  const marSun1 = mar.getUTCDay(); // 0=Sun
+  const marSun2 = marSun1 === 0 ? 8 : 15 - marSun1 + 1; // second Sunday (1-indexed day of month)
+  const dstStart = Date.UTC(d.getUTCFullYear(), 2, marSun2, 2, 0, 0) + 7 * 3600_000; // 2 AM MST = 9 AM UTC
+  // DST ends: first Sunday of November at 2:00 AM local
+  const nov = new Date(d.getUTCFullYear(), 10, 1);
+  const novSun1 = nov.getUTCDay() === 0 ? 1 : 8 - nov.getUTCDay();
+  const dstEnd = Date.UTC(d.getUTCFullYear(), 10, novSun1, 2, 0, 0) + 6 * 3600_000; // 2 AM MDT = 8 AM UTC
+  const inDst = ms >= dstStart && ms < dstEnd;
+  return inDst ? '-06:00' : '-07:00';
+}
+
 function parseTimeWindow(
   window: string,
   shiftStartIso: string,
+  shiftEndIso?: string,
 ): { earliest: string; latest: string } | null {
   const normalized = normalizeServeTimeWindow(window);
   if (!normalized) return null;
   const m = normalized.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
   if (!m) return null;
   const day = denverYmdFromIso(shiftStartIso);
-  const earliest = `${day}T${m[1]}:00-06:00`;
-  const latest = `${day}T${m[2]}:00-06:00`;
+  const offset = denverUtcOffset(shiftStartIso);
+  const earliest = `${day}T${m[1]}:00${offset}`;
+  const latest = `${day}T${m[2]}:00${offset}`;
   const shiftMs = Date.parse(shiftStartIso);
+  const earliestMs = Date.parse(earliest);
   const latestMs = Date.parse(latest);
-  // Morning 08:00–12:00 is already over at a 18:15 start — do not hand Mapbox
-  // a window that forces 08:00 tomorrow.
+  // Drop windows that are already over at shift start
   if (Number.isFinite(shiftMs) && Number.isFinite(latestMs) && latestMs <= shiftMs) return null;
+  // Drop windows that start after shift end (infeasible constraint)
+  if (shiftEndIso) {
+    const shiftEndMs = Date.parse(shiftEndIso);
+    if (Number.isFinite(shiftEndMs) && Number.isFinite(earliestMs) && earliestMs >= shiftEndMs) return null;
+  }
   return { earliest, latest };
 }
 
@@ -177,7 +206,7 @@ export function buildServeRunProblem(
   officer: UnitRow,
   shiftStart: string,
   shiftEnd: string,
-  options: { circular?: boolean } = {},
+  options: { circular?: boolean; avgMpg?: number | null } = {},
 ): V2ProblemDocument {
   const depotName = `officer-${officer.id}-depot`;
 
@@ -223,18 +252,32 @@ export function buildServeRunProblem(
       location: String(s.id),
       duration: serveOnsiteDuration(s),
     };
+    const serviceTimes: V2ServiceTime[] = [];
     if (s.time_window) {
-      const tw = parseTimeWindow(s.time_window, shiftStart);
-      if (tw) svc.service_times = [{ ...tw, type: 'soft' }];
+      const tw = parseTimeWindow(s.time_window, shiftStart, shiftEnd);
+      if (tw) serviceTimes.push({ ...tw, type: 'strict' });
     }
-    if (!svc.service_times && s.deadline) {
-      svc.service_times = [{ earliest: shiftStart, latest: s.deadline, type: 'soft_end' }];
+    if (s.deadline) {
+      if (serviceTimes.length > 0) {
+        // Both time window AND deadline — tighten the window's latest to the
+        // earlier of the two so Mapbox cannot schedule past the deadline.
+        const deadlineMs = Date.parse(s.deadline);
+        if (Number.isFinite(deadlineMs)) {
+          const currentLatestMs = Date.parse(serviceTimes[0].latest);
+          if (Number.isFinite(currentLatestMs) && deadlineMs < currentLatestMs) {
+            serviceTimes[0].latest = new Date(deadlineMs).toISOString();
+          }
+        }
+      } else {
+        serviceTimes.push({ earliest: shiftStart, latest: s.deadline, type: 'soft_end' });
+      }
     }
+    if (serviceTimes.length > 0) svc.service_times = serviceTimes;
     return svc;
   });
 
   return { version: 1, locations, vehicles: [vehicle], services,
-    options: { objectives: ['min-schedule-completion-time'] } };
+    options: { objectives: ['min-schedule-completion-time'], avg_mpg: options.avgMpg ?? null } };
 }
 
 export function buildPatrolBeatProblem(
