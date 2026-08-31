@@ -37,7 +37,7 @@
     "@noble/post-quantum": "^0.7.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@tiptap/core": "^3.30.1",
-    "@tiptap/extension-blockquote": "^3.30.1",
+    "@tiptap/extension-blockquote": "^3.30.5",
     "@tiptap/extension-bold": "^3.30.5",
     "@tiptap/extension-code": "^3.30.1",
     "@tiptap/extension-code-block": "^3.30.2",
