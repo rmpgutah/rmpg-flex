@@ -135,8 +135,28 @@ app.post('/submit', async (c) => {
       if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
         officer = { ...officer, latitude: origin.lat, longitude: origin.lng };
       }
+
+      // Look up the officer's assigned fleet vehicle MPG for fuel-cost-aware display.
+      let avgMpg: number | null = null;
+      if (officer_unit_id) {
+        try {
+          const vehicleRow = await db
+            .prepare(
+              `SELECT fv.avg_mpg
+               FROM fleet_vehicles fv
+               JOIN units u ON fv.assigned_unit_id = u.id
+               WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
+               LIMIT 1`
+            )
+            .bind(officer_unit_id)
+            .first<{ avg_mpg: number }>();
+          if (vehicleRow?.avg_mpg) avgMpg = vehicleRow.avg_mpg;
+        } catch { /* fleet_vehicles table optional */ }
+      }
+
       problem = buildServeRunProblem(stopRows, officer, shift_start, shift_end, {
         circular: circular !== false,
+        avgMpg,
       });
       refId = ref_id ?? null;
     } else {
@@ -280,14 +300,43 @@ app.get('/:jobId', async (c) => {
     try {
       const route = solution.routes[0];
       if (route) {
-        const orderedStops = route.stops
+        // Store plain IDs so the client reader (ServeRoutePlanner) can look
+        // them up in its job map. Previous version stored objects {id,eta,wait}
+        // which broke on reload because Map uses reference equality for objects.
+        const orderedIds = route.stops
           .filter((s) => s.type === 'service')
-          .map((s) => ({ id: Number(s.location), eta: s.eta, wait: s.wait ?? 0 }));
+          .map((s) => Number(s.location));
+        // Compute total distance (meters) and duration (seconds) from the
+        // route-level summary that Mapbox V2 returns on each route object.
+        const routeAny = route as any;
+        const totalDistanceMiles = routeAny.distance
+          ? Math.round((routeAny.distance / 1609.34) * 10) / 10
+          : null;
+        const totalDurationMinutes = routeAny.duration
+          ? Math.round(routeAny.duration / 60)
+          : null;
         await db
-          .prepare(`UPDATE serve_routes SET optimized_order_json = ?, updated_at = datetime('now') WHERE id = ?`)
-          .bind(JSON.stringify(orderedStops), row.ref_id)
+          .prepare(
+            `UPDATE serve_routes
+             SET optimized_order_json = ?,
+                 total_distance_miles = COALESCE(?, total_distance_miles),
+                 total_time_minutes = COALESCE(?, total_time_minutes),
+                 updated_at = datetime('now')
+             WHERE id = ?`
+          )
+          .bind(
+            JSON.stringify(orderedIds),
+            totalDistanceMiles,
+            totalDurationMinutes,
+            row.ref_id,
+          )
           .run();
-        log.info('[optimization-v2] serve_routes write-back complete', { refId: row.ref_id, stops: orderedStops.length });
+        log.info('[optimization-v2] serve_routes write-back complete', {
+          refId: row.ref_id,
+          stops: orderedIds.length,
+          totalDistanceMiles,
+          totalDurationMinutes,
+        });
       }
     } catch (err) {
       log.error('[optimization-v2] serve_routes write-back failed', { refId: row.ref_id }, err as Error);
@@ -295,7 +344,14 @@ app.get('/:jobId', async (c) => {
   }
 
   log.info('[optimization-v2] job complete', { jobId, routes: solution.routes.length, dropped: solution.dropped.services.length });
-  return c.json({ job_id: jobId, status: 'complete', solution });
+  // Extract avg_mpg from the original problem (stored at submit time) so the
+  // client can display vehicle-specific fuel cost estimates.
+  let avgMpg: number | null = null;
+  try {
+    const problemDoc = JSON.parse(row.problem_json as string);
+    avgMpg = problemDoc?.options?.avg_mpg ?? null;
+  } catch { /* ignore */ }
+  return c.json({ job_id: jobId, status: 'complete', solution, avg_mpg: avgMpg });
 });
 
 // ── GET / ─────────────────────────────────────────────────────────────────────
