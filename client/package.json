@@ -24,7 +24,7 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@deck.gl/core": "^9.3.8",
-    "@deck.gl/layers": "^9.3.8",
+    "@deck.gl/layers": "^9.3.10",
     "@deck.gl/mapbox": "^9.3.6",
     "@fullcalendar/core": "^6.1.21",
     "@fullcalendar/daygrid": "^6.1.21",
