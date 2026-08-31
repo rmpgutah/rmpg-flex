@@ -137,10 +137,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # wrangler 4.x deploys [[containers]] automatically with a plain
-          # `deploy` command — no --containers-rollout flag exists/needed.
-          # Both PdfToolsContainer and TesseractOcrContainer are active here.
-          command: deploy
+          # Containers (pdf-tools, tesseract-ocr) are already deployed separately.
+          # Skip container build/rollout in CI to avoid needing Docker on the runner.
+          command: deploy --containers-rollout=none
 
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app
