@@ -136,23 +136,9 @@ app.post('/submit', async (c) => {
         officer = { ...officer, latitude: origin.lat, longitude: origin.lng };
       }
 
-      // Look up the officer's assigned fleet vehicle MPG for fuel-cost-aware display.
-      let avgMpg: number | null = null;
-      if (officer_unit_id) {
-        try {
-          const vehicleRow = await db
-            .prepare(
-              `SELECT fv.avg_mpg
-               FROM fleet_vehicles fv
-               JOIN units u ON fv.assigned_unit_id = u.id
-               WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
-               LIMIT 1`
-            )
-            .bind(officer_unit_id)
-            .first<{ avg_mpg: number }>();
-          if (vehicleRow?.avg_mpg) avgMpg = vehicleRow.avg_mpg;
-        } catch { /* fleet_vehicles table optional */ }
-      }
+      // Look up the officer's fleet vehicle MPG (falls back to fleet-wide average).
+      const { lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
+      const avgMpg = await lookupOfficerFleetMpg(db, officer_unit_id);
 
       problem = buildServeRunProblem(stopRows, officer, shift_start, shift_end, {
         circular: circular !== false,

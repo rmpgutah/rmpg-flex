@@ -1044,23 +1044,9 @@ sqe.post('/optimize-route', async (c) => {
     const departAt = body.departAt ?? new Date().toISOString();
     const mapboxToken = resolveMapboxDirectionsToken(c.env);
 
-    // Look up the officer's assigned fleet vehicle MPG for fuel-cost-aware routing.
-    let avgMpg: number | null = null;
-    if (body.officer_id) {
-      try {
-        const vehicleRow = await db
-          .prepare(
-            `SELECT fv.avg_mpg
-             FROM fleet_vehicles fv
-             JOIN units u ON fv.assigned_unit_id = u.id
-             WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
-             LIMIT 1`
-          )
-          .bind(body.officer_id)
-          .first<{ avg_mpg: number }>();
-        if (vehicleRow?.avg_mpg) avgMpg = vehicleRow.avg_mpg;
-      } catch { /* fleet_vehicles table optional — degrade to no fuel awareness */ }
-    }
+    // Look up the officer's fleet vehicle MPG (falls back to fleet-wide average).
+    const { lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
+    const avgMpg = await lookupOfficerFleetMpg(db, body.officer_id);
 
     const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken, {
       origin: body.origin ?? null,
@@ -1162,25 +1148,10 @@ sqe.post('/route/traffic-check', async (c) => {
       });
     }
 
-    const { checkTrafficDegradation, resolveMapboxDirectionsToken } = await import('../utils/serveRouteOptimizer');
+    const { checkTrafficDegradation, resolveMapboxDirectionsToken, lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
     const db = getDb(c.env);
 
-    let avgMpg: number | null = null;
-    if (officer_id) {
-      try {
-        const vehicleRow = await db
-          .prepare(
-            `SELECT fv.avg_mpg
-             FROM fleet_vehicles fv
-             JOIN units u ON fv.assigned_unit_id = u.id
-             WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
-             LIMIT 1`
-          )
-          .bind(officer_id)
-          .first<{ avg_mpg: number }>();
-        if (vehicleRow?.avg_mpg) avgMpg = vehicleRow.avg_mpg;
-      } catch { /* fleet_vehicles table optional */ }
-    }
+    const avgMpg = await lookupOfficerFleetMpg(db, officer_id);
 
     const result = await checkTrafficDegradation(
       remainingStops,

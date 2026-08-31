@@ -1366,3 +1366,42 @@ export async function checkTrafficDegradation(
     matrixFallback: false,
   };
 }
+
+/**
+ * Look up an officer's fleet vehicle MPG.
+ * Tries: officer → unit → fleet_vehicle chain first.
+ * Falls back to fleet-wide average when the chain has no match.
+ */
+export async function lookupOfficerFleetMpg(
+  db: D1Database,
+  officerId: number | undefined | null,
+): Promise<number | null> {
+  if (!officerId) return null;
+  try {
+    const specific = await db
+      .prepare(
+        `SELECT fv.avg_mpg
+         FROM fleet_vehicles fv
+         JOIN units u ON fv.assigned_unit_id = u.id
+         WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
+         LIMIT 1`,
+      )
+      .bind(officerId)
+      .first<{ avg_mpg: number }>();
+    if (specific?.avg_mpg) return specific.avg_mpg;
+  } catch { /* tables may not exist */ }
+
+  // Fallback: fleet-wide average of active vehicles with data
+  try {
+    const fallback = await db
+      .prepare(
+        `SELECT ROUND(AVG(NULLIF(avg_mpg, 0)), 1) AS avg_mpg
+         FROM fleet_vehicles
+         WHERE archived_at IS NULL AND avg_mpg IS NOT NULL AND avg_mpg > 0`,
+      )
+      .first<{ avg_mpg: number | null }>();
+    if (fallback?.avg_mpg) return fallback.avg_mpg;
+  } catch { /* table may not exist */ }
+
+  return null;
+}
