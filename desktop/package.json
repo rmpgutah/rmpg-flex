@@ -39,6 +39,7 @@
       "updater.js",
       "localDb.js",
       "connectivityMonitor.js",
+      "wifiInfo.js",
       "pinManager.js",
       "offlineRouter.js",
       "syncManager.js",
