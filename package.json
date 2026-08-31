@@ -28,7 +28,7 @@
     "@libsql/client": "^0.17.4",
     "@mapbox/vector-tile": "^3.0.0",
     "@noble/post-quantum": "^0.7.1",
-    "@simplewebauthn/server": "^13.3.2",
+    "@simplewebauthn/server": "^13.3.3",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "fflate": "^0.8.3",
