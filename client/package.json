@@ -33,7 +33,7 @@
     "@fullcalendar/timegrid": "^6.1.21",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@mapbox/search-js-react": "^1.6.0",
-    "@noble/curves": "^2.2.0",
+    "@noble/curves": "^2.4.0",
     "@noble/post-quantum": "^0.7.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@tiptap/core": "^3.30.1",
