@@ -39,7 +39,7 @@ function fmtMt(s: string | null, fallback?: string | null): string {
   const d = parseUtcStr(val);
   if (!d) return '—';
   const wall = toDenverWallClock(d);
-  return `${wall.slice(0, 10)} ${wall.slice(11, 16)}`;
+  return `${wall.slice(0, 10)} ${wall.slice(11, 16)} MT`;
 }
 
 function fmtMtFull(iso: string): string {
@@ -309,7 +309,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     noActivityRow(cur, font, doc);
   } else {
     const cols = [
-      { label: 'TIME', w: 65 },
+      { label: 'TIME', w: 85 },
       { label: 'CALL #', w: 90 },
       { label: 'TYPE', w: 120 },
       { label: 'P', w: 20 },

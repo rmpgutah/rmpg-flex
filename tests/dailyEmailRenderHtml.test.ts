@@ -111,7 +111,7 @@ describe('renderDailyEmailHtml', () => {
     const html = renderDailyEmailHtml(fullBlotter, emptyExtended);
     expect(html).toContain('Calls for Service Detail');
     expect(html).toContain('C-1');
-    expect(html).toContain('ALARM');
+    expect(html).toContain('Alarm');
   });
 
   it('hides call details section when no calls', () => {
@@ -135,7 +135,7 @@ describe('renderDailyEmailHtml', () => {
 
   it('renders ALPR alerts with red border', () => {
     const html = renderDailyEmailHtml(emptyBlotter, fullExtended);
-    expect(html).toContain('ALPR Alerts (1)');
+    expect(html).toContain('ALPR Alerts (1 of 1 captures)');
     expect(html).toContain('ABC123');
     expect(html).toContain('#ef4444');
   });
