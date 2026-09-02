@@ -619,7 +619,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Attempt History Table ──
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, art('Attempt History'), y);
     y = sec.contentY;
@@ -662,7 +662,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Skip Trace Summary ──
   if (Array.isArray(data.skipTraces) && data.skipTraces.length > 0) {
-    y = checkPageBreak(doc, y, 30);
+    y = checkPageBreak(doc, y, 22);
     const sec = openAutoSection(doc, art('Skip Trace Summary'), y);
     y = sec.contentY;
 
@@ -693,7 +693,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Declaration ──
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, art('Declaration'), y);
     // addWrappedText draws at the text BASELINE, so the first line's ascender
@@ -1580,7 +1580,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   }
 
   // ── Job Details Table ──
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, 'Job Details', y);
     y = sec.contentY;
@@ -1624,7 +1624,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
 
   // ── Route Efficiency ──
   if (data.routeEfficiency) {
-    y = checkPageBreak(doc, y, 25);
+    y = checkPageBreak(doc, y, 18);
     const sec = openAutoSection(doc, 'Route Efficiency', y);
     y = sec.contentY;
     const rowY = y;

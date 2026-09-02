@@ -208,7 +208,7 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
 
   // Required Action notice box — use openAutoSection/addWrappedText/closeAutoSection
   // so the header bar style matches every other section on the page.
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   { const sec = openAutoSection(doc, 'REQUIRED ACTION — READ CAREFULLY', y); y = sec.contentY;
     y = addWrappedText(doc, NOTICE_BODY, lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
     y += SPACING.SM;
