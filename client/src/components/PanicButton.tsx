@@ -657,9 +657,37 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     ACKNOWLEDGE
                   </button>
                 </div>
+                {isSupervisor && incomingAlert.panic_id && notesKind && (
+                  <div className="space-y-2 p-2" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)' }}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                      {notesKind === 'false-alarm' ? 'False alarm notes' : 'Code 4 notes'}
+                    </div>
+                    <textarea
+                      value={notesText}
+                      onChange={e => setNotesText(e.target.value)}
+                      rows={3}
+                      aria-label={notesKind === 'false-alarm' ? 'False alarm notes' : 'Code 4 notes'}
+                      className="w-full text-xs p-1.5 bg-surface-sunken text-rmpg-100"
+                      style={{ border: '1px solid var(--border-default)' }}
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { void submitPanicNotes(); }} className="flex-1 btn-primary py-1.5 text-[10px] font-bold uppercase">
+                        Submit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setNotesKind(null); setNotesText(''); }}
+                        className="flex-1 py-1.5 text-[10px] font-bold uppercase"
+                        style={{ background: 'var(--surface-base)', border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* Code 4 / resolve — supervisor+ only (Spillman: dispatcher
                     clears the emergency when the officer is code 4) */}
-                {isSupervisor && incomingAlert.panic_id && (
+                {isSupervisor && incomingAlert.panic_id && !notesKind && (
                   <button type="button"
                     onClick={resolveCode4}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
@@ -669,7 +697,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   </button>
                 )}
                 {/* False alarm — supervisor+ only */}
-                {isSupervisor && incomingAlert.panic_id && (
+                {isSupervisor && incomingAlert.panic_id && !notesKind && (
                   <button type="button"
                     onClick={markFalseAlarm}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
