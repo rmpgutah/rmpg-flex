@@ -19,6 +19,7 @@ import workOrders from '../src/routes/workOrders';
 import serveIntake from '../src/routes/serveIntake';
 import records from '../src/routes/records';
 import reports from '../src/routes/reports';
+import dailyEmailAdmin from '../src/routes/dailyEmailAdmin';
 import { authMiddleware } from '../src/middleware/auth';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
@@ -51,5 +52,9 @@ app.route('/api/records', records);
 // DB-backed identity once a valid token is presented.
 app.use('/api/reports/*', authMiddleware);
 app.route('/api/reports', reports);
+
+// Daily email admin — mounted with real authMiddleware for role-based gating.
+app.use('/api/admin/daily-email/*', authMiddleware);
+app.route('/api/admin/daily-email', dailyEmailAdmin);
 
 export default app;
