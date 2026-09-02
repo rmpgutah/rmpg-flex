@@ -1,6 +1,6 @@
 import SwiftUI
-import DesignSystem
-import CoreAPI
+
+
 
 /// Field-officer attempt logging: pick an outcome, optionally attach a photo
 /// and/or signature, auto-tag with GPS + timestamp, submit. Photos upload

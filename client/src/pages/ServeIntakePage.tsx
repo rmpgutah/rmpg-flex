@@ -1566,7 +1566,7 @@ export default function ServeIntakePage() {
                 </select>
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Urgency Tier</label>
+                <label className="text-[9px] text-fg-muted uppercase font-mono block mb-0.5">Urgency Tier</label>
                 <select
                   id="ff-intake-override-urgency_tier"
                   value={editOverrides['urgency_tier'] ?? ''}

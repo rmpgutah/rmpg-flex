@@ -1,5 +1,5 @@
 import LocalAuthentication
-import CoreAPI
+
 
 /// UserDefaults key controlling whether the biometric gate/login is offered
 /// at all. Exposed here (rather than duplicated as a raw string literal in

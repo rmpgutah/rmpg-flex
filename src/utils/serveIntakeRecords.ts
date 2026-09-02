@@ -40,7 +40,7 @@ import {
   planAttemptWindows, escalatePriorityForDeadline,
   clusterByProximity, applyUrgencyTier, daysUntilDeadline,
 } from './serveDiligencePlanner';
-import type { AttemptWindow } from './serveDiligencePlanner';
+import type { AttemptWindow, UrgencyTier } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { resolveAddressClass } from './serveAddressClass';

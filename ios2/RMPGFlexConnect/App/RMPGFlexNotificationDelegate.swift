@@ -1,7 +1,4 @@
 import UIKit
-#if canImport(CorePush)
-import CorePush
-#endif
 
 /// Minimal `UIApplicationDelegate` whose sole job is receiving the two
 /// remote-notification registration callbacks and forwarding them via
@@ -14,9 +11,7 @@ final class RMPGFlexNotificationDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
-        #if canImport(CorePush)
         NotificationCenter.default.post(name: .rmpgDidReceiveAPNsToken, object: deviceToken)
-        #endif
     }
 
     func application(
