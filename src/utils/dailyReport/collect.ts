@@ -47,7 +47,7 @@ export async function collectDailyReport(
 
   const calls = await all<CallRow>(
     db,
-    `SELECT call_number, received_at, incident_type, priority, location_address,
+    `SELECT call_number, received_at, created_at, incident_type, priority, location_address,
             disposition, status, unit_call_signs, responding_officer,
             description, notes, source, dispatch_code, sector_name, zone_name,
             beat_name, weapons_involved, domestic_violence, mental_health_crisis,

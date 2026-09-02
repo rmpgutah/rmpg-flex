@@ -9,6 +9,7 @@
 export interface CallRow {
   call_number: string | null;
   received_at: string | null;
+  created_at: string;
   incident_type: string | null;
   priority: string | number | null;
   location_address: string | null;

@@ -32,11 +32,12 @@ function parseUtcStr(s: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function fmtMt(s: string | null): string {
-  if (!s) return '—';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const d = parseUtcStr(s);
-  if (!d) return s;
+function fmtMt(s: string | null, fallback?: string | null): string {
+  const val = s || fallback;
+  if (!val) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  const d = parseUtcStr(val);
+  if (!d) return '—';
   const wall = toDenverWallClock(d);
   return `${wall.slice(0, 10)} ${wall.slice(11, 16)}`;
 }
@@ -322,7 +323,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     for (let i = 0; i < data.operations.calls.length; i++) {
       const c = data.operations.calls[i];
       tableRow(cur, [
-        fmtMt(c.received_at),
+        fmtMt(c.received_at, c.created_at),
         c.call_number ?? '—',
         truncate(toDisplayLabel(c.incident_type), 130, font, 7.5),
         `P${c.priority ?? '—'}`,
@@ -352,8 +353,8 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
         c.beat_name ? `B:${c.beat_name}` : '',
         c.dispatch_code ? `Code:${c.dispatch_code}` : '',
         c.caller_relationship ? `Caller:${c.caller_relationship}` : '',
-        c.response_time_seconds != null ? `Resp:${Math.round(c.response_time_seconds / 60)}m${c.response_time_seconds % 60}s` : '',
-        c.onscene_duration_seconds != null ? `Scene:${Math.round(c.onscene_duration_seconds / 60)}m${c.onscene_duration_seconds % 60}s` : '',
+        c.response_time_seconds != null ? `Resp:${Math.floor(c.response_time_seconds / 60)}m${Math.round(c.response_time_seconds % 60)}s` : '',
+        c.onscene_duration_seconds != null ? `Scene:${Math.floor(c.onscene_duration_seconds / 60)}m${Math.round(c.onscene_duration_seconds % 60)}s` : '',
         c.scene_safety ? `Safe:${c.scene_safety}` : '',
         c.pso_requestor_name ? `PSO:${c.pso_requestor_name}(${c.pso_service_type ?? ''})` : '',
       ].filter(Boolean).join(' | ');

@@ -29,8 +29,9 @@ function toDisplayLabel(s: string | null | undefined): string {
     .join(' ');
 }
 
-/** Parse a D1 UTC timestamp to Mountain Time "HH:MM MT". */
-function fmtTime(s: string | null | undefined): string {
+/** Parse a D1 UTC timestamp to Mountain Time "HH:MM MT". Falls back to created_at. */
+function fmtTime(receivedAt: string | null | undefined, createdAt?: string | null): string {
+  const s = receivedAt || createdAt;
   if (!s) return '—';
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   let raw: string;
@@ -48,6 +49,30 @@ function fmtTime(s: string | null | undefined): string {
   const wall = toDenverWallClock(d);
   if (!wall) return '—';
   return wall.slice(11, 16) + ' MT';
+}
+
+/** Parse notes JSON array and extract clean text. Falls back to raw string. */
+function fmtNotes(s: string | null | undefined): string {
+  if (!s) return '';
+  const trimmed = s.trim();
+  if (!trimmed || trimmed === '[]' || trimmed === 'null') return '';
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr
+          .map((entry: any) => {
+            if (typeof entry === 'string') return entry;
+            if (entry?.text) return entry.text;
+            if (entry?.content) return entry.content;
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n');
+      }
+    } catch { /* fall through */ }
+  }
+  return trimmed;
 }
 
 /** Format unit_call_signs — clean empty/[]/null → '—'. */
@@ -212,7 +237,7 @@ export function renderDailyEmailHtml(
         ${blotter.operations.calls.map((c) => `
         <tr>
           <td style="padding:3px 8px;font-size:12px;color:#374151;white-space:nowrap;vertical-align:top;">
-            ${esc(fmtTime(c.received_at))}<br/>
+            ${esc(fmtTime(c.received_at, c.created_at))}<br/>
             <span style="font-size:10px;color:#9ca3af;">${esc(c.source ?? '')}</span>
           </td>
           <td style="padding:3px 8px;font-size:12px;color:#111827;">
@@ -220,9 +245,9 @@ export function renderDailyEmailHtml(
             <span style="color:#6b7280;font-size:11px;">
               ${esc(c.location_address ?? '—')} | ${esc(fmtUnits(c.unit_call_signs))} | ${esc(c.responding_officer ?? '—')} | ${esc(toDisplayLabel(c.disposition ?? c.status ?? '—'))}
             </span>
-            ${c.description ? `<br/><span style="color:#374151;font-size:11px;"><b>Dispatch:</b> ${esc(c.description.slice(0,200))}${(c.description?.length ?? 0) > 200 ? '…' : ''}</span>` : ''}
-            ${c.notes ? `<br/><span style="color:#374151;font-size:11px;"><b>Notes:</b> ${esc(c.notes.slice(0,200))}${(c.notes?.length ?? 0) > 200 ? '…' : ''}</span>` : ''}
-            ${c.action_taken ? `<br/><span style="color:#374151;font-size:11px;"><b>Action:</b> ${esc(c.action_taken.slice(0,200))}${(c.action_taken?.length ?? 0) > 200 ? '…' : ''}</span>` : ''}
+            ${c.description ? `<br/><span style="color:#374151;font-size:11px;"><b>Dispatch:</b> ${esc(c.description.slice(0,300))}${(c.description?.length ?? 0) > 300 ? '…' : ''}</span>` : ''}
+            ${fmtNotes(c.notes) ? `<br/><span style="color:#374151;font-size:11px;"><b>Notes:</b> ${esc(fmtNotes(c.notes).slice(0,300))}${(fmtNotes(c.notes)?.length ?? 0) > 300 ? '…' : ''}</span>` : ''}
+            ${c.action_taken ? `<br/><span style="color:#374151;font-size:11px;"><b>Action:</b> ${esc(c.action_taken.slice(0,300))}${(c.action_taken?.length ?? 0) > 300 ? '…' : ''}</span>` : ''}
             ${c.damage_description ? `<br/><span style="color:#374151;font-size:11px;"><b>Damage:</b> ${esc(c.damage_description.slice(0,200))}${(c.damage_description?.length ?? 0) > 200 ? '…' : ''} ${c.damage_estimate ? `($${c.damage_estimate})` : ''}</span>` : ''}
             <br/>
             <span style="font-size:10px;color:#9ca3af;">
@@ -231,8 +256,8 @@ export function renderDailyEmailHtml(
             <br/>
             <span style="font-size:10px;color:#9ca3af;">
               ${[
-                c.response_time_seconds != null ? `Response: ${Math.round(c.response_time_seconds / 60)}m${c.response_time_seconds % 60}s` : '',
-                c.onscene_duration_seconds != null ? `On-Scene: ${Math.round(c.onscene_duration_seconds / 60)}m${c.onscene_duration_seconds % 60}s` : '',
+                c.response_time_seconds != null ? `Response: ${Math.floor(c.response_time_seconds / 60)}m${Math.round(c.response_time_seconds % 60)}s` : '',
+                c.onscene_duration_seconds != null ? `On-Scene: ${Math.floor(c.onscene_duration_seconds / 60)}m${Math.round(c.onscene_duration_seconds % 60)}s` : '',
                 c.scene_safety ? `Safety: ${esc(c.scene_safety)}` : '',
               ].filter(Boolean).join(' | ')}
             </span>
