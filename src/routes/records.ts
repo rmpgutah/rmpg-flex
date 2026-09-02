@@ -916,6 +916,13 @@ records.delete('/persons/:id', async (c) => {
     // but they also must not dangle at a deleted id (ghost nodes in Connections).
     try { await execute(db, 'UPDATE warrants SET subject_person_id = NULL WHERE subject_person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE citations SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
+    // serve_receipts.recipient_person_id and client_person_links.person_id
+    // are bare/NO-ACTION FKs (no ON DELETE clause) — unlike the CASCADE
+    // children above, D1 rejects the parent DELETE outright when either
+    // still points at this id. serve_receipts is a signed legal record and
+    // must survive; detach the identity link like warrants/citations above.
+    try { await execute(db, 'UPDATE serve_receipts SET recipient_person_id = NULL WHERE recipient_person_id = ?', id); } catch { /* optional */ }
+    try { await execute(db, 'DELETE FROM client_person_links WHERE person_id = ?', id); } catch { /* optional */ }
     await tryRepairAndRetry(db,
       () => execute(db, 'DELETE FROM persons WHERE id = ?', id),
       'persons_fts',
@@ -3081,19 +3088,25 @@ const VEHICLES_BULK_COLUMNS = `id, vin, plate_number, state, make, model, year, 
   owner_name, owner_phone, owner_address, owner_person_id, registered_owner, insurance_company, insurance_policy, insurance_expiry,
   is_stolen, stolen_status, flags, notes, created_at, updated_at`;
 
-// GET /records/persons?search=...&limit=...
+// GET /records/persons?search=...&limit=...&officer_safety=true
 // Bulk list for SYNC. search is a soft LIKE across name + alias + phone + email.
+// officer_safety=true filters to persons with active officer safety flags.
 records.get('/persons', async (c) => {
   try {
     const db = getDb(c.env);
     const search = c.req.query('search') || '';
     const archived = c.req.query('archived');
+    const officerSafety = c.req.query('officer_safety') === 'true';
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
     const wheres: string[] = [];
     if (archived === 'true') {
       wheres.push("flags LIKE '%archived%'");
     } else if (archived !== 'all') {
       wheres.push("(flags IS NULL OR flags = '[]' OR flags NOT LIKE '%archived%')");
+    }
+    if (officerSafety) {
+      // Filter to persons with active officer safety flags (weapon_draw, running, struggle, etc.)
+      wheres.push("(flags LIKE '%weapon_draw%' OR flags LIKE '%running%' OR flags LIKE '%struggle%' OR flags LIKE '%officer_safety%')");
     }
     const params: unknown[] = [];
     if (search) {

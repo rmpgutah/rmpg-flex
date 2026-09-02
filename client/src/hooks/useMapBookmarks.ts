@@ -25,12 +25,17 @@ export interface MapBookmark {
 }
 
 const STORAGE_KEY = 'rmpg_map_bookmarks';
-const BOOKMARK_COLORS = ['#d4a017', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#f59e0b', '#14b8a6'];
+export const BOOKMARK_COLORS = ['#c3ccd6', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#f59e0b', '#14b8a6'];
+const BANNED_GOLD = '#d4a017';
 
 function loadBookmarks(): MapBookmark[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) as MapBookmark[] : [];
+    return parsed.map((bm) => ({
+      ...bm,
+      color: String(bm.color).toLowerCase() === BANNED_GOLD ? BOOKMARK_COLORS[0] : bm.color,
+    }));
   } catch { return []; }
 }
 
@@ -38,6 +43,18 @@ function saveBookmarks(bookmarks: MapBookmark[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
   } catch { /* quota exceeded, ignore */ }
+}
+
+function bookmarkPopupHtml(bm: MapBookmark): string {
+  const created = new Date(bm.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }); // new-date-ok — epoch ms from Date.now()
+  return `
+              <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-size:11px;min-width:140px;">
+                <div style="font-weight:700;color:${escapeHtml(bm.color)};margin-bottom:2px;">★ ${escapeHtml(bm.name)}</div>
+                ${bm.notes ? `<div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(bm.notes)}</div>` : ''}
+                <div style="color:#555;font-size:9px;margin-top:4px;">${bm.latitude.toFixed(5)}, ${bm.longitude.toFixed(5)}</div>
+                <div style="color:#555;font-size:9px;">${created}</div>
+              </div>
+            `;
 }
 
 // ── Hook ──────────────────────────────────────────────────
@@ -67,6 +84,10 @@ export function useMapBookmarks(
       const existing = markersRef.current.get(bm.id);
       if (existing) {
         existing.setLngLat([bm.longitude, bm.latitude]);
+        const el = existing.getElement();
+        el.style.background = bm.color;
+        el.title = bm.name;
+        existing.getPopup()?.setHTML(bookmarkPopupHtml(bm));
         continue;
       }
 
@@ -86,14 +107,7 @@ export function useMapBookmarks(
         .setLngLat([bm.longitude, bm.latitude])
         .setPopup(
           new mapboxgl.Popup({ offset: 14, closeButton: true, className: 'mapbox-popup-dark' })
-            .setHTML(`
-              <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-size:11px;min-width:140px;">
-                <div style="font-weight:700;color:${escapeHtml(bm.color)};margin-bottom:2px;">★ ${escapeHtml(bm.name)}</div>
-                ${bm.notes ? `<div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(bm.notes)}</div>` : ''}
-                <div style="color:#555;font-size:9px;margin-top:4px;">${bm.latitude.toFixed(5)}, ${bm.longitude.toFixed(5)}</div>
-                <div style="color:#555;font-size:9px;">${new Date(bm.createdAt).toLocaleDateString()}</div>
-              </div>
-            `)
+            .setHTML(bookmarkPopupHtml(bm))
         )
         .addTo(map);
 

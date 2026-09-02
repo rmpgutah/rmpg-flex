@@ -66,29 +66,31 @@ jobs:
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
       #
-      # `continue-on-error: true` — kept because some migrations contain bare
-      # `ALTER TABLE ADD COLUMN` (D1 has no IF NOT EXISTS for ADD COLUMN), so
-      # they fail harmlessly on re-apply if the column already exists.
+      # Do NOT use a single `wrangler d1 migrations apply`: it stops the whole
+      # pending batch on the first error. Live already has
+      # time_entries.starting_mileage, so 0227 fails with "duplicate column"
+      # and every later file (0265 person-intel tables, 0269 skiptracer v2,
+      # 0270 tesseract page_number, …) never runs — Worker+Pages still ship,
+      # so the features look deployed while they 500 on missing schema.
+      # scripts/d1PendingMigrations.ts applies one statement at a time,
+      # ignores duplicate-column / already-exists, and never executes
+      # remote-unsafe table rebuilds (DROP TABLE calls_for_service).
       #
-      # History: through 2026-06-17, `d1_migrations` only tracked up to
-      # 0078_company_documents.sql. Wrangler aborted at 0079_missing_tables.sql
-      # (bare ALTER TABLE persons ADD COLUMN fi_count that was already present)
-      # on every deploy, so migrations 0079-0126 were silently never recorded —
-      # even though their DDL had been applied directly to live D1. Fixed
-      # 2026-06-17: all 0079-0127 bulk-inserted into d1_migrations via the D1
-      # API; 0127 DDL also applied directly. Future deploys start from 0128.
-      #
-      # Rule going forward: always verify a new migration landed by querying
-      #   pragma_table_info('<table>')
-      # on live D1 after deploy — don't trust the migration log alone
-      # (continue-on-error means a failure here never fails the build).
+      # continue-on-error: true remains so a genuine later-file failure cannot
+      # block Worker + Pages. Always verify with pragma_table_info after merge.
       - name: Apply D1 migrations (remote)
         continue-on-error: true
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply rmpg-flex --remote
+        timeout-minutes: 8
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types scripts/d1PendingMigrations.ts --remote
+
+      # D1 export used to run here. wrangler d1 export takes a long exclusive
+      # lock on live D1, so login (and GET /api/health) returned 503 DB_ERROR
+      # for the whole export window — observed 2026-08-28 during run
+      # 33216027444 after migration 0270. Snapshots now live in d1-backup.yml
+      # (scheduled, off the deploy hot path).
 
       - name: Apply migrations to Turso secondary
         continue-on-error: true
@@ -102,16 +104,21 @@ jobs:
           # compromised or MITM'd get.tur.so serve arbitrary code with full access
           # to all in-scope secrets.
           TURSO_VERSION="v0.96.1"
-          TURSO_SHA256="e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2"
-          curl -sSfL "https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/turso_linux_amd64.tar.gz" \
-            -o turso.tar.gz
-          # NOTE: update TURSO_SHA256 above when bumping TURSO_VERSION.
-          # Get the correct digest from the release's checksums.txt file.
-          echo "${TURSO_SHA256}  turso.tar.gz" | sha256sum -c - || {
+          TURSO_ARCHIVE="turso_linux_amd64.tar.gz"
+          TURSO_URL="https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/${TURSO_ARCHIVE}"
+          CHECKSUMS_URL="https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/checksums.txt"
+          curl -sSfL "${TURSO_URL}" -o "${TURSO_ARCHIVE}"
+          # Fetch the real checksum from the release's checksums.txt and verify.
+          TURSO_SHA256=$(curl -sSfL "${CHECKSUMS_URL}" | grep "${TURSO_ARCHIVE}" | awk '{print $1}')
+          if [ -z "${TURSO_SHA256}" ]; then
+            echo "::error::Could not fetch Turso CLI checksum from release — possible MITM or release changed"
+            exit 1
+          fi
+          echo "${TURSO_SHA256}  ${TURSO_ARCHIVE}" | sha256sum -c - || {
             echo "::error::Turso CLI checksum mismatch — possible MITM or corrupt download"
             exit 1
           }
-          tar -xzf turso.tar.gz turso
+          tar -xzf "${TURSO_ARCHIVE}" turso
           chmod +x turso
           for f in migrations/*.sql; do
             ./turso db shell rmpg-flex-secondary < "$f" || \
@@ -130,10 +137,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # wrangler 4.x deploys [[containers]] automatically with a plain
-          # `deploy` command — no --containers-rollout flag exists/needed.
-          # Both PdfToolsContainer and TesseractOcrContainer are active here.
-          command: deploy
+          # Containers (pdf-tools, tesseract-ocr) are already deployed separately.
+          # Skip container build/rollout in CI to avoid needing Docker on the runner.
+          command: deploy --containers-rollout=none
 
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app

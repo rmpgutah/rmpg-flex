@@ -53,8 +53,25 @@ describe('field-photos upload/stream/delete — end-to-end with real R2/D1', () 
     expect(Array.from(streamedBytes)).toEqual(Array.from(original));
   });
 
-  it('returns 500-class failure (not silently-unencrypted upload) when FILE_ENCRYPTION_KEK is unset', async () => {
-    const testEnv = { ...(env as unknown as Record<string, unknown>) }; // no FILE_ENCRYPTION_KEK
+  it('uploads when FILE_ENCRYPTION_KEK is unset by deriving a KEK from JWT_SECRET', async () => {
+    const testEnv = { ...(env as unknown as Record<string, unknown>) }; // JWT_SECRET from miniflare bindings
+    delete testEnv.FILE_ENCRYPTION_KEK;
+    const form = new FormData();
+    const original = new Uint8Array([0xff, 0xd8, 0xff, 9, 8, 7]);
+    form.append('photo', new File([original], 'jwt-fallback.jpg', { type: 'image/jpeg' }));
+    const uploadRes = await app.request('/api/field-photos', { method: 'POST', body: form }, testEnv);
+    expect(uploadRes.status).toBe(201);
+    const uploadBody = await uploadRes.json() as { r2_key: string };
+    const raw = await (testEnv as any).UPLOADS.get(uploadBody.r2_key);
+    const rawBytes = new Uint8Array(await raw!.arrayBuffer());
+    expect(Array.from(rawBytes)).not.toEqual(Array.from(original));
+    const streamRes = await app.request(`/api/field-photos/file/${uploadBody.r2_key}`, {}, testEnv);
+    expect(streamRes.status).toBe(200);
+    expect(Array.from(new Uint8Array(await streamRes.arrayBuffer()))).toEqual(Array.from(original));
+  });
+
+  it('returns 500-class failure (not silently-unencrypted upload) when neither KEK nor JWT_SECRET is set', async () => {
+    const testEnv = { ...(env as unknown as Record<string, unknown>), FILE_ENCRYPTION_KEK: undefined, JWT_SECRET: undefined };
     const form = new FormData();
     form.append('photo', new File([new Uint8Array([1, 2, 3])], 'x.jpg', { type: 'image/jpeg' }));
     const res = await app.request('/api/field-photos', { method: 'POST', body: form }, testEnv);

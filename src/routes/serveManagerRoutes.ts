@@ -7,10 +7,11 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey, fetchJobById, fetchDocumentBinary, verifyWebhookSignature, pushAttemptToJob, uploadDocumentToJob } from '../utils/serveManagerClient';
+import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey, fetchJobById, fetchDocumentBinary, verifyWebhookSignature, readServeManagerSignatureHeader, extractServeManagerJobIds, pushAttemptToJob, uploadDocumentToJob } from '../utils/serveManagerClient';
 import { pollServeManagerJobs, createDispatchCallForJob } from '../utils/serveManagerPoller';
 
 import { log } from '../utils/logger';
@@ -216,7 +217,7 @@ sm.get('/jobs/:jobId', async (c) => {
 // authenticated API, not a public link, so it 401s without the stored key.
 sm.get('/documents/:documentId/download', async (c) => {
   const documentId = c.req.param('documentId');
-  const result = await fetchDocumentBinary(getDb(c.env), c.env.JWT_SECRET, documentId);
+  const result = await fetchDocumentBinary(getDb(c.env), c.env, documentId);
   if (!result.ok) {
     log.error('GET /documents/:documentId/download failed', { src: 'src/routes/serveManagerRoutes.ts', documentId, status: result.status });
     return c.json({ error: 'Download failed' }, result.status === 503 ? 503 : 502);
@@ -253,7 +254,7 @@ sm.post('/jobs/:jobId/create-dispatch', async (c) => {
       return c.json({ error: 'Job already has a linked dispatch call', code: 'ALREADY_LINKED', call_id: existing.linked_call_id }, 409);
     }
 
-    const job = await fetchJobById(db, c.env.JWT_SECRET, jobId);
+    const job = await fetchJobById(db, c.env, jobId);
     if (!job) return c.json({ error: 'Job not found in ServeManager (or API key not configured)' }, 404);
 
     const result = await createDispatchCallForJob(c.env, job);
@@ -338,7 +339,7 @@ sm.post('/poller/poll-now', async (c) => {
 });
 
 sm.post('/test-connection', async (c) => {
-  try { return c.json(await testConnection(getDb(c.env), c.env.JWT_SECRET)); }
+  try { return c.json(await testConnection(getDb(c.env), c.env)); }
   catch (err) {
     log.error('POST /test-connection failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ success: false, error: 'Connection test failed' }, 500); }
 });
@@ -355,18 +356,14 @@ sm.get('/webhook-url', async (c) => {
   return c.json({ webhook_url: webhookUrl, has_secret: !!secretRow?.config_value });
 });
 
-// NOTE: the actual public webhook receiver is `serveManagerWebhookRouter` exported
-// below, mounted at /api/servemanager-webhook (auth: 'public'). The route below
-// is kept as an admin-only echo for testing the webhook path from the UI.
-sm.post('/webhook', async (c) => {
+async function receiveServeManagerWebhook(c: Context<Env>) {
   const db = getDb(c.env);
   const rawBody = await c.req.text();
-  const signature = c.req.header('X-ServeManager-Signature') || null;
+  const signature = readServeManagerSignatureHeader((name) => c.req.header(name));
 
-  // Look up the shared webhook secret stored in system_config.
   const secretRow = await queryFirst<{ config_value: string }>(db,
     "SELECT config_value FROM system_config WHERE config_key = 'servemanager_webhook_secret' AND category = 'integrations' AND is_active = 1 LIMIT 1");
-  const secret = secretRow?.config_value;
+  const secret = secretRow?.config_value?.trim();
 
   if (!secret) {
     // No webhook secret configured — we can't verify the payload.
@@ -377,53 +374,58 @@ sm.post('/webhook', async (c) => {
 
   const valid = await verifyWebhookSignature(rawBody, signature, secret);
   if (!valid) {
-    log.warn('SM webhook signature verification failed', { src: 'src/routes/serveManagerRoutes.ts', signature });
+    log.warn('SM webhook signature verification failed', {
+      src: 'src/routes/serveManagerRoutes.ts',
+      headerPresent: !!signature,
+    });
     return c.json({ error: 'Invalid signature' }, 401);
   }
 
-  let payload: any;
+  let payload: unknown;
   try { payload = JSON.parse(rawBody); } catch {
     return c.json({ error: 'Invalid JSON' }, 400);
   }
 
-  // ServeManager webhook payloads include a top-level `event` string and a
-  // `data` object containing the affected job. Trigger a targeted re-sync
-  // of the affected job so the cache stays current in real-time.
-  const event = payload?.event as string | undefined;
-  const jobId = payload?.data?.id ?? payload?.data?.job?.id;
-  log.info('SM webhook received', { src: 'src/routes/serveManagerRoutes.ts', event, jobId });
+  const jobIds = extractServeManagerJobIds(payload);
+  log.info('SM webhook received', {
+    src: 'src/routes/serveManagerRoutes.ts',
+    jobIds,
+    itemCount: Array.isArray((payload as { data?: unknown })?.data)
+      ? ((payload as { data: unknown[] }).data).length
+      : 1,
+  });
 
-  if (jobId) {
-    // Re-fetch the affected job from SM and update the cache.
-    // Fire-and-forget via waitUntil so the response goes back to SM immediately
-    // (SM webhooks have a short timeout — if we block on the D1 write SM may
-    // retry, creating duplicate cache updates). The re-fetch is idempotent.
-    c.executionCtx?.waitUntil((async () => {
-      try {
-        const job = await fetchJobById(db, c.env.JWT_SECRET, jobId);
-        if (job) {
-          // Use the same poll-now path to upsert — import would create a cycle,
-          // so inline the re-fetch → cache write here via the poller's public API.
-          await pollServeManagerJobs(c.env as any);
-        }
-      } catch (err) {
-        log.error('SM webhook re-sync failed', { src: 'src/routes/serveManagerRoutes.ts', jobId }, err);
-      }
+  // Fire-and-forget via waitUntil so the 200 goes back to SM immediately.
+  // The incremental poller is idempotent; batch payloads can name several jobs.
+  // Hono's executionCtx getter THROWS when none is present (Miniflare unit
+  // tests) — optional chaining does not catch that.
+  try {
+    c.executionCtx.waitUntil((async () => {
+      try { await pollServeManagerJobs(c.env as any); }
+      catch (err) { log.error('SM webhook re-sync failed', { jobIds }, err); }
     })());
+  } catch {
+    /* Miniflare app.request has no ExecutionContext */
   }
 
-  return c.json({ ok: true, event: event ?? 'unknown', job_id: jobId ?? null });
-});
+  return c.json({ ok: true, job_ids: jobIds });
+}
+
+// NOTE: the actual public webhook receiver is `serveManagerWebhookRouter` exported
+// below, mounted at /api/servemanager-webhook (auth: 'public'). The route below
+// is kept as an admin-only echo for testing the webhook path from the UI.
+sm.post('/webhook', (c) => receiveServeManagerWebhook(c));
 
 // PUT /servemanager/webhook-secret — admin sets the shared webhook secret that
 // ServeManager signs its POSTs with. Must match the value in SM's Webhooks config.
 sm.put('/webhook-secret', async (c) => {
   try {
     const body = await c.req.json<{ secret: string }>();
-    if (!body.secret) return c.json({ error: 'secret required' }, 400);
+    const secret = typeof body.secret === 'string' ? body.secret.trim() : '';
+    if (!secret) return c.json({ error: 'secret required' }, 400);
     const db = getDb(c.env);
     await execute(db, "DELETE FROM system_config WHERE config_key = 'servemanager_webhook_secret' AND category = 'integrations'");
-    await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES ('servemanager_webhook_secret', ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`, body.secret);
+    await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES ('servemanager_webhook_secret', ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`, secret);
     return c.json({ success: true });
   } catch (err) {
     log.error('PUT /webhook-secret failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
@@ -448,7 +450,7 @@ sm.post('/jobs/:jobId/push-attempt', async (c) => {
       serve_type?: string;
     }>();
     const body = { ...raw, success: raw.success ?? false };
-    const result = await pushAttemptToJob(db, c.env.JWT_SECRET, jobId, body);
+    const result = await pushAttemptToJob(db, c.env, jobId, body);
     if (!result.ok) return c.json({ error: result.error }, 502);
     return c.json({ success: true, attempt_id: result.id });
   } catch (err) {
@@ -471,7 +473,7 @@ sm.post('/jobs/:jobId/documents/upload', async (c) => {
     const title = (formData.get('title') as string | null) || (file as File).name || 'RMPG Document';
     const buffer = await (file as File).arrayBuffer();
     const contentType = (file as File).type || 'application/pdf';
-    const result = await uploadDocumentToJob(db, c.env.JWT_SECRET, jobId, title, buffer, contentType);
+    const result = await uploadDocumentToJob(db, c.env, jobId, title, buffer, contentType);
     if (!result.ok) return c.json({ error: result.error }, 502);
     return c.json({ success: true, document_id: result.id });
   } catch (err) {
@@ -489,43 +491,6 @@ export default sm;
 
 const smPublic = new Hono<Env>();
 
-smPublic.post('/', async (c) => {
-  const db = getDb(c.env);
-  const rawBody = await c.req.text();
-  const signature = c.req.header('X-ServeManager-Signature') || null;
-
-  const secretRow = await queryFirst<{ config_value: string }>(db,
-    "SELECT config_value FROM system_config WHERE config_key = 'servemanager_webhook_secret' AND category = 'integrations' AND is_active = 1 LIMIT 1");
-  const secret = secretRow?.config_value;
-
-  if (!secret) {
-    log.warn('SM webhook received with no secret configured — ignoring', { src: 'src/routes/serveManagerRoutes.ts' });
-    return c.json({ ok: true, action: 'ignored_no_secret' });
-  }
-
-  const valid = await verifyWebhookSignature(rawBody, signature, secret);
-  if (!valid) {
-    log.warn('SM webhook signature verification failed', { src: 'src/routes/serveManagerRoutes.ts', signature });
-    return c.json({ error: 'Invalid signature' }, 401);
-  }
-
-  let payload: any;
-  try { payload = JSON.parse(rawBody); } catch {
-    return c.json({ error: 'Invalid JSON' }, 400);
-  }
-
-  const event = payload?.event as string | undefined;
-  const jobId = payload?.data?.id ?? payload?.data?.job?.id;
-  log.info('SM webhook received', { src: 'src/routes/serveManagerRoutes.ts', event, jobId });
-
-  if (jobId) {
-    c.executionCtx?.waitUntil((async () => {
-      try { await pollServeManagerJobs(c.env as any); }
-      catch (err) { log.error('SM webhook re-sync failed', { jobId }, err); }
-    })());
-  }
-
-  return c.json({ ok: true, event: event ?? 'unknown', job_id: jobId ?? null });
-});
+smPublic.post('/', (c) => receiveServeManagerWebhook(c));
 
 export { smPublic as serveManagerWebhookRouter };

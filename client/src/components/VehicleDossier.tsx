@@ -1,8 +1,9 @@
 // Per-vehicle evidence dossier: fetches /alpr/vehicle/:plate/dossier and renders
 // each capture package as a row with thumbnail, trust badge, source, and variants.
 import { useEffect, useState } from 'react';
-import { X, ScanSearch } from 'lucide-react';
+import { X, ScanSearch, RefreshCw, Loader2 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import IconButton from './IconButton';
 import { toDisplayLabel } from '../utils/formatters';
 import { parseTimestamp } from '../utils/dateUtils';
 import TrustBadge from './TrustBadge';
@@ -26,6 +27,7 @@ interface DossierPackage {
 interface DossierResponse {
   plate: string;
   packages: DossierPackage[];
+  vehicle_record_id: number | null;
 }
 
 function fmtDate(iso: string): string {
@@ -44,6 +46,37 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
   const [data, setData] = useState<DossierResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
+
+  const handleEnrich = async () => {
+    if (!data) return;
+    const vehicleId = data.vehicle_record_id;
+    if (!vehicleId) {
+      setEnrichMsg('No vehicle record ID available');
+      return;
+    }
+    setEnriching(true);
+    setEnrichMsg(null);
+    try {
+      await apiFetch(`/vehicle-enrichment/enrich/${vehicleId}`, { method: 'POST' });
+      setEnrichMsg('Enriched');
+      setTimeout(() => setEnrichMsg(null), 4000);
+      setLoading(true);
+      try {
+        const r = await apiFetch<DossierResponse>(`/alpr/vehicle/${encodeURIComponent(plate)}/dossier`);
+        setData(r);
+      } catch (e: unknown) {
+        setErr((e as Error)?.message || 'Failed to reload');
+      } finally {
+        setLoading(false);
+        setEnriching(false);
+      }
+    } catch {
+      setEnrichMsg('Enrichment failed');
+      setEnriching(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true); setErr(null); setData(null);
@@ -66,14 +99,30 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
             VEHICLE FILE —{' '}
             <span className="font-mono text-rmpg-100">{plate}</span>
           </span>
-          <button
-            type="button"
-            aria-label="Close dossier"
-            onClick={onClose}
-            className="text-[#888] hover:text-rmpg-100">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <IconButton
+              aria-label="Re-enrich vehicle data"
+              onClick={handleEnrich}
+              disabled={enriching}
+              className="text-fg-muted hover:text-rmpg-100">
+              {enriching
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <RefreshCw className="w-4 h-4" />}
+            </IconButton>
+            <button
+              type="button"
+              aria-label="Close dossier"
+              onClick={onClose}
+              className="text-fg-muted hover:text-rmpg-100">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+        {enrichMsg && (
+          <div className="px-3 py-1 text-[10px] text-rmpg-400 border-b border-border-default">
+            {enrichMsg}
+          </div>
+        )}
 
         {/* CarsXE manual lookup — this dossier is keyed by plate only (no VIN
             is available on DossierPackage or its callers), so this uses
@@ -85,13 +134,13 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-2 space-y-1">
           {loading && (
-            <div className="text-[11px] text-[#888] text-center py-6">Loading…</div>
+            <div className="text-[11px] text-fg-muted text-center py-6">Loading…</div>
           )}
           {err && (
             <div className="text-[11px] text-red-300 border border-red-600 bg-red-950/40 px-3 py-2">{err}</div>
           )}
           {!loading && !err && data && data.packages.length === 0 && (
-            <div className="text-[11px] text-[#888] text-center py-6">No packages on file for this plate.</div>
+            <div className="text-[11px] text-fg-muted text-center py-6">No packages on file for this plate.</div>
           )}
           {!loading && !err && data && data.packages.map((pkg) => {
             const imageUrl = pkg.full_r2_key
@@ -131,7 +180,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                     </span>
                     <TrustBadge trust={trust} />
                   </div>
-                  <div className="flex items-center gap-2 text-[9px] text-[#888]">
+                  <div className="flex items-center gap-2 text-[9px] text-fg-muted">
                     {pkg.source_type && (
                       <span className="border border-border-default px-1 py-[1px]">
                         {toDisplayLabel(pkg.source_type)}
@@ -140,7 +189,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                     <span>{fmtDate(pkg.created_at)}</span>
                   </div>
                   {variants.length > 0 && (
-                    <div className="text-[9px] text-[#888] border-t border-border-default pt-0.5 mt-0.5">
+                    <div className="text-[9px] text-fg-muted border-t border-border-default pt-0.5 mt-0.5">
                       variants: {variants.join(', ')} — <span className="text-[var(--field-label-color)]">verify</span>
                     </div>
                   )}

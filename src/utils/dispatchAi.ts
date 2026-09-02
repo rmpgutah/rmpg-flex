@@ -125,7 +125,15 @@ function extractJson(raw: string): any | null {
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) return null;
-  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { return null; }
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    // Reject if the parsed result is not an object or array — guards against
+    // the LLM returning a bare string/number that happens to be inside {}.
+    if (parsed !== null && typeof parsed === 'object') return parsed;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── suggestUnits ───────────────────────────────────────────
@@ -172,8 +180,8 @@ export async function suggestUnits(
       ],
       max_tokens: 240,
       temperature: 0.2,
-    } as never)) as { response?: string };
-    const parsed = extractJson(res?.response || '');
+    } as never)) as { response?: unknown };
+    const parsed = extractJson(typeof res?.response === 'string' ? res.response : String(res?.response ?? ''));
     const valid = new Set(candidates.map((u) => u.callSign));
     const suggestions: UnitSuggestion[] = Array.isArray(parsed?.suggestions)
       ? parsed.suggestions
@@ -259,8 +267,8 @@ export async function smartSearch(
       ],
       max_tokens: 300,
       temperature: 0.1,
-    } as never)) as { response?: string };
-    const p = extractJson(res?.response || '');
+    } as never)) as { response?: unknown };
+    const p = extractJson(typeof res?.response === 'string' ? res.response : String(res?.response ?? ''));
     if (p && typeof p.filters === 'object' && p.filters !== null) {
       const filters: Record<string, string> = {};
       for (const [k, v] of Object.entries(p.filters)) {
@@ -306,8 +314,8 @@ export async function analyzeCall(ai: Ai, call: CallContext): Promise<CallAnalys
       ],
       max_tokens: 300,
       temperature: 0.3,
-    } as never)) as { response?: string };
-    const p = extractJson(res?.response || '');
+    } as never)) as { response?: unknown };
+    const p = extractJson(typeof res?.response === 'string' ? res.response : String(res?.response ?? ''));
     if (p && typeof p.safetyBriefing === 'string') {
       const sev = (['low', 'medium', 'high'] as const).includes(p.severity) ? p.severity : 'medium';
       return {

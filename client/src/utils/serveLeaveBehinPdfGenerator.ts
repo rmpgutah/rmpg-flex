@@ -11,6 +11,7 @@ import {
   openAutoSection,
   closeAutoSection,
   addFieldPair,
+  addWritableFieldPair,
   addSignatureBlock,
   addWrappedText,
   addPageFooter,
@@ -102,7 +103,7 @@ function drawPageHeader(
   pageTitle: string,
 ): number {
   setActiveCaseNumber(caseNumber || `JOB-${jobId}`);
-  return drawNibrsHeader(doc, {
+  const y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: pageTitle,
@@ -110,6 +111,10 @@ function drawPageHeader(
     caseNumber: caseNumber || `JOB-${jobId}`,
     caseNumberLabel: caseNumber ? 'CASE NUMBER' : 'AGENCY JOB #',
   });
+  // addWrappedText treats y as the first line BASELINE. Returning the
+  // header's closing-rule y put that baseline ON the rule, which on page 2
+  // concatenated "ACKNOWLEDGEMENT OF RECEIPT" with "I, the undersigned…".
+  return y + SPACING.XXL + FONT.SIZE_FIELD_VALUE * 0.45;
 }
 
 // ── Footer helper ─────────────────────────────────────────────
@@ -150,11 +155,15 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, '1. SERVICE DETAILS', y); y = sec.contentY;
     const fy1 = addFieldPair(doc, 'Document type', sanitizePdfText(data.documentType), lx, y, hfw);
-    const fy2 = addFieldPair(doc, 'Case number', sanitizePdfText(data.caseNumber || ''), rx, y, hfw);
+    const fy2 = data.caseNumber
+      ? addFieldPair(doc, 'Case number', sanitizePdfText(data.caseNumber), rx, y, hfw)
+      : addWritableFieldPair(doc, 'Case number (if assigned)', rx, y, hfw);
     y = Math.max(fy1, fy2);
     y = addFieldPair(doc, 'Court', sanitizePdfText(data.courtName || ''), lx, y, ffw);
     const fy3 = addFieldPair(doc, 'Jurisdiction', sanitizePdfText(data.jurisdiction || ''), lx, y, hfw);
-    const fy4 = addFieldPair(doc, 'Serve date', sanitizePdfText(data.serveDate || ''), rx, y, hfw);
+    const fy4 = data.serveDate
+      ? addFieldPair(doc, 'Serve date', sanitizePdfText(data.serveDate), rx, y, hfw)
+      : addWritableFieldPair(doc, 'Serve date', rx, y, hfw);
     y = Math.max(fy3, fy4);
     const fy5 = addFieldPair(doc, 'Attorney', sanitizePdfText(data.attorneyName || ''), lx, y, hfw);
     const fy6 = addFieldPair(doc, 'Client / firm', sanitizePdfText(data.clientName || ''), rx, y, hfw);
@@ -191,7 +200,7 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
   if (data.serviceInstructions && data.serviceInstructions.trim()) {
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, '3. SERVICE INSTRUCTIONS', y); y = sec.contentY;
-      y = addWrappedText(doc, sanitizePdfText(data.serviceInstructions), lx, y, ffw);
+      y = addWrappedText(doc, data.serviceInstructions, lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
       y += SPACING.SM;
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
@@ -201,7 +210,7 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
   // so the header bar style matches every other section on the page.
   y = checkPageBreak(doc, y, 22);
   { const sec = openAutoSection(doc, 'REQUIRED ACTION — READ CAREFULLY', y); y = sec.contentY;
-    y = addWrappedText(doc, NOTICE_BODY, lx, y, ffw);
+    y = addWrappedText(doc, NOTICE_BODY, lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
     y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -218,7 +227,7 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
       doc.setTextColor(0, 0, 0);
       doc.text(`${i + 1}.`, lx, y);
       // Bullet text — inset 5mm from left to clear the number
-      y = addWrappedText(doc, GENERAL_INFO_ITEMS[i], lx + 5, y, ffw - 5);
+      y = addWrappedText(doc, GENERAL_INFO_ITEMS[i], lx + 5, y, ffw - 5, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
       y += SPACING.SM;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -247,24 +256,29 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
   doc.setFont('Arial', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(0, 0, 0);
-  const introEndY = addWrappedText(doc, introText, lx, y, ffw);
+  const introEndY = addWrappedText(doc, introText, lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   y = introEndY + SPACING.MD;
 
   // Recipient acknowledgement block
   const recipLabel = isBusiness ? 'AUTHORIZED REPRESENTATIVE ACKNOWLEDGEMENT' : 'RECIPIENT ACKNOWLEDGEMENT';
   y = checkPageBreak(doc, y, 40);
   { const sec = openAutoSection(doc, recipLabel, y); y = sec.contentY;
-    y = addFieldPair(doc, 'Printed name', '', lx, y, ffw);
+    y = addWritableFieldPair(doc, 'Printed name', lx, y, ffw);
     if (isBusiness) {
-      const fy1 = addFieldPair(doc, 'Title / position', '', lx, y, hfw);
+      const fy1 = addWritableFieldPair(doc, 'Title / position', lx, y, hfw);
       const fy2 = addFieldPair(doc, 'On behalf of', sanitizePdfText(data.businessName || data.recipientName), rx, y, hfw);
       y = Math.max(fy1, fy2);
     }
-    const fy3 = addFieldPair(doc, 'Date', '', lx, y, hfw);
-    const fy4 = addFieldPair(doc, 'Time', '', rx, y, hfw);
+    const fy3 = addWritableFieldPair(doc, 'Date', lx, y, hfw);
+    const fy4 = addWritableFieldPair(doc, 'Time', rx, y, hfw);
     y = Math.max(fy3, fy4);
     y += SPACING.MD;
-    y = addSignatureBlock(doc, 'Signature', lx, y, ffw);
+    y = addSignatureBlock(doc, 'Signature', lx, y, ffw, {
+      middleFieldLabel: isBusiness ? 'TITLE / POSITION' : 'CAPACITY',
+      printedName: '',
+      badgeNumber: '',
+      date: '',
+    });
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -274,11 +288,17 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
     const fy1 = addFieldPair(doc, 'Serving officer', sanitizePdfText(data.officerName), lx, y, hfw);
     const fy2 = addFieldPair(doc, 'Badge number', sanitizePdfText(data.officerBadge), rx, y, hfw);
     y = Math.max(fy1, fy2);
-    const fy3 = addFieldPair(doc, 'Date served', '', lx, y, hfw);
-    const fy4 = addFieldPair(doc, 'Time served', '', rx, y, hfw);
+    const fy3 = data.serveDate
+      ? addFieldPair(doc, 'Date served', sanitizePdfText(data.serveDate), lx, y, hfw)
+      : addWritableFieldPair(doc, 'Date served', lx, y, hfw);
+    const fy4 = addWritableFieldPair(doc, 'Time served', rx, y, hfw);
     y = Math.max(fy3, fy4);
     y += SPACING.MD;
-    y = addSignatureBlock(doc, 'Officer signature', lx, y, ffw);
+    y = addSignatureBlock(doc, 'Officer signature', lx, y, ffw, {
+      printedName: data.officerName,
+      badgeNumber: data.officerBadge,
+      date: '',
+    });
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

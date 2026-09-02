@@ -420,6 +420,7 @@ export default function ServeReceiptPage() {
     variantLabel: VARIANT_LABEL[variant],
     courtName: ctx?.job.court_name ?? '',
     caseNumber: ctx?.job.case_number ?? '',
+    jobId: ctx?.job.id,
     jurisdiction: ctx?.job.jurisdiction ?? '',
     plaintiffName: ctx?.job.plaintiff_name ?? '',
     defendantName: ctx?.job.defendant_name ?? '',

@@ -52,7 +52,7 @@ const DIALER_ENV_VARS = {
   DIALER_OIDC_ISSUER: DISCOVERY_URL,
   DIALER_OIDC_CLIENT_ID: 'test-client-id',
   DIALER_OIDC_CLIENT_SECRET: 'test-client-secret',
-  DIALER_OIDC_REDIRECT_URI: 'https://api.rmpgutah.us/api/oidc/dialer/callback',
+  DIALER_OIDC_REDIRECT_URI: 'https://rmpgutah.us/api/oidc/dialer/callback',
 };
 
 // Serves the synthetic discovery document at DISCOVERY_URL, 404s anything

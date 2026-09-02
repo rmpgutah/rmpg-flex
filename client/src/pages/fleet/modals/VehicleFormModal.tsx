@@ -1,6 +1,7 @@
 import React, { useId, useEffect, useRef, useState } from 'react';
 import { Car, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import type { FleetVehicleStatus } from '../../../types';
 
 export interface VehicleFormState {
@@ -54,6 +55,13 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
   // the previous silent-disabled-button state made "I clicked Save and
   // nothing happened" the only feedback the operator got.
   const [showRequired, setShowRequired] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+
+  const confirmDiscard = () => {
+    setDiscardOpen(false);
+    onDiscardDraft?.();
+    onClose();
+  };
   useEffect(() => {
     if (form.vehicle_number.trim()) setShowRequired(false);
   }, [form.vehicle_number]);
@@ -76,14 +84,8 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !saving) {
-        if (isDirty) {
-          if (window.confirm('You have unsaved changes. Discard them?')) {
-            onDiscardDraft?.();
-            onClose();
-          }
-        } else {
-          onClose();
-        }
+        if (isDirty) setDiscardOpen(true);
+        else onClose();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -96,14 +98,8 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
     onChange({ ...form, [field]: value });
 
   const guardedClose = () => {
-    if (isDirty && !saving) {
-      if (window.confirm('You have unsaved changes. Discard them?')) {
-        onDiscardDraft?.();
-        onClose();
-      }
-    } else {
-      onClose();
-    }
+    if (isDirty && !saving) setDiscardOpen(true);
+    else onClose();
   };
 
   return (
@@ -242,6 +238,7 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
           </button>
         </div>
       </div>
+      <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={confirmDiscard} />
     </div>
   );
 }

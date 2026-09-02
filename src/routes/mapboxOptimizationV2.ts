@@ -15,6 +15,7 @@ import {
   buildServeRunProblem,
   buildPatrolBeatProblem,
   buildDispatchProblem,
+  resolveOptimizationV2Token,
   type ServeStop,
   type UnitRow,
   type BeatRow,
@@ -30,11 +31,8 @@ const POLL_TIMEOUT_MIN = 5;
 
 const SUPERVISOR_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
-function getToken(c: { env: { MAPBOX_ACCESS_TOKEN?: string } }): string | null {
-  const t = c.env?.MAPBOX_ACCESS_TOKEN || null;
-  if (!t) return null;
-  if (t.startsWith('sk.')) return null; // never proxy secret tokens
-  return t;
+function getToken(c: { env: { MAPBOX_SECRET_TOKEN?: string; MAPBOX_ACCESS_TOKEN?: string } }): string | null {
+  return resolveOptimizationV2Token(c.env);
 }
 
 async function mbFetch(url: string, init?: RequestInit): Promise<unknown> {
@@ -60,12 +58,10 @@ async function mbFetch(url: string, init?: RequestInit): Promise<unknown> {
 // ── POST /submit ─────────────────────────────────────────────────────────────
 app.post('/submit', async (c) => {
   const tk = getToken(c);
-  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN');
+  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN or MAPBOX_SECRET_TOKEN');
 
   const user = c.get('user') as { id: number; role: string } | undefined;
-  if (!user || !SUPERVISOR_ROLES.has(user.role)) {
-    return c.json({ error: 'Forbidden — supervisor role required' }, 403);
-  }
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
   const db = c.env.DB;
   let body: Record<string, unknown>;
@@ -83,29 +79,77 @@ app.post('/submit', async (c) => {
 
   try {
     if (job_type === 'serve_run') {
-      const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id } = body as {
+      const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id, origin, circular } = body as {
         serve_queue_ids: number[];
-        officer_unit_id: number;
+        officer_unit_id?: number;
         shift_start: string;
         shift_end: string;
-        ref_id: number;
+        ref_id?: number | null;
+        origin?: { lat: number; lng: number } | null;
+        circular?: boolean;
       };
-      if (!serve_queue_ids?.length || !officer_unit_id || !shift_start || !shift_end || !ref_id) {
-        return c.json({ error: 'serve_run requires serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id' }, 400);
+      if (!serve_queue_ids?.length || !shift_start || !shift_end) {
+        return c.json({ error: 'serve_run requires serve_queue_ids, shift_start, shift_end' }, 400);
       }
       const stopRows = await queryInChunks<ServeStop>(
         db,
         serve_queue_ids,
-        (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
+        (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority, business_id, parsed_data->>'recipient_type' AS recipient_type FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
       );
-      const officerRow = await db
-        .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? LIMIT 1')
-        .bind(officer_unit_id)
-        .first();
-      if (!officerRow) return c.json({ error: 'officer unit not found' }, 404);
-      problem = buildServeRunProblem(stopRows, officerRow as unknown as UnitRow, shift_start, shift_end);
-      refId = ref_id;
-    } else if (job_type === 'patrol_beat') {
+      try {
+        const slots = await queryInChunks<{ queue_id: number; window_start: string; window_end: string; scheduled_date: string }>(
+          db,
+          serve_queue_ids,
+          (ph) => `SELECT queue_id, window_start, window_end, scheduled_date FROM serve_attempt_schedules WHERE dismissed = 0 AND queue_id IN (${ph}) ORDER BY scheduled_date ASC, window_start ASC`,
+        );
+        const first = new Map<number, { window_start: string; window_end: string }>();
+        const shiftDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(shift_start));
+        for (const slot of slots) {
+          if (slot.scheduled_date < shiftDay) continue;
+          if (!first.has(slot.queue_id)) first.set(slot.queue_id, slot);
+        }
+        for (const row of stopRows) {
+          const slot = first.get(row.id);
+          if (slot) row.time_window = `${slot.window_start}-${slot.window_end}`;
+        }
+      } catch { /* schedules table optional */ }
+      let officer: UnitRow | null = null;
+      if (officer_unit_id) {
+        const officerRow = await db
+          .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? OR officer_id = ? LIMIT 1')
+          .bind(officer_unit_id, officer_unit_id)
+          .first();
+        if (officerRow) officer = officerRow as unknown as UnitRow;
+      }
+      if (!officer && origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+        officer = {
+          id: officer_unit_id || user.id,
+          call_sign: 'serve',
+          latitude: origin.lat,
+          longitude: origin.lng,
+        };
+      }
+      if (!officer) {
+        return c.json({ error: 'serve_run requires origin {lat,lng} or a valid officer_unit_id' }, 400);
+      }
+      if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+        officer = { ...officer, latitude: origin.lat, longitude: origin.lng };
+      }
+
+      // Look up the officer's fleet vehicle MPG (falls back to fleet-wide average).
+      const { lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
+      const avgMpg = await lookupOfficerFleetMpg(db, officer_unit_id);
+
+      problem = buildServeRunProblem(stopRows, officer, shift_start, shift_end, {
+        circular: circular !== false,
+        avgMpg,
+      });
+      refId = ref_id ?? null;
+    } else {
+      if (!SUPERVISOR_ROLES.has(user.role)) {
+        return c.json({ error: 'Forbidden — supervisor role required' }, 403);
+      }
+      if (job_type === 'patrol_beat') {
       const { beat_ids, unit_ids, shift_start, shift_end } = body as {
         beat_ids: number[];
         unit_ids: number[];
@@ -142,6 +186,7 @@ app.post('/submit', async (c) => {
         (ph) => `SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${ph}) AND status IN ('available','on_scene')`,
       );
       problem = buildDispatchProblem(callRows, unitRows);
+    }
     }
   } catch (err) {
     log.error('[optimization-v2] problem build failed', { job_type }, err as Error);
@@ -201,7 +246,7 @@ app.get('/:jobId', async (c) => {
 
   // Still in-flight — need the token to poll Mapbox
   const tk = getToken(c);
-  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN');
+  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN or MAPBOX_SECRET_TOKEN');
 
   // Check timeout
   const updatedAt = new Date((row.updated_at as string) + 'Z').getTime();
@@ -241,14 +286,43 @@ app.get('/:jobId', async (c) => {
     try {
       const route = solution.routes[0];
       if (route) {
-        const orderedStops = route.stops
+        // Store plain IDs so the client reader (ServeRoutePlanner) can look
+        // them up in its job map. Previous version stored objects {id,eta,wait}
+        // which broke on reload because Map uses reference equality for objects.
+        const orderedIds = route.stops
           .filter((s) => s.type === 'service')
-          .map((s) => ({ id: Number(s.location), eta: s.eta, wait: s.wait ?? 0 }));
+          .map((s) => Number(s.location));
+        // Compute total distance (meters) and duration (seconds) from the
+        // route-level summary that Mapbox V2 returns on each route object.
+        const routeAny = route as any;
+        const totalDistanceMiles = routeAny.distance
+          ? Math.round((routeAny.distance / 1609.34) * 10) / 10
+          : null;
+        const totalDurationMinutes = routeAny.duration
+          ? Math.round(routeAny.duration / 60)
+          : null;
         await db
-          .prepare(`UPDATE serve_routes SET optimized_order_json = ?, updated_at = datetime('now') WHERE id = ?`)
-          .bind(JSON.stringify(orderedStops), row.ref_id)
+          .prepare(
+            `UPDATE serve_routes
+             SET optimized_order_json = ?,
+                 total_distance_miles = COALESCE(?, total_distance_miles),
+                 total_time_minutes = COALESCE(?, total_time_minutes),
+                 updated_at = datetime('now')
+             WHERE id = ?`
+          )
+          .bind(
+            JSON.stringify(orderedIds),
+            totalDistanceMiles,
+            totalDurationMinutes,
+            row.ref_id,
+          )
           .run();
-        log.info('[optimization-v2] serve_routes write-back complete', { refId: row.ref_id, stops: orderedStops.length });
+        log.info('[optimization-v2] serve_routes write-back complete', {
+          refId: row.ref_id,
+          stops: orderedIds.length,
+          totalDistanceMiles,
+          totalDurationMinutes,
+        });
       }
     } catch (err) {
       log.error('[optimization-v2] serve_routes write-back failed', { refId: row.ref_id }, err as Error);
@@ -256,7 +330,14 @@ app.get('/:jobId', async (c) => {
   }
 
   log.info('[optimization-v2] job complete', { jobId, routes: solution.routes.length, dropped: solution.dropped.services.length });
-  return c.json({ job_id: jobId, status: 'complete', solution });
+  // Extract avg_mpg from the original problem (stored at submit time) so the
+  // client can display vehicle-specific fuel cost estimates.
+  let avgMpg: number | null = null;
+  try {
+    const problemDoc = JSON.parse(row.problem_json as string);
+    avgMpg = problemDoc?.options?.avg_mpg ?? null;
+  } catch { /* ignore */ }
+  return c.json({ job_id: jobId, status: 'complete', solution, avg_mpg: avgMpg });
 });
 
 // ── GET / ─────────────────────────────────────────────────────────────────────

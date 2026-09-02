@@ -24,8 +24,15 @@ vi.mock('../src/utils/enrichment/sources/fbi',           () => ({ search: async 
 vi.mock('../src/utils/enrichment/sources/bop',           () => ({ search: async () => ({ source: 'bop_inmates',     ok: true,  latency_ms: 5, records: [] }) }));
 vi.mock('../src/utils/enrichment/sources/censusGeocoder',() => ({ search: async () => ({ source: 'census_geocoder', ok: true,  latency_ms: 5, records: [] }) }));
 vi.mock('../src/utils/enrichment/sources/ofac',          () => ({ search: async () => ({ source: 'ofac_sdn',        ok: true,  latency_ms: 5, records: [] }) }));
+vi.mock('../src/utils/enrichment/sources/usaPeopleSearch',() => ({ search: async () => ({ source: 'usa_people_search', ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
+vi.mock('../src/utils/enrichment/sources/hunter',       () => ({ search: async () => ({ source: 'hunter',           ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
+vi.mock('../src/utils/enrichment/sources/pdl',          () => ({ search: async () => ({ source: 'pdl',              ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
+vi.mock('../src/utils/enrichment/sources/apollo',       () => ({ search: async () => ({ source: 'apollo',           ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
+vi.mock('../src/utils/enrichment/sources/hibp',         () => ({ search: async () => ({ source: 'hibp',             ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
+vi.mock('../src/utils/enrichment/sources/courtlistener', () => ({ search: async () => ({ source: 'courtlistener',    ok: true,  latency_ms: 5, records: [] }) }));
 
 import enrichment from '../src/routes/enrichment';
+import { OPEN_SOURCE_ENRICHMENT_SOURCES } from '../src/utils/enrichment/catalog';
 
 type TestUser = { id: number; role: string; username: string };
 
@@ -116,11 +123,14 @@ describe('POST /api/enrichment/search', () => {
     expect(res.status).toBe(400);
   });
 
-  it('GET /sources returns 10 sources', async () => {
+  it('GET /sources returns the enrichment catalog', async () => {
     const app = appWithUser(testUser);
     const res = await app.fetch(new Request('https://example.com/api/enrichment/sources'), env);
-    const json = await res.json() as any[];
+    const json = await res.json() as Array<{ key: string; open_source: boolean }>;
     expect(res.status).toBe(200);
-    expect(json).toHaveLength(10);
+    expect(json).toHaveLength(OPEN_SOURCE_ENRICHMENT_SOURCES.length);
+    expect(json.filter(s => s.open_source === true)).toHaveLength(
+      OPEN_SOURCE_ENRICHMENT_SOURCES.filter(s => s.openSource).length,
+    );
   });
 });

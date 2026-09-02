@@ -5,6 +5,7 @@ import type { DesktopGroup } from '../../utils/normalizeDesktopLayout';
 import { getWindowConfig, activateNavFunction } from '../../utils/windowManager';
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
+import PromptDialog from '../PromptDialog';
 import { getIconLabelOverride, setIconLabelOverride, clearIconLabelOverride, isAutoArrangeEnabled } from '../../utils/desktopIconPreferences';
 import { useToast } from '../ToastProvider';
 import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
@@ -116,6 +117,7 @@ export default function DesktopIconGrid({
   const [lasso, setLasso] = useState<LassoRect | null>(null);
   const [ghost, setGhost] = useState<GhostState | null>(null);
   const [hoveredPath, setHoveredPath] = useState<string | null>(null);
+  const [groupPromptOpen, setGroupPromptOpen] = useState(false);
   const [, forceRerender] = useState(0);
   const lassoRef = useRef<LassoRect | null>(null);
 
@@ -234,12 +236,8 @@ export default function DesktopIconGrid({
   }, []);
 
   const handleGroupAs = useCallback(() => {
-    const label = window.prompt('Group name:', 'New Group');
-    if (label && label.trim()) {
-      onCreateGroup([...selected], label.trim());
-      setSelected(new Set());
-    }
-  }, [selected, onCreateGroup]);
+    setGroupPromptOpen(true);
+  }, []);
 
   const commitRename = useCallback((path: string, value: string) => {
     const trimmed = value.trim();
@@ -280,8 +278,26 @@ export default function DesktopIconGrid({
   // Dismiss lasso on unmount
   useEffect(() => () => { setLasso(null); lassoRef.current = null; }, []);
 
+  const groupPrompt = (
+    <PromptDialog
+      isOpen={groupPromptOpen}
+      onClose={() => setGroupPromptOpen(false)}
+      onSubmit={(label) => {
+        onCreateGroup([...selected], label);
+        setSelected(new Set());
+        setGroupPromptOpen(false);
+      }}
+      title="Group icons"
+      message="Enter a name for this icon group."
+      label="Group name"
+      defaultValue="New Group"
+      confirmLabel="Create"
+    />
+  );
+
   if (viewMode === 'list') {
     return (
+      <>
       <div style={{ position: 'relative' }}>
         {icons.map((fn) => {
           const Icon = fn.icon;
@@ -351,6 +367,8 @@ export default function DesktopIconGrid({
           );
         })}
       </div>
+      {groupPrompt}
+      </>
     );
   }
 
@@ -358,6 +376,7 @@ export default function DesktopIconGrid({
   const lassoNorm = lasso ? lassoToNorm(lasso) : null;
 
   return (
+    <>
     <div
       ref={containerRef}
       style={{ position: 'absolute', inset: 0 }}
@@ -601,6 +620,8 @@ export default function DesktopIconGrid({
         </div>
       )}
     </div>
+    {groupPrompt}
+    </>
   );
 }
 

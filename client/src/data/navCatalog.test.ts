@@ -17,6 +17,7 @@ describe('navCatalog', () => {
     expect(CLIENT_VIEWER_BLOCKED.has('/admin')).toBe(true);
     expect(CONTRACT_MANAGER_BLOCKED.has('/admin')).toBe(true);
     expect(CLIENT_VIEWER_BLOCKED.has('/desktop-company-browser')).toBe(true);
+    expect(CLIENT_VIEWER_BLOCKED.has('/dialer-connect')).toBe(true);
     expect(CONTRACT_MANAGER_BLOCKED.has('/desktop-company-browser')).toBe(true);
   });
 });

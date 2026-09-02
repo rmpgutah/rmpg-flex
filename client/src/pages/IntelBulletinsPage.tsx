@@ -5,6 +5,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { bulletinsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface Bulletin {
   id: number;
@@ -74,6 +76,7 @@ export default function IntelBulletinsPage() {
   const [editingBulletin, setEditingBulletin] = useState<Bulletin | null>(null);
   const [form, setForm] = useState<BulletinForm>(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -94,6 +97,7 @@ export default function IntelBulletinsPage() {
 
   async function fetchBulletins() {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -103,8 +107,9 @@ export default function IntelBulletinsPage() {
       const query = params.toString();
       const data = await apiFetch<Bulletin[]>(`/intel-bulletins${query ? '?' + query : ''}`);
       setBulletins(asArray<Bulletin>(data));
-    } catch (err) {
-      console.error('Failed to fetch bulletins', err);
+    } catch {
+      setLoadError(true);
+      setBulletins([]);
     } finally {
       setLoading(false);
     }
@@ -161,7 +166,7 @@ export default function IntelBulletinsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <PanelTitleBar title="INTELLIGENCE BULLETINS" icon={Shield} />
-        <button
+        <button type="button"
           onClick={openCreate}
           className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 text-white font-semibold text-xs rounded-sm hover:bg-brand-700"
         >
@@ -212,18 +217,35 @@ export default function IntelBulletinsPage() {
           <input
             type="text"
             placeholder="Search bulletins..."
+            aria-label="Search intelligence bulletins"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm flex-1"
           />
         </div>
+        <button
+          type="button"
+          className="px-2 py-1 text-xs border border-border-default"
+          disabled={bulletins.length === 0}
+          onClick={() => downloadTextFile('intel-bulletins.csv', bulletinsToCsv(bulletins))}
+        >CSV</button>
       </div>
 
       {/* Bulletin List */}
       <div className="space-y-2">
         {loading && <div className="text-center text-gray-500 text-xs py-8">Loading...</div>}
-        {!loading && bulletins.length === 0 && (
-          <div className="text-center text-gray-500 text-xs py-8">No bulletins found</div>
+        {loadError && (
+          <div className="text-xs text-red-400 flex items-center justify-between">
+            <span>Failed to load bulletins.</span>
+            <button type="button" className="px-2 py-1 border border-border-default" onClick={() => void fetchBulletins()}>Retry</button>
+          </div>
+        )}
+        {!loading && !loadError && bulletins.length === 0 && (
+          <div className="text-center text-gray-500 text-xs py-8">
+            {searchQuery || typeFilter !== 'all' || statusFilter !== 'active' || priorityFilter !== 'all'
+              ? 'No bulletins match the current filter'
+              : 'No bulletins found'}
+          </div>
         )}
         {bulletins.map((b) => (
           <div
@@ -238,6 +260,7 @@ export default function IntelBulletinsPage() {
                     {formatEnumValue(b.priority)}
                   </span>
                   <span className="font-mono text-xs text-gray-400">{b.bulletin_number}</span>
+                  <button type="button" className="text-[9px] border border-border-default px-1" onClick={(e) => { e.stopPropagation(); void copyToClipboard(b.bulletin_number); }}>Copy</button>
                   <span className="px-1.5 py-0.5 text-[9px] bg-surface-sunken text-gray-300 rounded-sm uppercase">
                     {typeLabels[b.type] || b.type}
                   </span>
@@ -264,7 +287,7 @@ export default function IntelBulletinsPage() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {!b.acknowledged && (
-                  <button
+                  <button type="button"
                     onClick={(e) => { e.stopPropagation(); handleAcknowledge(b.id); }}
                     className="flex items-center gap-0.5 px-2 py-1 text-[10px] bg-brand-600 text-white font-semibold rounded-sm hover:bg-brand-700"
                     title="Acknowledge"
@@ -272,7 +295,7 @@ export default function IntelBulletinsPage() {
                     <Check className="w-3 h-3" /> ACK
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedBulletin(b); }}
                   className="p-1 text-gray-400 hover:text-gray-200"
                   title="View details"
@@ -294,7 +317,7 @@ export default function IntelBulletinsPage() {
                 <Shield className="w-4 h-4 text-brand-400" />
                 <span className="text-sm font-semibold text-gray-100">Bulletin Detail</span>
               </div>
-              <button aria-label="Close" onClick={() => setSelectedBulletin(null)} className="text-gray-400 hover:text-gray-200">
+              <button type="button" aria-label="Close" onClick={() => setSelectedBulletin(null)} className="text-gray-400 hover:text-gray-200">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -327,11 +350,11 @@ export default function IntelBulletinsPage() {
                 {selectedBulletin.expires_at && <span>Expires: {parseTimestamp(selectedBulletin.expires_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</span>}
               </div>
               <div className="flex gap-2 pt-2">
-                <button onClick={() => { openEdit(selectedBulletin); setSelectedBulletin(null); }} className="px-3 py-1 bg-surface-sunken text-gray-200 text-xs rounded-sm hover:bg-surface-sunken/80">
+                <button type="button" onClick={() => { openEdit(selectedBulletin); setSelectedBulletin(null); }} className="px-3 py-1 bg-surface-sunken text-gray-200 text-xs rounded-sm hover:bg-surface-sunken/80">
                   Edit
                 </button>
                 {!selectedBulletin.acknowledged && (
-                  <button onClick={() => { handleAcknowledge(selectedBulletin.id); setSelectedBulletin(null); }} className="px-3 py-1 bg-brand-600 text-white text-xs font-semibold rounded-sm hover:bg-brand-700">
+                  <button type="button" onClick={() => { handleAcknowledge(selectedBulletin.id); setSelectedBulletin(null); }} className="px-3 py-1 bg-brand-600 text-white text-xs font-semibold rounded-sm hover:bg-brand-700">
                     Acknowledge
                   </button>
                 )}
@@ -349,7 +372,7 @@ export default function IntelBulletinsPage() {
               <span className="text-sm font-semibold text-gray-100">
                 {editingBulletin ? 'Edit Bulletin' : 'New Intelligence Bulletin'}
               </span>
-              <button aria-label="Close" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-200">
+              <button type="button" aria-label="Close" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-200">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -439,10 +462,10 @@ export default function IntelBulletinsPage() {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
-                <button onClick={() => setShowCreateModal(false)} className="px-3 py-1.5 bg-surface-sunken text-gray-300 text-xs rounded-sm hover:bg-surface-sunken/80">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="px-3 py-1.5 bg-surface-sunken text-gray-300 text-xs rounded-sm hover:bg-surface-sunken/80">
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={handleSubmit}
                   disabled={!form.title || !form.description}
                   className="px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-sm hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed"

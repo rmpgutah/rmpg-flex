@@ -44,6 +44,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
   const [incidents, setIncidents] = useState<IncidentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +63,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [retryTick]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -80,7 +81,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
   return (
     <div className="bg-surface-base border border-border-default panel-beveled" style={{ borderRadius: 2 }}>
       <div className="px-3 py-2 border-b border-border-default flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase font-semibold text-[#888]">
+        <span className="text-[10px] uppercase font-semibold text-fg-muted">
           Attach To Incident <span className="text-[color:var(--sev-critical)]">*</span>
         </span>
         <span className="text-[9px] text-fg-muted">
@@ -95,6 +96,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by incident #, type, location, narrative…"
+            aria-label="Search incidents"
             className="w-full bg-surface-sunken border border-border-default pl-7 pr-2 py-1.5 text-[11px] text-rmpg-100"
             style={{ borderRadius: 2 }}
           />
@@ -102,12 +104,13 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
       </div>
       <div className="max-h-[280px] overflow-y-auto scrollbar-dark">
         {error && (
-          <div className="px-3 py-3 text-[11px] text-[color:var(--sev-critical)]">
-            {error}
+          <div className="px-3 py-3 text-[11px] text-[color:var(--sev-critical)] space-y-2" role="alert">
+            <div>{error}</div>
+            <button type="button" className="toolbar-btn" onClick={() => setRetryTick((n) => n + 1)}>Retry</button>
           </div>
         )}
         {!error && !loading && filtered.length === 0 && (
-          <div className="px-3 py-3 text-[11px] text-[#888]">
+          <div className="px-3 py-3 text-[11px] text-fg-muted">
             No matching incidents. {query ? 'Try a different search.' : ''}
           </div>
         )}
@@ -130,11 +133,11 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
                 </div>
                 <div className="text-[10px] text-rmpg-300 mt-0.5">
                   {i.type || 'Unknown type'}
-                  {i.status && <span className="ml-2 text-[#888]">[{humanizeStatus(i.status, 'incident')}]</span>}
+                  {i.status && <span className="ml-2 text-fg-muted">[{humanizeStatus(i.status, 'incident')}]</span>}
                   {i.officer_name && <span className="ml-2 text-fg-muted">· {i.officer_name}</span>}
                 </div>
                 {i.location && (
-                  <div className="text-[10px] text-[#888] mt-0.5 truncate">{i.location}</div>
+                  <div className="text-[10px] text-fg-muted mt-0.5 truncate">{i.location}</div>
                 )}
               </div>
             </button>

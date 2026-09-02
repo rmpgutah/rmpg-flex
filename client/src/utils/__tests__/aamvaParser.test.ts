@@ -19,6 +19,18 @@ describe('looksLikeAamva', () => {
     expect(looksLikeAamva('hello world')).toBe(false);
     expect(looksLikeAamva('')).toBe(false);
   });
+
+  it('accepts a glued DLDAQ body with no word-boundary before DAQ', () => {
+    // Live cameras / AVFoundation often collapse record separators, leaving
+    // `…10DLDAQ123…DCSSAMPLE` with no `\b` before DAQ. The old `/\bDAQ/`
+    // gate rejected these as "not a driver license payload" after a successful
+    // PDF417 decode.
+    const glued = '@\n\x1e\rANSI 636040080002DL00410080ZU01210010DLDAQ123456789DCSSAMPLEDACJOHN';
+    expect(looksLikeAamva(glued)).toBe(true);
+    expect(parseAamva(glued).dl_number).toBe('123456789');
+    expect(parseAamva(glued).last_name).toBe('SAMPLE');
+    expect(parseAamva(glued).first_name).toBe('JOHN');
+  });
 });
 
 describe('parseAamva — full field extraction', () => {

@@ -13,6 +13,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
 import PersonIntelGraphTab from './PersonIntelGraphTab';
+import PersonIntelCrossReferencesTab from './PersonIntelCrossReferencesTab';
 import { toDisplayLabel } from '../utils/formatters';
 
 interface DataPoint {
@@ -118,7 +119,7 @@ export default function PersonIntelDossierPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'data' | 'sources' | 'connections' | 'graph'>('data');
+  const [activeTab, setActiveTab] = useState<'data' | 'sources' | 'connections' | 'xrefs' | 'graph'>('data');
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // ── ConfirmDialog state ─────────────────────────────────────────────────────
@@ -306,6 +307,22 @@ export default function PersonIntelDossierPage() {
               <CheckCircle2 className="w-2.5 h-2.5" />Linked to Person #{dossier.linked_person_id}
             </span>
           )}
+          {dossier.linked_person_id && dossier.status === 'complete' && (
+            <button
+              type="button"
+              className="text-[10px] text-brand-400 hover:text-brand-300"
+              onClick={async () => {
+                try {
+                  const res = await apiFetch<{ filled: string[] }>(`/person-intel/${id}/apply-to-person`, { method: 'POST', body: JSON.stringify({}) });
+                  addToast(res.filled?.length ? `Filled ${res.filled.join(', ')}` : 'No verified aggregator fields to fill', 'success');
+                } catch (e: any) {
+                  addToast(e?.message ?? 'Fill failed', 'error');
+                }
+              }}
+            >
+              Fill verified details
+            </button>
+          )}
           <span className="ml-auto flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}
           </span>
@@ -314,7 +331,7 @@ export default function PersonIntelDossierPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-rmpg-800">
-        {(['data', 'sources', 'connections', 'graph'] as const).map(tab => (
+        {(['data', 'sources', 'connections', 'xrefs', 'graph'] as const).map(tab => (
           <button
             key={tab}
             className={`text-xs px-3 py-1.5 capitalize border-b-2 -mb-px transition-colors ${activeTab === tab ? 'border-brand-400 text-brand-400' : 'border-transparent text-rmpg-500 hover:text-rmpg-300'}`}
@@ -323,6 +340,7 @@ export default function PersonIntelDossierPage() {
             {tab === 'data' ? `Data Points (${dossier.dataPoints.filter(p => p.confidence >= 0.40).length})` :
              tab === 'sources' ? `Sources (${dossier.sources.length})` :
              tab === 'connections' ? `Connections (${dossier.connections.length})` :
+             tab === 'xrefs' ? `Cross-Refs` :
              `Graph`}
           </button>
         ))}
@@ -458,6 +476,10 @@ export default function PersonIntelDossierPage() {
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'xrefs' && (
+        <PersonIntelCrossReferencesTab dossierId={dossier.id} />
       )}
 
       {activeTab === 'graph' && (

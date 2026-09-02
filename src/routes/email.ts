@@ -42,6 +42,8 @@ import { saveUserGraphToken, getUserGraphToken, deleteUserGraphToken, listConnec
 import type { Bindings, Variables } from '../types';
 import type { MiddlewareHandler } from 'hono';
 import { rateLimitAllow } from '../utils/rateLimit';
+import { emailConnectRedirectUri, exchangeAuthorizationCode, oauthRedirectCandidates, workerAppOrigin } from '../utils/appOrigin';
+import { getAzureEmailCredentials, getAzureEmailIdentity, isAzureEmailConfigured } from '../utils/azureEmailCredentials';
 
 import { log } from '../utils/logger';
 const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -124,9 +126,7 @@ async function delCfg(db: D1Database, key: string): Promise<void> {
 // ───────── Status shape consumed by AdminEmailTab ─────────
 async function getStatus(env: Bindings) {
   const db = env.DB;
-  const [clientId, tenantId, enabled, pollInterval, mailbox, refreshToken, smtpFallback, lastSync] = await Promise.all([
-    getCfg(db, K.clientId),
-    getCfg(db, K.tenantId),
+  const [enabled, pollInterval, mailbox, refreshToken, smtpFallback, lastSync] = await Promise.all([
     getCfg(db, K.enabled),
     getCfg(db, K.pollInterval),
     getCfg(db, K.mailbox),
@@ -134,8 +134,7 @@ async function getStatus(env: Bindings) {
     getCfg(db, K.smtpFallback),
     getCfg(db, K.lastSync),
   ]);
-  const clientSecret = await getCfg(db, K.clientSecret);
-  const configured = !!(clientId && clientSecret && tenantId);
+  const configured = await isAzureEmailConfigured(env);
   const authorized = !!refreshToken;
   let cachedMessages = 0;
   try {
@@ -187,20 +186,20 @@ email.use('*', async (c, next) => {
 // just keyed per-connection instead of a global singleton.
 email.get('/connect/authorize', async (c) => {
   const userId = c.get('userId');
-  const clientId = await getCfgDecrypted(c.env, K.clientId);
-  const tenantId = await getCfgDecrypted(c.env, K.tenantId);
-  if (!clientId || !tenantId) {
+  const identity = await getAzureEmailIdentity(c.env);
+  if (!identity) {
     return c.json({ error: 'Azure AD app registration is not configured yet — ask an admin to set it up', code: 'NOT_CONFIGURED' }, 400);
   }
+  const { clientId, tenantId } = identity;
   const stateBytes = crypto.getRandomValues(new Uint8Array(32));
   let state = '';
   for (const b of stateBytes) state += b.toString(16).padStart(2, '0');
-  await setCfg(c.env.DB, `email_connect_state_${state}`, String(userId));
+  const redirectUri = emailConnectRedirectUri(c.env, c.req.url);
+  await setCfg(c.env.DB, `email_connect_state_${state}`, JSON.stringify({ userId, redirectUri }));
 
-  // Always use the canonical API domain for the redirect URI. Using
-  // c.req.url.host returns 'rmpgutah.us' when the request is proxied
-  // through the SPA origin, causing AADSTS50011 (redirect URI mismatch).
-  const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
+  // Same-origin on the SPA host so the Azure redirect rides rmpg-api-proxy
+  // (WAF cookie already set) instead of api.rmpgutah.us (challenge host).
+  // Token exchange retries api.rmpgutah.us if this tenant still has the old URI.
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
@@ -218,6 +217,8 @@ email.get('/connect/authorize', async (c) => {
 // resolves the owning userId from the per-request state row instead of a
 // singleton, and writes to user_graph_tokens instead of system_config.
 email.get('/connect/callback', async (c) => {
+  const spa = workerAppOrigin(c.env);
+  const toEmail = (query: string) => c.redirect(`${spa}/email?${query}`);
   const url = new URL(c.req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -228,9 +229,9 @@ email.get('/connect/callback', async (c) => {
       'unsupported_response_type', 'invalid_scope', 'server_error', 'temporarily_unavailable',
     ]);
     const safeErr = KNOWN_OAUTH_ERRORS.has(oauthErr) ? oauthErr : 'oauth_error';
-    return c.redirect(`/email?connect_status=error&message=${encodeURIComponent(safeErr)}`);
+    return toEmail(`connect_status=error&message=${encodeURIComponent(safeErr)}`);
   }
-  if (!code || !state) return c.redirect('/email?connect_status=error&message=Missing+code+or+state');
+  if (!code || !state) return toEmail('connect_status=error&message=Missing+code+or+state');
 
   const stateKey = `email_connect_state_${state}`;
   const row = await queryFirst<{ config_value: string }>(
@@ -238,47 +239,61 @@ email.get('/connect/callback', async (c) => {
     "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1",
     stateKey,
   );
-  if (!row) return c.redirect('/email?connect_status=error&message=Invalid+or+expired+state');
+  if (!row) return toEmail('connect_status=error&message=Invalid+or+expired+state');
   const consumed = await execute(
     c.env.DB,
     "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'",
     stateKey,
   );
   if (((consumed?.meta?.changes as number | undefined) ?? 0) === 0) {
-    return c.redirect('/email?connect_status=error&message=Invalid+state');
+    return toEmail('connect_status=error&message=Invalid+state');
   }
-  const userId = parseInt(row.config_value, 10);
-  if (!userId) return c.redirect('/email?connect_status=error&message=Invalid+state');
+  let userId = 0;
+  let storedRedirect: string | undefined;
+  try {
+    const parsed = JSON.parse(row.config_value) as { userId?: unknown; redirectUri?: unknown };
+    if (typeof parsed.userId === 'number') {
+      userId = parsed.userId;
+      if (typeof parsed.redirectUri === 'string') storedRedirect = parsed.redirectUri;
+    }
+  } catch { /* legacy: raw user id */ }
+  if (!userId) userId = parseInt(row.config_value, 10);
+  if (!userId) return toEmail('connect_status=error&message=Invalid+state');
 
-  const clientId = await getCfgDecrypted(c.env, K.clientId);
-  const clientSecret = await getCfgDecrypted(c.env, K.clientSecret);
-  const tenantId = await getCfgDecrypted(c.env, K.tenantId);
-  if (!clientId || !clientSecret || !tenantId) {
-    return c.redirect('/email?connect_status=error&message=Credentials+missing');
+  const creds = await getAzureEmailCredentials(c.env);
+  if (!creds) {
+    return toEmail('connect_status=error&message=Credentials+missing');
   }
+  const { clientId, clientSecret, tenantId } = creds;
 
-  const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    code,
-    redirect_uri: redirectUri,
-    grant_type: 'authorization_code',
-    scope: GRAPH_SCOPES.join(' '),
-  });
+  const redirectUris = oauthRedirectCandidates(
+    c.env,
+    '/api/email/connect/callback',
+    c.req.url,
+    storedRedirect,
+  );
 
   try {
-    const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-      signal: AbortSignal.timeout(15_000),
+    const exchanged = await exchangeAuthorizationCode({
+      tokenUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+      params: {
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        scope: GRAPH_SCOPES.join(' '),
+      },
+      redirectUris,
     });
-    const data = await res.json() as Record<string, unknown>;
-    if (!res.ok) {
-      const msg = String(data.error_description || data.error || 'Token exchange failed');
-      return c.redirect(`/email?connect_status=error&message=${encodeURIComponent(msg)}`);
+    if (!exchanged.ok) {
+      let msg = 'Token exchange failed';
+      try {
+        const data = JSON.parse(exchanged.body) as Record<string, unknown>;
+        msg = String(data.error_description || data.error || msg);
+      } catch { /* raw body */ }
+      return toEmail(`connect_status=error&message=${encodeURIComponent(msg)}`);
     }
+    const data = JSON.parse(exchanged.body) as Record<string, unknown>;
 
     let mailbox: string | undefined;
     try {
@@ -305,7 +320,7 @@ email.get('/connect/callback', async (c) => {
         attempted: mailbox,
         assigned: assignedEmail,
       });
-      return c.redirect(`/email?connect_status=error&message=${encodeURIComponent('That Microsoft account does not match your assigned email address')}`);
+      return toEmail(`connect_status=error&message=${encodeURIComponent('That Microsoft account does not match your assigned email address')}`);
     }
 
     const expiresIn = Number(data.expires_in) || 3600;
@@ -316,10 +331,10 @@ email.get('/connect/callback', async (c) => {
       mailbox,
     });
 
-    return c.redirect('/email?connect_status=connected');
+    return toEmail('connect_status=connected');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Token exchange failed';
-    return c.redirect(`/email?connect_status=error&message=${encodeURIComponent(msg)}`);
+    return toEmail(`connect_status=error&message=${encodeURIComponent(msg)}`);
   }
 });
 
@@ -331,8 +346,11 @@ email.delete('/connect', async (c) => {
 
 email.get('/connect/status', async (c) => {
   const userId = c.get('userId');
-  const token = await getUserGraphToken(c.env.DB, c.env, userId);
-  return c.json({ connected: !!token, mailbox: token?.mailbox ?? null });
+  const [token, azureConfigured] = await Promise.all([
+    getUserGraphToken(c.env.DB, c.env, userId),
+    isAzureEmailConfigured(c.env),
+  ]);
+  return c.json({ connected: !!token, mailbox: token?.mailbox ?? null, azureConfigured });
 });
 
 // Send-family rate limit — separate from the generic apiRateLimit (600/5min,
@@ -425,12 +443,11 @@ async function ensureValidToken(env: Bindings, userId: number): Promise<string> 
   }
   if (!stored.refreshToken) throw new Error('Microsoft re-authorization required — no refresh token');
 
-  const clientId = await getCfgDecrypted(env, K.clientId);
-  const clientSecret = await getCfgDecrypted(env, K.clientSecret);
-  const tenantId = await getCfgDecrypted(env, K.tenantId);
-  if (!clientId || !clientSecret || !tenantId) {
+  const creds = await getAzureEmailCredentials(env);
+  if (!creds) {
     throw new Error('Azure AD credentials not configured');
   }
+  const { clientId, clientSecret, tenantId } = creds;
 
   const body = new URLSearchParams({
     client_id: clientId,

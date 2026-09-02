@@ -215,7 +215,7 @@ export default function CompanyBrowserPage() {
 
   // Resize webviews imperatively (CSS sizing isn't reliable for <webview>)
   useEffect(() => {
-    const container = containerRef.current;
+    const container = webviewContainerRef.current;
     if (!container) return;
     const apply = () => {
       const { width, height } = container.getBoundingClientRect();
@@ -623,7 +623,22 @@ export default function CompanyBrowserPage() {
               position: 'absolute', inset: 0,
               display: tab.id === activeTabId ? 'flex' : 'none',
             }}
-            partition={`persist:company-browser-${tab.id}`
+            partition={`persist:company-browser-${tab.id}`}
+          />
+        ))}
+      </div>
+
+      {/* ── Find bar ───────────────────────────────────────────────────────── */}
+      {panel === 'find' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <input
+            autoFocus
+            type="text"
+            placeholder="Find in page…"
+            value={findQuery}
+            onChange={e => setFindQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') doFind(!e.shiftKey); if (e.key === 'Escape') stopFind(); }}
+            style={{ flex: 1, padding: '2px 6px', fontSize: 11, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', outline: 'none' }}
           />
           <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <input type="checkbox" checked={findMatchCase} onChange={e => setFindMatchCase(e.target.checked)} />
@@ -663,7 +678,7 @@ export default function CompanyBrowserPage() {
       {/* ── Main content area ──────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
         {/* Webview area */}
-        <div ref={containerRef} style={{ flex: 1, position: 'relative' }}>
+        <div ref={webviewContainerRef} style={{ flex: 1, position: 'relative' }}>
           {isElectron ? (
             tabs.map(tab => (
               <webview

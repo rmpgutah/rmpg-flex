@@ -2,6 +2,15 @@ import { jsPDF } from 'jspdf';
 import { renderWarrantIntoDoc, type WarrantPdfData } from './recordPdfGenerator';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { localToday } from './dateUtils';
+import { resolveApiHttpBase, WORKER_HTTP_ORIGIN } from './apiOrigin';
+
+function apiBase(): string {
+  if (typeof window === 'undefined') return WORKER_HTTP_ORIGIN;
+  return resolveApiHttpBase({
+    isDev: Boolean(import.meta.env?.DEV),
+    hostname: window.location.hostname,
+  });
+}
 
 // Isolated fetch (Pattern E fix, Wave 3.1): the pre-wave-3.1 code used
 // apiFetch from hooks/useApi, which is auth-coupled — on a 401 it
@@ -9,13 +18,6 @@ import { localToday } from './dateUtils';
 // '/login', tearing down the entire SPA mid-PDF-generation. The same
 // bug was fixed in pdfStaticMap.ts (c0f34f20) and pdfImageHelpers.ts
 // (Wave 3.1). Now uses raw fetch + localStorage JWT + 7s timeout.
-const API_BASE = (() => {
-  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
-  const h = window.location.hostname;
-  if (h === 'localhost') return 'http://localhost:8787';
-  return 'https://api.rmpgutah.us';
-})();
-
 function getToken(): string | null {
   try { return typeof localStorage !== 'undefined' ? localStorage.getItem('rmpg_token') : null; }
   catch { return null; }
@@ -28,7 +30,7 @@ async function fetchWarrant(id: number): Promise<any> {
     const headers: Record<string, string> = {};
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE}/api/warrants/${id}`, { signal: controller.signal, headers });
+    const res = await fetch(`${apiBase()}/api/warrants/${id}`, { signal: controller.signal, headers });
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }

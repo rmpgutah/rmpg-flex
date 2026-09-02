@@ -83,6 +83,7 @@ export default function LoginPage() {
     setLoginStep,
     pendingBackupCodes,
     requiresPasswordChange,
+    twoFactorMethods,
   } = useAuth();
 
   const [loginUsername, setLoginUsername] = useState('');
@@ -96,12 +97,6 @@ export default function LoginPage() {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [webauthnError, setWebauthnError] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
-  // NOTE: `twoFactorMethods` is currently never written (AuthContext owns the
-  // real source of truth) — leaving the local read so the UI doesn't crash if
-  // a future wiring pass adds the method-list to the context. Today both keys
-  // are undefined, which makes `getEffectiveMode()` fall through to 'totp'.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [twoFactorMethods, _setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
 
   // Forgot Password flow state
   type ForgotPwStep = 'username' | 'questions' | 'reset' | 'success';
@@ -752,28 +747,15 @@ export default function LoginPage() {
                 isn't looking at two parallel forms. */}
             {isCredentialStep && !forgotPwActive && (
               <form onSubmit={showPasswordField ? handleCredentialsSubmit : handleUsernameContinue} className="space-y-3">
-                {/* The visible username input below is always rendered, so on
-                    paper this form already pairs a username with its password.
-                    Chrome still logged "Password forms should have (optionally
-                    hidden) username fields" against it, and the likeliest
-                    reason is that the visible field carries disabled={ssoChecking}
-                    during the identifier-first SSO probe — a disabled control is
-                    skipped by the password-form heuristics (and by most password
-                    managers), leaving the password field briefly unpaired.
-                    Rather than bet on that single explanation, mirror the
-                    identifier in an always-enabled off-screen field, the same
-                    pattern the password-change form below uses. No `name` here
-                    on purpose: this form submits from React state, and a second
-                    name="username" would put the value in the form payload
-                    twice. */}
+                {/* Chrome skips disabled username fields (identifier-first SSO
+                    used to set disabled={ssoChecking}), so a password field in
+                    this form logged "Password forms should have username fields".
+                    Keep an always-enabled type=hidden username for the heuristic,
+                    and use readOnly — not disabled — on the visible input. */}
                 <input
-                  type="text"
+                  type="hidden"
                   autoComplete="username"
                   value={loginUsername}
-                  readOnly
-                  aria-hidden="true"
-                  tabIndex={-1}
-                  className="sr-only"
                 />
                 <div>
                   <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
@@ -791,7 +773,7 @@ export default function LoginPage() {
                     onChange={(e) => { setLoginUsername(e.target.value); setShowPasswordField(false); }}
                     autoComplete="username"
                     required
-                    disabled={ssoChecking}
+                    readOnly={ssoChecking}
                   />
                 </div>
                 {showPasswordField && (
@@ -942,6 +924,7 @@ export default function LoginPage() {
                     Back
                   </button>
                   <div className="flex items-center gap-3">
+                    {twoFactorMethods.webauthn && (
                     <button
                       type="button"
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
@@ -954,6 +937,7 @@ export default function LoginPage() {
                       <Usb className="w-3 h-3" aria-hidden="true" />
                       YubiKey
                     </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}

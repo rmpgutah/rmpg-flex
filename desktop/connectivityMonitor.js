@@ -49,6 +49,7 @@ class ConnectivityMonitor {
     this._timer = null;
     this._mainWindow = null;
     this._onTransition = null;       // Callback: (isOnline) => void
+    this._checkInProgress = false;   // Guard against overlapping async checks
   }
 
   /**
@@ -89,35 +90,44 @@ class ConnectivityMonitor {
   // ─── Internal ──────────────────────────────────────────────
 
   async _check() {
-    const reachable = await this._doHealthCheck();
+    // Guard against overlapping async checks when the health check hangs
+    // longer than pollInterval (10s). Without this, multiple concurrent
+    // _check() calls can accumulate and produce duplicate transitions.
+    if (this._checkInProgress) return;
+    this._checkInProgress = true;
+    try {
+      const reachable = await this._doHealthCheck();
 
-    // Fire the raw per-check callback first (before debounce logic) so callers
-    // can react to the first confirmed positive without waiting for stableCount.
-    if (this._onEachCheck) {
-      try { this._onEachCheck(reachable); } catch { /* never block the monitor */ }
-    }
-
-    if (reachable === this._pendingState) {
-      this._consecutiveState++;
-    } else {
-      this._pendingState = reachable;
-      this._consecutiveState = 1;
-    }
-
-    // Only transition after stable consecutive checks
-    if (this._consecutiveState >= this.stableCount && reachable !== this.isOnline) {
-      const wasOnline = this.isOnline;
-      this.isOnline = reachable;
-
-      console.log(`[CONNECTIVITY] State changed: ${wasOnline ? 'ONLINE' : 'OFFLINE'} → ${reachable ? 'ONLINE' : 'OFFLINE'}`);
-
-      // Notify renderer
-      this._emit('offline:connectivity-changed', { isOnline: reachable });
-
-      // Notify main process callback
-      if (this._onTransition) {
-        this._onTransition(reachable);
+      // Fire the raw per-check callback first (before debounce logic) so callers
+      // can react to the first confirmed positive without waiting for stableCount.
+      if (this._onEachCheck) {
+        try { this._onEachCheck(reachable); } catch { /* never block the monitor */ }
       }
+
+      if (reachable === this._pendingState) {
+        this._consecutiveState++;
+      } else {
+        this._pendingState = reachable;
+        this._consecutiveState = 1;
+      }
+
+      // Only transition after stable consecutive checks
+      if (this._consecutiveState >= this.stableCount && reachable !== this.isOnline) {
+        const wasOnline = this.isOnline;
+        this.isOnline = reachable;
+
+        console.log(`[CONNECTIVITY] State changed: ${wasOnline ? 'ONLINE' : 'OFFLINE'} → ${reachable ? 'ONLINE' : 'OFFLINE'}`);
+
+        // Notify renderer
+        this._emit('offline:connectivity-changed', { isOnline: reachable });
+
+        // Notify main process callback
+        if (this._onTransition) {
+          this._onTransition(reachable);
+        }
+      }
+    } finally {
+      this._checkInProgress = false;
     }
   }
 

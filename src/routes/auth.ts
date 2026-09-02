@@ -31,9 +31,8 @@ import {
 const auth = new Hono<Env>();
 
 // ── Session + token contract (MUST match the legacy `rmpg-flex` Worker) ──────
-// login/refresh fall through the proxy to legacy in normal operation; this
-// rewrite is the hot spare and also serves these directly if the proxy routes
-// them here. A token/session issued here is therefore interchangeable with one
+// Login, refresh, 2FA, and logout are routed here by the proxy (see
+// proxy/index.ts). A token/session issued here is interchangeable with one
 // issued by legacy. Original: legacy/server-vps/src/routes/auth.ts +
 // middleware/auth.ts.
 //
@@ -157,18 +156,32 @@ async function createSession(c: any, db: any, userId: number, refreshToken: stri
   const geo = getRequestGeo(c);
   const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
   const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
-  await execute(
-    db,
-    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at,
-                           device_type, browser, os, country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
-                           http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
-     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    sessionId, userId, refreshHash,
-    clientIp(c), ua,
-    deviceType, browser, os,
-    geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
-    geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
-  );
+  try {
+    await execute(
+      db,
+      `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at,
+                             device_type, browser, os, country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+                             http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
+       VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sessionId, userId, refreshHash,
+      clientIp(c), ua,
+      deviceType, browser, os,
+      geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
+      geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
+    );
+  } catch (insertErr) {
+    // Live D1 may predate the 0231/0232 device-geo columns. Core identity
+    // columns are enough to mint a session — never 500 a successful password.
+    log.warn('[login] full session INSERT failed, retrying core columns', {
+      message: insertErr instanceof Error ? insertErr.message : String(insertErr),
+    });
+    await execute(
+      db,
+      `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'))`,
+      sessionId, userId, refreshHash, clientIp(c), ua,
+    );
+  }
 
   // Enforce Security Policy → "Max Active Sessions". 0 means unenforced
   // (today's behavior — no cap has ever existed). Best-effort: never fail
@@ -266,10 +279,21 @@ async function recordLoginAttempt(
 }
 
 auth.post('/login', async (c) => {
+  // Parse body early so we can reference username in error handlers
+  let username: string | undefined;
   try {
-    const { username, password, deviceFingerprint } = await c.req.json();
+    const body = await c.req.json();
+    username = body.username;
+    const { password, deviceFingerprint } = body;
     if (!username || !password) {
       return c.json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' }, 400);
+    }
+
+    // Guard: JWT_SECRET must be configured. Without it every token-signing
+    // call throws "key must be a string" → 500 on every login attempt.
+    if (!c.env.JWT_SECRET) {
+      log.error('[login] JWT_SECRET is not configured — all logins will fail');
+      return c.json({ error: 'Server configuration error', code: 'SERVER_MISCONFIGURED' }, 500);
     }
 
     // Brute-force throttle: per-username only. A per-IP bucket was tried but
@@ -296,14 +320,24 @@ auth.post('/login', async (c) => {
     const db = getDb(c.env);
     await ensureAccountLockoutColumns(db);
     const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
-    const user = await queryFirst<any>(
-      db,
-      `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
-              (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
-              CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
-       FROM users WHERE username = ?`,
-      username
-    );
+
+    let user: any;
+    try {
+      const userSql = `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
+                (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
+                CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
+         FROM users`;
+      // Exact match first (uses the username unique index). Fall back to
+      // case-insensitive so "CZamora" still finds "czamora" — a common field
+      // typo that previously returned a generic 401.
+      user = await queryFirst<any>(db, `${userSql} WHERE username = ?`, username);
+      if (!user) {
+        user = await queryFirst<any>(db, `${userSql} WHERE LOWER(username) = LOWER(?)`, username);
+      }
+    } catch (dbErr) {
+      log.error('[login] D1 user lookup failed', { uname }, dbErr instanceof Error ? dbErr : new Error(String(dbErr)));
+      return c.json({ error: 'Server temporarily unavailable. Please try again.', code: 'DB_ERROR' }, 503);
+    }
 
     if (!user) {
       await recordLoginAttempt(c, db, username, ip, false, 'user_not_found');
@@ -326,12 +360,21 @@ auth.post('/login', async (c) => {
     }
 
     if (!user.password_hash || !user.password_hash.startsWith('$2')) {
-      console.error(`[auth] User "${username}" has an invalid password_hash (not a bcrypt hash). Use /api/auth/recover-all to reset.`);
+      log.error('[login] User has invalid password_hash (not bcrypt)', { uname: username });
       await recordLoginAttempt(c, db, username, ip, false, 'invalid_hash');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
-    if (!compareSync(password, user.password_hash)) {
+    let passwordMatch = false;
+    try {
+      passwordMatch = compareSync(password, user.password_hash);
+    } catch (bcryptErr) {
+      log.error('[login] bcrypt compareSync threw — hash may be corrupted', { uname: username }, bcryptErr instanceof Error ? bcryptErr : new Error(String(bcryptErr)));
+      await recordLoginAttempt(c, db, username, ip, false, 'corrupted_hash');
+      return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
+    }
+
+    if (!passwordMatch) {
       // Atomic increment (avoids a lost-update race under concurrent
       // wrong-password requests for the same account). Reached here only
       // when is_locked was already false, so any locked_until still on the
@@ -449,7 +492,8 @@ auth.post('/login', async (c) => {
     });
   } catch (err: any) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('Login error:', msg);
+    const stack = err instanceof Error ? err.stack : undefined;
+    log.error('[login] Unhandled login error', { message: msg, uname: String(username ?? '').slice(0, 64) }, err instanceof Error ? err : new Error(msg));
     return c.json({ error: 'Failed to login', code: 'LOGIN_ERROR' }, 500);
   }
 });
@@ -459,8 +503,22 @@ auth.post('/login', async (c) => {
 // a valid second factor for real tokens. Response shape mirrors /login's
 // success branch exactly (AuthContext.verify2FALogin stores it identically).
 
-async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { error: Response }> {
-  const body = (await c.req.json().catch(() => ({}))) as { tempToken?: string; code?: string };
+type TwoFaPendingBody = {
+  tempToken?: string;
+  code?: string;
+  deviceFingerprint?: string;
+  trustDevice?: boolean;
+  challengeId?: string;
+  response?: AuthenticationResponseJSON;
+};
+
+async function resolve2faPending(
+  c: any, db: any,
+): Promise<{ user: any; body: TwoFaPendingBody } | { error: Response }> {
+  // Parse once and return the body. Callers used to call c.req.json() again
+  // after this helper, which either threw (empty catch → missing TOTP code)
+  // or depended on Hono body caching. One parse is the only safe contract.
+  const body = (await c.req.json().catch(() => ({}))) as TwoFaPendingBody;
   const tempToken = body.tempToken
     || (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!tempToken) {
@@ -483,7 +541,7 @@ async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { err
   if (!user) {
     return { error: c.json({ error: 'User not found or inactive', code: 'USER_INACTIVE' }, 401) };
   }
-  return { user };
+  return { user, body };
 }
 
 export async function mintLoginTokens(c: any, db: any, user: any) {
@@ -522,10 +580,8 @@ auth.post('/login/verify-2fa', async (c) => {
     const db = getDb(c.env);
     const resolved = await resolve2faPending(c, db);
     if ('error' in resolved) return resolved.error;
-    const { user } = resolved;
-    const { code, deviceFingerprint, trustDevice } = await c.req.json<{
-      code?: string; deviceFingerprint?: string; trustDevice?: boolean;
-    }>().catch(() => ({} as any));
+    const { user, body } = resolved;
+    const { code, deviceFingerprint, trustDevice } = body;
 
     if (!user.totp_secret_enc) {
       return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
@@ -540,7 +596,7 @@ auth.post('/login/verify-2fa', async (c) => {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
     }
     await trustDeviceIfRequested(c, db, user.id, deviceFingerprint, trustDevice);
-    return c.json(await issueLoginTokens(c, db, user));
+    return issueLoginTokens(c, db, user);
   } catch (err) {
     console.error('verify-2fa failed:', err);
     return c.json({ error: 'Verification failed', code: 'VERIFY_2FA_ERROR' }, 500);
@@ -554,8 +610,8 @@ auth.post('/login/verify-backup-code', async (c) => {
     const db = getDb(c.env);
     const resolved = await resolve2faPending(c, db);
     if ('error' in resolved) return resolved.error;
-    const { user } = resolved;
-    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+    const { user, body } = resolved;
+    const { code } = body;
 
     let hashes: string[] = [];
     try {
@@ -569,7 +625,7 @@ auth.post('/login/verify-backup-code', async (c) => {
     }
     hashes.splice(idx, 1); // single use
     await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), user.id);
-    return c.json(await issueLoginTokens(c, db, user));
+    return issueLoginTokens(c, db, user);
   } catch (err) {
     console.error('verify-backup-code failed:', err);
     return c.json({ error: 'Verification failed', code: 'VERIFY_BACKUP_ERROR' }, 500);
@@ -597,7 +653,7 @@ auth.post('/refresh', async (c) => {
     const refreshHash = await sha256Hex(refresh_token);
     const session = await queryFirst<any>(
       db,
-      `SELECT id, session_id, user_id FROM sessions
+      `SELECT session_id, user_id FROM sessions
        WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime('now')`,
       refreshHash
     );
@@ -612,7 +668,7 @@ auth.post('/refresh', async (c) => {
     );
     if (!user) {
       // Stale session for a deactivated/removed user — retire it.
-      await execute(db, `UPDATE sessions SET is_active = 0 WHERE id = ?`, session.id);
+      await execute(db, `UPDATE sessions SET is_active = 0 WHERE session_id = ?`, session.session_id);
       return c.json({ error: 'User not found or inactive' }, 401);
     }
 
@@ -626,8 +682,8 @@ auth.post('/refresh', async (c) => {
 
     await execute(
       db,
-      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now') WHERE id = ?`,
-      newRefreshHash, session.id,
+      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now') WHERE session_id = ?`,
+      newRefreshHash, session.session_id,
     );
 
     return c.json({
@@ -639,7 +695,9 @@ auth.post('/refresh', async (c) => {
     });
   } catch (err) {
     console.error('Refresh error:', err);
-    return c.json({ error: 'Refresh failed' }, 500);
+    // D1 outage or transient failure — return 401 so the client can re-login
+    // instead of 500 which triggers infinite retry loops.
+    return c.json({ error: 'Refresh failed', code: 'REFRESH_FAILED' }, 401);
   }
 });
 
@@ -2043,12 +2101,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
     const db = getDb(c.env);
     const resolved = await resolve2faPending(c, db);
     if ('error' in resolved) return resolved.error;
-    const { user } = resolved;
-
-    const body = await c.req.json<{
-      challengeId?: string; response?: AuthenticationResponseJSON;
-      deviceFingerprint?: string; trustDevice?: boolean;
-    }>().catch(() => ({} as any));
+    const { user, body } = resolved;
     if (!body?.challengeId || !body.response) {
       return c.json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' }, 400);
     }
@@ -2093,7 +2146,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
     await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 
-    return c.json(await issueLoginTokens(c, db, user));
+    return issueLoginTokens(c, db, user);
   } catch (err) {
     console.error('webauthn/authenticate-verify failed:', err);
     return c.json({ error: 'Failed to verify security key', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' }, 500);

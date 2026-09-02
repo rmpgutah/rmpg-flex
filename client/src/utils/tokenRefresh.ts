@@ -177,6 +177,13 @@ async function runCoordinated(): Promise<string | null> {
 }
 
 async function performRefresh(): Promise<string | null> {
+  // Cellular drop: navigator.onLine is false, or a false-online blip is
+  // about to 401. Don't burn the single-use refresh token or log two
+  // consecutive POST /api/auth/refresh 401s while the radio is down.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return null;
+  }
+
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   const sessionId = localStorage.getItem(SESSION_ID_KEY);
 
@@ -219,8 +226,30 @@ async function performRefresh(): Promise<string | null> {
 
     // Web Locks serialized us and we re-read the freshest token under the lock,
     // so a 401/403 here is a GENUINE invalid/expired session — not a rotation
-    // race. Clear auth (unless we're offline — keep the cached session).
+    // race. But in the field, transient D1 errors or proxy issues can produce
+    // a false 401. Retry once after a brief delay before clearing auth.
     if (res.status === 401 || res.status === 403) {
+      // One immediate retry — if it's a transient D1/proxy glitch, this catches it.
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const retryRes = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
+          signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
+        });
+        if (retryRes.ok) {
+          const data = await retryRes.json().catch(() => ({} as any));
+          if (data.token) safeSet(TOKEN_KEY, data.token);
+          if (data.refreshToken) safeSet(REFRESH_TOKEN_KEY, data.refreshToken);
+          if (data.sessionId) safeSet(SESSION_ID_KEY, data.sessionId);
+          if (data.token) broadcast({ type: 'token', token: data.token });
+          if (data.token && electron?.storeAuthSession) {
+            electron.storeAuthSession(data.token, data.refreshToken ?? null).catch(() => {});
+          }
+          return data.token ?? null;
+        }
+      } catch { /* retry also failed — fall through to clear auth */ }
       if (await shouldLogoutOnAuthFailure()) clearAuth();
       return null;
     }

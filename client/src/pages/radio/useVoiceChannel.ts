@@ -1,7 +1,7 @@
 // useVoiceChannel — live radio voice for the console.
 //
-// Opens a DEDICATED WebSocket straight to the rewrite worker's voice
-// hub (wss://api.rmpgutah.us/api/voice-ws), separate from the app's
+// Opens a DEDICATED WebSocket to VoiceHubDO via voiceWsUrl() (same-origin
+// on rmpgutah.us through the zone proxy; wrangler :8787 in local dev).
 // main /api/ws alert socket. The server side is a Durable Object
 // (src/durable-objects/VoiceHubDO.ts) — one instance per channel —
 // that relays PTT audio to everyone on the channel and records each
@@ -105,6 +105,7 @@ export function useVoiceChannel(
     const open = () => {
       const token = localStorage.getItem('rmpg_token');
       if (!token) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       const ws = new WebSocket(voiceWsUrl(`radio-${channelId}`));
       wsRef.current = ws;
 
@@ -203,7 +204,9 @@ export function useVoiceChannel(
       ws.onclose = () => {
         if (!alive) return;
         setConnected(false); setActiveSpeaker(null);
-        // Backoff reconnect while this channel stays selected.
+        // Backoff reconnect while this channel stays selected — not while
+        // the radio is down (wss handshake spam on cellular drop).
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
         if (attempts < 6) {
           attempts++;
           retry = setTimeout(open, Math.min(1000 * attempts, 5000));
@@ -213,8 +216,11 @@ export function useVoiceChannel(
     };
 
     open();
+    const onOnline = () => { if (alive) { attempts = 0; open(); } };
+    window.addEventListener('online', onOnline);
     return () => {
       alive = false;
+      window.removeEventListener('online', onOnline);
       if (retry) clearTimeout(retry);
       teardownPlayer();
       try { dispatchPlayerRef.current?.stop(); } catch { /* noop */ }

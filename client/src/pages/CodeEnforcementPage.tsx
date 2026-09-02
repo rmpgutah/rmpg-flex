@@ -34,6 +34,7 @@ import { toDisplayLabel } from '../utils/formatters';
 import EmptyState from '../components/EmptyState';
 import { openCodeViolationNoticePdf, openTowOrderPdf } from '../utils/codeEnforcementPdf';
 import { useAuth } from '../context/AuthContext';
+import { codeViolationsToCsv, towOrdersToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -473,6 +474,16 @@ export default function CodeEnforcementPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
+          <button
+            type="button"
+            className="toolbar-btn print:hidden"
+            disabled={activeTab === 'violations' ? violations.length === 0 : tows.length === 0}
+            onClick={() => {
+              if (activeTab === 'violations') downloadTextFile('code-violations.csv', codeViolationsToCsv(violations));
+              else downloadTextFile('tow-orders.csv', towOrdersToCsv(tows));
+            }}
+            title="CSV without violator names, phones, or notes"
+          >CSV</button>
           <ExportButton exportUrl="/api/code-enforcement/export/csv" exportFilename="code_violations_export.csv" />
           {canEnforce && (
             <button type="button"
@@ -490,13 +501,7 @@ export default function CodeEnforcementPage() {
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <AlertTriangle style={{ width: 12, height: 12 }} />
             <span>{fetchError}</span>
-            <IconButton
-              onClick={() => setFetchError('')}
-              className="ml-auto text-red-500 hover:text-red-300"
-              aria-label="Dismiss error"
-            >
-              <X style={{ width: 12, height: 12 }} />
-            </IconButton>
+            <button type="button" className="ml-auto toolbar-btn text-[10px]" onClick={() => { if (activeTab === 'violations') void fetchViolations(); else void fetchTows(); }}>Retry</button>
           </div>
         )}
 

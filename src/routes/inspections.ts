@@ -253,7 +253,7 @@ inspections.post('/by-token/:token/photos', async (c) => {
 
     const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
     const key = `vehicle-inspections/${entry.id}/${phase}/${slot}-${crypto.randomUUID()}.${ext}`;
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, body, { httpMetadata: { contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env, key, body, { httpMetadata: { contentType } });
 
     return c.json({ key, slot, phase, size: body.byteLength });
   } catch (err) {
@@ -272,7 +272,7 @@ inspections.get('/by-token/:token/photo', async (c) => {
     const key = c.req.query('key') || '';
     const expected = `vehicle-inspections/${entry.id}/`;
     if (!key.startsWith(expected)) return c.json({ error: 'Key not in this shift', code: 'KEY_FOREIGN' }, 403);
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, key);
     if (decrypted) {
       return new Response(decrypted.bytes, {
         headers: {

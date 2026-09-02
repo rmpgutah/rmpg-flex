@@ -34,6 +34,7 @@ import {
 } from '../../utils/dynamicWallpaperPreferences';
 import DesktopKioskSettings from './DesktopKioskSettings';
 import FlexOSSettings from './FlexOSSettings';
+import ConfirmDialog from '../ConfirmDialog';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -211,6 +212,13 @@ export default function DesktopSettingsApp({
   const [sessionLogFilter, setSessionLogFilter] = useState('');
   const themeImportRef = useRef<HTMLInputElement>(null);
   const [themeImportMsg, setThemeImportMsg] = useState<string | null>(null);
+  type SettingsConfirm =
+    | { kind: 'theme-import'; obj: Record<string, unknown>; changes: string[] }
+    | { kind: 'reset-appearance' }
+    | { kind: 'reset-layout' }
+    | { kind: 'reset-snap' }
+    | { kind: 'reset-taskbar' };
+  const [settingsConfirm, setSettingsConfirm] = useState<SettingsConfirm | null>(null);
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -299,13 +307,11 @@ export default function DesktopSettingsApp({
       if (obj.wallpaper_id && typeof obj.wallpaper_id === 'string') changes.push(`Wallpaper: ${obj.wallpaper_id}`);
       if (obj.accent_id && typeof obj.accent_id === 'string') changes.push(`Accent: ${obj.accent_id}`);
       if (obj.taskbar_size) changes.push(`Taskbar size: ${obj.taskbar_size}`);
-      if (!window.confirm(`This theme will change: ${changes.join(', ')}. Apply?`)) return;
-      if (obj.wallpaper_id && typeof obj.wallpaper_id === 'string') onWallpaperChange(obj.wallpaper_id);
-      if (obj.accent_id && typeof obj.accent_id === 'string') onAccentChange(obj.accent_id);
-      if (typeof obj.auto_hide_taskbar === 'boolean') { setTaskbarAutoHide(obj.auto_hide_taskbar); setAutoHideState(obj.auto_hide_taskbar); }
-      if (obj.taskbar_size === 'small' || obj.taskbar_size === 'large') { setTaskbarSize(obj.taskbar_size); setTaskbarSizeState(obj.taskbar_size); }
-      if (typeof obj.night_light_enabled === 'string') localStorage.setItem('rmpg_night_light_enabled', obj.night_light_enabled);
-      setThemeImportMsg('Theme applied.');
+      setSettingsConfirm({
+        kind: 'theme-import',
+        obj,
+        changes: changes.length > 0 ? changes : ['imported theme values'],
+      });
     } catch {
       setThemeImportMsg('Could not read theme file.');
     }
@@ -697,15 +703,7 @@ export default function DesktopSettingsApp({
               <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('Reset wallpaper, accent color, clock format, desktop sounds, and window transparency to default?')) {
-                      onWallpaperChange(DEFAULT_WALLPAPER_ID);
-                      onAccentChange(DEFAULT_ACCENT_ID);
-                      setClockFormat('24h'); setClockFormatState('24h');
-                      setDesktopSoundEnabled(true); setSoundEnabledState(true);
-                      setDefaultWindowOpacity(1); setWindowOpacityState(1);
-                    }
-                  }}
+                  onClick={() => setSettingsConfirm({ kind: 'reset-appearance' })}
                   className="text-[10px] px-2 py-1 w-full"
                   style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
                 >
@@ -770,7 +768,7 @@ export default function DesktopSettingsApp({
               <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   type="button"
-                  onClick={() => { if (window.confirm('Reset your desktop layout, widgets, wallpaper, accent, and sticky notes back to default? This cannot be undone.')) onResetToDefault(); }}
+                  onClick={() => setSettingsConfirm({ kind: 'reset-layout' })}
                   className="text-[10px] px-2 py-1 w-full"
                   style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
                 >
@@ -817,7 +815,7 @@ export default function DesktopSettingsApp({
               <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   type="button"
-                  onClick={() => { if (window.confirm('Reset window management settings (snap to edge) to default?')) { setSnapEnabled(true); setSnapEnabledState(true); } }}
+                  onClick={() => setSettingsConfirm({ kind: 'reset-snap' })}
                   className="text-[10px] px-2 py-1 w-full"
                   style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
                 >
@@ -871,12 +869,7 @@ export default function DesktopSettingsApp({
               <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!window.confirm('Reset taskbar position, size, and auto-hide to default? (Pinned apps are kept.)')) return;
-                    setTaskbarPosition('bottom'); setTaskbarPositionState('bottom');
-                    setTaskbarSize('small'); setTaskbarSizeState('small');
-                    setTaskbarAutoHide(false); setAutoHideState(false);
-                  }}
+                  onClick={() => setSettingsConfirm({ kind: 'reset-taskbar' })}
                   className="text-[10px] px-2 py-1 w-full"
                   style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
                 >
@@ -1488,6 +1481,74 @@ export default function DesktopSettingsApp({
       <div
         onPointerDown={onResizeHandlePointerDown}
         style={{ position: 'absolute', right: 0, bottom: 0, width: 14, height: 14, cursor: 'nwse-resize' }}
+      />
+
+      <ConfirmDialog
+        isOpen={settingsConfirm?.kind === 'theme-import'}
+        onClose={() => setSettingsConfirm(null)}
+        onConfirm={() => {
+          if (settingsConfirm?.kind !== 'theme-import') return;
+          const obj = settingsConfirm.obj;
+          if (obj.wallpaper_id && typeof obj.wallpaper_id === 'string') onWallpaperChange(obj.wallpaper_id);
+          if (obj.accent_id && typeof obj.accent_id === 'string') onAccentChange(obj.accent_id);
+          if (typeof obj.auto_hide_taskbar === 'boolean') { setTaskbarAutoHide(obj.auto_hide_taskbar); setAutoHideState(obj.auto_hide_taskbar); }
+          if (obj.taskbar_size === 'small' || obj.taskbar_size === 'large') { setTaskbarSize(obj.taskbar_size); setTaskbarSizeState(obj.taskbar_size); }
+          if (typeof obj.night_light_enabled === 'string') localStorage.setItem('rmpg_night_light_enabled', obj.night_light_enabled);
+          setThemeImportMsg('Theme applied.');
+          setSettingsConfirm(null);
+        }}
+        title="Apply theme"
+        message={settingsConfirm?.kind === 'theme-import' ? `This theme will change: ${settingsConfirm.changes.join(', ')}. Apply?` : ''}
+        confirmLabel="Apply"
+        confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={settingsConfirm?.kind === 'reset-appearance'}
+        onClose={() => setSettingsConfirm(null)}
+        onConfirm={() => {
+          onWallpaperChange(DEFAULT_WALLPAPER_ID);
+          onAccentChange(DEFAULT_ACCENT_ID);
+          setClockFormat('24h'); setClockFormatState('24h');
+          setDesktopSoundEnabled(true); setSoundEnabledState(true);
+          setDefaultWindowOpacity(1); setWindowOpacityState(1);
+          setSettingsConfirm(null);
+        }}
+        title="Reset personalization"
+        message="Reset wallpaper, accent color, clock format, desktop sounds, and window transparency to default?"
+        confirmLabel="Reset"
+        confirmVariant="danger"
+      />
+      <ConfirmDialog
+        isOpen={settingsConfirm?.kind === 'reset-layout'}
+        onClose={() => setSettingsConfirm(null)}
+        onConfirm={() => { onResetToDefault(); setSettingsConfirm(null); }}
+        title="Reset desktop"
+        message="Reset your desktop layout, widgets, wallpaper, accent, and sticky notes back to default? This cannot be undone."
+        confirmLabel="Reset"
+        confirmVariant="danger"
+      />
+      <ConfirmDialog
+        isOpen={settingsConfirm?.kind === 'reset-snap'}
+        onClose={() => setSettingsConfirm(null)}
+        onConfirm={() => { setSnapEnabled(true); setSnapEnabledState(true); setSettingsConfirm(null); }}
+        title="Reset window management"
+        message="Reset window management settings (snap to edge) to default?"
+        confirmLabel="Reset"
+        confirmVariant="danger"
+      />
+      <ConfirmDialog
+        isOpen={settingsConfirm?.kind === 'reset-taskbar'}
+        onClose={() => setSettingsConfirm(null)}
+        onConfirm={() => {
+          setTaskbarPosition('bottom'); setTaskbarPositionState('bottom');
+          setTaskbarSize('small'); setTaskbarSizeState('small');
+          setTaskbarAutoHide(false); setAutoHideState(false);
+          setSettingsConfirm(null);
+        }}
+        title="Reset taskbar"
+        message="Reset taskbar position, size, and auto-hide to default? Pinned apps are kept."
+        confirmLabel="Reset"
+        confirmVariant="danger"
       />
     </div>
   );

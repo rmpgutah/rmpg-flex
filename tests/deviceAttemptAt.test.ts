@@ -10,8 +10,13 @@
 // a false time onto a legal notice.
 // ============================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { deviceAttemptAt } from '../src/routes/serve';
+
+// Pin Date.now() so the 30-day guard is deterministic across CI runs.
+const PINNED_NOW = new Date('2026-08-15T12:00:00Z').getTime(); // 2026-08-15 — safely inside the window for 2026-07-27
+beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(PINNED_NOW); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('deviceAttemptAt', () => {
   it('converts a device ISO instant to naive UTC storage format', () => {
@@ -25,7 +30,7 @@ describe('deviceAttemptAt', () => {
   });
 
   it('never emits a trailing Z or T — parseTimestamp expects naive UTC', () => {
-    const out = deviceAttemptAt(new Date().toISOString())!;
+    const out = deviceAttemptAt(new Date(PINNED_NOW).toISOString())!;
     expect(out).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 

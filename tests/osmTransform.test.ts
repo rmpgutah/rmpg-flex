@@ -104,6 +104,7 @@ describe('transform.mjs (spawned child process)', () => {
     expect(cone.properties.cat).toBe('camera_cone');
     expect(cone.properties.parent_cat).toBe('alpr');
     expect(cone.geometry.type).toBe('Polygon');
+    expect(alpr.properties['camera:bearing']).toBe('90');
     expect(cone.tippecanoe).toBeDefined();
     expect(cone.properties.tippecanoe).toBeUndefined();
   });

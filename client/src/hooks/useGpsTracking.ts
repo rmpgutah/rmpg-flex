@@ -266,6 +266,19 @@ const HEARTBEAT_INTERVAL = 15000; // 15 seconds
  */
 const MAX_HEARTBEAT_BACKOFF_FACTOR = 10;
 
+/**
+ * Process-wide throttle for the staleness WARNING. Each mounted
+ * useGpsTracking() used to own its own last-warn timestamp, so Layout +
+ * MDT + map logged the same line three times every tick (field console
+ * 2026-08-28). One shared clock bounds the volume across every consumer.
+ */
+let lastGlobalStaleWarnAt = 0;
+
+/** @internal — tests only. */
+export function _resetGpsStaleWarnForTest(): void {
+  lastGlobalStaleWarnAt = 0;
+}
+
 // ─── Electron Desktop Detection ──────────────────────────────
 // Desktop Electron apps often lack GPS hardware. Chromium's
 // navigator.geolocation may silently fail even with the Google API
@@ -405,10 +418,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
    *
    * This gates only the LOG. Restart/retry behaviour is deliberately untouched:
    * a vehicle CAD must keep trying to reacquire, and the surrounding code says
-   * so emphatically. Staleness is still reported every time at debug level, and
-   * the UI `error` string still surfaces the degradation.
+   * so emphatically. The UI `error` string still surfaces the degradation.
    */
-  const lastStaleWarnAtRef = useRef(0);
   const STALE_WARN_INTERVAL_MS = 5 * 60 * 1000;
   // True while a one-shot "restart on the next user gesture" listener is armed,
   // so a heartbeat firing every 27s can't stack dozens of duplicate listeners.
@@ -492,6 +503,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const sendBatch = useCallback(async () => {
     // Read-only consumer — never upload; drain the queue so it can't grow.
     if (!uploadRef.current) { queueRef.current = []; return; }
+    // Keep breadcrumbs queued in IDB; don't 3× retry POST /dispatch/gps
+    // while the radio is down (ERR_INTERNET_DISCONNECTED storm).
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
     isSendingRef.current = true;
@@ -589,6 +603,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
     // Read-only consumer — never upload.
     if (!uploadRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     // Skip POST when a hardware GPS tracker is managing this unit's position
     if (gpsSourceRef.current === 'clearpathgps') return;
 
@@ -1229,6 +1244,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         }
       },
       (err) => {
+        // CoreLocation / Android LOCATION_UNAVAILABLE still *is* a callback.
+        // Without this, kCLErrorLocationUnknown (Safari/WebKit field console
+        // 2026-08-28) left lastCallbackTime stale and the watchdog logged
+        // "No position callback in 31s" forever while the OS was answering.
+        lastCallbackTimeRef.current = Date.now();
         let msg = 'GPS error';
         let denied = false;
         switch (err.code) {
@@ -1366,19 +1386,31 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (permissionDeniedRef.current) {
           return;
         }
+        // No radio / background tab: the Geolocation API often withholds
+        // callbacks (CoreLocation kCLErrorLocationUnknown while offline).
+        // Restarting the watch and warning does not acquire a fix.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          return;
+        }
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          return;
+        }
         // Throttle log noise. Two independent conditions must BOTH hold to warn:
         //   - still in the aggressive restart phase, AND
         //   - we have not already warned within STALE_WARN_INTERVAL_MS.
         // The second is what actually bounds the volume: the restart counter is
         // reset by every successful fix, so under intermittent GPS it never
         // reaches the cap and the first condition alone warned on every cycle.
+        // lastGlobalStaleWarnAt is process-wide so Layout + MDT + map don't
+        // each emit the same line.
         const now = Date.now();
         const withinAggressivePhase = heartbeatRestartCountRef.current < MAX_HEARTBEAT_RESTARTS;
-        const warnIntervalElapsed = now - lastStaleWarnAtRef.current >= STALE_WARN_INTERVAL_MS;
+        const warnIntervalElapsed = now - lastGlobalStaleWarnAt >= STALE_WARN_INTERVAL_MS;
         const shouldWarn = withinAggressivePhase && warnIntervalElapsed;
-        if (shouldWarn) lastStaleWarnAtRef.current = now;
-        const log = shouldWarn ? console.warn : console.debug;
-        log(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        if (shouldWarn) {
+          lastGlobalStaleWarnAt = now;
+          console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        }
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
           startIpFallbackPoller();

@@ -1,19 +1,32 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
-  Loader2, Navigation, Trash2, Clock,
+  Loader2, Navigation, Trash2, Clock, Volume2, Upload,
 } from 'lucide-react';
 import SignaturePad from '../SignaturePad';
 import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
+import { parseServeJobMeta } from '../../utils/serveJobIntake';
+import ServeJobOpsPanel from './ServeJobOpsPanel';
 import ServeReceiptActions from './ServeReceiptActions';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
   type PsoCategory,
 } from '../../constants/processServiceCodes';
 import { toDisplayLabel } from '../../utils/formatters';
+import {
+  defaultPsCodeForFailedReason,
+  normalizeServeAttemptResult,
+} from '../../utils/serveAttemptNormalize';
+import {
+  inferServeFileKind,
+  SERVE_ATTEMPT_FILE_ACCEPT,
+  SERVE_DOCUMENT_TYPE_LABELS,
+  SERVE_DOCUMENT_TYPES,
+} from '../../utils/serveAttemptFileMeta';
+import { useNavTrip } from '../../context/NavTripContext';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -150,6 +163,22 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Map the app-wide GPS tracker fix into modal state, or null when no fix yet. */
+function gpsFromTracker(tracker: {
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+} | null | undefined): GpsState | null {
+  if (!tracker || tracker.latitude == null || tracker.longitude == null) return null;
+  return {
+    latitude: tracker.latitude,
+    longitude: tracker.longitude,
+    accuracy: tracker.accuracy != null ? Math.round(tracker.accuracy) : null,
+    loading: false,
+    error: null,
+  };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeAttemptModal({
@@ -159,6 +188,10 @@ export default function ServeAttemptModal({
   onSubmit,
   onGenerateAffidavit,
 }: ServeAttemptModalProps) {
+  const navTrip = useNavTrip();
+  const liveGpsRef = useRef(navTrip?.gps);
+  liveGpsRef.current = navTrip?.gps;
+
   const [step, setStep] = useState(0);
 
   // Step 1 — GPS
@@ -167,6 +200,8 @@ export default function ServeAttemptModal({
     loading: true, error: null,
   });
   const [gpsRetryCount, setGpsRetryCount] = useState(0);
+  const acquireGenRef = useRef(0);
+  const arrivedAtRef = useRef<string | null>(null);
 
   // Text/dropdown fields — draft-persisted so an in-progress attempt survives
   // a lost connection, accidental close, or device switch (photos/signature/
@@ -214,6 +249,16 @@ export default function ServeAttemptModal({
 
   // Step 3 — Documentation
   const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
+  const [packetFiles, setPacketFiles] = useState<Array<{
+    id: string;
+    name: string;
+    kind: 'document' | 'photo' | 'audio';
+    title: string;
+    document_type: string;
+    description: string;
+    copies: string;
+    mime_type: string;
+  }>>([]);
   const [uploading, setUploading] = useState(false);
 
   // Step 4 — Signature & Submit
@@ -227,19 +272,47 @@ export default function ServeAttemptModal({
   // ─── GPS Acquisition ────────────────────────────────────────────────
 
   const acquireGps = useCallback((retryIndex = 0) => {
-    setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
-    if (!navigator.geolocation) {
-      setGps(prev => ({ ...prev, loading: false, error: 'Geolocation not available' }));
+    const gen = ++acquireGenRef.current;
+    const fromTracker = gpsFromTracker(liveGpsRef.current);
+    // Toughbook internal GPS feeds useGpsTracking, not navigator.geolocation —
+    // re-use the live tracker fix instead of waiting 27s for a Chromium timeout.
+    if (retryIndex === 0 && fromTracker) {
+      setGps(fromTracker);
       return;
     }
-    // First attempt: high-accuracy GPS (best for outdoor/vehicle at service address).
-    // Retries: low-accuracy IP/WiFi fix — resolves in <2s on desktop/indoor where
-    // the GPS chip times out. Accepts a 60s cached position so it returns immediately
-    // if the browser already has a recent fix from another tab.
-    const highAccuracy = retryIndex === 0;
+
+    setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
+    if (!navigator.geolocation) {
+      const fallback = gpsFromTracker(liveGpsRef.current);
+      setGps(fallback ?? { latitude: null, longitude: null, accuracy: null, loading: false, error: 'Geolocation not available' });
+      return;
+    }
+
+    let settled = false;
+    const finish = (next: GpsState) => {
+      if (settled || gen !== acquireGenRef.current) return;
+      settled = true;
+      window.clearTimeout(watchdogId);
+      setGps(next);
+    };
+
+    const watchdogId = window.setTimeout(() => {
+      const fallback = gpsFromTracker(liveGpsRef.current);
+      finish(fallback ?? {
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        loading: false,
+        error: 'Timeout expired',
+      });
+    }, 12000);
+
+    // Browser fallback when the tracker has no fix yet. Low accuracy + generous
+    // maximumAge — high-accuracy getCurrentPosition hangs on desktop/Toughbook
+    // while the hardware reader is already owned by useGpsTracking.
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setGps({
+        finish({
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: Math.round(pos.coords.accuracy),
@@ -248,18 +321,26 @@ export default function ServeAttemptModal({
         });
       },
       (err) => {
-        setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
+        const fallback = gpsFromTracker(liveGpsRef.current);
+        finish(fallback ?? {
+          latitude: null,
+          longitude: null,
+          accuracy: null,
+          loading: false,
+          error: err?.message || 'GPS error',
+        });
       },
       {
-        enableHighAccuracy: highAccuracy,
-        timeout: highAccuracy ? 27000 : 10000,
-        maximumAge: highAccuracy ? 3000 : 60000,
+        enableHighAccuracy: false,
+        timeout: retryIndex === 0 ? 8000 : 10000,
+        maximumAge: 60000,
       },
     );
   }, []);
 
   useEffect(() => {
     if (isOpen) {
+      arrivedAtRef.current = new Date().toISOString();
       setGpsRetryCount(0);
       acquireGps(0);
       // Reset UI/binary state on open — text fields are handled by
@@ -267,13 +348,23 @@ export default function ServeAttemptModal({
       setStep(0);
       setPickerCategory(null);
       setPhotos([]);
+      setPacketFiles([]);
       setSignature(null);
       setSubmitting(false);
       setSubmitResult(null);
       setTimeout(() => snapshot(), 0);
+    } else {
+      acquireGenRef.current += 1;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, acquireGps]);
+
+  // Adopt a tracker fix as soon as it arrives while the modal is waiting.
+  useEffect(() => {
+    if (!isOpen || !gps.loading) return;
+    const fromTracker = gpsFromTracker(navTrip?.gps);
+    if (fromTracker) setGps(fromTracker);
+  }, [isOpen, gps.loading, navTrip?.gps?.latitude, navTrip?.gps?.longitude, navTrip?.gps?.accuracy]);
 
   // ─── Picker context ────────────────────────────────────────────────
   // Which top-level PS categories are surfaced for the current attempt
@@ -290,7 +381,6 @@ export default function ServeAttemptModal({
   // Whenever the attemptType changes, clear the picker so a stale code
   // from a different category doesn't survive the switch.
   useEffect(() => {
-    setDispositionCode('');
     setPickerCategory(null);
     setShowAllCategories(false);
   }, [attemptType]);
@@ -349,6 +439,38 @@ export default function ServeAttemptModal({
     setPhotos(prev => prev.filter(p => p.id !== id));
   };
 
+  const handlePacketCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files).slice(0, 20)) {
+        const formData = new FormData();
+        formData.append('files', file);
+        const rows = await apiPostForm<{ file_id: string; mime_type?: string }[]>('/uploads', formData);
+        const row = Array.isArray(rows) ? rows[0] : (rows as { file_id: string; mime_type?: string });
+        if (row?.file_id) {
+          const kind = inferServeFileKind(row.mime_type || file.type, file.name);
+          setPacketFiles(prev => [...prev, {
+            id: row.file_id,
+            name: file.name,
+            kind,
+            title: file.name.replace(/\.[^.]+$/, ''),
+            document_type: kind === 'audio' ? 'voice_memo' : kind === 'photo' ? 'door_photo' : '',
+            description: '',
+            copies: '1',
+            mime_type: row.mime_type || file.type,
+          }]);
+        }
+      }
+    } catch {
+      // upload failed — user can retry
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
   // ─── Build Description String ──────────────────────────────────────
 
   const buildDescription = (): string => {
@@ -382,23 +504,36 @@ export default function ServeAttemptModal({
       const data: ServeAttemptData = {
         attempt_type: attemptType,
         result: attemptType === 'failed'
-          ? (failedReason || 'other')
+          ? (normalizeServeAttemptResult(failedReason || 'other') as ServeAttemptData['result'])
           : 'served',
         latitude: gps.latitude ?? undefined,
         longitude: gps.longitude ?? undefined,
         gps_accuracy: gps.accuracy ?? undefined,
         address_verified: !showDistanceWarning,
         photo_ids: photos.map(p => p.id),
+        evidence_files: packetFiles.map((f) => ({
+          file_id: f.id,
+          kind: f.kind,
+          title: f.title,
+          description: f.description || undefined,
+          document_type: f.document_type || undefined,
+          copies: f.copies ? Number(f.copies) : undefined,
+          original_name: f.name,
+          mime_type: f.mime_type,
+        })),
         // Failed attempts are unsworn — the wizard skips signature capture
         // entirely for them, so don't force an empty signature payload.
         signature_data: attemptType === 'failed' ? undefined : (signature ?? undefined),
         notes: composedNotes || undefined,
         next_attempt_note: nextAttemptText.trim() || undefined,
         // Structured code wins on the server — codeToLegacyResult derives the
-        // CHECK-enum `result` from it. Only set when the operator actually
-        // picked one (failed-fast-path picker, or the structured picker on
-        // successful attempts).
-        disposition_code: dispositionCode || undefined,
+        // CHECK-enum `result` from it. Auto-fill from the failed-reason chips
+        // so officers are not forced through the nested PS picker on a no-answer.
+        disposition_code: dispositionCode
+          || (attemptType === 'failed' ? defaultPsCodeForFailedReason(failedReason) : undefined)
+          || (attemptType === 'personal' ? 'PS/05.01' : undefined)
+          || (attemptType === 'substitute' ? 'PS/10.01' : undefined),
+        arrivedAt: arrivedAtRef.current ?? undefined,
       };
 
       if (attemptType === 'personal' || attemptType === 'substitute') {
@@ -569,6 +704,37 @@ export default function ServeAttemptModal({
                     </span>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
+                    Quick log (skips extra screens)
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['no_answer', 'No Answer'],
+                      ['refused', 'Refused'],
+                      ['wrong_address', 'Bad Address'],
+                    ] as const).map(([reason, label]) => (
+                      <button
+                        key={reason}
+                        type="button"
+                        onClick={() => {
+                          const code = defaultPsCodeForFailedReason(reason) || '';
+                          setDraft((prev) => ({
+                            ...prev,
+                            attemptType: 'failed',
+                            failedReason: reason,
+                            dispositionCode: code,
+                          }));
+                          setStep(3);
+                        }}
+                        className="px-2 py-2 text-xs font-semibold bg-surface-sunken border border-rmpg-600 text-rmpg-100 hover:border-accent-silver-400 rounded-[2px]"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -597,6 +763,7 @@ export default function ServeAttemptModal({
                     disabled={card.disabled}
                     onClick={() => {
                       setAttemptType(card.type);
+                      setDispositionCode('');
                       if (card.type !== 'failed') setFailedReason(null);
                     }}
                     className={`w-full text-left p-3 rounded-[2px] border-2 transition-all duration-150 panel-beveled ${
@@ -811,6 +978,67 @@ export default function ServeAttemptModal({
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase">Documents &amp; MP3 ({packetFiles.length})</label>
+              <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
+                uploading ? 'border-rmpg-700 text-rmpg-600' : 'border-rmpg-500 text-rmpg-300 hover:border-brand-500 hover:text-brand-300'
+              }`}>
+                {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                <span className="text-sm font-semibold">{uploading ? 'Uploading...' : 'Add PDF, papers, or MP3'}</span>
+                <input
+                  type="file"
+                  accept={SERVE_ATTEMPT_FILE_ACCEPT}
+                  multiple
+                  disabled={uploading}
+                  onChange={handlePacketCapture}
+                  className="hidden"
+                />
+              </label>
+              {packetFiles.map((f) => (
+                <div key={f.id} className="border border-rmpg-700 p-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    {f.kind === 'audio' ? <Volume2 className="w-3.5 h-3.5 text-rmpg-400" /> : <FileText className="w-3.5 h-3.5 text-rmpg-400" />}
+                    <span className="text-[11px] text-rmpg-100 truncate flex-1">{f.name}</span>
+                    <button type="button" aria-label="Remove file" onClick={() => setPacketFiles((prev) => prev.filter((x) => x.id !== f.id))} className="text-red-400">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <input
+                    value={f.title}
+                    onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, title: e.target.value } : x))}
+                    placeholder="Title"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={f.document_type}
+                      onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, document_type: e.target.value } : x))}
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                    >
+                      <option value="">Type…</option>
+                      {SERVE_DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{SERVE_DOCUMENT_TYPE_LABELS[t]}</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={f.copies}
+                      onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, copies: e.target.value } : x))}
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                      placeholder="Copies"
+                    />
+                  </div>
+                  <textarea
+                    value={f.description}
+                    onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, description: e.target.value } : x))}
+                    rows={2}
+                    placeholder="Details — who received it, where posted, what the recording covers"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                  />
+                </div>
+              ))}
             </div>
 
             {/* Physical description for personal/substitute */}
@@ -1046,6 +1274,12 @@ export default function ServeAttemptModal({
                       <span className="text-rmpg-100">{photos.length} attached</span>
                     </div>
                   )}
+                  {packetFiles.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-400">Documents / audio</span>
+                      <span className="text-rmpg-100">{packetFiles.length} attached</span>
+                    </div>
+                  )}
                   {attemptType === 'substitute' && personServedName && (
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">Served to</span>
@@ -1113,6 +1347,24 @@ export default function ServeAttemptModal({
                         </div>
                       )}
                     </div>
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-rmpg-300 uppercase">
+                        Documents &amp; MP3 ({packetFiles.length}) <span className="text-fg-muted normal-case">(optional)</span>
+                      </label>
+                      <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-sm border-2 border-dashed cursor-pointer border-rmpg-500 text-rmpg-300 hover:border-brand-500">
+                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        <span className="text-xs font-semibold">{uploading ? 'Uploading…' : 'Add PDF or MP3'}</span>
+                        <input type="file" accept={SERVE_ATTEMPT_FILE_ACCEPT} multiple disabled={uploading} onChange={handlePacketCapture} className="hidden" />
+                      </label>
+                      {packetFiles.map((f) => (
+                        <div key={f.id} className="flex items-center gap-2 text-[11px] text-rmpg-100">
+                          <span className="truncate flex-1">{f.title || f.name}</span>
+                          <button type="button" aria-label="Remove file" onClick={() => setPacketFiles((prev) => prev.filter((x) => x.id !== f.id))}>
+                            <Trash2 className="w-3 h-3 text-red-400" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </>
                 )}
 
@@ -1172,6 +1424,15 @@ export default function ServeAttemptModal({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {(() => {
+          const meta = parseServeJobMeta(job.parsed_data);
+          return (
+            <div className="px-4 py-2 border-b border-rmpg-700/40 bg-surface-sunken/40">
+              <ServeJobOpsPanel meta={meta} compact />
+            </div>
+          );
+        })()}
 
         {wasRestored && (
           <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/30 bg-amber-950/20">

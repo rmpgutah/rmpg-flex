@@ -21,6 +21,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment,
@@ -1079,10 +1080,11 @@ export default function PersonnelPage() {
 
   const handleClockIn = async (officerId: string) => {
     try {
-      await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
+      const punch = await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
       const raw = await apiFetch<any[]>('/personnel/time');
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Clocked in', 'success');
+      toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
     } catch (err: any) {
       addToast(err?.message || 'Failed to clock in', 'error');
     }

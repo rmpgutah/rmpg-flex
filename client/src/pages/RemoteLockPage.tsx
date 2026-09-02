@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Lock, Unlock, AlertTriangle, Search, ShieldOff, RefreshCw } from 'lucide-react';
+import { Lock, Unlock, AlertTriangle, Search, ShieldOff, RefreshCw, Download, Copy } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
+import { downloadTextFile, lockUnitsToCsv } from '../utils/rmsListExport';
 
 interface LockUnit {
   unit_id: string;
@@ -60,6 +61,7 @@ export default function RemoteLockPage() {
   const [loading, setLoading] = useState(true);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'locked' | 'unlocked'>('all');
 
   // Lock modal state
   const [lockTarget, setLockTarget] = useState<LockUnit | null>(null);
@@ -93,6 +95,19 @@ export default function RemoteLockPage() {
     const id = setInterval(poll, 15000);
     return () => clearInterval(id);
   }, [isAdmin, poll]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLockTarget(null);
+        setUnlockTarget(null);
+        setEmergencyStep(0);
+        setLockError('');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   async function doLock() {
     if (!lockTarget || !lockReason.trim()) { setLockError('Reason is required.'); return; }
@@ -174,6 +189,7 @@ export default function RemoteLockPage() {
   }
 
   const filtered = units.filter(u => {
+    if (statusFilter !== 'all' && u.status !== statusFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return u.officer_name.toLowerCase().includes(q) || u.badge.toLowerCase().includes(q) || u.unit_id.toLowerCase().includes(q);
@@ -201,6 +217,12 @@ export default function RemoteLockPage() {
             style={{ ...BTN_BASE, background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', padding: '3px 6px' }}>
             <RefreshCw style={{ width: 10, height: 10 }} />
           </button>
+          <button type="button" disabled={filtered.length === 0}
+            onClick={() => downloadTextFile('remote-lock-units.csv', lockUnitsToCsv(filtered))}
+            title="Export CSV"
+            style={{ ...BTN_BASE, background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', padding: '3px 6px', opacity: filtered.length === 0 ? 0.4 : 1 }}>
+            <Download style={{ width: 10, height: 10 }} />
+          </button>
         </div>
       </div>
 
@@ -213,14 +235,15 @@ export default function RemoteLockPage() {
       {/* Stats row */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {[
-          { label: 'Total', val: units.length, color: 'var(--text-primary)' },
-          { label: 'Locked', val: lockedCount, color: 'var(--sev-critical)' },
-          { label: 'Unlocked', val: unlockedCount, color: 'var(--sev-ok)' },
+          { label: 'Total', val: units.length, color: 'var(--text-primary)', filter: 'all' as const },
+          { label: 'Locked', val: lockedCount, color: 'var(--sev-critical)', filter: 'locked' as const },
+          { label: 'Unlocked', val: unlockedCount, color: 'var(--sev-ok)', filter: 'unlocked' as const },
         ].map(s => (
-          <div key={s.label} style={{ ...CARD, flex: 1, textAlign: 'center' }}>
+          <button type="button" key={s.label} onClick={() => setStatusFilter(s.filter)}
+            style={{ ...CARD, flex: 1, textAlign: 'center', cursor: 'pointer', borderColor: statusFilter === s.filter ? 'var(--brand-400)' : 'var(--border-subtle)' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.val}</div>
             <div style={{ ...LABEL, marginTop: 2 }}>{s.label}</div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -231,6 +254,7 @@ export default function RemoteLockPage() {
           <input
             type="text"
             placeholder="Search by officer, badge, unit…"
+            aria-label="Search by officer, badge, or unit"
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 24, paddingRight: 8, paddingTop: 5, paddingBottom: 5, fontSize: 10, background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', outline: 'none' }}
@@ -297,7 +321,15 @@ export default function RemoteLockPage() {
                   <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>{u.officer_name}</span>
                   <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>Badge {u.badge}</span>
                   <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>·</span>
-                  <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{u.unit_id}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Copy unit id"
+                    onClick={() => navigator.clipboard.writeText(u.unit_id).catch(() => undefined)}
+                    style={{ fontSize: 9, color: 'var(--text-secondary)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                  >
+                    {u.unit_id} <Copy style={{ width: 8, height: 8 }} />
+                  </span>
                   {/* Status badge */}
                   <span style={{
                     fontSize: 8,

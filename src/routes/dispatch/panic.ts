@@ -22,6 +22,76 @@ import { log } from '../../utils/logger';
 
 const panic = new Hono<Env>();
 
+/** Live D1 still has the VPS-era panic_alerts shape (officer_id NOT NULL,
+ *  no unit_id/source) on some isolates because CREATE TABLE IF NOT EXISTS
+ *  in 0021 never ALTERs an existing table. POST /panic used to 500 on the
+ *  first INSERT. Try the current column list, then the baseline list. */
+async function insertPanicAlertRow(
+  db: ReturnType<typeof getDb>,
+  fields: {
+    userId: number;
+    unitId: number | null;
+    callId: number | null;
+    latitude: number | null;
+    longitude: number | null;
+    locationAddress: string | null;
+    source: string;
+    triggerMethod: string;
+  },
+) {
+  const attempts: Array<{ sql: string; args: unknown[] }> = [
+    {
+      sql: `INSERT INTO panic_alerts (user_id, unit_id, call_id, latitude, longitude, location_address, source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      args: [fields.userId, fields.unitId, fields.callId, fields.latitude, fields.longitude, fields.locationAddress, fields.source],
+    },
+    {
+      sql: `INSERT INTO panic_alerts (officer_id, user_id, unit_id, call_id, latitude, longitude, location_address, source, trigger_method, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      args: [fields.userId, fields.userId, fields.unitId, fields.callId, fields.latitude, fields.longitude, fields.locationAddress, fields.source, fields.triggerMethod],
+    },
+    {
+      sql: `INSERT INTO panic_alerts (officer_id, user_id, call_id, latitude, longitude, location_address, trigger_method, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      args: [fields.userId, fields.userId, fields.callId, fields.latitude, fields.longitude, fields.locationAddress, fields.triggerMethod],
+    },
+  ];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    try {
+      return await execute(db, attempt.sql, ...attempt.args);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('panic_alerts insert failed');
+}
+
+async function insertPanicCfs(
+  db: ReturnType<typeof getDb>,
+  fields: {
+    callNumber: string;
+    userId: number;
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+  },
+) {
+  const withCaution = `INSERT INTO calls_for_service (call_number, dispatcher_id, incident_type, priority, status, location_address, latitude, longitude,
+         description, source, officer_safety_caution, created_at, updated_at)
+       VALUES (?, ?, 'panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`;
+  const withoutCaution = `INSERT INTO calls_for_service (call_number, dispatcher_id, incident_type, priority, status, location_address, latitude, longitude,
+         description, source, created_at, updated_at)
+       VALUES (?, ?, 'panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', datetime('now'), datetime('now'))`;
+  const args = [fields.callNumber, fields.userId, fields.address, fields.latitude, fields.longitude, 'Officer Panic Activation'];
+  try {
+    return await execute(db, withCaution, ...args);
+  } catch (err) {
+    log.warn('[panic] CFS insert retry without officer_safety_caution', { err: String(err) });
+    return await execute(db, withoutCaution, ...args);
+  }
+}
+
 // GET /dispatch/panic — list panic alerts, default active only
 panic.get('/panic', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
@@ -52,29 +122,43 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   const userId = c.get('userId') as number;
   const body = await c.req.json<{
     latitude?: number; longitude?: number; location_address?: string;
-    source?: string; call_id?: number;
-  }>().catch(() => ({} as any));
+    source?: string; call_id?: number; trigger_method?: string;
+  }>().catch(() => ({} as {
+    latitude?: number; longitude?: number; location_address?: string;
+    source?: string; call_id?: number; trigger_method?: string;
+  }));
 
+  try {
   // Look up the officer's current unit so the alert carries call_sign
   // for dispatcher voice ("Officer Smith, Unit 12, panic activation").
-  const unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null }>(
-    db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId,
-  );
+  let unit: { id: number; call_sign: string; current_call_id: number | null } | null = null;
+  try {
+    unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null }>(
+      db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId,
+    );
+  } catch (err) {
+    log.warn('[panic] units lookup failed (non-fatal)', { userId, err: String(err) });
+  }
   
   // Dedupe: check for a recent panic CAD call, bounded to the last 30
   // minutes so a fresh activation never silently attaches to a stale call
   // from days/weeks ago.
   // Dedup via user_id on the panic_alerts table — dispatcher_id is never
   // populated on INSERT so querying it always returns zero rows.
-  const recentCalls = await query<{ id: number }>(
-    db,
-    `SELECT cfs.id FROM calls_for_service cfs
-     JOIN panic_alerts pa ON pa.call_id = cfs.id
-     WHERE cfs.source = 'panic' AND pa.user_id = ?
-       AND cfs.created_at > datetime('now', '-30 minutes')
-     ORDER BY cfs.created_at DESC LIMIT 1`,
-    userId,
-  );
+  let recentCalls: { id: number }[] = [];
+  try {
+    recentCalls = await query<{ id: number }>(
+      db,
+      `SELECT cfs.id FROM calls_for_service cfs
+       JOIN panic_alerts pa ON pa.call_id = cfs.id
+       WHERE cfs.source = 'panic' AND pa.user_id = ?
+         AND cfs.created_at > datetime('now', '-30 minutes')
+       ORDER BY cfs.created_at DESC LIMIT 1`,
+      userId,
+    );
+  } catch (err) {
+    log.warn('[panic] dedupe lookup failed (non-fatal)', { userId, err: String(err) });
+  }
   
   let targetCallId = body.call_id ?? unit?.current_call_id ?? null;
   if (!targetCallId && recentCalls.length > 0) {
@@ -91,30 +175,28 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
     const panicSeq = panicMax ? String(parseInt(panicMax.slice(panicPrefix.length), 10) + 1).padStart(5, '0') : '00001';
     const panicCallNumber = `${panicPrefix}${panicSeq}`;
 
-    const ins = await execute(
-      db,
-      `INSERT INTO calls_for_service (call_number, dispatcher_id, incident_type, priority, status, location_address, latitude, longitude,
-         description, source, officer_safety_caution, created_at, updated_at)
-       VALUES (?, ?, 'panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
-      panicCallNumber, userId,
-      body.location_address ?? 'Panic location',
-      body.latitude ?? null, body.longitude ?? null,
-      'Officer Panic Activation'
-    );
+    const ins = await insertPanicCfs(db, {
+      callNumber: panicCallNumber,
+      userId,
+      address: body.location_address ?? 'Panic location',
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
+    });
     targetCallId = Number(ins.meta.last_row_id);
   }
 
-  const result = await execute(
-    db,
-    `INSERT INTO panic_alerts (user_id, unit_id, call_id, latitude, longitude, location_address, source, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    userId, unit?.id ?? null,
-    targetCallId,
-    body.latitude ?? null, body.longitude ?? null, body.location_address ?? null,
-    body.source ?? 'manual',
-  );
+  const result = await insertPanicAlertRow(db, {
+    userId,
+    unitId: unit?.id ?? null,
+    callId: targetCallId,
+    latitude: body.latitude ?? null,
+    longitude: body.longitude ?? null,
+    locationAddress: body.location_address ?? null,
+    source: body.source ?? 'manual',
+    triggerMethod: body.trigger_method ?? 'ui_button',
+  });
   const panicId = Number(result.meta.last_row_id);
-  const created = await queryFirst<Record<string, unknown>>(
+  let created = await queryFirst<Record<string, unknown>>(
     db,
     `SELECT p.*, u.full_name as user_name, u.badge_number, un.call_sign
      FROM panic_alerts p
@@ -122,7 +204,17 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
      LEFT JOIN units un ON p.unit_id = un.id
      WHERE p.id = ?`,
     panicId,
-  );
+  ).catch(() => null);
+  if (!created) {
+    created = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT p.*, u.full_name as user_name, u.badge_number
+       FROM panic_alerts p
+       LEFT JOIN users u ON COALESCE(p.user_id, p.officer_id) = u.id
+       WHERE p.id = ?`,
+      panicId,
+    );
+  }
 
   // Record audit log for panic activation
   try {
@@ -133,23 +225,18 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
     );
   } catch { /* audit non-fatal */ }
 
-  // Distinctive panic channel — client wires the continuous tone here.
-  // broadcastAll fans to every connected client; the panic_alert type
-  // is what voice/tone subscribers listen for.
-  broadcastAll('panic_alert', { action: 'panic_activated', panic: created });
-  // Cross-isolate fan-out: broadcastAll only reaches THIS isolate's sockets
-  // (usually none) — AlertHubDO is what every connected console/MDT hears,
-  // and emitting also arms the DO's forced-ack re-broadcast lifecycle.
-  await emitAlert(c.env, 'panic_alert', { action: 'panic_activated', panic: created });
-
-  // Push to dispatcher/supervisor roles by user id. We don't have a
-  // sendToRole helper in main yet, so do a quick role-scoped lookup.
-  const targets = await query<{ id: number }>(
-    db,
-    `SELECT id FROM users WHERE role IN ('dispatcher','supervisor','manager','admin') AND status = 'active'`,
-  );
-  for (const t of targets) {
-    sendToUser(t.id, 'panic_alert', { action: 'panic_activated', panic: created });
+  try {
+    broadcastAll('panic_alert', { action: 'panic_activated', panic: created });
+    await emitAlert(c.env, 'panic_alert', { action: 'panic_activated', panic: created });
+    const targets = await query<{ id: number }>(
+      db,
+      `SELECT id FROM users WHERE role IN ('dispatcher','supervisor','manager','admin') AND status = 'active'`,
+    );
+    for (const t of targets) {
+      sendToUser(t.id, 'panic_alert', { action: 'panic_activated', panic: created });
+    }
+  } catch (err) {
+    log.error('[panic] fan-out after insert failed (alert row already stored)', { userId, panicId }, err as Error);
   }
 
   // Automated backup dispatch: assign 2 nearest available units to the
@@ -219,6 +306,10 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   }
 
   return c.json(created, 201);
+  } catch (err) {
+    log.error('[panic] POST /panic failed', { userId }, err as Error);
+    return c.json({ error: 'Failed to create panic alert', code: 'PANIC_CREATE_FAILED' }, 500);
+  }
 });
 
 // POST /dispatch/panic/:id/acknowledge — dispatcher confirms receipt.
@@ -416,7 +507,7 @@ panic.get('/panic/:id/audio', requireRole('dispatcher', 'supervisor', 'manager',
   if (row.audio_file_id == null) return c.json({ error: 'No audio recorded for this alert' }, 404);
   const key = `panic-audio/${id}.webm`;
   try {
-    const result = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    const result = await getDecrypted(c.env.UPLOADS, db, c.env, key);
     if (!result) return c.json({ error: 'Audio not found in storage' }, 404);
     return new Response(result.bytes, {
       headers: { 'Content-Type': 'audio/webm', 'Cache-Control': 'no-store' },

@@ -27,8 +27,14 @@ import { devLog } from '../utils/devLog';
  *  /sw.js byte-flapped at the edge, so updatefound→activate→reload looped
  *  every 1-3 minutes and operators "couldn't scroll" — every reload threw
  *  them back to the top of the page. A real deploy only needs ONE reload;
- *  anything more frequent is churn. */
-const RELOAD_COOLDOWN_MS = 5 * 60_000;
+ *  anything more frequent is churn.
+ *
+ *  2026-08-26: Bumped from 5 to 10 minutes. Field officers reported random
+ *  reloads during active shifts. With frequent deploys (multiple per day),
+ *  5-minute cooldowns still caused near-continuous reload pressure when
+ *  combined with the visibility/focus-triggered update checks. 10 minutes
+ *  ensures officers get a full work cycle between reloads. */
+const RELOAD_COOLDOWN_MS = 10 * 60_000;
 const RELOAD_STAMP_KEY = 'rmpg_last_sw_reload';
 
 /** Max time to defer reload when blocked by NavigationPage. After this,
@@ -70,6 +76,12 @@ function isSafeToReload(navigationBlockedMs = 0): boolean {
   }
   // 3. Open modal/dialog — almost always wraps an in-progress action (add/edit forms).
   if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return false;
+  // 4. Recent user activity — field officers frequently interact with the page
+  //    (dispatching calls, updating statuses, typing notes). If the user clicked
+  //    or typed within the last 30 seconds, they're actively working and a
+  //    reload would disrupt them.
+  const lastActivity = (window as any).__rmpg_lastActivityTimestamp;
+  if (lastActivity && Date.now() - lastActivity < 30_000) return false;
   return true;
 }
 
@@ -85,6 +97,18 @@ export default function WebUpdateBanner() {
   useEffect(() => {
     if (!updateAvailable) return;
     let cancelled = false;
+
+    // Track recent user activity — apiFetch dispatches 'rmpg:activity' on
+    // every API call. We capture the timestamp so isSafeToReload can avoid
+    // reloading during active field work.
+    const trackActivity = () => {
+      (window as any).__rmpg_lastActivityTimestamp = Date.now();
+    };
+    window.addEventListener('rmpg:activity', trackActivity);
+    // Also track click/keydown as general activity indicators
+    const trackInteraction = () => { (window as any).__rmpg_lastActivityTimestamp = Date.now(); };
+    document.addEventListener('click', trackInteraction);
+    document.addEventListener('keydown', trackInteraction);
 
     const doReload = () => {
       if (cancelled) return;
@@ -137,17 +161,24 @@ export default function WebUpdateBanner() {
     };
 
     // Brief grace period (lets an in-flight save/toast settle), then gated retry.
+    // 2026-08-26: Increased initial delay from 2s to 5s and retry interval from
+    // 4s to 8s for field devices. The old aggressive timing meant the update
+    // loop started almost immediately after a deploy, and with the 4-second
+    // retry interval, officers saw constant reload pressure.
     initialTimerRef.current = setTimeout(() => {
       tryReload();
       if (!cancelled) {
-        retryRef.current = setInterval(tryReload, 4000);
+        retryRef.current = setInterval(tryReload, 8000);
       }
-    }, 2000);
+    }, 5000);
 
     return () => {
       cancelled = true;
       if (initialTimerRef.current) clearTimeout(initialTimerRef.current);
       if (retryRef.current) clearInterval(retryRef.current);
+      window.removeEventListener('rmpg:activity', trackActivity);
+      document.removeEventListener('click', trackInteraction);
+      document.removeEventListener('keydown', trackInteraction);
     };
   }, [updateAvailable, applyUpdate, isElectron, electron]);
 

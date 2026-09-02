@@ -694,7 +694,7 @@ intel.put('/recordings/:id/chunk', operational, async (c) => {
   if (body.byteLength === 0) return c.json({ error: 'empty chunk' }, 400);
   if (body.byteLength > 8 * 1024 * 1024) return c.json({ error: 'chunk too large' }, 413);
   try {
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
+    await putEncrypted(c.env.UPLOADS, db, c.env, chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
     await execute(db,
       'UPDATE interaction_recordings SET chunk_count = MAX(chunk_count, ?) WHERE id = ?', seq + 1, id);
     return c.json({ success: true, seq });
@@ -751,7 +751,7 @@ intel.get('/recordings/:id/chunk/:seq', operational, async (c) => {
     // confused with the legacy case and is not caught here -- it propagates
     // to the outer catch below as a loud 500, never a fake 200 of raw
     // ciphertext.
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, key);
     const rec = await queryFirst<{ mime: string | null }>(db, 'SELECT mime FROM interaction_recordings WHERE id = ?', id).catch(() => null);
     if (decrypted) {
       const mime = decrypted.httpMetadata?.contentType || rec?.mime || 'audio/webm';

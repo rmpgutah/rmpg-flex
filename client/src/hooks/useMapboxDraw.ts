@@ -22,13 +22,13 @@ const SPILLMAN_DRAW_STYLES: MapboxDraw.DrawCustomMode[] | object[] = [
     id: 'gl-draw-polygon-fill-inactive',
     type: 'fill',
     filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
-    paint: { 'fill-color': '#d4a017', 'fill-outline-color': '#d4a017', 'fill-opacity': 0.1 },
+    paint: { 'fill-color': '#c3ccd6', 'fill-outline-color': '#c3ccd6', 'fill-opacity': 0.1 },
   },
   {
     id: 'gl-draw-polygon-fill-active',
     type: 'fill',
     filter: ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
-    paint: { 'fill-color': '#d4a017', 'fill-outline-color': '#d4a017', 'fill-opacity': 0.15 },
+    paint: { 'fill-color': '#c3ccd6', 'fill-outline-color': '#c3ccd6', 'fill-opacity': 0.15 },
   },
   // Polygon stroke
   {
@@ -36,14 +36,14 @@ const SPILLMAN_DRAW_STYLES: MapboxDraw.DrawCustomMode[] | object[] = [
     type: 'line',
     filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.7 },
+    paint: { 'line-color': '#c3ccd6', 'line-width': 2, 'line-opacity': 0.7 },
   },
   {
     id: 'gl-draw-polygon-stroke-active',
     type: 'line',
     filter: ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#d4a017', 'line-dasharray': [0.2, 2], 'line-width': 2 },
+    paint: { 'line-color': '#c3ccd6', 'line-dasharray': [0.2, 2], 'line-width': 2 },
   },
   // Line
   {
@@ -51,14 +51,14 @@ const SPILLMAN_DRAW_STYLES: MapboxDraw.DrawCustomMode[] | object[] = [
     type: 'line',
     filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'LineString'], ['!=', 'mode', 'static']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.7 },
+    paint: { 'line-color': '#c3ccd6', 'line-width': 2, 'line-opacity': 0.7 },
   },
   {
     id: 'gl-draw-line-active',
     type: 'line',
     filter: ['all', ['==', '$type', 'LineString'], ['==', 'active', 'true']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#d4a017', 'line-dasharray': [0.2, 2], 'line-width': 2 },
+    paint: { 'line-color': '#c3ccd6', 'line-dasharray': [0.2, 2], 'line-width': 2 },
   },
   // Vertex points
   {
@@ -71,7 +71,7 @@ const SPILLMAN_DRAW_STYLES: MapboxDraw.DrawCustomMode[] | object[] = [
     id: 'gl-draw-polygon-and-line-vertex-inactive',
     type: 'circle',
     filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point'], ['!=', 'mode', 'static']],
-    paint: { 'circle-radius': 3, 'circle-color': '#d4a017' },
+    paint: { 'circle-radius': 3, 'circle-color': '#c3ccd6' },
   },
   // Point
   {
@@ -84,7 +84,7 @@ const SPILLMAN_DRAW_STYLES: MapboxDraw.DrawCustomMode[] | object[] = [
     id: 'gl-draw-point-inactive',
     type: 'circle',
     filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'Point'], ['==', 'meta', 'feature']],
-    paint: { 'circle-radius': 4, 'circle-color': '#d4a017' },
+    paint: { 'circle-radius': 4, 'circle-color': '#c3ccd6' },
   },
   {
     id: 'gl-draw-point-stroke-active',
@@ -96,7 +96,7 @@ const SPILLMAN_DRAW_STYLES: MapboxDraw.DrawCustomMode[] | object[] = [
     id: 'gl-draw-point-active',
     type: 'circle',
     filter: ['all', ['==', '$type', 'Point'], ['!=', 'meta', 'midpoint'], ['==', 'active', 'true']],
-    paint: { 'circle-radius': 5, 'circle-color': '#d4a017' },
+    paint: { 'circle-radius': 5, 'circle-color': '#c3ccd6' },
   },
   // Midpoints
   {

@@ -1,5 +1,6 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
+import { enrichmentHeaders } from './http';
 
 export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<SourceResult> {
   const start = Date.now();
@@ -20,7 +21,7 @@ export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<Sour
     const timer = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(
       `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?${params}`,
-      { signal: ctrl.signal, headers: { Accept: 'application/json' } },
+      { signal: ctrl.signal, headers: enrichmentHeaders() },
     ).finally(() => clearTimeout(timer));
 
     if (!res.ok) return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}` };

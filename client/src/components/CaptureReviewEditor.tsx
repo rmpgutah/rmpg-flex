@@ -91,7 +91,7 @@ export default function CaptureReviewEditor({
           <span className="text-[10px] font-semibold tracking-wider text-[color:var(--field-label-color)]">
             REVIEW &amp; VERIFY{wasDecided ? ' · CHANGE' : ''}
           </span>
-          <button type="button" onClick={onClose} className="text-[#888] hover:text-rmpg-100" aria-label="Close">
+          <button type="button" onClick={onClose} className="text-fg-muted hover:text-rmpg-100" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>

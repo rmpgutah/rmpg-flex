@@ -6,6 +6,7 @@ import { docsApi, canEditDocument } from './useDocuments';
 import type { DocRecord, DocRevisionMeta } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { toDisplayLabel } from '../../utils/formatters';
 import { importWithRetry } from '../../utils/importWithRetry';
@@ -27,6 +28,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
   const [busy, setBusy] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState<DocRevisionMeta[]>([]);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -129,13 +131,13 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
         <span className="text-[9px] text-rmpg-500 font-mono">r{doc.revision}</span>
         <button type="button" aria-label="Revisions" title="Revisions" className="toolbar-btn p-1" onClick={openRevisions}><History className="w-3.5 h-3.5" /></button>
         <button type="button" aria-label="Export PDF" title="Export PDF" className="toolbar-btn p-1" onClick={exportPdf}><Printer className="w-3.5 h-3.5" /></button>
-        <button type="button" aria-label="Close" title="Close" className="toolbar-btn p-1" onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose(); }}><X className="w-3.5 h-3.5" /></button>
+        <button type="button" aria-label="Close" title="Close" className="toolbar-btn p-1" onClick={() => { if (dirty) { setDiscardOpen(true); return; } onClose(); }}><X className="w-3.5 h-3.5" /></button>
       </div>
 
       {/* Toolbar row */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-default flex-shrink-0">
-        <button type="button" aria-pressed={!preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${!preview ? 'bg-[#88888830] text-rmpg-100' : 'text-[#888]'}`} onClick={() => setPreview(false)}>Edit</button>
-        <button type="button" aria-pressed={preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${preview ? 'bg-[#88888830] text-rmpg-100' : 'text-[#888]'}`} onClick={() => setPreview(true)}>Preview</button>
+        <button type="button" aria-pressed={!preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${!preview ? 'bg-surface-raised text-rmpg-100' : 'text-fg-muted'}`} onClick={() => setPreview(false)}>Edit</button>
+        <button type="button" aria-pressed={preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${preview ? 'bg-surface-raised text-rmpg-100' : 'text-fg-muted'}`} onClick={() => setPreview(true)}>Preview</button>
         <div className="flex-1" />
         {editable && (
           <button type="button" disabled={busy || !dirty} className="toolbar-btn toolbar-btn-primary text-[10px] px-2 py-0.5 flex items-center gap-1 disabled:opacity-40" onClick={save}>
@@ -182,7 +184,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
             </div>
             {revisions.map((r) => (
               <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-border-default text-[11px]">
-                <span className="font-mono text-[#888] w-8">r{r.revision_number}</span>
+                <span className="font-mono text-fg-muted w-8">r{r.revision_number}</span>
                 <span className="flex-1 min-w-0 truncate text-rmpg-300" title={r.change_note || ''}>{r.saved_by_username || 'system'} · {fmtWhen(r.saved_at)}</span>
                 {editable && (
                   <button type="button" aria-label={`Restore r${r.revision_number}`} title="Restore this revision" className="toolbar-btn p-1" onClick={() => restore(r.revision_number)}><RotateCcw className="w-3 h-3" /></button>
@@ -193,6 +195,15 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => { setDiscardOpen(false); onClose(); }}
+        title="Discard unsaved changes"
+        message="Discard unsaved changes?"
+        confirmLabel="Discard"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

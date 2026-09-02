@@ -54,16 +54,16 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
       if (!hasSource(map, SRC)) map.addSource(SRC, { type: 'geojson', data: buildData() as any });
       if (!hasLayer(map, L_FILL)) {
         map.addLayer({ id: L_FILL, type: 'fill', source: SRC, filter: ['==', ['geometry-type'], 'Polygon'],
-          paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.15 } });
+          paint: { 'fill-color': '#c3ccd6', 'fill-opacity': 0.15 } });
       }
       if (!hasLayer(map, L_LINE)) {
         map.addLayer({ id: L_LINE, type: 'line', source: SRC, filter: ['==', ['geometry-type'], 'LineString'],
           layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#d4a017', 'line-width': 2.5, 'line-dasharray': [2, 1] } });
+          paint: { 'line-color': '#c3ccd6', 'line-width': 2.5, 'line-dasharray': [2, 1] } });
       }
       if (!hasLayer(map, L_VERT)) {
         map.addLayer({ id: L_VERT, type: 'circle', source: SRC, filter: ['==', ['geometry-type'], 'Point'],
-          paint: { 'circle-radius': 4, 'circle-color': '#0a0a0a', 'circle-stroke-color': '#d4a017', 'circle-stroke-width': 2 } });
+          paint: { 'circle-radius': 4, 'circle-color': '#0a0a0a', 'circle-stroke-color': '#c3ccd6', 'circle-stroke-width': 2 } });
       }
     });
   }, [map, buildData]);

@@ -8,8 +8,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye, X, FileText } from 'lucide-react';
+import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye, X, FileText, Download, Search } from 'lucide-react';
 import { toDisplayLabel } from '../utils/formatters';
+import { downloadTextFile, trainingCoursesToCsv } from '../utils/rmsListExport';
 
 export default function TrainingManagementPage() {
   const { user } = useAuth();
@@ -31,6 +32,9 @@ export default function TrainingManagementPage() {
   const [courseToDelete, setCourseToDelete] = useState<Record<string, any> | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [courseQuery, setCourseQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [mandatoryOnly, setMandatoryOnly] = useState(false);
   const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
@@ -121,10 +125,19 @@ export default function TrainingManagementPage() {
       }
       if (isTypingInField(e.target)) return;
       if ((e.key === 'n' || e.key === 'N') && canWrite) { openNew(); }
+      if (e.key === '/') { e.preventDefault(); document.getElementById('training-course-search')?.focus(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [courseToDelete, showForm, canWrite]);
+
+  const visibleCourses = courses.filter((c) => {
+    if (categoryFilter && String(c.category) !== categoryFilter) return false;
+    if (mandatoryOnly && !c.is_mandatory) return false;
+    const q = courseQuery.trim().toLowerCase();
+    if (!q) return true;
+    return [c.course_name, c.course_code, c.location].some((v) => String(v ?? '').toLowerCase().includes(q));
+  });
 
   const columns = [
     { key: 'course_name', label: 'Course' },
@@ -193,15 +206,39 @@ export default function TrainingManagementPage() {
         <StatsCard icon={Clock} label="Expiring" value={stats.expiring_certs} />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+          <input id="training-course-search" value={courseQuery} onChange={e => setCourseQuery(e.target.value)} placeholder="Search name / code / location"
+            aria-label="Search courses by name, code, or location"
+            className="w-full pl-7 pr-2 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-xs text-rmpg-100" />
+        </div>
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="select-dark text-xs">
+          <option value="">All categories</option>
+          {['firearms', 'defensive_tactics', 'legal', 'first_aid', 'de_escalation', 'professionalism', 'technical', 'other'].map(c => (
+            <option key={c} value={c}>{toDisplayLabel(c)}</option>
+          ))}
+        </select>
+        <label className="text-[10px] text-rmpg-400 flex items-center gap-1">
+          <input type="checkbox" checked={mandatoryOnly} onChange={e => setMandatoryOnly(e.target.checked)} /> Mandatory
+        </label>
+        <button type="button" disabled={visibleCourses.length === 0}
+          onClick={() => downloadTextFile('training-courses.csv', trainingCoursesToCsv(visibleCourses))}
+          className="toolbar-btn flex items-center gap-1 text-xs" style={{ height: 28, padding: '0 10px' }}>
+          <Download size={12} /> CSV
+        </button>
+      </div>
+
       <DataTable
         columns={columns}
-        data={courses}
-        emptyMessage="No training courses found"
+        data={visibleCourses}
+        emptyMessage={courses.length === 0 ? 'No training courses found' : 'No courses match the filter'}
         onRowClick={(row) => openEdit(row)}
         rowContextMenu={(row) => [
           m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
           m.separator(),
           m.copy('Copy course', row.course_name),
+          m.copy('Copy code', row.course_code || ''),
           m.copyId(row.id),
           m.separator(),
           m.action('Delete', () => setCourseToDelete(row), { danger: true, icon: <Trash2 size={12} /> }),

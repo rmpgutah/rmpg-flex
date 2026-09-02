@@ -69,6 +69,7 @@ import Comment from './extensions/comment';
 import Redaction from './extensions/redaction';
 import Suggestion from './extensions/suggestion';
 import { loadAppearance, saveAppearance, applyAppearance, type EditorAppearance } from './appearance';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { htmlToMarkdown, htmlToPlainText, htmlToRtf, downloadFile, copyRich, copyText } from './exporters';
 import { htmlToDocxBlob } from './docxExport';
 import { writeDraft, readDraft, clearDraft, saveSnapshot } from './autosave';
@@ -129,6 +130,7 @@ export default function DocumentWriterPage() {
   const [readingAloud, setReadingAloud] = useState(false);
   const [brush, setBrush] = useState<CapturedFormat | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [clearDocOpen, setClearDocOpen] = useState(false);
   const [showRecent, setShowRecent] = useState(false);
   const [recentTick, setRecentTick] = useState(0); // force RecentDocsPanel re-read after delete
   const [serverSaveState, setServerSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -623,10 +625,8 @@ export default function DocumentWriterPage() {
   // Clear the document back to a blank page (with confirm).
   const handleClearDocument = useCallback(() => {
     if (!editor) return;
-    if (!window.confirm('Clear the entire document? This replaces all content with a blank page. (Undo with Ctrl+Z.)')) return;
-    clearDocument(editor);
-    flashNotice('Document cleared.');
-  }, [editor, flashNotice]);
+    setClearDocOpen(true);
+  }, [editor]);
 
   // Toggle the word/character limit indicator.
   const handleToggleWordLimit = useCallback(() => {
@@ -1082,6 +1082,20 @@ export default function DocumentWriterPage() {
       {showAppearance && (
         <AppearanceDialog value={appearance} onChange={handleAppearanceChange} onClose={() => setShowAppearance(false)} />
       )}
+      <ConfirmDialog
+        isOpen={clearDocOpen}
+        onClose={() => setClearDocOpen(false)}
+        onConfirm={() => {
+          if (!editor) return;
+          clearDocument(editor);
+          flashNotice('Document cleared.');
+          setClearDocOpen(false);
+        }}
+        title="Clear document"
+        message="Clear the entire document? This replaces all content with a blank page. Undo with Ctrl+Z."
+        confirmLabel="Clear"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

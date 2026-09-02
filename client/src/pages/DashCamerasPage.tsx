@@ -35,6 +35,7 @@ import usePersistedState from '../hooks/usePersistedState';
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { dashcamListToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const PAGE_SIZE = 25;
 
@@ -903,6 +904,13 @@ export default function DashCamerasPage() {
         <RmpgLogo height={20} iconOnly />
         <PrintButton />
         <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
+        <button
+          type="button"
+          className="toolbar-btn text-[10px]"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('mvr-videos.csv', dashcamListToCsv(filtered))}
+          title="CSV of id, classification, source — no officer names"
+        >CSV</button>
         {isAdminOrManager && (
           <button type="button" onClick={() => setShowUpload(true)}
             className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">

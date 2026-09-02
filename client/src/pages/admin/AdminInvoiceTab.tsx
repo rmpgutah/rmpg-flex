@@ -3,7 +3,7 @@ import RichTextArea from '../../components/RichTextArea';
 import {
   FileText, Plus, ArrowLeft, Send, DollarSign, XCircle, Loader2, Trash2,
   CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash, CreditCard,
-  Edit, Zap, Eye,
+  Edit, Zap, Eye, Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
@@ -17,6 +17,7 @@ import { localToday, dateToLocalYMD, parseTimestamp } from '../../utils/dateUtil
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { importWithRetry } from '../../utils/importWithRetry';
+import { INVOICE_LINE_TYPES } from '../../utils/invoiceLineTypes';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
@@ -52,6 +53,7 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   service_hours: <Clock className="w-3 h-3 text-rmpg-400" />,
   incident_response: <AlertCircle className="w-3 h-3 text-red-400" />,
   dispatch_call: <Hash className="w-3 h-3 text-amber-400" />,
+  pso_client_request: <Shield className="w-3 h-3 text-amber-400" />,
   citation: <FileText className="w-3 h-3 text-purple-400" />,
   custom: <Edit className="w-3 h-3 text-rmpg-400" />,
   late_fee: <DollarSign className="w-3 h-3 text-red-400" />,
@@ -185,6 +187,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           client_id: clientId,
           contract_id: contract?.id ?? null,
           issue_date: createForm.issue_date,
+          period_start: createForm.period_start || null,
+          period_end: createForm.period_end || null,
           notes: createForm.notes,
         }),
       });
@@ -577,14 +581,9 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 <div>
                   <label htmlFor="ff-admininvoicetab-3" className="text-rmpg-500 uppercase block mb-0.5">Type</label>
                   <select id="ff-admininvoicetab-3" className="select-dark w-full text-[10px] min-h-[36px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
-                    <option value="custom">Custom</option>
-                    <option value="contract_base">Contract Base</option>
-                    <option value="service_hours">Service Hours</option>
-                    <option value="incident_response">Incident Response</option>
-                    <option value="dispatch_call">Dispatch Call</option>
-                    <option value="citation">Citation</option>
-                    <option value="late_fee">Late Fee</option>
-                    <option value="discount">Discount</option>
+                    {INVOICE_LINE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-3">

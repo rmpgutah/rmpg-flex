@@ -430,11 +430,17 @@ FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 # `npx wrangler secret put DIALER_OIDC_CLIENT_SECRET` — never in this file.
 DIALER_OIDC_ISSUER = "https://dialer.rmpgutah.us/api/oidc/.well-known/openid-configuration"
 DIALER_OIDC_CLIENT_ID = "flex-ceb1d9a685995b45"
-DIALER_OIDC_REDIRECT_URI = "https://api.rmpgutah.us/api/oidc/dialer/callback"
+# Browser callbacks must hit rmpgutah.us/api/* (zone proxy + WAF cookie).
+# api.rmpgutah.us is the managed-challenge host except /api/health.
+# Re-register this URI on the Dial Connect OIDC client if it still lists the API hostname.
+DIALER_OIDC_REDIRECT_URI = "https://rmpgutah.us/api/oidc/dialer/callback"
 # The SPA origin the /login and /oidc-callback redirects in src/routes/oidc.ts
 # land on. Without this, oidc.ts falls back to the Worker's own request URL
 # (api.rmpgutah.us), which has no /login route -> 404.
 APP_ORIGIN = "https://rmpgutah.us"
+# Dial Connect CFS status sync (POST /api/dispatch/calls/:id/status).
+# Secret is `npx wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
+DIAL_CONNECT_WEBHOOK_URL = "https://dialer.rmpgutah.us/api/webhooks/flex/cfs-status"
 
 # NSOPW nationwide SOR (mig 0146 + 0147). The federated search endpoint at
 # nsopw-api.ojp.gov is technically public + CORS-restricted; nsopw.gov's
@@ -446,6 +452,12 @@ APP_ORIGIN = "https://rmpgutah.us"
 # Spec: docs/superpowers/specs/2026-06-22-nationwide-sor-nsopw-design.md
 NSOPW_ENABLED = "1"
 
+# Microsoft 365 / Azure AD app registration (optional — Admin → Email tab
+# also stores encrypted copies in D1). Set client id + tenant as plain vars;
+# client secret via `wrangler secret put MS_EMAIL_CLIENT_SECRET`.
+# MS_EMAIL_CLIENT_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# MS_EMAIL_TENANT_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)
 # GOOGLE_MAPS_API_KEY
@@ -453,7 +465,7 @@ NSOPW_ENABLED = "1"
 #  - FLEETIO_API_KEY         Fleet.io API key (Token-style; app.fleetio.com/settings/api_keys)
 #  - FLEETIO_ACCOUNT_TOKEN   Fleet.io Account-Token (per-account; same settings page)
 #  - FLEETIO_WEBHOOK_SECRET  Fleet.io webhook signing secret (PR 4; set when webhooks are wired)
-#  - DIALER_OIDC_CLIENT_SECRET  Dialer OIDC client secret (paired with DIALER_OIDC_CLIENT_ID above; used by src/routes/ssoAuth.ts's token exchange)
+#  - MS_EMAIL_CLIENT_SECRET   Azure AD client secret (paired with MS_EMAIL_CLIENT_ID / MS_EMAIL_TENANT_ID vars above)
 
 # Scheduled cron triggers.
 # Utah warrant smoke poll runs every 4h, matching the legacy server's

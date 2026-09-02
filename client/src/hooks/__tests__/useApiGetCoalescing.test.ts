@@ -118,4 +118,11 @@ describe('apiFetch GET coalescing', () => {
 
     expect(calls.length).toBe(2);
   });
+
+  it('does not retry a network error while navigator.onLine is false', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    global.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as any;
+    await expect(apiFetch('/dispatch/stats')).rejects.toThrow();
+    expect((global.fetch as any).mock.calls.length).toBe(1);
+  });
 });

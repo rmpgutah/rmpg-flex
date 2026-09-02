@@ -120,12 +120,15 @@ export default function ShiftCard() {
         method: 'POST',
         body: JSON.stringify({
           vehicle_id: mileagePrompt.vehicleId,
-          // 0 = the modal's Skip affordance — omit the reading and let the
-          // server default to the fleet odometer (kept current by duty
-          // readings + GPS trip accruals).
           ...(mileage > 0 ? { starting_mileage: mileage } : {}),
           ...(overrideReason ? { override_reason: overrideReason } : {}),
         }),
+      }).then((started: any) => {
+        const notes: string[] = [];
+        if (started?.handbook_pending) notes.push('Handbook unsigned');
+        if (started?.service_due) notes.push('Vehicle due for service');
+        if (started?.license_expiring) notes.push('License expiring');
+        if (notes.length) setError(notes.join(' · '));
       });
       setMileagePrompt(null);
       await fetchState();

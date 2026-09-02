@@ -306,15 +306,17 @@ export default function ServeReceiptActions({
       variantLabel: VARIANT_LABEL[v],
       courtName: cap?.court_name ?? job.court_name ?? '',
       caseNumber: cap?.case_number ?? job.case_number ?? '',
+      jobId: job.id,
       jurisdiction: cap?.jurisdiction ?? job.jurisdiction ?? '',
       plaintiffName: cap?.plaintiff_name ?? job.plaintiff_name ?? '',
       defendantName: defendant ?? '',
       documentType: cap?.document_type ?? job.document_type ?? '',
-      serviceAddress: cap?.service_address
-        || formatServiceAddress({
-          address: job.recipient_address, city: job.recipient_city,
-          state: job.recipient_state, zip: job.recipient_zip,
-        }),
+      serviceAddress: formatServiceAddress({
+        address: cap?.service_address || job.recipient_address,
+        city: job.recipient_city,
+        state: job.recipient_state,
+        zip: job.recipient_zip,
+      }),
       premisesType: premisesType === 'business' ? 'Business' : premisesType === 'other' ? 'Other' : 'Residence',
       serverName: resolvedServer?.name ?? serverName ?? '',
       serverBadge: resolvedServer?.badge ?? serverBadge ?? '',

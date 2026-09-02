@@ -94,11 +94,16 @@ export function useServiceWorker() {
         // to 15 minutes on an already-open console; an operator switching back to
         // the tab now picks up the new bundle right away (debounced to avoid a
         // burst of update() calls when focus + visibility fire together).
+        //
+        // 60-second debounce: field officers frequently switch between the app
+        // and other tools (maps, radio, phone). The old 10-second debounce
+        // triggered update checks on almost every app switch, which combined
+        // with the SW update cycle to cause frequent reloads.
         let lastVisibleCheck = 0;
         visibilityCheck = () => {
           if (document.visibilityState !== 'visible') return;
           const now = Date.now();
-          if (now - lastVisibleCheck < 10_000) return; // debounce
+          if (now - lastVisibleCheck < 60_000) return; // debounce — 60s for field devices
           lastVisibleCheck = now;
           reg.update().catch(() => { /* offline / transient — interval retries */ });
         };

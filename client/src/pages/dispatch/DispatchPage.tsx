@@ -50,7 +50,6 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import { Combobox } from '../../components/Combobox';
 import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
-import IncidentTypeChart from '../../components/dispatch/IncidentTypeChart';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -107,6 +106,7 @@ import {
   WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS,
   SCENE_SAFETY_OPTIONS, DIRECTION_OPTIONS,
 } from '../../utils/callOptions';
+import { CfsWeatherStrip, WeatherQuickChips } from '../../components/CfsWeatherStrip';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
@@ -353,6 +353,7 @@ function buildCallEditBody(
     scene_safety: ed.scene_safety,
     weather_conditions: ed.weather_conditions,
     lighting_conditions: ed.lighting_conditions,
+    weather_manual: ed.weather_manual ? 1 : 0,
     alcohol_involved: ed.alcohol_involved,
     drugs_involved: ed.drugs_involved,
     domestic_violence: ed.domestic_violence,
@@ -2344,6 +2345,7 @@ export default function DispatchPage() {
         scene_safety: callData.scene_safety || null,
         weather_conditions: callData.weather_conditions || null,
         lighting_conditions: callData.lighting_conditions || null,
+        weather_manual: callData.weather_manual ? 1 : 0,
         alcohol_involved: callData.alcohol_involved ?? false,
         drugs_involved: callData.drugs_involved ?? false,
         domestic_violence: callData.domestic_violence ?? false,
@@ -2534,6 +2536,7 @@ export default function DispatchPage() {
       scene_safety: selectedCallForEdit.scene_safety || '',
       weather_conditions: selectedCallForEdit.weather_conditions || '',
       lighting_conditions: selectedCallForEdit.lighting_conditions || '',
+      weather_manual: !!selectedCallForEdit.weather_manual,
       alcohol_involved: !!selectedCallForEdit.alcohol_involved,
       drugs_involved: !!selectedCallForEdit.drugs_involved,
       domestic_violence: !!selectedCallForEdit.domestic_violence,
@@ -3601,7 +3604,7 @@ export default function DispatchPage() {
                           const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
-                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                             confirmLabel: 'Schedule Visit',
                             run: async () => {
                               try {
@@ -3613,7 +3616,7 @@ export default function DispatchPage() {
                                   const mapped = mapDbCall(result);
                                   setCalls(prev => [mapped, ...prev]);
                                   setSelectedCall(mapped);
-                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                  addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
                               } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                             },
@@ -3645,7 +3648,7 @@ export default function DispatchPage() {
                         onClick={() => {
                           setPendingConfirm({
                             title: 'Undo Return Visit',
-                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call. The Process Server job stays on the original matter.`,
                             confirmLabel: 'Undo Visit',
                             run: async () => {
                               try {
@@ -4151,11 +4154,6 @@ export default function DispatchPage() {
           onChange={setQuickFilter}
           myBeat={(user as any)?.beat_id ?? null}
         />
-
-        {/* Incident Type Analytics Chart */}
-        <div className="px-3 py-2 border-b border-[var(--spm-border)] flex-shrink-0">
-          <IncidentTypeChart />
-        </div>
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
@@ -4702,7 +4700,7 @@ export default function DispatchPage() {
                           const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
-                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                             confirmLabel: 'Schedule Visit',
                             run: async () => {
                               try {
@@ -4714,13 +4712,13 @@ export default function DispatchPage() {
                                   const mapped = mapDbCall(result);
                                   setCalls(prev => [mapped, ...prev]);
                                   setSelectedCall(mapped);
-                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                  addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
                               } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
-                        title="Schedule a return visit — creates a new linked call"
+                        title="Schedule a return visit — new CFS, same Process Server job"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
@@ -4746,7 +4744,7 @@ export default function DispatchPage() {
                         onClick={() => {
                           setPendingConfirm({
                             title: 'Undo Return Visit',
-                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call. The Process Server job stays on the original matter.`,
                             confirmLabel: 'Undo Visit',
                             run: async () => {
                               try {
@@ -5167,13 +5165,17 @@ export default function DispatchPage() {
                           <span className="text-rmpg-300">X-St: {selectedCall.cross_street}</span>
                         </p>
                       )}
-                      {/* Weather at call location — officer safety indicator */}
-                      {!isEditing && selectedCall.weather_conditions && (
-                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
-                          <Thermometer style={{ width: 10, height: 10 }} />
-                          <span className="text-rmpg-300">{toDisplayLabel(selectedCall.weather_conditions)}</span>
-                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {toDisplayLabel(selectedCall.lighting_conditions)}</span>}
-                        </p>
+                      {/* Weather at call location — stamped at dispatch / entry time */}
+                      {!isEditing && (selectedCall.weather_snapshot || selectedCall.weather_conditions) && (
+                        <div className="ml-5 mt-1">
+                          <CfsWeatherStrip
+                            snapshot={selectedCall.weather_snapshot}
+                            conditions={selectedCall.weather_conditions}
+                          />
+                          {selectedCall.lighting_conditions && (
+                            <span className="text-[10px] text-rmpg-400">Lighting: {toDisplayLabel(selectedCall.lighting_conditions)}</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div>
@@ -6292,7 +6294,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
+                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.weather_snapshot || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
@@ -6310,9 +6312,15 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Weather</label>
-                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => { updateEditField('weather_conditions', e.target.value); updateEditField('weather_manual', true); }}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
+                            <div className="mt-1">
+                              <WeatherQuickChips
+                                value={editData.weather_conditions}
+                                onSelect={(v) => { updateEditField('weather_conditions', v); updateEditField('weather_manual', true); }}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Lighting</label>
@@ -6362,8 +6370,13 @@ export default function DispatchPage() {
                       );
                     })() : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
+                        {selectedCall.weather_snapshot && (
+                          <div className="basis-full">
+                            <CfsWeatherStrip snapshot={selectedCall.weather_snapshot} conditions={selectedCall.weather_conditions} />
+                          </div>
+                        )}
                         {selectedCall.scene_safety && <span className="text-rmpg-200"><span className="text-rmpg-400">Scene:</span> {selectedCall.scene_safety}</span>}
-                        {selectedCall.weather_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Weather:</span> {selectedCall.weather_conditions}</span>}
+                        {!selectedCall.weather_snapshot && selectedCall.weather_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Weather:</span> {selectedCall.weather_conditions}</span>}
                         {selectedCall.lighting_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Lighting:</span> {selectedCall.lighting_conditions}</span>}
                         {selectedCall.alcohol_involved && <span className="text-amber-400 font-semibold">ALCOHOL</span>}
                         {selectedCall.drugs_involved && <span className="text-red-400 font-semibold">DRUGS</span>}
@@ -6442,7 +6455,7 @@ export default function DispatchPage() {
                             const ordinal = formatOrdinal(attempt);
                             setPendingConfirm({
                               title: 'Schedule Return Visit',
-                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                               confirmLabel: 'Schedule Visit',
                               run: async () => {
                                 try {
@@ -6453,14 +6466,16 @@ export default function DispatchPage() {
                                   if (result) {
                                     const mapped = mapDbCall(result);
                                     setSelectedCall(mapped);
-                                    setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                                    addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                                    setCalls(prev => prev.some(c => c.id === mapped.id)
+                                      ? prev.map(c => c.id === mapped.id ? mapped : c)
+                                      : [mapped, ...prev]);
+                                    addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                   }
                                 } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                               },
                             });
                           }}
-                          title="Re-dispatch this PSO call with a new visit number"
+                          title="Schedule a return visit — new CFS, same Process Server job"
                         >
                           <RotateCcw style={{ width: 9, height: 9, display: 'inline', marginRight: 3 }} />
                           Schedule Return Visit
@@ -6704,6 +6719,12 @@ export default function DispatchPage() {
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.court_name && <span className="text-rmpg-200"><span className="text-fg-muted">Court:</span> {selectedCall.court_name}</span>}
                         {selectedCall.case_number && <span className="text-rmpg-200"><span className="text-fg-muted">Case #:</span> {selectedCall.case_number}</span>}
+                        {selectedCall.plaintiff_name && <span className="text-rmpg-200"><span className="text-fg-muted">Plaintiff:</span> {selectedCall.plaintiff_name}</span>}
+                        {selectedCall.attorney_name && <span className="text-rmpg-200"><span className="text-fg-muted">Attorney:</span> {selectedCall.attorney_name}</span>}
+                        {selectedCall.jurisdiction && <span className="text-rmpg-200"><span className="text-fg-muted">Jurisdiction:</span> {selectedCall.jurisdiction}</span>}
+                        {selectedCall.deadline && <span className="text-rmpg-200"><span className="text-fg-muted">Due:</span> {selectedCall.deadline}</span>}
+                        {selectedCall.time_window && <span className="text-rmpg-200"><span className="text-fg-muted">Window:</span> {selectedCall.time_window}</span>}
+                        {selectedCall.service_instructions && <span className="text-rmpg-200"><span className="text-fg-muted">Instructions:</span> {selectedCall.service_instructions}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {formatTime(selectedCall.process_served_at)}</span>}
                         {!isDetailLoading && !selectedCall.process_service_type && !selectedCall.process_served_to && (
                           <span className="text-rmpg-500 italic">No process service details entered yet</span>

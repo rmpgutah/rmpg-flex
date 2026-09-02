@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { IntelSeed, RawDataPoint, SourceResult } from './types';
+import { confirmIdentity, parsePersonName, type IdentityFields } from '../identityConfirm';
 
 function personRow(row: any): RawDataPoint[] {
   const pts: RawDataPoint[] = [];
@@ -25,14 +26,49 @@ function vehicleRow(row: any): RawDataPoint[] {
   return pts;
 }
 
-// `persons` has first_name/last_name/dob — there is no full_name or
-// date_of_birth column, so every query here threw "no such column: full_name"
-// and Phase 1 silently returned no internal records. personRow() above reads
-// row.full_name / row.date_of_birth, so alias in SQL rather than reshaping the
-// consumer. Same concat idiom already used in records.ts:891.
 const PERSON_NAME_SQL = "(first_name || ' ' || last_name)";
 const PERSON_COLS =
-  `${PERSON_NAME_SQL} AS full_name, dob AS date_of_birth, address, city, state, zip, phone, email`;
+  `${PERSON_NAME_SQL} AS full_name, dob AS date_of_birth, first_name, last_name, dob, address, city, state, zip, phone, email`;
+
+function seedIdentity(seed: IntelSeed): IdentityFields {
+  const parsed = parsePersonName(seed.name);
+  return {
+    first: parsed.first,
+    last: parsed.last,
+    fullName: seed.name,
+    dob: seed.dob,
+    age: seed.age,
+    city: seed.city,
+    state: seed.state,
+    address: seed.address,
+  };
+}
+
+function rowIdentity(row: any): IdentityFields {
+  return {
+    first: row.first_name,
+    last: row.last_name,
+    fullName: row.full_name,
+    dob: row.date_of_birth ?? row.dob,
+    city: row.city,
+    state: row.state,
+    address: row.address,
+  };
+}
+
+/** Keep internal person hits that are the seeded identity — never mix namesakes. */
+export function filterPersonsForSeed(seed: IntelSeed, rows: any[]): any[] {
+  if (!rows.length) return [];
+  const seedId = seedIdentity(seed);
+  const hasIdentity = !!(seed.dob || seed.age);
+  if (hasIdentity) {
+    return rows.filter((r) => confirmIdentity(seedId, rowIdentity(r)).matched);
+  }
+  // Name-only: a unique first+last hit is a lead; two+ Johns are dropped.
+  if (!seed.name) return rows;
+  const named = rows.filter((r) => confirmIdentity(seedId, rowIdentity(r)).name);
+  return named.length === 1 ? named : [];
+}
 
 export async function queryPhase1(db: D1Database, seed: IntelSeed): Promise<SourceResult> {
   const t0 = Date.now();
@@ -41,30 +77,34 @@ export async function queryPhase1(db: D1Database, seed: IntelSeed): Promise<Sour
 
   try {
     if (seed.name) {
-      const like = `%${seed.name.split(' ')[0].slice(0, 48)}%`;
+      const { first, last } = parsePersonName(seed.name);
       const { results } = await db.prepare(
-        `SELECT ${PERSON_COLS} FROM persons WHERE ${PERSON_NAME_SQL} LIKE ? LIMIT 10`
-      ).bind(like).all<any>();
-      for (const r of results) pts.push(...personRow(r));
+        `SELECT ${PERSON_COLS} FROM persons
+          WHERE UPPER(TRIM(first_name)) = UPPER(?) AND UPPER(TRIM(last_name)) = UPPER(?)
+          LIMIT 25`,
+      ).bind(first, last).all<any>();
+      for (const r of filterPersonsForSeed(seed, results ?? [])) pts.push(...personRow(r));
     }
     if (seed.phone) {
       const { results } = await db.prepare(
-        `SELECT ${PERSON_COLS} FROM persons WHERE phone = ? LIMIT 5`
+        `SELECT ${PERSON_COLS} FROM persons WHERE phone = ? LIMIT 5`,
       ).bind(seed.phone).all<any>();
       for (const r of results) {
-        if (!pts.some(p => p.field === 'phone' && p.value === r.phone)) pts.push({ category: 'phone', field: 'number', value: seed.phone, source: src });
+        if (!pts.some(p => p.field === 'phone' && p.value === r.phone)) {
+          pts.push({ category: 'phone', field: 'number', value: seed.phone, source: src });
+        }
         pts.push(...personRow(r));
       }
     }
     if (seed.email) {
       const { results } = await db.prepare(
-        `SELECT ${PERSON_COLS} FROM persons WHERE email = ? LIMIT 5`
+        `SELECT ${PERSON_COLS} FROM persons WHERE email = ? LIMIT 5`,
       ).bind(seed.email).all<any>();
       for (const r of results) pts.push(...personRow(r));
     }
     if (seed.plate) {
       const { results } = await db.prepare(
-        'SELECT plate_number,make,model,color,year FROM vehicles_records WHERE plate_number = ? LIMIT 5'
+        'SELECT plate_number,make,model,color,year FROM vehicles_records WHERE plate_number = ? LIMIT 5',
       ).bind(seed.plate.toUpperCase()).all<any>();
       for (const r of results) pts.push(...vehicleRow(r));
     }

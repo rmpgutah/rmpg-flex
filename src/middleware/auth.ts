@@ -57,7 +57,8 @@ function isPublicAuthBypass(pathname: string): boolean {
     // Dial Connect → calls_for_service push. External service, no human
     // JWT session — gated instead by requireApiKeyScope('service_request')
     // in src/routes/integrations.ts (integration_api_keys, migration 0006).
-    || pathname === '/api/integrations/calls-for-service';
+    || pathname === '/api/integrations/calls-for-service'
+    || pathname === '/api/dialer-connect/ingest';
 }
 
 // ── Audited self-verifying media routes ─────────────────────────
@@ -104,7 +105,20 @@ function isMediaPath(pathname: string): boolean {
     || pathname.endsWith('/audio')
     || pathname.endsWith('/thumbnail')  // bodycam-video <img> tags (Task 4, storage-architecture phase)
     || pathname === '/api/email/image-proxy'  // email remote-image proxy (<img> in blob: iframe)
-    || /\/email\/messages\/[^/]+\/attachments\/[^/]+$/.test(pathname);  // email inline CID images
+    || /\/email\/messages\/[^/]+\/attachments\/[^/]+$/.test(pathname)  // email inline CID images
+    // Training portal <img>/<a download> tags cannot send Authorization.
+    || /\/api\/tesseract-training\/documents\/\d+\/image$/.test(pathname)
+    || /\/api\/tesseract-training\/documents\/runs\/\d+\/download$/.test(pathname)
+    // Serve intake packet <a href> / <img> cannot send Authorization.
+    || /\/api\/serve-intake\/documents\/\d+\/file$/.test(pathname)
+    // Digital evidence preview/download (<img>/<a> + authedImageUrl).
+    || /\/api\/evidence\/digital\/\d+\/file$/.test(pathname)
+    || pathname.includes('/evidence/digital/file/')
+    // Premise / property gallery <img src> (RecordPhotoGallery).
+    || pathname.includes('/property-photos/file/')
+    || pathname.includes('/business-photos/file/')
+    // Redacted video download links.
+    || /\/api\/redactions\/\d+\/download$/.test(pathname);
 }
 
 export async function authMiddleware(c: Context, next: Next) {
@@ -266,6 +280,7 @@ const READ_ONLY_DENIED_PREFIXES = [
   '/api/intel', '/api/invoices', '/api/jail', '/api/nsopw', '/api/person-intel',
   '/api/personnel', '/api/process-server', '/api/records', '/api/serve',
   '/api/sor-sources', '/api/use-of-force', '/api/warrants',
+  '/api/dialer-connect',
 ];
 
 export async function readOnlyRoleGuard(c: Context, next: Next) {

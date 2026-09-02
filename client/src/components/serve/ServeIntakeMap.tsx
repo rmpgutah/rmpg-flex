@@ -31,6 +31,7 @@ import {
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { useToastSafe } from '../ToastProvider';
 
 // Dispatch units poll — matches the Map module's UNITS_FAST_POLL_MS so a
 // server standing at a job site and a unit converging on it read as
@@ -89,6 +90,7 @@ interface Props {
 }
 
 export default function ServeIntakeMap({ onSelectQueue }: Props) {
+  const toast = useToastSafe();
   const gps = useGpsTracking({ upload: false });
   const livePosition = gps.latitude != null && gps.longitude != null
     ? { lat: gps.latitude, lng: gps.longitude }
@@ -548,7 +550,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       recipient_address: it.recipient_address,
       priority: it.priority,
       deadline: it.deadline,
-    }))).catch(() => { window.alert('Failed to export route sheet.'); });
+    }))).catch(() => { toast?.addToast('Failed to export route sheet.', 'error'); });
   };
 
   const applyBulkStatus = async (status: string) => {

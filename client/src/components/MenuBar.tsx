@@ -612,6 +612,7 @@ export default function MenuBar({
           { type: 'action', path: '/geo-data-viewer', label: 'Geo Data Viewer', icon: Map, action: () => navigate('/geo-data-viewer') },
           { type: 'separator' },
           { type: 'action', path: '/communications', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', path: '/dialer-connect', label: 'Dial Connect', icon: Phone, action: () => navigate('/dialer-connect') },
           { type: 'action', path: '/radio', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
           { type: 'action', path: '/email', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           ...(isFeatureEnabled('/patrol') ? [{ type: 'action' as const, path: '/patrol', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') }] : []),
@@ -772,6 +773,7 @@ export default function MenuBar({
           ...(isFeatureEnabled('/patrol') ? [{ type: 'action' as const, path: '/patrol', label: 'Patrol Scanner', icon: QrCode, action: () => navigate('/patrol') }] : []),
           { type: 'action', path: '/shift-plans', label: 'Shift Planning', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'action', path: '/geography', label: 'Geography / Zones', icon: MapPin, action: () => navigate('/geography') },
+          { type: 'action', path: '/dialer-connect', label: 'Dialer Connect', icon: Phone, action: () => navigate('/dialer-connect') },
           { type: 'action', path: '/dar', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'separator' },
           { type: 'action', path: '/command-center', label: 'Command Center', icon: Map, action: () => navigate('/command-center') },
@@ -860,6 +862,7 @@ export default function MenuBar({
         icon: MessageSquare,
         items: [
           { type: 'action', path: '/communications', label: 'Communications Center', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', path: '/dialer-connect', label: 'Dial Connect', icon: Phone, action: () => navigate('/dialer-connect') },
           { type: 'action', path: '/radio', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
           { type: 'action', path: '/email', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           { type: 'separator' },

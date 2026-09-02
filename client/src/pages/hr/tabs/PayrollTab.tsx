@@ -70,6 +70,10 @@ interface PayrollEntry {
   status: string;
   approved_by_name?: string;
   notes?: string;
+  clock_hours?: number;
+  duty_miles?: number;
+  serve_miles?: number;
+  gps_trip_miles?: number;
 }
 
 interface Officer { id: number; full_name: string; }
@@ -314,8 +318,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const handlePopulatePeriod = async (id: number) => {
     try {
-      const result = await apiFetch<{ created: number; total: number }>(`/hr/payroll/periods/${id}/populate`, { method: 'POST' });
-      addToast(`Created ${result.created} entries (${result.total} total employees)`, 'success');
+      const result = await apiFetch<{ created: number; updated?: number; total: number; hours_filled?: number; miles_filled?: number }>(`/hr/payroll/periods/${id}/populate`, { method: 'POST' });
+      addToast(`Filled ${result.created} new / ${result.updated ?? 0} updated from clocks (${Number(result.hours_filled ?? 0).toFixed(1)}h, ${Number(result.miles_filled ?? 0).toFixed(1)} mi)`, 'success');
       if (selectedPeriod?.id === id) fetchEntries(id);
       fetchPeriods();
     } catch { addToast('Failed to populate entries', 'error'); }
@@ -380,7 +384,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   // ─── CSV Export ──────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
     if (!entries.length || !selectedPeriod) return;
-    const headers = ['Employee','Badge','Rate','Reg Hours','OT Hours','Holiday Hours','PTO Hours','Sick Hours','Base Pay','OT Pay','Holiday Pay','Gross Pay','Status'];
+    const headers = ['Employee','Badge','Rate','Reg Hours','OT Hours','Holiday Hours','PTO Hours','Sick Hours','Clock Hours','Duty Miles','Serve Miles','GPS Miles','Base Pay','OT Pay','Holiday Pay','Gross Pay','Status'];
     const rows = entries.map(e => [
       e.officer_name,
       e.badge_number || '',
@@ -390,6 +394,10 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       e.holiday_hours.toString(),
       e.pto_hours.toString(),
       e.sick_hours.toString(),
+      (e.clock_hours ?? '').toString(),
+      (e.duty_miles ?? '').toString(),
+      (e.serve_miles ?? '').toString(),
+      (e.gps_trip_miles ?? '').toString(),
       e.base_pay.toFixed(2),
       e.overtime_pay.toFixed(2),
       e.holiday_pay.toFixed(2),
@@ -404,6 +412,10 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       entries.reduce((s, e) => s + e.holiday_hours, 0).toString(),
       entries.reduce((s, e) => s + e.pto_hours, 0).toString(),
       entries.reduce((s, e) => s + e.sick_hours, 0).toString(),
+      entries.reduce((s, e) => s + (e.clock_hours ?? 0), 0).toString(),
+      entries.reduce((s, e) => s + (e.duty_miles ?? 0), 0).toString(),
+      entries.reduce((s, e) => s + (e.serve_miles ?? 0), 0).toString(),
+      entries.reduce((s, e) => s + (e.gps_trip_miles ?? 0), 0).toString(),
       entries.reduce((s, e) => s + e.base_pay, 0).toFixed(2),
       entries.reduce((s, e) => s + e.overtime_pay, 0).toFixed(2),
       entries.reduce((s, e) => s + e.holiday_pay, 0).toFixed(2),

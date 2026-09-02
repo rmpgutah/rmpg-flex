@@ -7,6 +7,9 @@ import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from '
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { apiFetch } from '../../../hooks/useApi';
+import { useToast } from '../../../components/ToastProvider';
+import CorporateLinkageStrip from '../../../components/CorporateLinkageStrip';
 import { parseTimestamp, displayClockTime } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -18,8 +21,11 @@ interface Props {
   onDeleteTimeEntry?: (entryId: string) => void;
 }
 
-export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEntry, onDeleteTimeEntry }: Props) {
+export default function TimeAttendanceTab({ timeEntries, officers: _officers, onEditTimeEntry, onDeleteTimeEntry }: Props) {
+  const { addToast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [forceEndTarget, setForceEndTarget] = useState<TimeEntry | null>(null);
+  const [forceReason, setForceReason] = useState('Forgotten clock-out');
   // Compute summary stats
   const stats = useMemo(() => {
     const clockedIn = timeEntries.filter((te) => te.status === 'clocked_in');
@@ -27,6 +33,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     const clockedOut = timeEntries.filter((te) => te.status === 'clocked_out');
 
     const totalHours = timeEntries.reduce((sum, te) => sum + (te.total_hours || 0), 0);
+    const totalMiles = timeEntries.reduce((sum, te) => sum + (te.total_miles || 0), 0);
     const officerCount = new Set(timeEntries.map((te) => te.officer_id)).size;
     const avgHours = officerCount > 0 ? totalHours / officerCount : 0;
 
@@ -36,6 +43,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       clockedOutCount: clockedOut.length,
       totalHours: totalHours.toFixed(1),
       avgHours: avgHours.toFixed(1),
+      totalMiles: totalMiles.toFixed(1),
     };
   }, [timeEntries]);
 
@@ -56,6 +64,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-surface-base', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
+    { label: 'Duty Miles', value: stats.totalMiles, icon: BarChart3, color: 'text-rmpg-200', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-accent-silver-500' },
   ];
 
   // Right-click context menu
@@ -76,6 +85,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+      <CorporateLinkageStrip />
       {/* Header */}
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4 text-brand-400" />
@@ -84,7 +94,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.label}
@@ -122,6 +132,16 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                     BREAK
                   </span>
                 )}
+                {(te.status === 'clocked_in' || te.status === 'on_break') && (
+                  <button
+                    type="button"
+                    className="toolbar-btn p-1 text-[8px] uppercase"
+                    title="Force-end this open shift"
+                    onClick={() => { setForceEndTarget(te); setForceReason('Forgotten clock-out'); }}
+                  >
+                    End
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -139,13 +159,14 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
               <th className="text-left">Status</th>
               <th className="text-right">Break (min)</th>
               <th className="text-right">Hours</th>
+              <th className="text-right">Miles</th>
               {(onEditTimeEntry || onDeleteTimeEntry) && <th className="w-16"></th>}
             </tr>
           </thead>
           <tbody>
             {timeEntries.length === 0 ? (
               <tr>
-                <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 7 : 6} className="text-center py-8 text-rmpg-500 text-[10px]">
+                <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 8 : 7} className="text-center py-8 text-rmpg-500 text-[10px]">
                   No time entries to display.
                 </td>
               </tr>
@@ -213,6 +234,11 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       )}
                     </span>
                   </td>
+                  <td className="text-right">
+                    <span className="text-xs font-mono text-rmpg-300">
+                      {te.total_miles != null ? Number(te.total_miles).toFixed(1) : '-'}
+                    </span>
+                  </td>
                   {(onEditTimeEntry || onDeleteTimeEntry) && (
                     <td>
                       <div className="flex items-center gap-0.5">
@@ -256,6 +282,41 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
           confirmVariant="danger"
         />
       )}
+      <ConfirmDialog
+        isOpen={!!forceEndTarget}
+        onClose={() => setForceEndTarget(null)}
+        onConfirm={async () => {
+          if (!forceEndTarget) return;
+          try {
+            await apiFetch('/dispatch/duty/force-end', {
+              method: 'POST',
+              body: JSON.stringify({ officer_id: Number(forceEndTarget.officer_id), reason: forceReason }),
+            });
+            addToast('Shift force-ended', 'success');
+          } catch (err: unknown) {
+            addToast(err instanceof Error ? err.message : 'Force-end failed', 'error');
+          } finally {
+            setForceEndTarget(null);
+          }
+        }}
+        title="Force-end open shift"
+        message="Closes the open clock for payroll. A reason is required."
+        details={(
+          <label className="block text-[10px] text-rmpg-300">
+            Reason
+            <input
+              type="text"
+              value={forceReason}
+              onChange={(e) => setForceReason(e.target.value)}
+              className="mt-1 w-full px-2 py-1 bg-surface-deep border border-rmpg-700 text-rmpg-100"
+              style={{ borderRadius: 2 }}
+            />
+          </label>
+        )}
+        confirmLabel="Force end"
+        confirmVariant="warning"
+        confirmDisabled={forceReason.trim().length < 3}
+      />
     </div>
   );
 }

@@ -34,7 +34,7 @@ import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
   getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
-  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
+  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget, getPrintTarget,
 } from './pdfTokens';
 import { brandingFromSystemSettings } from './brandConfig';
 
@@ -1194,6 +1194,33 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 }
 
 /**
+ * A field the subject (or officer) fills in by hand: label in the normal
+ * position, a writable rule where the value would be.
+ *
+ * addFieldPair() renders "N/A" for an empty value, which is right on a
+ * report of established fact and exactly wrong on a form someone is
+ * meant to complete — it reads as an instruction NOT to write there.
+ * Geometry matches addFieldPair (2.7mm label height, 0.8mm inner pad)
+ * so blank and printed fields sit on the same grid.
+ */
+export function addWritableFieldPair(
+  doc: jsPDF, label: string, x: number, y: number, width: number,
+): number {
+  const labelH = 2.7;
+  const innerPad = 0.8;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(sanitizePdfText(label.toUpperCase()), x + innerPad, y + 1.8);
+
+  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.line(x + innerPad, y + labelH + 1.6, x + width - innerPad, y + labelH + 1.6);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + labelH + SPACING.FIELD_ROW_ADVANCE + 0.6;
+}
+
+/**
  * Alias for addFieldPair — used by recordPdfGenerator for narrative-style
  * long-text fields. Same signature: (doc, label, value, x, y, width).
  */
@@ -1673,7 +1700,7 @@ export function addSignatureBlock(
   doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
-  const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
+  const hasSigData = !!(sigData?.printedName || sigData?.badgeNumber || sigData?.date);
   if (hasSigData) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
@@ -1681,19 +1708,27 @@ export function addSignatureBlock(
     const valY = row2Y + infoRowH - 1.5;
     if (sigData!.printedName) doc.text(fitPdfText(doc, sigData!.printedName, colW - SPACING.MD * 2), x + SPACING.MD, valY);
     if (sigData!.badgeNumber) doc.text(fitPdfText(doc, sigData!.badgeNumber, colW - SPACING.MD * 2), x + colW + SPACING.MD, valY);
-    const now = new Date();
-    // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
-    // Legal documents require the correct local timestamp — UTC drift corrupts records.
-    // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
-    // does not say which zone it means. Only the AUTO-generated value is
-    // stamped -- a caller-supplied sigData.date is left exactly as passed so
-    // it can never be double-labelled.
-    const dateStr = sigData!.date || `${now.toLocaleString('en-US', {
-      timeZone: 'America/Denver',
-      month: '2-digit', day: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).replace(', ', ' ')} MT`;
-    doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    // Auto-stamp "now" only when the caller omitted `date` entirely.
+    // An explicit empty string means "leave the cell blank for wet ink" —
+    // stamping the moment of PRINTING as the moment of signature is a
+    // false fact on a form completed at the door (PS-314 leave-behind).
+    if (sigData!.date) {
+      doc.text(sanitizePdfText(sigData!.date), x + colW * 2 + SPACING.MD, valY);
+    } else if (sigData!.date === undefined) {
+      const now = new Date();
+      // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
+      // Legal documents require the correct local timestamp — UTC drift corrupts records.
+      // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
+      // does not say which zone it means. Only the AUTO-generated value is
+      // stamped -- a caller-supplied sigData.date is left exactly as passed so
+      // it can never be double-labelled.
+      const dateStr = `${now.toLocaleString('en-US', {
+        timeZone: 'America/Denver',
+        month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).replace(', ', ' ')} MT`;
+      doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    }
   }
 
   // Outer border
@@ -2580,6 +2615,7 @@ export interface PdfImage {
   height: number;
   format: 'JPEG' | 'PNG';
   name: string;
+  stampLines?: string[];
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
@@ -2670,13 +2706,14 @@ export function addImageGrid(
   const gap = SPACING.MD;
   const imgMaxW = (cw - 2 * SPACING.CONTENT_INSET - gap) / 2;
   const imgMaxH = 55;
-  const captionH = 4;
+  const captionH = 12;
 
   let y = startY;
 
   for (let i = 0; i < images.length; i += 2) {
     const rowImages = images.slice(i, i + 2);
-    y = checkPageBreak(doc, y, imgMaxH + captionH + SPACING.SM, priority);
+    const extraCaption = Math.max(0, ...rowImages.map((im) => (im.stampLines?.length ?? 0))) * 3.2;
+    y = checkPageBreak(doc, y, imgMaxH + captionH + extraCaption + SPACING.SM, priority);
 
     let maxRowH = 0;
     for (let j = 0; j < rowImages.length; j++) {
@@ -2690,11 +2727,17 @@ export function addImageGrid(
 
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
-      doc.text(fitPdfText(doc, caption, imgMaxW), x, y + h + 3);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const lines = (img.stampLines && img.stampLines.length > 0)
+        ? img.stampLines
+        : [img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name];
+      let cy = y + h + 3;
+      for (const line of lines) {
+        doc.text(fitPdfText(doc, line, imgMaxW), x, cy);
+        cy += 3.2;
+      }
 
-      maxRowH = Math.max(maxRowH, h);
+      maxRowH = Math.max(maxRowH, h + (lines.length * 3.2));
     }
 
     y += maxRowH + captionH + SPACING.LG;
@@ -2727,6 +2770,11 @@ export function addAttachmentsSection(
  * Page break with continuation header on new pages.
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
+  // Recipient-facing Notice of Attempt is a one-sheet door notice — never
+  // spill onto a second page (which would print a mostly-blank CONTINUED
+  // sheet on the PJ-700 roll). Compression tiers handle overflow instead.
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) return y;
+
   const pageHeight = doc.internal.pageSize.getHeight();
   // Bottom reserve: footer height + safe print zone + BARCODE CLEARANCE.
   // Barcode is placed at y ∈ [pageH-20, pageH-12], so content must stop
@@ -2808,6 +2856,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
 /** Page break handler for drawFormSection — forces a page break with continuation header */
 export function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) {
+    return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0) + LAYOUT.HEADER_HEIGHT;
+  }
   // Force a page break by passing a Y beyond the page
   return checkPageBreak(doc, doc.internal.pageSize.getHeight(), 1);
 }

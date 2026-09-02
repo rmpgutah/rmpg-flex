@@ -58,6 +58,8 @@ interface AuthContextType {
   setLoginUsername: (u: string) => void;
   pendingBackupCodes: string[] | null;
   requiresPasswordChange: boolean;
+  /** Which second factors the pending login may use. Defaults totp-only. */
+  twoFactorMethods: { totp: boolean; webauthn: boolean };
 }
 
 // Exported (v1047) so opt-in consumers like IntelProvider can read the
@@ -77,8 +79,12 @@ const LAST_USERNAME_KEY = 'rmpg_last_username';
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
-// Refresh access token 60 seconds before it expires
-const REFRESH_BUFFER_MS = 60 * 1000;
+// Refresh access token 120 seconds before it expires.
+// Field officers on cellular experience frequent network transitions (WiFi ↔
+// cellular, dead zones). A 60-second buffer was too tight — a single failed
+// refresh attempt with exponential backoff could leave the token expired before
+// the retry succeeded. 120 seconds gives two full retry cycles of margin.
+const REFRESH_BUFFER_MS = 120 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
 // 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
@@ -146,7 +152,7 @@ export function fetchWithTimeout(url: string, options: RequestInit = {}, timeout
  * DOMException("signal is aborted without reason") on AbortController timeout.
  * Neither is helpful for a field officer staring at a login screen.
  */
-const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed'];
+const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed', 'offline', '503'];
 const TIMEOUT_ERROR_PATTERNS = ['abort', 'timed out', 'timeout'];
 
 function friendlyAuthError(err: unknown): string {
@@ -261,7 +267,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // refreshes automatically after an offline period.
   useEffect(() => {
     if (!user) return;
-    const handleOnline = () => warmOfflineCache();
+    const handleOnline = () => {
+      void (async () => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+        // Refresh first so the warmer doesn't fire 17 GETs with a dead JWT
+        // (the 401 storm after a cellular drop). If the session is genuinely
+        // gone, refreshAccessToken clears auth and we skip the warm.
+        await refreshAccessToken();
+        if (!localStorage.getItem(TOKEN_KEY)) return;
+        warmOfflineCache();
+      })();
+    };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, [user]);
@@ -350,7 +366,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const current = localStorage.getItem(TOKEN_KEY);
       if (current) {
         refreshFailCountRef.current++;
-        const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
+        // Exponential backoff capped at 60s. Field officers on cellular hit
+        // dead zones and WiFi↔cellular transitions that can take 30-45s to
+        // resolve. 30s cap was too tight — the token expired during backoff.
+        // 60s cap gives the network time to recover while still retrying
+        // frequently enough to catch the moment connectivity returns.
+        const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 60000);
         refreshTimerRef.current = setTimeout(() => {
           isRefreshingRef.current = false;
           const ct = localStorage.getItem(TOKEN_KEY);
@@ -555,6 +576,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const cancel2FA = useCallback(() => {
     setPending2FA(false);
     setTempToken(null);
+    setTwoFactorMethods({ totp: false, webauthn: false });
     setError(null);
     setLoginStep('password');
   }, []);
@@ -712,11 +734,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const deviceFingerprint = deviceFingerprintRef.current;
-      const res = await fetchWithTimeout('/api/auth/login', {
+      const loginInit: RequestInit = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ username, password, deviceFingerprint }),
-      });
+      };
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('Unable to connect to the server. Check your network connection and try again.');
+      }
+      let res = await fetchWithTimeout('/api/auth/login', loginInit);
+      // Worker/CF 502–504 (D1 busy during export, deploy blip). Retry a few
+      // times before showing the form a failure — POST /login 503 used to
+      // coincide with a SW 503 Offline navigation of /login?return=…
+      for (let attempt = 0; attempt < 3 && (res.status === 502 || res.status === 503 || res.status === 504); attempt++) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) break;
+        res = await fetchWithTimeout('/api/auth/login', loginInit);
+      }
 
       if (res.ok) {
         const data = await res.json();
@@ -725,6 +759,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.requires2FA || data.step === 'verify_2fa') {
           setTempToken(data.tempToken);
           setPending2FA(true);
+          setTwoFactorMethods({
+            totp: data.methods?.totp !== false,
+            webauthn: !!data.methods?.webauthn,
+          });
           setRequiresPasswordChange(!!data.requiresPasswordChange);
           setLoginStep('verify_2fa');
           return { requires2FA: true, success: false };
@@ -1160,7 +1198,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoginUsername,
     pendingBackupCodes,
     requiresPasswordChange,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, signOut, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
+    twoFactorMethods,
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, signOut, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange, twoFactorMethods]);
 
   return (
     <AuthContext.Provider value={contextValue}>

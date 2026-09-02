@@ -15,6 +15,8 @@ import {
   toIsoDate, normalizeBirthDate, recoverDob, normalizeState, normalizePhone,
   normalizeZip, normalizePriority, normalizeDeadline, normalizeFields,
   fieldsToQueueRow, TARGET_FIELDS, normalizeAddressClass, normalizeYesNo,
+  encodePsoServiceWindows, mapIntakeServeType, mapRecipientType, parseFeeAmount,
+  mapTimeWindow,
   buildFamilyPrompt, needsCriticPass, familyFromFileName, buildExtractionMessages,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
@@ -154,10 +156,78 @@ describe('fieldsToQueueRow', () => {
       registered_agent_name: 'Jane Agent',
     }));
     expect(row.recipient_name).toBe('Steel Encounters, Inc.');
+    expect(row.recipient_type).toBe('business');
+    expect(row.business_name).toBe('Steel Encounters, Inc.');
+    expect(row.registered_agent_name).toBe('Jane Agent');
+    expect(row.serve_type).toBe('corporate');
   });
   it('does not store a relative deadline phrase', () => {
     const row = fieldsToQueueRow(fieldsFrom({ service_deadline: '30 calendar days' }));
     expect(row.deadline).toBeNull();
+  });
+  it('copies contact, fee, attorney, and process type onto queue columns', () => {
+    const row = fieldsToQueueRow(fieldsFrom({
+      recipient_type: 'business',
+      recipient_business_name: 'Dirty Dough, LLC',
+      registered_agent_name: 'Bennett Maxwell',
+      recipient_phone: '(801) 805-6700',
+      recipient_dob: '1980-03-04',
+      registered_agent_address: '289 North 1580 West',
+      plaintiff: 'Environmental Health Advocates, Inc.',
+      attorney_name: 'Noam Glick',
+      attorney_phone: '6196290527',
+      attorney_email: 'noam@entornolaw.com',
+      attorney_bar_number: '251582',
+      fee_amount: '54.23',
+      process_type: 'personal',
+      service_windows: 'Anytime',
+      job_number: '16717993',
+    }));
+    expect(row.recipient_phone).toBe('(801) 805-6700');
+    expect(row.recipient_dob).toBe('1980-03-04');
+    expect(row.registered_office_address).toBe('289 North 1580 West');
+    expect(row.attorney_phone).toBe('6196290527');
+    expect(row.attorney_email).toBe('noam@entornolaw.com');
+    expect(row.attorney_bar_number).toBe('251582');
+    expect(row.serve_fee).toBe(54.23);
+    expect(row.serve_type).toBe('corporate');
+    expect(row.time_window).toBe('anytime');
+    expect(row.sm_job_id).toBe('16717993');
+    expect(row.plaintiff).toBe('Environmental Health Advocates, Inc.');
+  });
+});
+
+describe('intake copy helpers', () => {
+  it('maps person → individual and business → business', () => {
+    expect(mapRecipientType('person')).toBe('individual');
+    expect(mapRecipientType('business')).toBe('business');
+    expect(mapRecipientType('')).toBeNull();
+  });
+  it('maps process_type onto serve_type', () => {
+    expect(mapIntakeServeType('personal', false)).toBe('personal');
+    expect(mapIntakeServeType('personal', true)).toBe('corporate');
+    expect(mapIntakeServeType('substitute', false)).toBe('substituted');
+    expect(mapIntakeServeType('posted', false)).toBe('posting');
+    expect(mapIntakeServeType('mail', false)).toBe('publication');
+  });
+  it('parses fee amounts', () => {
+    expect(parseFeeAmount('$54.23')).toBe(54.23);
+    expect(parseFeeAmount('1,200')).toBe(1200);
+    expect(parseFeeAmount('')).toBeNull();
+  });
+  it('encodes Anytime as all four Dispatch window slots', () => {
+    expect(JSON.parse(encodePsoServiceWindows('Anytime')!)).toEqual({
+      early_morning: true, daytime: true, evening: true, weekend: true,
+    });
+  });
+  it('encodes evenings and weekends without lighting every slot', () => {
+    expect(JSON.parse(encodePsoServiceWindows('evenings and weekends')!)).toEqual({
+      early_morning: false, daytime: false, evening: true, weekend: true,
+    });
+  });
+  it('maps time_window', () => {
+    expect(mapTimeWindow('Anytime')).toBe('anytime');
+    expect(mapTimeWindow('evening only')).toBe('evening');
   });
 });
 
@@ -165,6 +235,7 @@ describe('normalizeAddressClass', () => {
   it('recognizes explicit business language', () => {
     expect(normalizeAddressClass('BUSINESS ADDRESS')).toBe('business');
     expect(normalizeAddressClass('place of employment')).toBe('business');
+    expect(normalizeAddressClass('commercial')).toBe('small_business');
   });
 
   it('recognizes residential language', () => {
@@ -376,7 +447,7 @@ describe('normalizeAddressClass — residential wins a both-hints string', () =>
 
   it('still classifies an unambiguous business address as business', () => {
     expect(normalizeAddressClass('service at his place of employment')).toBe('business');
-    expect(normalizeAddressClass('corporate address, 5th floor')).toBe('business');
+    expect(normalizeAddressClass('corporate address, 5th floor')).toBe('corporate');
   });
 });
 

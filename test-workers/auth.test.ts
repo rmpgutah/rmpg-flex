@@ -134,6 +134,86 @@ describe('auth middleware — media-path query-auth passthrough', () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it('treats the tesseract training image route as a media path (query token is attempted)', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/tesseract-training/documents/:id/image', (c) => c.json({ ok: true }));
+
+    const missing = await app.request(
+      '/api/tesseract-training/documents/1/image',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(missing.status).toBe(401);
+    expect((await missing.json() as { error: string }).error).toBe('Authentication required');
+
+    const bogus = await app.request(
+      '/api/tesseract-training/documents/1/image?token=not-a-jwt',
+      {},
+      { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' },
+    );
+    expect(bogus.status).toBe(401);
+    expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
+  });
+
+  it('treats serve-intake document file as a media path (query token is attempted)', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/serve-intake/documents/:docId/file', (c) => c.json({ ok: true }));
+
+    const missing = await app.request(
+      '/api/serve-intake/documents/343/file',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(missing.status).toBe(401);
+    expect((await missing.json() as { error: string }).error).toBe('Authentication required');
+
+    const bogus = await app.request(
+      '/api/serve-intake/documents/343/file?token=not-a-jwt',
+      {},
+      { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' },
+    );
+    expect(bogus.status).toBe(401);
+    expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
+  });
+
+  it('treats digital evidence, property photos, and redaction downloads as media paths', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/evidence/digital/:id/file', (c) => c.json({ ok: true }));
+    app.get('/api/property-photos/file/:key{.+}', (c) => c.json({ ok: true }));
+    app.get('/api/redactions/:id/download', (c) => c.json({ ok: true }));
+    const jwtEnv = { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' };
+
+    for (const path of [
+      '/api/evidence/digital/12/file',
+      '/api/property-photos/file/property-photos/abc.jpg',
+      '/api/redactions/9/download',
+    ]) {
+      const missing = await app.request(path, {}, jwtEnv);
+      expect(missing.status).toBe(401);
+      expect((await missing.json() as { error: string }).error).toBe('Authentication required');
+
+      const bogus = await app.request(`${path}?token=not-a-jwt`, {}, jwtEnv);
+      expect(bogus.status).toBe(401);
+      expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
+    }
+  });
+
+  it('does not treat the tesseract image route as self-verifying HMAC media', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/tesseract-training/documents/:id/image', (c) => c.json({ ok: true }));
+
+    const res = await app.request(
+      '/api/tesseract-training/documents/1/image?sig=deadbeef&exp=9999999999',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('POST /login — account lockout', () => {
@@ -281,6 +361,16 @@ describe('POST /login — account lockout', () => {
       db, 'SELECT failed_login_count, locked_until FROM users WHERE id = ?', userId);
     expect(row?.failed_login_count).toBe(0);
     expect(row?.locked_until).toBeNull();
+  });
+
+  it('accepts a case-variant of the stored username', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await seedUser(db, 'lockout-user-case');
+    const res = await post('Lockout-User-Case', TEST_PASSWORD, '10.1.0.7');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { token?: string; user?: { username: string } };
+    expect(typeof body.token).toBe('string');
+    expect(body.user?.username).toBe('lockout-user-case');
   });
 
   it('resets to a fresh window (not an immediate re-lock) after an expired lock', async () => {

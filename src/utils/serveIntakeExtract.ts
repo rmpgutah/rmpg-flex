@@ -101,7 +101,7 @@ export const TARGET_FIELDS = [
   // address_class is a property of the LOCATION, never the recipient —
   // a registered agent may sit at a residence and must then get
   // residential attempt windows (operator decision D-2).
-  'address_class',                  // residential | business | unknown
+  'address_class',                  // residential | corporate | small_business | government | business | unknown
   'service_days_allowed',           // 'all' | 'weekdays' | 'friday' | 'no_sunday' | free text
   'client_attempt_schedule',        // 'HH:MM-HH:MM;HH:MM-HH:MM' verbatim bands
   'attempt_start_not_before',       // ISO date — "start attempts on or after X"
@@ -224,10 +224,13 @@ EXTRACTION RULES (learned from real packets):
     municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).
 
 TIMING & SERVICE CONSTRAINTS — read the Instructions block carefully:
-• address_class — 'business' ONLY when the document says the service address is a business,
-  office, suite, or place of employment. 'residential' for a residence/abode/dwelling.
-  'unknown' otherwise. A "registered agent" mention is NOT evidence of a business address —
-  agents are frequently at residences.
+• address_class — classify the SERVICE LOCATION, not the recipient:
+  'residential' for a home/abode/dwelling/apartment;
+  'corporate' for an LLC/Inc/Corp at a suite, floor, or office tower;
+  'small_business' for a shop/store/DBA/storefront without a corporate suite;
+  'government' for a courthouse, city hall, county/federal building, or agency counter;
+  'unknown' otherwise.
+  A "registered agent" mention is NOT evidence of a business address — agents are frequently at residences.
 • service_days_allowed — e.g. "Service allowed 7 days a week" → 'all';
   "NO SERVICE ON SUNDAY" → 'no_sunday'; "SERVE ON FRIDAY" → 'friday'.
 • client_attempt_schedule — when the client dictates attempt bands ("1 between 6AM-9AM,
@@ -1113,17 +1116,18 @@ const RESIDENTIAL_HINTS = /\b(residen\w*|abode|dwelling|home address|apartment|a
 export function normalizeAddressClass(raw: string): string {
   const s = (raw || '').trim();
   if (!s) return 'unknown';
-  const lower = s.toLowerCase();
+  const lower = s.toLowerCase().replace(/\s+/g, '_');
   if (lower === 'business' || lower === 'residential' || lower === 'unknown') return lower;
-  // RESIDENTIAL IS TESTED FIRST, DELIBERATELY. Spec decision D-2: an
-  // unconfirmed address must never yield business timing. Real instructions
-  // mix both vocabularies — "SERVE AT HOME ADDRESS — apartment complex, use
-  // the leasing office entrance" contains "office" — and with business first
-  // that string returned 'business', which schedules weekday-only business
-  // windows at a residence and misses every evening and weekend attempt.
-  // Being wrong the other way costs one wasted window; being wrong this way
-  // costs the service.
+  if (lower === 'corporate' || lower === 'corporate_business' || lower === 'large_business') return 'corporate';
+  if (lower === 'small_business' || lower === 'small_businesses') return 'small_business';
+  if (lower === 'government' || lower === 'government_office' || lower === 'government_offices') return 'government';
+  if (lower === 'commercial') return 'small_business';
+  if (lower === 'office') return 'corporate';
+  if (lower === 'gated' || lower === 'hoa' || lower === 'gated_/_hoa') return 'gated';
+  if (lower === 'po_box' || lower === 'pobox' || lower === 'po-box') return 'po_box';
   if (RESIDENTIAL_HINTS.test(s)) return 'residential';
+  if (/\b(city hall|courthouse|county (?:building|clerk)|government office)\b/i.test(s)) return 'government';
+  if (/\b(corporate address|llc|incorporated)\b/i.test(s) && /\b(suite|floor|office)\b/i.test(s)) return 'corporate';
   if (BUSINESS_HINTS.test(s)) return 'business';
   return 'unknown';
 }
@@ -1228,6 +1232,93 @@ export interface QueueRow {
   // Attorney/client job reference extracted from the document header (e.g. "Job: 16623863").
   // Stored in sm_job_id when the intake is not sourced from ServeManager directly.
   sm_job_id: string | null;
+  // Process Server / Dispatch columns that used to live only in parsed_data.
+  recipient_phone: string | null;
+  recipient_dob: string | null;
+  recipient_type: 'individual' | 'business' | null;
+  business_name: string | null;
+  registered_agent_name: string | null;
+  registered_office_address: string | null;
+  attorney_phone: string | null;
+  attorney_email: string | null;
+  attorney_bar_number: string | null;
+  serve_type: 'personal' | 'substituted' | 'corporate' | 'posting' | 'publication' | null;
+  serve_fee: number | null;
+  time_window: 'morning' | 'afternoon' | 'evening' | 'anytime' | null;
+}
+
+/** Intake OCR uses person|business; serve_queue.recipient_type is individual|business. */
+export function mapRecipientType(raw: string | null | undefined): 'individual' | 'business' | null {
+  const s = (raw || '').trim().toLowerCase();
+  if (s === 'business' || s === 'corporate' || s === 'entity' || s === 'company') return 'business';
+  if (s === 'person' || s === 'individual' || s === 'person_individual') return 'individual';
+  return null;
+}
+
+/** Map intake process_type onto serve_queue.serve_type. */
+export function mapIntakeServeType(
+  processType: string | null | undefined,
+  isBusiness: boolean,
+): QueueRow['serve_type'] {
+  const s = (processType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (s === 'substitute' || s === 'substituted' || s === 'sub_service' || s === 'substitute_service') {
+    return 'substituted';
+  }
+  if (s === 'posted' || s === 'posting' || s === 'post' || s === 'nail_and_mail') return 'posting';
+  if (s === 'mail' || s === 'publication' || s === 'certified_mail') return 'publication';
+  if (s === 'corporate' || (isBusiness && (s === 'personal' || s === ''))) return 'corporate';
+  if (s) return 'personal';
+  return isBusiness ? 'corporate' : 'personal';
+}
+
+/** Parse "$54.23" / "54.23" / "1,200.00" into a number; null if unparseable. */
+export function parseFeeAmount(raw: string | null | undefined): number | null {
+  const s = (raw || '').trim();
+  if (!s) return null;
+  const m = s.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+export type PsoWindowsJson = {
+  early_morning: boolean;
+  daytime: boolean;
+  evening: boolean;
+  weekend: boolean;
+};
+
+/**
+ * Dispatch checkboxes expect JSON `{early_morning,daytime,evening,weekend}`.
+ * Intake stores free text ("Anytime", "evenings and weekends").
+ */
+export function encodePsoServiceWindows(raw: string | null | undefined): string | null {
+  const s = (raw || '').trim();
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  const all = /\b(anytime|any time|24\/7|all hours|all day)\b/.test(lower);
+  const w: PsoWindowsJson = {
+    early_morning: all || /\b(early|mornings?|6\s*a|before\s*9)\b/.test(lower),
+    daytime: all || /\b(daytime|afternoons?|business hours|9\s*a|weekdays?)\b/.test(lower),
+    evening: all || /\b(evenings?|nights?|after\s*6|after\s*5)\b/.test(lower),
+    weekend: all || /\b(weekends?|saturdays?|sundays?|\bsat\b|\bsun\b)\b/.test(lower),
+  };
+  if (!w.early_morning && !w.daytime && !w.evening && !w.weekend) {
+    // Unrecognized free text still means "serve when you can" — treat as anytime
+    // so Dispatch's compliance checklist is not all-false (which hides entirely).
+    w.early_morning = w.daytime = w.evening = w.weekend = true;
+  }
+  return JSON.stringify(w);
+}
+
+export function mapTimeWindow(raw: string | null | undefined): QueueRow['time_window'] {
+  const s = (raw || '').trim().toLowerCase();
+  if (!s) return null;
+  if (/\b(anytime|any time|24\/7)\b/.test(s)) return 'anytime';
+  if (/\b(evenings?|nights?)\b/.test(s)) return 'evening';
+  if (/\b(mornings?|early)\b/.test(s)) return 'morning';
+  if (/\b(afternoons?|daytime|day)\b/.test(s)) return 'afternoon';
+  return 'anytime';
 }
 
 export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueRow {
@@ -1243,6 +1334,9 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
   const recipient_name = isBusiness
     ? (businessName || personName)
     : (personName || businessName);
+
+  const processType = get('process_type');
+  const windows = get('service_windows');
 
   return {
     recipient_name,
@@ -1261,12 +1355,25 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
     // would silently break the overdue check (see normalizeDeadline).
     deadline: normalizeDeadline(get('service_deadline') || ''),
     service_instructions: get('service_instructions'),
-    notes: get('service_windows'),
+    notes: windows,
     plaintiff: get('plaintiff'),
     defendant: get('defendant'),
     // hearing date → court_date; only a real calendar date (same guard as deadline).
     court_date: normalizeDeadline(get('hearing_date') || ''),
     // Attorney/client job reference number from the document header.
     sm_job_id: get('job_number'),
+    recipient_phone: get('recipient_phone'),
+    recipient_dob: get('recipient_dob'),
+    recipient_type: mapRecipientType(get('recipient_type'))
+      || (isBusiness ? 'business' : (personName ? 'individual' : null)),
+    business_name: isBusiness ? (businessName || null) : get('recipient_business_name'),
+    registered_agent_name: get('registered_agent_name'),
+    registered_office_address: get('registered_agent_address'),
+    attorney_phone: get('attorney_phone'),
+    attorney_email: get('attorney_email'),
+    attorney_bar_number: get('attorney_bar_number'),
+    serve_type: mapIntakeServeType(processType, isBusiness),
+    serve_fee: parseFeeAmount(get('fee_amount')),
+    time_window: mapTimeWindow(windows),
   };
 }

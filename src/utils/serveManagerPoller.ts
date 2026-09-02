@@ -10,7 +10,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
 import { log } from './logger';
-import { fetchRecentJobs, extractJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
+import { fetchRecentJobs, extractJobAttempts, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
 import { recordAuditCore } from './auditLog';
 
@@ -325,7 +325,6 @@ export async function createDispatchCallForJob(
 
 export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: number; callsCreated: number; attemptsSynced: number; error?: string }> {
   const db = env.DB;
-  const jwtSecret = env.JWT_SECRET;
 
   try {
     const enabled = await getSmConfig(db, 'servemanager_poller_enabled');
@@ -334,7 +333,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     const targetClient = await getTargetClient(db);
     const lastPoll = await getSmConfig(db, 'servemanager_last_poll_at');
 
-    const jobs = await fetchRecentJobs(db, jwtSecret, lastPoll || undefined);
+    const jobs = await fetchRecentJobs(db, env, lastPoll || undefined);
     if (jobs.length === 0) return { synced: 0, callsCreated: 0, attemptsSynced: 0 };
 
     // Hoist the auto-create config read outside the loop — fetching it per job

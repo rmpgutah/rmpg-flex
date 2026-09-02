@@ -20,7 +20,7 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // transparent bitmap and the symbol layer renders nothing, silently. The
   // material ramps (7-stop cylinder shading, specular bands) are also art, not
   // chrome: re-theming them onto a navy ramp would flatten the illustrations.
-  mapboxPaint: /(^|\/)(mapboxBasemap|mapboxSafeLayer|mapMarkers|mapboxMap|osmIconArt|osmIcons|AssignmentArcLayer)\.tsx?$/,
+  mapboxPaint: /(^|\/)(mapboxBasemap|mapboxSafeLayer|mapMarkers|mapboxMap|osmIconArt|osmIcons|osmCamera|osmOverlayStyle|AssignmentArcLayer)\.tsx?$/,
   // Canvas fingerprinting uses deliberately arbitrary sentinel colors; migrating
   // them to CSS vars changes the fingerprint signal and defeats the purpose.
   canvasFingerprint: /(^|\/)VerifyNoticePage\.tsx$|(^|\/)deviceCapture\.ts$/,
@@ -42,12 +42,8 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // would silently blank those layers. GpsReplayTool / NavOverlayTool have no
   // UI hex — all hex in those files is Mapbox line/circle paint.
   mapboxColorPickerTools: /(^|\/)(AnnotationTool|BufferRingTool|DrawGeofenceTool|GpsReplayTool|NavOverlayTool)\.(tsx)$/,
-  // UnifiedMapLegend owns HSWATCH (hierarchy swatch colors that must match the
-  // AREA_PALETTE Mapbox expressions in districtGeoData.ts — changing them would
-  // make the legend lie about what color the map uses for each hierarchy level)
-  // and the county/municipality line swatch hex values (#9a9a9a, #c9c9c9) which
-  // similarly mirror the Mapbox layer stroke colors in useVectorTileLayers.ts.
-  // These are categorical data-identity colors, not theme chrome.
+  // UnifiedMapLegend HSWATCH and county/municipality strokes must match
+  // districtGeoData AREA_PALETTE and useGeoJsonLayers stroke hex.
   mapboxLegendSwatches: /(^|\/)UnifiedMapLegend\.(tsx)$/,
   // Tests and fixtures assert on literal values on purpose.
   tests: /(__tests__|\.test\.|\.spec\.)/,

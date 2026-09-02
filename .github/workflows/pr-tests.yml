@@ -91,7 +91,13 @@ jobs:
     name: Client tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # maxWorkers:1 + forks is required to avoid OOM on the 7 GB runner, but
+    # makes the suite wall-clock ~35–40 min. 30 was cancelling healthy green runs.
+    # 2026-08-29: a worker still hit the 8192 MB V8 cap (~8.0 GB Mark-Compact)
+    # after 32 min of GC, then "Worker exited unexpectedly". ubuntu-latest is
+    # 16 GB now — give the parent more heap and extra wall clock so one heavy
+    # file cannot fail the whole job.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -102,7 +108,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=12288
 
   client-pdf-tests:
     name: Client PDF tests
@@ -119,7 +125,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.pdf.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
   client-map-tests:
     name: Client map tests
@@ -136,7 +142,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.maps.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
   client-desktop-tests:
     name: Client desktop tests
@@ -153,7 +159,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.desktop.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
   client-build:
     name: Client build

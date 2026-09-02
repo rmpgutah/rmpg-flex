@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   X, Search, Loader2, CheckCircle2,
-  ChevronDown, ChevronRight, AlertTriangle,
+  ChevronDown, ChevronRight, AlertTriangle, MapPinned, Phone,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob, ServeSkipAddress, ServeSkipTrace } from '../../types';
@@ -16,6 +16,100 @@ interface ServeSkipTracePanelProps {
   job: ServeJob;
   onAddToRoute: (address: ServeSkipAddress) => void;
   onLookupComplete?: () => void;
+}
+
+interface SkipProfileAddress {
+  address?: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  type?: string;
+  source: string;
+}
+
+interface SkipProfile {
+  id: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  addresses?: SkipProfileAddress[];
+  phones?: Array<{ number: string; type?: string; source: string }>;
+  sources?: string[];
+  matchTier?: string;
+}
+
+interface SkipSearchResult {
+  profiles: SkipProfile[];
+  sourcesQueried: string[];
+  sourcesResponded: string[];
+  sourcesFailed?: Array<{ name: string; error: string }>;
+  totalResults: number;
+  totalCost: number;
+  durationMs?: number;
+}
+
+function addressKey(addr: ServeSkipAddress): string {
+  return [addr.address, addr.city, addr.state, addr.zip].join('|').toLowerCase();
+}
+
+function profilesToServeAddresses(profiles: SkipProfile[]): ServeSkipAddress[] {
+  const seen = new Set<string>();
+  const out: ServeSkipAddress[] = [];
+
+  for (const profile of profiles) {
+    for (const raw of profile.addresses ?? []) {
+      const line = (raw.address || raw.street || '').trim();
+      const city = raw.city?.trim() || '';
+      const state = raw.state?.trim() || '';
+      const zip = raw.zip?.trim() || '';
+      if (!line && !city) continue;
+      const entry: ServeSkipAddress = {
+        address: line,
+        city,
+        state,
+        zip,
+        type: raw.type || 'current',
+        last_seen: null,
+      };
+      const key = addressKey(entry);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(entry);
+    }
+  }
+  return out;
+}
+
+async function fetchSkipTraceSearch(opts: {
+  name?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+}): Promise<SkipSearchResult> {
+  const params = new URLSearchParams();
+  params.set('engine', 'all');
+
+  const name = opts.name?.trim();
+  const address = opts.address?.trim();
+  if (name) {
+    params.set('q', name);
+    const tokens = name.split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      params.set('firstName', tokens[0]);
+      params.set('lastName', tokens[tokens.length - 1]);
+    }
+    if (address) params.set('address', address);
+  } else if (address) {
+    params.set('q', address);
+  } else {
+    throw new Error('Enter a name or address to search');
+  }
+
+  if (opts.city?.trim()) params.set('city', opts.city.trim());
+  if (opts.state?.trim()) params.set('state', opts.state.trim());
+
+  return apiFetch<SkipSearchResult>(`/skiptracer-v2/search?${params.toString()}`);
 }
 
 // ─── Component ──────────────────────────────────────────────────────────
@@ -36,6 +130,18 @@ export default function ServeSkipTracePanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [results, setResults] = useState<SkipSearchResult | null>(null);
+  const [foundAddresses, setFoundAddresses] = useState<ServeSkipAddress[]>([]);
+  const [priorTraces, setPriorTraces] = useState<ServeSkipTrace[]>(job.skipTraces || []);
+
+  const loadPriorTraces = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: ServeSkipTrace[] }>(`/serve-intake/${job.id}/skip-trace`);
+      setPriorTraces(res?.data ?? []);
+    } catch {
+      setPriorTraces(job.skipTraces ?? []);
+    }
+  }, [job.id, job.skipTraces]);
 
   // Reset state when panel opens or job changes
   useEffect(() => {
@@ -48,45 +154,95 @@ export default function ServeSkipTracePanel({
     setError(null);
     setNotice(null);
     setHistoryOpen(false);
-  }, [isOpen, job.id]);
+    setResults(null);
+    setFoundAddresses([]);
+    void loadPriorTraces();
+  }, [isOpen, job.id, job.recipient_name, job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip, loadPriorTraces]);
 
   const runLookup = useCallback(async () => {
+    const name = searchName.trim();
+    const address = searchAddress.trim();
+    if (!name && !address) {
+      setError('Enter a name or address to search');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setNotice(null);
+    setResults(null);
+    setFoundAddresses([]);
+
     try {
-      // /api/process-server is the same router as /api/serve — neither
-      // defines a skip-trace route. The real handler lives at
-      // /api/serve-intake/:id/skip-trace, but it only logs the search
-      // (serve_skip_traces audit row) — there's no automated third-party
-      // vendor lookup wired up yet (still listed as deferred in
-      // src/routes/serve.ts's header comment), so it never returns
-      // persons/phones/addresses/employment. Log the search instead of
-      // pretending a lookup ran, rather than 404ing outright.
-      const data = await apiFetch<{ success: boolean; id: number }>(
-        `/api/serve-intake/${job.id}/skip-trace`,
+      const outcome = await fetchSkipTraceSearch({
+        name: name || undefined,
+        address: address || undefined,
+        city: job.recipient_city ?? undefined,
+        state: job.recipient_state ?? undefined,
+      });
+
+      const profiles = outcome.profiles ?? [];
+      const sourcesQueried = new Set(outcome.sourcesQueried ?? []);
+      const sourcesResponded = new Set(outcome.sourcesResponded ?? []);
+      const sourcesFailed = outcome.sourcesFailed ?? [];
+      const totalCost = outcome.totalCost ?? 0;
+      const durationMs = outcome.durationMs ?? 0;
+
+      const merged: SkipSearchResult = {
+        profiles,
+        sourcesQueried: [...sourcesQueried],
+        sourcesResponded: [...sourcesResponded],
+        sourcesFailed,
+        totalResults: profiles.length,
+        totalCost,
+        durationMs,
+      };
+
+      const addresses = profilesToServeAddresses(profiles);
+      setResults(merged);
+      setFoundAddresses(addresses);
+
+      await apiFetch<{ success: boolean; id: number }>(
+        `/serve-intake/${job.id}/skip-trace`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ search_type: 'manual', search_query: `${searchName} ${searchAddress}`.trim() }),
+          body: JSON.stringify({
+            search_type: 'automated',
+            search_query: [name, address].filter(Boolean).join(' | '),
+            results_json: merged,
+            addresses_found: addresses,
+          }),
         },
       );
-      if (data?.success) {
-        setNotice('Search logged. Automated skip-trace lookup isn’t available yet — use manual research methods and add any found addresses below.');
+
+      const failedPaid = sourcesFailed.filter(f =>
+        f.error === 'not_configured' && /rapidapi|vehicle/i.test(f.name),
+      );
+      if (profiles.length === 0 && addresses.length === 0) {
+        if (failedPaid.length > 0) {
+          setNotice('No matches found. RapidAPI keys may not be configured — check Admin → Skip Tracer sources.');
+        } else {
+          setNotice('Search complete — no additional addresses found. Try refining the name or address.');
+        }
       } else {
-        setError('Skip trace lookup failed');
+        const sourceLabel = sourcesResponded.size
+          ? `${sourcesResponded.size} source(s)`
+          : 'local records';
+        setNotice(`Found ${addresses.length} address(es) from ${profiles.length} profile(s) via ${sourceLabel}.`);
       }
+
       onLookupComplete?.();
-    } catch (err: any) {
-      setError(err?.message || 'Skip trace lookup failed');
+      void loadPriorTraces();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Skip trace lookup failed';
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [job.id, searchName, searchAddress, onLookupComplete]);
+  }, [job.id, job.recipient_city, job.recipient_state, searchName, searchAddress, onLookupComplete, loadPriorTraces]);
 
   if (!isOpen) return null;
-
-  const priorTraces = job.skipTraces || [];
 
   return (
     <>
@@ -146,7 +302,7 @@ export default function ServeSkipTracePanel({
             </div>
             <button type="button"
               onClick={runLookup}
-              disabled={loading || !searchName.trim()}
+              disabled={loading || (!searchName.trim() && !searchAddress.trim())}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 disabled:bg-rmpg-700 disabled:text-fg-muted text-rmpg-100 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 hover:shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.25)]"
             >
               {loading ? (
@@ -157,7 +313,7 @@ export default function ServeSkipTracePanel({
               {loading ? 'Running Lookup...' : 'Run Lookup'}
             </button>
             <p className="text-[10px] text-fg-muted text-center">
-              Logs a manual search attempt — no automated vendor lookup is wired up yet
+              Queries local RMS, RapidAPI skip trace, and open-source enrichment
             </p>
           </div>
 
@@ -169,11 +325,71 @@ export default function ServeSkipTracePanel({
             </div>
           )}
 
-          {/* Notice (search logged, no automated vendor lookup available) */}
+          {/* Status notice */}
           {notice && (
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-accent-silver-300 bg-accent-silver-400/10 border border-accent-silver-400/30 rounded-sm">
               <CheckCircle2 size={14} />
               <span>{notice}</span>
+            </div>
+          )}
+
+          {/* Results */}
+          {results && foundAddresses.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400">
+                Addresses Found ({foundAddresses.length})
+              </div>
+              <div className="space-y-2">
+                {foundAddresses.map(addr => (
+                  <div
+                    key={addressKey(addr)}
+                    className="p-2 bg-surface-sunken border border-rmpg-700 rounded-[2px] space-y-1"
+                  >
+                    <p className="text-sm text-rmpg-100">
+                      {[addr.address, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')}
+                    </p>
+                    <button type="button"
+                      onClick={() => onAddToRoute(addr)}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-accent-silver-300 hover:text-accent-silver-200 transition-colors"
+                    >
+                      <MapPinned size={12} />
+                      Add to route
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results && results.profiles.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400">
+                Profiles ({results.profiles.length})
+              </div>
+              {results.profiles.slice(0, 8).map(profile => {
+                const name = profile.fullName
+                  || [profile.firstName, profile.lastName].filter(Boolean).join(' ')
+                  || 'Unknown';
+                return (
+                  <div
+                    key={profile.id}
+                    className="p-2 bg-surface-sunken border border-rmpg-700 rounded-[2px] space-y-1"
+                  >
+                    <p className="text-sm font-medium text-rmpg-100">{name}</p>
+                    {(profile.phones?.length ?? 0) > 0 && (
+                      <div className="flex items-center gap-1 text-[10px] text-rmpg-400">
+                        <Phone size={10} />
+                        {profile.phones!.slice(0, 3).map(p => p.number).join(', ')}
+                      </div>
+                    )}
+                    {(profile.sources?.length ?? 0) > 0 && (
+                      <p className="text-[9px] text-fg-muted uppercase tracking-wider">
+                        {profile.sources!.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

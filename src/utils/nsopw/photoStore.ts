@@ -151,7 +151,7 @@ export async function downloadAndStorePhoto(
 
   // Best-effort R2 PUT.
   try {
-    await putEncrypted(uploads, db, (env as { FILE_ENCRYPTION_KEK?: string }).FILE_ENCRYPTION_KEK, key, bytes, {
+    await putEncrypted(uploads, db, env, key, bytes, {
       httpMetadata: { contentType: contentType || 'image/jpeg' },
     });
   } catch (err) {

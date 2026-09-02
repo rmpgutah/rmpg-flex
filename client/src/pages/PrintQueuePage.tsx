@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Printer, RefreshCw, X, Pause, Play, Trash2 } from 'lucide-react';
-// apiFetch retained for future PDF fetch integration
-import { apiFetch } from '../hooks/useApi'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { parseTimestamp } from '../utils/dateUtils';
+import { filterByQuery, jobsToCsv } from '../utils/queueWorkbench';
+import { downloadTextFile } from '../utils/intelHitExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 interface PrintJob {
   id: string;
@@ -61,9 +62,15 @@ export default function PrintQueuePage() {
   const [defaultPrinter, setDefaultPrinter] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [jobQuery, setJobQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PrintJob['status'] | 'all'>('all');
+  const [printError, setPrintError] = useState(false);
+  const jobSearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(jobSearchRef);
 
   const loadQueue = useCallback(() => {
     setLoading(true);
+    setPrintError(false);
     try {
       const raw = electron?.getPrintQueue?.();
       if (raw === undefined) {
@@ -74,6 +81,7 @@ export default function PrintQueuePage() {
       setLastRefresh(new Date());
     } catch {
       setJobs(STATIC_SAMPLE);
+      setPrintError(true);
     } finally {
       setLoading(false);
     }
@@ -120,7 +128,13 @@ export default function PrintQueuePage() {
   const printing = jobs.filter(j => j.status === 'printing').length;
   const pending  = jobs.filter(j => j.status === 'pending').length;
   const paused   = jobs.filter(j => j.status === 'paused').length;
+  const errors   = jobs.filter(j => j.status === 'error').length;
   const hasCompleted = jobs.some(j => j.status !== 'printing' && j.status !== 'pending');
+  const visibleJobs = filterByQuery(
+    statusFilter === 'all' ? jobs : jobs.filter((j) => j.status === statusFilter),
+    jobQuery,
+    (j) => `${j.name} ${j.printer} ${j.status}`,
+  );
 
   const ROW: React.CSSProperties = {
     display: 'flex',
@@ -240,7 +254,19 @@ export default function PrintQueuePage() {
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--sev-warn)' }}>{paused}</div>
           <div style={LABEL9}>PAUSED</div>
         </div>
+        <div style={{ textAlign: 'center' as const }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--sev-critical)' }}>{errors}</div>
+          <div style={LABEL9}>ERROR</div>
+        </div>
         <div style={{ flexGrow: 1 }} />
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => downloadTextFile('print-queue.csv', jobsToCsv(visibleJobs))}
+          style={{ fontSize: 9, color: 'var(--text-secondary)', padding: '3px 8px' }}
+        >
+          CSV
+        </button>
         {hasCompleted && (
           <button
             type="button"
@@ -261,6 +287,34 @@ export default function PrintQueuePage() {
         )}
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' as const }}>
+        <input
+          ref={jobSearchRef}
+          value={jobQuery}
+          onChange={(e) => setJobQuery(e.target.value)}
+          placeholder="Filter jobs… (/)"
+          aria-label="Filter print jobs"
+          style={{ flex: 1, minWidth: 140, fontSize: 11, padding: '4px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)' }}
+        />
+        {(['all', 'printing', 'pending', 'paused', 'error'] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatusFilter(s)}
+            style={{ fontSize: 8, padding: '2px 8px', borderRadius: 2, border: '1px solid var(--border-subtle)', background: statusFilter === s ? 'var(--brand-400)' : 'var(--surface-raised)', color: statusFilter === s ? 'var(--surface-base)' : 'var(--text-secondary)', textTransform: 'uppercase' as const }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {printError && (
+        <div style={{ fontSize: 11, color: 'var(--sev-critical)', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Failed to load print queue.</span>
+          <button type="button" className="toolbar-btn" onClick={loadQueue}>Retry</button>
+        </div>
+      )}
+
       {/* Job list */}
       {jobs.length === 0 ? (
         <div style={{
@@ -275,9 +329,13 @@ export default function PrintQueuePage() {
           <Printer style={{ width: 28, height: 28, opacity: 0.4 }} />
           <span style={{ fontSize: 10 }}>No print jobs</span>
         </div>
+      ) : visibleJobs.length === 0 ? (
+        <div style={{ fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center', padding: 24 }}>
+          No print jobs match the current filter
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {jobs.map(job => {
+          {visibleJobs.map(job => {
             const progress = job.pagesTotal > 0
               ? Math.round((job.pages / job.pagesTotal) * 100)
               : 0;
@@ -296,7 +354,11 @@ export default function PrintQueuePage() {
                 <div style={{ ...ROW, marginBottom: job.status === 'printing' ? 6 : 0 }}>
                   {/* Job info */}
                   <div style={{ flexGrow: 1, minWidth: 0 }}>
-                    <div style={{ ...VAL11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                    <div
+                      style={{ ...VAL11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, cursor: 'pointer' }}
+                      title="Copy job name"
+                      onClick={() => navigator.clipboard.writeText(job.name).catch(() => undefined)}
+                    >
                       {job.name}
                     </div>
                     <div style={{ ...ROW, gap: 6, marginTop: 2 }}>

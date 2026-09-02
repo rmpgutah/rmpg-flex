@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Terminal, RefreshCw, Download, Trash2, ChevronDown, ChevronRight, Monitor } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
+import { errorLogsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 interface ErrorLogEntry {
   id: number;
@@ -102,7 +104,16 @@ function LogRow({ entry }: LogRowProps) {
             {entry.trace_id && (
               <>
                 <span className="text-fg-secondary">Trace ID</span>
-                <span className="text-rmpg-200 font-mono">{entry.trace_id}</span>
+                <span className="text-rmpg-200 font-mono flex items-center gap-2">
+                  {entry.trace_id}
+                  <button
+                    type="button"
+                    className="text-[10px] text-fg-secondary border border-rmpg-700/50 px-1.5 py-[1px]"
+                    onClick={(e) => { e.stopPropagation(); void copyToClipboard(entry.trace_id!); }}
+                  >
+                    Copy
+                  </button>
+                </span>
               </>
             )}
             {entry.source && (
@@ -140,6 +151,7 @@ export default function SystemLogsPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [desktopLogs, setDesktopLogs] = useState<string[]>([]);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = user?.role === 'admin';
 
@@ -203,6 +215,23 @@ export default function SystemLogsPage() {
       setError(err instanceof Error ? err.message : 'Failed to clear logs');
     }
   };
+
+  const handleExportCsv = () => {
+    downloadTextFile(`system-logs-${new Date().toISOString().slice(0, 10)}.csv`, errorLogsToCsv(filtered));
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === '/' && activeTab === 'server') {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeTab]);
 
   const handleExport = () => {
     const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: 'application/json' });
@@ -278,8 +307,9 @@ export default function SystemLogsPage() {
 
             {/* Search */}
             <input
+              ref={searchRef}
               type="text"
-              placeholder="Filter by message…"
+              placeholder="Filter by message… (/)"
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               className="bg-surface-base border border-rmpg-700/50 text-rmpg-200 text-[11px] rounded-[2px] px-2 py-1 w-44 placeholder:text-fg-muted"
@@ -314,7 +344,14 @@ export default function SystemLogsPage() {
               className="flex items-center gap-1 px-2 py-1 text-[11px] text-fg-secondary border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors"
             >
               <Download size={11} />
-              Export
+              JSON
+            </button>
+            <button
+              onClick={handleExportCsv}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-fg-secondary border border-rmpg-700/50 rounded-[2px] hover:bg-surface-raised transition-colors"
+            >
+              <Download size={11} />
+              CSV
             </button>
 
             {/* Clear */}
@@ -338,8 +375,9 @@ export default function SystemLogsPage() {
         {activeTab === 'server' && (
           <>
             {error && (
-              <div className="mx-3 mt-3 px-3 py-2 bg-sev-critical/10 border border-sev-critical/30 rounded-[2px] text-[11px] text-sev-critical">
-                {error}
+              <div className="mx-3 mt-3 px-3 py-2 bg-sev-critical/10 border border-sev-critical/30 rounded-[2px] text-[11px] text-sev-critical flex items-center justify-between">
+                <span>{error}</span>
+                <button type="button" className="toolbar-btn" style={{ height: 24 }} onClick={() => fetchLogs(true)}>Retry</button>
               </div>
             )}
 
@@ -355,7 +393,11 @@ export default function SystemLogsPage() {
             </div>
 
             {filtered.length === 0 && !loading && (
-              <div className="text-center py-12 text-fg-muted text-[11px]">No log entries match the current filters.</div>
+              <div className="text-center py-12 text-fg-muted text-[11px]">
+                {logs.length === 0
+                  ? 'No log entries loaded.'
+                  : 'No log entries match the current filters.'}
+              </div>
             )}
 
             {filtered.map(entry => (

@@ -756,7 +756,25 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // unrelated to and discovered while unblocking #3840. Bumping to the
   // verified current count rather than chasing down which of several
   // already-merged, unrelated PRs owns each site.
-  const PIN = 10500;
+  // 10500 -> 10501: the person-intel cross-reference capture PR (#3893) was
+  // built net-zero on this ratchet (its new PersonIntelCrossReferencesTab
+  // uses text-fg-muted/text-fg-secondary, no text-rmpg-*), yet main HEAD was
+  // already 10501 — a single text-rmpg-500 slipped in via an already-merged,
+  // unrelated PR without bumping the pin. Bumping to the verified current
+  // count rather than chasing down which unrelated PR owns the one site.
+  // 10501 -> 10504: this Cloudflare same-origin PR does not add text-rmpg-*
+  // utilities (verified: git grep of the pattern is identical to origin/main).
+  // Client CI failed because the tree already has 10504 matches; the pin was
+  // stale on main. Bump to the scanned count so the ratchet stays taut.
+  // 10504 -> 10507: this Dialer CSP PR does not add text-rmpg-* utilities.
+  // The ratchet failed at 10507 on origin/main; bump to the scanned count.
+  // 10507 -> 10515: email Azure-config PR adds no text-rmpg-* utilities
+  // (AdminEmailTab env-var hint uses text-fg-muted). Verified scan of the
+  // working tree is 10515 — main's pin was already stale by 8.
+  // 10573 -> 10605: UI/UX 40-more ConfirmDialog/writer/HR/PDF surfaces plus
+  // merged list-page slash-focus work. Scan of this tree is 10605; keep the
+  // ratchet taut rather than leaving a stale pin from origin/main.
+  const PIN = 10605;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

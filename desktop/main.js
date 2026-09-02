@@ -30,6 +30,7 @@ const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTray
 const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse, validateFlexOsLoginResponse } = require('./kioskShell');
 const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
 const { runRfScan } = require('./rfScanner');
+const { parseNetshScanNetworks, parseNetshListProfiles, parseNetshGetDetail } = require('./wifiInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -75,6 +76,7 @@ const { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen } = require(
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
 const DEV_MODE = process.argv.includes('--dev');
+const KIOSK_SHELL_ARGV = process.argv.includes('--kiosk-shell');
 
 // Remote server URL — the single source of truth for the app shell this
 // window loads.
@@ -258,11 +260,8 @@ const secondaryWindows = new Map();
 // connection during a `systemctl restart rmpg-flex`) crashes the
 // whole desktop app and shows the Electron error dialog.
 //
-// TODO(you): implement isTransientNetworkError() below. Decide:
-//   - swallow `net::*` codes (most are transient — server restart,
-//     flaky WiFi, captive portal redirects) so dispatchers stay up
-//   - re-throw everything else so real bugs (null deref, type
-//     errors) still surface in dev/staging instead of rotting
+// isTransientNetworkError() decides whether to swallow the error
+// (keep the dispatcher connected) or re-throw (surface real bugs).
 // Reference: Chromium net error list — net::ERR_CONNECTION_CLOSED,
 // net::ERR_NETWORK_CHANGED, net::ERR_INTERNET_DISCONNECTED, etc.
 // All have message strings starting with "net::ERR_".
@@ -866,6 +865,10 @@ async function createMainWindow() {
     await app.whenReady();
   }
 
+  // Reset WWAN state so the first comparison after window recreation
+  // doesn't produce a stale "changed" event from the previous session.
+  _lastWwanState = null;
+
   // Restore the window's last-saved position/size, if any is on record AND
   // it still lands on a currently-connected display (see
   // boundsIntersectSomeDisplay in windowManager.js — a bounds saved from a
@@ -880,7 +883,15 @@ async function createMainWindow() {
   // point without a successful ready-to-show (see the counter reset below),
   // the shell key is reverted back to explorer.exe so the machine never
   // gets stuck showing a black kiosk screen with no way back in.
-  const isKioskShell = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+  // Detect kiosk mode from either: (1) the config flag set by in-app Settings,
+  // or (2) the --kiosk-shell argument passed by the Winlogon registry launch.
+  const isKioskShell = process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV);
+  // If launched with --kiosk-shell but config not yet set, persist it now so
+  // subsequent boots and renderer queries see the correct state.
+  if (isKioskShell && getConfig('kiosk_shell_enabled') !== true) {
+    setConfig('kiosk_shell_enabled', true);
+    console.log('[KIOSK] Detected --kiosk-shell argv — enabling kiosk_shell_enabled config');
+  }
   // Module-level flag consulted by the 'window-all-closed' handler below.
   // Set from isKioskShell — "did Windows launch this process as the login
   // shell" — and NOT from useKioskChrome, which answers a different question
@@ -1015,10 +1026,11 @@ async function createMainWindow() {
   // Electron denies geolocation by default. For RMPG Flex, GPS
   // tracking is mandatory for all logged-in users — auto-grant it.
   mainWindow.webContents.session.setPermissionRequestHandler(
-    (webContents, permission, callback) => {
+    (webContents, permission, callback, details) => {
       let requestingHost;
       try {
-        requestingHost = new URL(webContents.getURL()).host;
+        const raw = details?.requestingUrl || details?.securityOrigin || webContents.getURL();
+        requestingHost = new URL(raw).host;
       } catch {
         requestingHost = '';
       }
@@ -1028,10 +1040,10 @@ async function createMainWindow() {
 
   // Also handle the newer permission-check API (Electron 20+)
   mainWindow.webContents.session.setPermissionCheckHandler(
-    (webContents, permission) => {
+    (webContents, permission, requestingOrigin) => {
       let requestingHost;
       try {
-        requestingHost = new URL(webContents.getURL()).host;
+        requestingHost = new URL(requestingOrigin || webContents.getURL()).host;
       } catch {
         requestingHost = '';
       }
@@ -1211,18 +1223,22 @@ async function createMainWindow() {
   // restart. Strategy: wait UNRESPONSIVE_RELOAD_DELAY_MS to give Chromium
   // time to recover on its own (it sometimes does for transient jank), then
   // force-reload if the renderer hasn't come back yet.
+  // 2026-08-23: increased from 30s to 60s — Toughbooks under memory pressure
+  // (field apps, multiple tabs, GPS/radio polling) can be slow but eventually
+  // recover; 30s caused unnecessary reloads that looked like random restarts.
+  const UNRESPONSIVE_RELOAD_DELAY_MS = 60_000;
   let _unresponsiveTimer = null;
   mainWindow.webContents.on('unresponsive', () => {
-    console.warn('[APP] Renderer unresponsive — will reload in 30s if not recovered');
+    console.warn(`[APP] Renderer unresponsive — will reload in ${UNRESPONSIVE_RELOAD_DELAY_MS / 1000}s if not recovered`);
     if (_unresponsiveTimer) return; // already counting down
     _unresponsiveTimer = setTimeout(() => {
       _unresponsiveTimer = null;
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      console.error('[APP] Renderer still unresponsive after 30s — force-reloading');
+      console.error('[APP] Renderer still unresponsive after 60s — force-reloading');
       mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
         console.warn('[APP] Unresponsive-recovery loadURL failed:', err && err.message);
       });
-    }, 30_000);
+    }, UNRESPONSIVE_RELOAD_DELAY_MS);
   });
   mainWindow.webContents.on('responsive', () => {
     if (_unresponsiveTimer) {
@@ -1313,6 +1329,18 @@ async function createMainWindow() {
   });
 
   mainWindow.on('closed', () => {
+    // Kill any orphaned recon tool sessions when the renderer is destroyed.
+    // Without this, long-running tools (nmap, sqlmap, etc.) continue as
+    // detached OS processes consuming resources indefinitely.
+    for (const [sessionId, child] of toolSessions) {
+      try {
+        if (child && !child.killed) {
+          child.kill();
+          logSecurityAuditEvent('recon:tool-killed', 'cleanup', { sessionId });
+        }
+      } catch { /* process already exited */ }
+    }
+    toolSessions.clear();
     mainWindow = null;
   });
 
@@ -1580,7 +1608,7 @@ guardedHandle('sys:battery', async () => {
   if (process.platform === 'win32') {
     // When running as the Windows shell (Winlogon), WMI (winmgmt) may not be
     // ready yet at boot — use a longer timeout and retry before falling back.
-    const isShellContext = getConfig('kiosk_shell_enabled') === true;
+    const isShellContext = getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV;
     const cimTimeout = isShellContext ? 8000 : 3000;
     const maxAttempts = isShellContext ? 2 : 1;
 
@@ -2130,12 +2158,9 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
 });
 
 /**
- * Runs `reg.exe add ... Shell ...` through an elevated (UAC-prompted)
- * PowerShell process via Start-Process -Verb RunAs. Returns { ok: true } on
- * a zero exit code, { ok: false, error } otherwise — including if the user
- * cancels the UAC prompt (Start-Process throws in that case).
- * [WINDOWS-UNVERIFIED] — the reg.exe/Start-Process invocation below has not
- * been run on real Windows; verify manually before shipping.
+ * Kills Windows 11 shell host processes that surface the Start Menu over
+ * fullscreen windows when FlexOS is the Winlogon shell. Uses taskkill /F
+ * (no elevation needed for same-session processes).
  */
 // ─── Windows shell process suppression ───────────────────────
 // When FlexOS is the Winlogon shell, explorer.exe is not running, but Windows
@@ -3681,10 +3706,10 @@ guardedHandle('recon:tool-install', async (event, { pkg } = {}) => {
     return { ok: false, error: 'Homebrew is not installed. Install from https://brew.sh' };
   }
   try {
+    const pathParts = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH || ''].filter(Boolean);
     const child = spawn(brewPath, ['install', pkg], {
       env: {
-        ...process.env,
-        PATH: ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH || ''].filter(Boolean).join(':'),
+        ...buildSandboxedChildEnv(process.env, pathParts),
         HOMEBREW_NO_AUTO_UPDATE: '1',
         HOMEBREW_NO_INSTALL_CLEANUP: '1',
         HOMEBREW_NO_ENV_HINTS: '1',
@@ -4228,13 +4253,7 @@ let internalGpsReader = null;
  *
  * Returns: { isToughbook: boolean, manufacturer: string, model: string, portPath: string | null }
  *
- * TODO: Christopher — fill in the manufacturer/model predicate below.
- * What you know that I don't:
- *   - Which Toughbook models RMPG actually deploys (CF-33? FZ-55? FZ-G2?)
- *   - Whether the manufacturer string is "Panasonic Corporation",
- *     "Matsushita Electric", "Panasonic" alone, or something else
- *   - Whether any non-Toughbook Panasonic gear should also qualify
- *     (e.g., Lenovo ThinkPad with aftermarket u-blox dongle — same code path)
+ * Detects RMPG Toughbook FZ-55 hardware via WMI + u-blox serial port enumeration.
  */
 async function detectToughbook() {
   if (process.platform !== 'win32') {
@@ -4779,9 +4798,10 @@ guardedHandle('face:enrollment-status', (_event, { userId }) => {
 });
 
 // ── Face unlock success (from splash lock screen renderer) ──
-// Uses ipcMain.on (not guardedHandle) — this is a fire-and-forget send from the
-// trusted local file splash.html, not an invoke requiring a response.
-ipcMain.on('face:unlock-success', () => {
+// Uses guardedSplashOn (local-file guard) to verify the sender is the trusted
+// splash.html loaded via loadFile(), preventing a compromised renderer from
+// bypassing authentication by sending this IPC directly.
+guardedSplashOn('face:unlock-success', () => {
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
   }
@@ -4806,11 +4826,15 @@ guardedHandle('device:camera-scan-stop', () => {
 guardedHandle('system:get-battery', async () => {
   if (process.platform !== 'win32') return null;
   try {
-    const { execSync } = require('child_process');
-    const out = execSync(
-      'wmic path Win32_Battery get EstimatedChargeRemaining,BatteryStatus /format:csv',
-      { timeout: 3000, encoding: 'utf8', windowsHide: true }
-    );
+    const { execFile } = require('child_process');
+    const out = await new Promise((resolve, reject) => {
+      execFile(
+        'wmic',
+        ['path', 'Win32_Battery', 'get', 'EstimatedChargeRemaining,BatteryStatus', '/format:csv'],
+        { timeout: 3000, encoding: 'utf8', windowsHide: true },
+        (err, stdout) => err ? reject(err) : resolve(stdout)
+      );
+    });
     const lines = out.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
     if (!lines.length) return null;
     const parts = lines[0].trim().split(',');
@@ -4845,50 +4869,15 @@ guardedHandle('wifi:get-detail', async () => {
   const { execSync } = require('child_process');
   const os = require('os');
 
-  const field = (text, label) => {
-    const m = text.match(new RegExp(`^\\s+${label}\\s+:\\s+(.+)`, 'm'));
-    return m ? m[1].trim() : null;
-  };
-  const intField = (text, label) => {
-    const v = field(text, label);
-    return v ? parseInt(v, 10) : null;
-  };
-
   // --- netsh wlan show interfaces ---
   let wlanOut = '';
   try { wlanOut = execSync('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8', windowsHide: true }); } catch { /* no adapter */ }
 
-  const state = (() => {
-    const m = field(wlanOut, 'State');
-    if (!m) return null;
-    return m.toLowerCase().includes('connect') ? 'connected' : 'disconnected';
-  })();
-  const ssid       = field(wlanOut, 'SSID');
-  const bssid      = field(wlanOut, 'BSSID');
-  const signal     = intField(wlanOut, 'Signal');
-  const channel    = intField(wlanOut, 'Channel');
-  const radioType  = field(wlanOut, 'Radio type');
-  const auth       = field(wlanOut, 'Authentication');
-  const cipher     = field(wlanOut, 'Cipher');
-  const profile    = field(wlanOut, 'Profile');
-  const adapter    = field(wlanOut, 'Description');
-  const mac        = field(wlanOut, 'Physical address');
-  const rxMbpsRaw  = field(wlanOut, 'Receive rate \\(Mbps\\)');
-  const txMbpsRaw  = field(wlanOut, 'Transmit rate \\(Mbps\\)');
-  const rxMbps     = rxMbpsRaw ? parseFloat(rxMbpsRaw) : null;
-  const txMbps     = txMbpsRaw ? parseFloat(txMbpsRaw) : null;
-
-  const band = (() => {
-    if (!channel) return null;
-    if (channel >= 1  && channel <= 14)  return '2.4 GHz';
-    if (channel >= 32 && channel <= 177) return '5 GHz';
-    if (channel >= 1  && radioType && radioType.includes('6E')) return '6 GHz';
-    return null;
-  })();
+  const parsed = parseNetshGetDetail(wlanOut) || {};
 
   // --- IP info from os.networkInterfaces() matched by MAC ---
   let ip = null, ipv6 = null, subnet = null;
-  const normalMac = mac ? mac.toLowerCase().replace(/-/g, ':') : null;
+  const normalMac = parsed.mac ? parsed.mac.toLowerCase().replace(/-/g, ':') : null;
   if (normalMac) {
     const ifaces = os.networkInterfaces();
     for (const ifAddrs of Object.values(ifaces)) {
@@ -4914,12 +4903,12 @@ guardedHandle('wifi:get-detail', async () => {
         'ConvertTo-Json -Compress"',
       { timeout: 5000, encoding: 'utf8', windowsHide: true }
     );
-    const parsed = JSON.parse(psOut.trim());
-    gateway = parsed.gw || null;
-    dns = parsed.dns ? parsed.dns.split(',').filter(Boolean) : [];
+    const parsedPs = JSON.parse(psOut.trim());
+    gateway = parsedPs.gw || null;
+    dns = parsedPs.dns ? parsedPs.dns.split(',').filter(Boolean) : [];
   } catch { /* not critical */ }
 
-  return { state, ssid, bssid, signal, channel, band, radioType, auth, cipher, profile, adapter, mac, ip, ipv6, subnet, gateway, dns, rxMbps, txMbps };
+  return { ...parsed, ip, ipv6, subnet, gateway, dns };
 });
 
 // ── WiFi: scan available networks (Windows only) ──────────────
@@ -4931,47 +4920,7 @@ guardedHandle('wifi:scan-networks', async () => {
       'netsh wlan show networks mode=Bssid',
       { timeout: 8000, encoding: 'utf8', windowsHide: true }
     );
-
-    // Each SSID block starts with "SSID N :"
-    const blocks = out.split(/(?=^SSID \d+ :)/m).filter(b => b.trim().startsWith('SSID'));
-    const networks = blocks.map(block => {
-      const ssidM  = block.match(/^SSID \d+ +: (.+)/m);
-      const authM  = block.match(/Authentication +: (.+)/m);
-      const encM   = block.match(/Encryption +: (.+)/m);
-      const ssid   = ssidM  ? ssidM[1].trim()  : '';
-      const auth   = authM  ? authM[1].trim()  : 'Unknown';
-      const enc    = encM   ? encM[1].trim()   : 'Unknown';
-
-      // Parse each BSSID sub-block
-      const bssidBlocks = block.split(/(?=^ +BSSID \d+ +:)/m).slice(1);
-      const bssids = bssidBlocks.map(bb => {
-        const bM  = bb.match(/BSSID \d+ +: (.+)/m);
-        const sM  = bb.match(/Signal +: (\d+)%/m);
-        const rtM = bb.match(/Radio type +: (.+)/m);
-        const chM = bb.match(/Channel +: (\d+)/m);
-        return {
-          bssid:     bM  ? bM[1].trim()         : null,
-          signal:    sM  ? parseInt(sM[1], 10)  : 0,
-          radioType: rtM ? rtM[1].trim()         : null,
-          channel:   chM ? parseInt(chM[1], 10) : null,
-        };
-      });
-
-      const maxSignal = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
-      const bestBssid = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
-
-      const channel = bestBssid.channel ?? null;
-      const band = (() => {
-        if (!channel) return null;
-        if (channel >= 1 && channel <= 14)  return '2.4 GHz';
-        if (channel >= 32 && channel <= 177) return '5 GHz';
-        return null;
-      })();
-
-      return { ssid, auth, enc, signal: maxSignal, channel, band, radioType: bestBssid.radioType ?? null, bssids };
-    }).filter(n => n.ssid);
-
-    return networks;
+    return parseNetshScanNetworks(out);
   } catch { return []; }
 });
 
@@ -4981,8 +4930,7 @@ guardedHandle('wifi:list-profiles', async () => {
   const { execSync } = require('child_process');
   try {
     const out = execSync('netsh wlan show profiles', { timeout: 3000, encoding: 'utf8', windowsHide: true });
-    const matches = [...out.matchAll(/All User Profile\s+: (.+)/g)];
-    return matches.map(m => m[1].trim());
+    return parseNetshListProfiles(out);
   } catch { return []; }
 });
 
@@ -5352,7 +5300,7 @@ app.whenReady().then(async () => {
     // In kiosk shell mode, Windows starts this process before the network
     // stack is fully up — use more retries so the initial check doesn't
     // seed the monitor as "offline" just because the NIC wasn't ready yet.
-    const isKioskContext = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+    const isKioskContext = process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV);
     const connectivityPromise = checkServerConnectivity({ kioskShell: isKioskContext });
 
     // Kick off Windows account lookup in parallel with connectivity check.
@@ -5363,7 +5311,7 @@ app.whenReady().then(async () => {
     // After DB init, we know if this is a kiosk shell session.
     // Drive phase transitions only in kiosk shell mode.
     Promise.all([accountInfoPromise, minBootPromise]).then(([accountInfo]) => {
-      const isKioskForSplash = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+      const isKioskForSplash = process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV);
       if (isKioskForSplash && splashWindow && !splashWindow.isDestroyed()) {
         const phaseMsg = {
           phase: 'lock',
@@ -5511,14 +5459,11 @@ app.whenReady().then(async () => {
     //
     // Both shortcuts unregister themselves in the 'before-quit' handler via
     // globalShortcut.unregisterAll(), matching the kiosk escape hatch pattern.
-    globalShortcut.register('F5', () => {
+    const f5Registered = globalShortcut.register('F5', () => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      // Manual reload: clear the crash-loop counter so a human override
-      // isn't blocked by stale automatic-recovery timestamps.
       rendererRecoveryTimestamps = [];
       const currentUrl = mainWindow.webContents.getURL();
       if (currentUrl.startsWith('data:')) {
-        // On the offline or crash-loop page — navigate back to the real app
         mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
           console.warn('[RELOAD] F5 loadURL failed:', err && err.message);
         });
@@ -5527,28 +5472,90 @@ app.whenReady().then(async () => {
       }
       console.log('[RELOAD] F5: soft reload');
     });
+    console.log(`[RELOAD] F5 shortcut registered: ${f5Registered}`);
 
-    globalShortcut.register('Ctrl+Shift+F5', async () => {
+    // Ctrl+Shift+F5 — hard reload: clears all caches then navigates.
+    // On Windows, this accelerator can conflict with OEM/driver software
+    // (e.g. Intel Graphics hotkeys). Try the primary combo first; if it
+    // fails, register Ctrl+Alt+F5 as a fallback that field users can
+    // reach more reliably on Toughbooks.
+    function doHardReload() {
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      // Manual hard reload: clear the crash-loop counter (same rationale as F5).
       rendererRecoveryTimestamps = [];
-      console.log('[RELOAD] Ctrl+Shift+F5: hard reload — clearing caches');
-      try {
-        await mainWindow.webContents.session.clearCache();
-        await mainWindow.webContents.session.clearStorageData({
-          storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+      console.log('[RELOAD] Hard reload — clearing caches');
+      (async () => {
+        try {
+          await mainWindow.webContents.session.clearCache();
+          await mainWindow.webContents.session.clearStorageData({
+            storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+          });
+          await mainWindow.webContents.executeJavaScript(`
+            if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
+            if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+          `).catch(() => {});
+        } catch (err) {
+          console.warn('[RELOAD] Hard reload cache clear failed (continuing):', err && err.message);
+        }
+        mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+          console.warn('[RELOAD] Hard reload loadURL failed:', err && err.message);
         });
-        await mainWindow.webContents.executeJavaScript(`
-          if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
-          if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
-        `).catch(() => {});
-      } catch (err) {
-        console.warn('[RELOAD] Hard reload cache clear failed (continuing):', err && err.message);
+      })();
+    }
+
+    const hardReloadRegistered = globalShortcut.register('Ctrl+Shift+F5', doHardReload);
+    console.log(`[RELOAD] Ctrl+Shift+F5 shortcut registered: ${hardReloadRegistered}`);
+    if (!hardReloadRegistered) {
+      const fallbackRegistered = globalShortcut.register('Ctrl+Alt+F5', doHardReload);
+      console.log(`[RELOAD] Ctrl+Alt+F5 fallback registered: ${fallbackRegistered}`);
+      if (!fallbackRegistered) {
+        console.warn('[RELOAD] WARNING: Neither Ctrl+Shift+F5 nor Ctrl+Alt+F5 could be registered — hard reload unavailable');
       }
-      mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
-        console.warn('[RELOAD] Ctrl+Shift+F5 loadURL failed:', err && err.message);
+    }
+
+    // ─── Kiosk-mode keyboard fallback (before-input-event) ─────
+    // In kiosk mode (kiosk:true), the BrowserWindow captures ALL keyboard
+    // input at the Chromium level before globalShortcut (the OS-level
+    // shortcut handler) ever sees it. This means F5 and Ctrl+Shift+F5
+    // registered via globalShortcut.register() never fire in kiosk mode.
+    // Solution: also listen on webContents 'before-input-event', which
+    // intercepts keyboard input at the Chromium level BEFORE it's consumed
+    // by the kiosk window. This gives us the same key combos in kiosk mode
+    // that globalShortcut provides in normal windowed mode.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type !== 'keyDown') return;
+
+        const ctrl = input.control;
+        const shift = input.shift;
+        const alt = input.alt;
+        const key = input.key;
+
+        // F5 — soft reload
+        if (key === 'F5' && !ctrl && !shift && !alt) {
+          event.preventDefault();
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          rendererRecoveryTimestamps = [];
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith('data:')) {
+            mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+              console.warn('[RELOAD] (kiosk) F5 loadURL failed:', err && err.message);
+            });
+          } else {
+            mainWindow.webContents.reload();
+          }
+          console.log('[RELOAD] (kiosk before-input-event) F5: soft reload');
+          return;
+        }
+
+        // Ctrl+Shift+F5 or Ctrl+Alt+F5 — hard reload
+        if (key === 'F5' && ctrl && (shift || alt)) {
+          event.preventDefault();
+          doHardReload();
+          console.log('[RELOAD] (kiosk before-input-event) hard reload');
+          return;
+        }
       });
-    });
+    }
 
     // Await connectivity (usually already resolved by now)
     const isReachable = await connectivityPromise;
@@ -5574,6 +5581,12 @@ app.whenReady().then(async () => {
     // Start connectivity monitor
     connectivityMonitor = new ConnectivityMonitor(REMOTE_SERVER_URL);
     connectivityMonitor.isOnline = isReachable; // Set initial state from startup check
+    // Guard against double-reload: the fast-reconnect callback fires on every
+    // positive check (~10s), while the debounced callback fires ~30s later.
+    // Both independently try to reload when on the offline page. Track the
+    // last reload time so the debounced path skips if fast-reconnect already
+    // handled it.
+    let _lastConnectivityReload = 0;
     connectivityMonitor.start(mainWindow, (nowOnline) => {
       console.log(`[APP] Connectivity transition → ${nowOnline ? 'ONLINE' : 'OFFLINE'}`);
       if (nowOnline) {
@@ -5584,7 +5597,8 @@ app.whenReady().then(async () => {
         try {
           if (mainWindow && !mainWindow.isDestroyed()) {
             const currentUrl = mainWindow.webContents.getURL();
-            if (currentUrl.startsWith('data:')) {
+            if (currentUrl.startsWith('data:') && Date.now() - _lastConnectivityReload > 5000) {
+              _lastConnectivityReload = Date.now();
               console.log('[APP] Connectivity restored (debounced) while on offline page — reloading');
               mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
                 console.warn('[APP] Auto-reload on reconnect failed:', err && err.message);
@@ -5614,7 +5628,8 @@ app.whenReady().then(async () => {
       try {
         if (mainWindow && !mainWindow.isDestroyed()) {
           const currentUrl = mainWindow.webContents.getURL();
-          if (currentUrl.startsWith('data:')) {
+          if (currentUrl.startsWith('data:') && Date.now() - _lastConnectivityReload > 5000) {
+            _lastConnectivityReload = Date.now();
             console.log('[APP] Fast reconnect: reachable while on offline page — reloading immediately');
             mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
               console.warn('[APP] Fast reconnect loadURL failed:', err && err.message);
