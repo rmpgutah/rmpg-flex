@@ -14,14 +14,14 @@ export function buildAosEmailHtml(data: AosEmailData): string {
     .join('');
 
   const metaParts: string[] = [];
-  if (data.caseNumber) metaParts.push(`<div><div style="color:#5f5e5a;margin-bottom:2px;">Case</div><div style="font-weight:500;">${esc(data.caseNumber)}</div></div>`);
-  if (data.dateServed) metaParts.push(`<div><div style="color:#5f5e5a;margin-bottom:2px;">Date served</div><div style="font-weight:500;">${esc(data.dateServed)}</div></div>`);
+  if (data.caseNumber) metaParts.push(`<div style="display:inline-block;vertical-align:top;min-width:80px;"><div style="color:#5f5e5a;margin-bottom:2px;">Case</div><div style="font-weight:500;">${esc(data.caseNumber)}</div></div>`);
+  if (data.dateServed) metaParts.push(`<div style="display:inline-block;vertical-align:top;min-width:80px;"><div style="color:#5f5e5a;margin-bottom:2px;">Date served</div><div style="font-weight:500;">${esc(data.dateServed)}</div></div>`);
   if (data.serverName) {
     const badge = data.serverBadge ? ` ${esc(data.serverBadge)}` : '';
-    metaParts.push(`<div><div style="color:#5f5e5a;margin-bottom:2px;">Served by</div><div style="font-weight:500;">${esc(data.serverName)}${badge}</div></div>`);
+    metaParts.push(`<div style="display:inline-block;vertical-align:top;min-width:80px;"><div style="color:#5f5e5a;margin-bottom:2px;">Served by</div><div style="font-weight:500;">${esc(data.serverName)}${badge}</div></div>`);
   }
   const metaRow = metaParts.length
-    ? `<div style="display:flex;gap:24px;margin:20px 0;font-size:13px;">${metaParts.join('')}</div>`
+    ? `<div style="margin:20px 0;font-size:13px;">${metaParts.join('<div style="display:inline-block;width:24px;"></div>')}</div>`
     : '';
 
   const formTitleLower = data.formTitle.toLowerCase();

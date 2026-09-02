@@ -617,7 +617,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Attempt History Table ──
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, art('Attempt History'), y);
     y = sec.contentY;
@@ -660,7 +660,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Skip Trace Summary ──
   if (Array.isArray(data.skipTraces) && data.skipTraces.length > 0) {
-    y = checkPageBreak(doc, y, 30);
+    y = checkPageBreak(doc, y, 22);
     const sec = openAutoSection(doc, art('Skip Trace Summary'), y);
     y = sec.contentY;
 
@@ -691,7 +691,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Declaration ──
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, art('Declaration'), y);
     // addWrappedText draws at the text BASELINE, so the first line's ascender
@@ -978,7 +978,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     return data.attorneyName || data.clientName || 'N/A';
   })();
 
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 24);
   {
     const gutter = SPACING.MD;
     // Panels sized from the rail and drawn from the rail. Sized from
@@ -1021,7 +1021,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   const MAX_NOTE_CHARS = 90;
   /** Combined note+GPS budget for a row that carries coordinates. */
   const GPS_ROW_NOTE_CHARS = 58;
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, 'II. Record of Attempt(s)', y);
     y = sec.contentY;
@@ -1114,10 +1114,10 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
-  // 55 mm reservation covers lead-band + body + next-attempt + spacing at
+  // 38 mm reservation covers lead-band + body + next-attempt + spacing at
   // 7 pt prose. Break BEFORE opening the section so the IMPORTANT NOTICE
   // header isn't orphaned at the bottom of one page with content on the next.
-  y = checkPageBreak(doc, y, 55);
+  y = checkPageBreak(doc, y, 38);
   {
     const sec = openAutoSection(doc, 'III. Important Notice — Attempted Service of Legal Documents', y);
     y = sec.contentY + 2;
@@ -1246,7 +1246,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // actions. Helps prevent the two most common operator headaches: a
   // recipient ignoring the notice (and getting served at work) or
   // assuming it's a scam.
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, 'IV. What To Do Next', y);
     y = sec.contentY + 2;
@@ -1290,10 +1290,10 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // default forced a page break the real content did not need -- the content
   // fit with room to spare and still landed on sheet two.
   //
-  // 18mm gives a wet-signature line with room to write; 9mm was too tight
+  // 14mm gives a wet-signature line with room to write; 9mm was too tight
   // for a real pen signature on a PJ-700 thermal print.
-  const SIG_ROW_H = 18;
-  const SIG_INFO_H = 7;
+  const SIG_ROW_H = 14;
+  const SIG_INFO_H = 6;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
   y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
 
@@ -1327,15 +1327,15 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // Centered bold line immediately after the signature so the person at
   // the door can call without looking up the agency number.
   if (data.serverPhone) {
-    y = checkPageBreak(doc, y, 8);
+    y = checkPageBreak(doc, y, 6);
     const pageWidth = doc.internal.pageSize.getWidth();
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     doc.text(`To arrange delivery, contact ${company}: ${data.serverPhone}`,
-      pageWidth / 2, y + 3, { align: 'center' });
-    y += 8;
+      pageWidth / 2, y + 2.5, { align: 'center' });
+    y += 6;
   }
   y += SPACING.XS;
 
@@ -1345,7 +1345,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // than the statutory authority line it is. Sentence case retained
   // throughout (only the proper nouns/section symbol are capitalized) so it
   // reads as a legal citation, not a shouted disclaimer.
-  y = checkPageBreak(doc, y, 9);
+  y = checkPageBreak(doc, y, 7);
   const footerCiteWidth = doc.internal.pageSize.getWidth();
   // Rule spans the RAIL (getRailX/getRailWidth), matching every other
   // full-bleed rule on the page — was lx/ffw, inset 1mm on both sides.
@@ -1465,7 +1465,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   }
 
   // ── Job Details Table ──
-  y = checkPageBreak(doc, y, 30);
+  y = checkPageBreak(doc, y, 22);
   {
     const sec = openAutoSection(doc, 'Job Details', y);
     y = sec.contentY;
@@ -1509,7 +1509,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
 
   // ── Route Efficiency ──
   if (data.routeEfficiency) {
-    y = checkPageBreak(doc, y, 25);
+    y = checkPageBreak(doc, y, 18);
     const sec = openAutoSection(doc, 'Route Efficiency', y);
     y = sec.contentY;
     const rowY = y;
@@ -1973,21 +1973,21 @@ function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   // right of every header/panel/signature block below it and then
   // overshot the right rail by that same 1mm — the exact "sized from
   // getContentWidth but drawn from getLeftX" bug pdfTokens.ts warns about.
-  const barH = SPACING.SECTION_HEADER_H + 1.5;
-  y = checkPageBreak(doc, y, barH + SPACING.LG);
+  const barH = SPACING.SECTION_HEADER_H + 0.5;
+  y = checkPageBreak(doc, y, barH + SPACING.SM);
 
   const titleAccentRgb = resolveSectionAccentColor(title);
   doc.setFillColor(titleAccentRgb[0], titleAccentRgb[1], titleAccentRgb[2]);
   doc.rect(getRailX(), y, getRailWidth(doc), barH, 'F');
 
   doc.setFont('Arial', 'bold');
-  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  const capH = (FONT.SIZE_SECTION_TITLE + 2) * 0.35;
+  const capH = (FONT.SIZE_SECTION_TITLE + 1) * 0.35;
   doc.text(sanitizePdfText(title.toUpperCase()), cx, y + (barH + capH) / 2, { align: 'center' });
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + barH + (tightLayout ? SPACING.MD : SPACING.LG);
+  return y + barH + (tightLayout ? SPACING.XS : SPACING.SM);
 }
 
 interface SubjectRow {
@@ -2858,7 +2858,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // closeAutoSection draws its rule AT the y it returns. The execution
   // clause needs a full line below it, not a compressed fraction — at
   // tight spacing the rule sat on the clause's ascenders.
-  y += SPACING.XL + SPACING.MD;
+  y += SPACING.XL;
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2881,7 +2881,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       + `on ${withZone(`${signedDate} at ${signedTime}`)}.`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   }
-  y += SPACING.LG;
+  y += SPACING.MD;
 
   // Role label names the SIGNER, not the server. The process server's
   // own sworn statement belongs on the affidavit filed with the court,
@@ -2911,7 +2911,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     },
   );
 
-  y += SPACING.XL;
+  y += SPACING.LG;
 
   // Authority note, set as a genuine footnote BELOW the signature. It
   // explains the rule the variation rests on; it is not something the
