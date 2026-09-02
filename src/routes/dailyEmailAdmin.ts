@@ -20,17 +20,11 @@ import type { Bindings, Variables } from '../types';
 
 const dailyEmailAdmin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Auth: all endpoints require admin role EXCEPT /test-open (temp bypass for testing).
-dailyEmailAdmin.use('*', async (c, next) => {
-  // TEMPORARY: /test-open is fully public (no auth at all)
-  if (c.req.path === '/test-open') {
-    log.warn('[daily-email] dev auth bypass used', { path: c.req.path });
-    return next();
-  }
-  // Standard auth for all other requests
-  await authMiddleware(c, async () => {});
-  return requireRole('admin')(c, next);
-});
+// TEMPORARY: /test-open is a fully public test endpoint — mounted SEPARATELY
+// in routesConfig.ts (auth: 'public') to bypass all auth middleware.
+// This middleware only applies to the authenticated routes below.
+dailyEmailAdmin.use('/recipients', authMiddleware, requireRole('admin'));
+dailyEmailAdmin.use('/test-send', authMiddleware, requireRole('admin'));
 
 // GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
 // Query params: ?date=YYYY-MM-DD (send real report)  ?to=email (override recipient)
