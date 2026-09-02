@@ -20,11 +20,13 @@ import type { Bindings, Variables } from '../types';
 
 const dailyEmailAdmin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// TEMPORARY: /test-open is a fully public test endpoint — mounted SEPARATELY
-// in routesConfig.ts (auth: 'public') to bypass all auth middleware.
-// This middleware only applies to the authenticated routes below.
-dailyEmailAdmin.use('/recipients', authMiddleware, requireRole('admin'));
-dailyEmailAdmin.use('/test-send', authMiddleware, requireRole('admin'));
+// No blanket middleware — auth is checked inline per handler.
+// /test-open is intentionally public (temp bypass for testing).
+
+async function requireAdmin(c: any, next: any) {
+  await authMiddleware(c, async () => {});
+  return requireRole('admin')(c, next);
+}
 
 // GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
 // Query params: ?date=YYYY-MM-DD (send real report)  ?to=email (override recipient)
@@ -72,7 +74,7 @@ dailyEmailAdmin.get('/test-open', async (c) => {
 });
 
 // GET /recipients — return current config
-dailyEmailAdmin.get('/recipients', async (c) => {
+dailyEmailAdmin.get('/recipients', requireAdmin, async (c) => {
   try {
     const db = getDb(c.env);
     const config = await getConfig(db);
@@ -86,7 +88,7 @@ dailyEmailAdmin.get('/recipients', async (c) => {
 });
 
 // PUT /recipients — update config
-dailyEmailAdmin.put('/recipients', async (c) => {
+dailyEmailAdmin.put('/recipients', requireAdmin, async (c) => {
   try {
     const body: { enabled?: boolean; recipients?: string[]; includePdf?: boolean } =
       await c.req.json().catch(() => ({}));
@@ -165,7 +167,7 @@ dailyEmailAdmin.get('/test-send', async (c) => {
 // POST /test-send — send a test email
 // Query params: ?date=YYYY-MM-DD (send real report for that date)
 //               ?to=email (override recipient)
-dailyEmailAdmin.post('/test-send', async (c) => {
+dailyEmailAdmin.post('/test-send', requireAdmin, async (c) => {
   const resendApiKey = c.env.RESEND_API_KEY;
   if (!resendApiKey) {
     return c.json({ ok: false, error: 'RESEND_API_KEY not configured' }, 503);
