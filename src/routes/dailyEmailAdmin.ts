@@ -29,7 +29,8 @@ async function requireAdmin(c: any, next: any) {
 }
 
 // GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
-// Query params: ?date=YYYY-MM-DD (send real report)  ?to=email (override recipient)
+// Sends a simple test email to verify Resend is configured.
+// Query params: ?to=email (override recipient)
 dailyEmailAdmin.get('/test-open', async (c) => {
   const resendApiKey = c.env.RESEND_API_KEY;
   if (!resendApiKey) {
@@ -38,20 +39,13 @@ dailyEmailAdmin.get('/test-open', async (c) => {
 
   try {
     const db = getDb(c.env);
-    const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
     const toOverride = c.req.query('to');
-
-    if (c.req.query('date')) {
-      const { sendDailyEmails } = await import('../utils/dailyEmail/sendDailyEmails');
-      const result = await sendDailyEmails(db, resendApiKey, date);
-      return c.json({ ok: !result.skipped, ...result });
-    }
-
     const config = await getConfig(db);
     const recipients = toOverride ? [toOverride] : config.recipients;
     if (recipients.length === 0) {
       return c.json({ ok: false, error: 'No recipients configured' }, 400);
     }
+    const date = new Date().toISOString().slice(0, 10);
     const result = await sendViaResend(resendApiKey, {
       from: 'RMPG Flex <noreply@rmpgutah.us>',
       to: recipients[0],
