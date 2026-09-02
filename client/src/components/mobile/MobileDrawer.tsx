@@ -15,6 +15,7 @@ import {
   ShieldBan, UserCog, Video, Camera, IdCard, Crosshair, ShieldAlert, Microscope,
   BookOpen, Scale, Contact, Siren, Smartphone, Globe, HelpCircle, Shield, GraduationCap,
   MapPin, DollarSign, Megaphone, Bell, CheckCircle, Share2, Building2, UserCheck, Route,
+  PhoneCall,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -65,6 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/command-center', icon: Map, label: 'Command Center' },
       { path: '/navigation', icon: Route, label: 'Navigation' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
+      { path: '/dialer-connect', icon: PhoneCall, label: 'Dialer Connect' },
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/nav', icon: Navigation2, label: 'Nav' },
@@ -125,6 +127,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/email', icon: MessageSquare, label: 'Email' },
       { path: '/communications', icon: MessageSquare, label: 'Comms' },
+      { path: '/dialer-connect', icon: Smartphone, label: 'Dial Connect' },
       { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
       { path: '/alerts', icon: Bell, label: 'Alert Center' },

@@ -18,6 +18,7 @@
 import React, { useEffect, useId, useState } from 'react';
 import { DollarSign, Calendar, AlertTriangle, Save, X as XIcon, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { FleetFuelBudget, FuelBudgetPeriod } from '../../../types';
 
@@ -83,6 +84,7 @@ export default function FuelBudgetModal({
     isActive: isOpen,
   });
   const [error, setError] = useState('');
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   // Populate form from initial data when modal opens
   useEffect(() => {
@@ -141,14 +143,14 @@ export default function FuelBudgetModal({
   };
 
   const guardedClose = () => {
-    if (isDirty && !saving) {
-      if (window.confirm('You have unsaved changes. Discard them?')) {
-        clearDraft();
-        onClose();
-      }
-    } else {
-      onClose();
-    }
+    if (isDirty && !saving) setDiscardOpen(true);
+    else onClose();
+  };
+
+  const confirmDiscard = () => {
+    setDiscardOpen(false);
+    clearDraft();
+    onClose();
   };
 
   return (
@@ -251,6 +253,7 @@ export default function FuelBudgetModal({
           </button>
         </div>
       </div>
+      <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={confirmDiscard} />
     </div>
   );
 }

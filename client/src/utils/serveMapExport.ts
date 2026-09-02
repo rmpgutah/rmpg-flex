@@ -210,14 +210,9 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     return;
   }
 
-  // Sort: urgent → rush → normal → routine, then by deadline
-  const sortOrder: Record<string, number> = { urgent: 0, rush: 1, normal: 2, routine: 3 };
-  const sorted = [...items].sort((a, b) => {
-    const pa = sortOrder[a.priority?.toLowerCase()] ?? 3;
-    const pb = sortOrder[b.priority?.toLowerCase()] ?? 3;
-    if (pa !== pb) return pa - pb;
-    return (a.deadline ?? '').localeCompare(b.deadline ?? '');
-  });
+  // Visit order is the drive sequence. Do not re-sort by priority — that
+  // printed a different run than the officer is driving.
+  const sorted = [...items];
 
   y = drawColumnHeaders(y);
 

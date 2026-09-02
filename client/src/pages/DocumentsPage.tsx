@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { parseTimestamp } from '../utils/dateUtils';
+import { fileListingToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Folder {
   id: number;
@@ -59,6 +60,7 @@ export default function DocumentsPage() {
   })();
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(initialFolderId);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
   // Modal state
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -97,6 +99,7 @@ export default function DocumentsPage() {
 
   const fetchContents = useCallback(async (folderId: number | null) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = folderId ? `?parent_id=${folderId}` : '';
       const data = await apiFetch<{ folders: Folder[]; files: FileItem[]; breadcrumbs: { id: number; name: string }[] }>(`/documents/folders${params}`);
@@ -104,6 +107,7 @@ export default function DocumentsPage() {
       setFiles(data.files || []);
       setBreadcrumbs(data.breadcrumbs || []);
     } catch (err: any) {
+      setLoadError(true);
       addToast(err.message || 'Failed to load documents', 'error');
     } finally {
       setLoading(false);
@@ -493,6 +497,14 @@ export default function DocumentsPage() {
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title="DOCUMENTS / UPLOAD RECORDS" icon={FolderOpen}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={files.length === 0}
+          onClick={() => downloadTextFile('documents.csv', fileListingToCsv(files.map((f) => ({
+            name: f.original_name, size: f.file_size, modified: f.created_at, path: f.file_id,
+          }))))}
+        >CSV</button>
         <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={uploading} className="toolbar-btn toolbar-btn-primary">
           {uploading ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Upload style={{ width: 10, height: 10 }} />}
           {uploading ? 'Uploading...' : 'Upload Files'}
@@ -505,6 +517,13 @@ export default function DocumentsPage() {
           </button>
         )}
       </PanelTitleBar>
+
+      {loadError && (
+        <div className="px-4 py-2 text-xs text-red-400 flex items-center justify-between border-b border-red-700/40">
+          <span>Failed to load this folder.</span>
+          <button type="button" className="toolbar-btn" onClick={() => void fetchContents(currentFolderId)}>Retry</button>
+        </div>
+      )}
 
       {/* Breadcrumb navigation */}
       <div className="px-4 py-2 border-b border-rmpg-700 flex items-center gap-1 text-[11px] bg-surface-sunken overflow-x-auto tab-scroll">
@@ -526,6 +545,7 @@ export default function DocumentsPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input id="ff-documentspage-1" type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
+            aria-label="Search folders and files"
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && (
             <button aria-label="Close" type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100">

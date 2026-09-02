@@ -1,16 +1,21 @@
 import { Hono } from 'hono';
 import { jwtVerify } from 'jose';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, ensureAttachmentEvidenceColumns } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
 import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
-import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../utils/encryptedR2';
+import { resolveUploadMime } from '../utils/uploadMime';
+import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { mergeExif, parseImageExif } from '../utils/imageExif';
+import { isInlineAudio, parseBytesRange, playbackContentType } from '../utils/inlineMedia';
 
 const uploads = new Hono<Env>();
 
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+  'image/heic', 'image/heif',
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -28,7 +33,7 @@ const ALLOWED_MIME = new Set([
   'text/javascript', 'application/javascript',
   'text/x-python', 'text/x-sh', 'text/x-yaml', 'application/x-yaml',
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
-  'audio/mpeg', 'audio/wav', 'audio/ogg',
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg',
 ]);
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
@@ -149,6 +154,7 @@ uploads.get('/entity/:type/:id', async (c) => {
     const auth = await resolveAuth(c);
     if (!auth) return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
+    await ensureAttachmentEvidenceColumns(db);
     const type = c.req.param('type');
     const id = parseInt(c.req.param('id'), 10);
     const rows = await query<any>(
@@ -203,7 +209,7 @@ uploads.get('/:fileId/thumbnail', async (c) => {
       return c.json({ error: 'Not an image', code: 'NOT_AN_IMAGE' }, 400);
     }
 
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, att.file_path);
     let data: Uint8Array<ArrayBuffer>;
     if (decrypted) {
       // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
@@ -243,7 +249,7 @@ uploads.get('/:fileId/download', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, att.file_path);
     let data: Uint8Array<ArrayBuffer>;
     if (decrypted) {
       // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
@@ -277,7 +283,7 @@ uploads.get('/:fileId', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, att.file_path);
     let data: Uint8Array<ArrayBuffer>;
     if (decrypted) {
       // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
@@ -292,11 +298,29 @@ uploads.get('/:fileId', async (c) => {
       if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
       data = new Uint8Array(await legacy.arrayBuffer());
     }
-    c.header('Content-Type', att.mime_type);
-    c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
+    const contentType = playbackContentType(att.mime_type, att.original_name);
+    const total = data.byteLength;
+    const range = parseBytesRange(c.req.header('Range'), total);
+
+    c.header('Content-Type', contentType);
+    c.header('Content-Disposition', `inline; filename="${String(att.original_name || 'file').replace(/"/g, '')}"`);
     c.header('Cache-Control', 'private, max-age=300');
     c.header('X-Content-Type-Options', 'nosniff');
-    c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+    c.header('Accept-Ranges', 'bytes');
+    if (!isInlineAudio(contentType, att.original_name)) {
+      c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+    }
+
+    if (range === 'unsatisfiable') {
+      c.header('Content-Range', `bytes */${total}`);
+      return c.body(null, 416);
+    }
+    if (range) {
+      const slice = data.subarray(range.start, range.end + 1);
+      c.header('Content-Range', `bytes ${range.start}-${range.end}/${total}`);
+      c.header('Content-Length', String(slice.byteLength));
+      return c.body(slice, 206);
+    }
     return c.body(data);
   } catch (err) {
     log.error('File fetch failed', { fileId: c.req.param('fileId') }, err as Error);
@@ -310,6 +334,11 @@ uploads.post('/', async (c) => {
     const auth = await resolveAuth(c);
     if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
     const userId = auth.userId;
+    if (!c.env.UPLOADS) {
+      return c.json({ error: 'Uploads storage is not bound', code: 'UPLOADS_NOT_BOUND' }, 503);
+    }
+
+    await ensureAttachmentEvidenceColumns(db);
 
     const formData = await c.req.formData();
     const rawFiles = formData.getAll('files');
@@ -325,7 +354,8 @@ uploads.post('/', async (c) => {
 
     const entityType = formData.get('entity_type') ? String(formData.get('entity_type')) : null;
     const entityIdRaw = formData.get('entity_id') ? String(formData.get('entity_id')) : null;
-    const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
+    // D1 rejects NaN (D1_TYPE_ERROR) — a CFS number string used to 500 the whole upload.
+    const entityId = entityIdRaw && /^\d+$/.test(entityIdRaw) ? parseInt(entityIdRaw, 10) : null;
 
     // Evidence metadata supplied by the client at upload time.
     const geoLat = formData.get('latitude') ? parseFloat(String(formData.get('latitude'))) : null;
@@ -361,20 +391,28 @@ uploads.post('/', async (c) => {
     const results: any[] = [];
 
     for (const file of files) {
-      if (!ALLOWED_MIME.has(file.type)) {
-        return c.json({ error: `File type ${file.type} is not allowed` }, 400);
+      const mime = resolveUploadMime(file.name, file.type);
+      if (!ALLOWED_MIME.has(mime)) {
+        return c.json({ error: `File type ${mime || file.type || 'unknown'} is not allowed` }, 400);
       }
       if (file.size > MAX_FILE_SIZE) {
         return c.json({ error: `File too large — max ${MAX_FILE_SIZE / 1024 / 1024} MB`, code: 'FILE_TOO_LARGE' }, 400);
       }
 
       const fileId = crypto.randomUUID();
-      const ext = extFor(file.name, file.type);
+      const ext = extFor(file.name, mime);
       const r2Key = `attachments/${fileId}${ext}`;
       const buffer = await file.arrayBuffer();
+      const fromExif = mime.startsWith('image/')
+        ? parseImageExif(new Uint8Array(buffer))
+        : null;
+      const evidence = mergeExif(
+        { latitude: geoLat, longitude: geoLon, taken_at: takenAt },
+        fromExif,
+      );
 
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
-        httpMetadata: { contentType: file.type || 'application/octet-stream' },
+      await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, buffer, {
+        httpMetadata: { contentType: mime },
       });
 
       await execute(
@@ -385,14 +423,14 @@ uploads.post('/', async (c) => {
         file.name,
         `${fileId}${ext}`,
         r2Key,
-        file.type,
+        mime,
         file.size,
         entityType,
         entityId,
         userId,
-        geoLat ?? null,
-        geoLon ?? null,
-        takenAt ?? null,
+        evidence.latitude ?? null,
+        evidence.longitude ?? null,
+        evidence.taken_at ?? null,
         referenceNotes ?? null,
       );
 
@@ -410,21 +448,31 @@ uploads.post('/', async (c) => {
       if (row) results.push(row);
     }
 
-    await execute(
-      db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, 'file_uploaded', ?, ?, ?, ?)`,
-      userId,
-      entityType || 'attachment',
-      entityId,
-      `Uploaded ${files.length} file(s): ${files.map((f) => f.name).join(', ')}`,
-      c.req.header('CF-Connecting-IP') || 'unknown',
-    );
+    try {
+      await execute(
+        db,
+        `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'file_uploaded', ?, ?, ?, ?)`,
+        userId,
+        entityType || 'attachment',
+        entityId,
+        `Uploaded ${files.length} file(s): ${files.map((f) => f.name).join(', ')}`,
+        c.req.header('CF-Connecting-IP') || 'unknown',
+      );
+    } catch (logErr) {
+      log.error('activity_log file_uploaded insert failed', {}, logErr as Error);
+    }
 
     return c.json(results, 201);
   } catch (err) {
     log.error('Upload failed', {}, err as Error);
-    return c.json({ error: 'Upload failed', code: 'UPLOAD_FAILED' }, 500);
+    if (err instanceof FileEncryptionError) {
+      return c.json({
+        error: 'File storage is temporarily unavailable. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
+    }
+    return dbErrorResponse(c, err, 'Upload failed');
   }
 });
 
@@ -574,7 +622,7 @@ uploads.post('/create', async (c) => {
     const ext = extFor(name, mimeType);
     const r2Key = `attachments/${fileId}${ext}`;
 
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, new Uint8Array(0), {
+    await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, new Uint8Array(0), {
       httpMetadata: { contentType: mimeType },
     });
 
@@ -640,7 +688,7 @@ uploads.put('/:fileId/content', async (c) => {
 
     const text = await c.req.text();
     const encoded = new TextEncoder().encode(text);
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, encoded, {
+    await putEncrypted(c.env.UPLOADS, db, c.env, att.file_path, encoded, {
       httpMetadata: { contentType: att.mime_type || 'text/plain' },
     });
     await execute(db, 'UPDATE attachments SET file_size = ? WHERE file_id = ?', encoded.byteLength, fileId);
@@ -741,6 +789,7 @@ uploads.patch('/:fileId/metadata', async (c) => {
   const fileId = c.req.param('fileId');
   const db = c.env.DB;
   try {
+    await ensureAttachmentEvidenceColumns(db);
     const body = await c.req.json<{
       latitude?: number | null;
       longitude?: number | null;
@@ -788,7 +837,7 @@ uploads.put('/:fileId/replace', async (c) => {
     if (!blob || blob.size === 0) return c.json({ error: 'No body', code: 'NO_BODY' }, 400);
 
     const buffer = new Uint8Array(await blob.arrayBuffer());
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, buffer, {
+    await putEncrypted(c.env.UPLOADS, db, c.env, att.file_path, buffer, {
       httpMetadata: { contentType: att.mime_type },
     });
 

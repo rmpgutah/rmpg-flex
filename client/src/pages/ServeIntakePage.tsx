@@ -1474,6 +1474,7 @@ export default function ServeIntakePage() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
               {[
                 { key: 'plaintiff',         label: 'Plaintiff' },
+                { key: 'defendant',         label: 'Defendant' },
                 { key: 'court_name',        label: 'Court' },
                 { key: 'case_number',       label: 'Case #' },
                 { key: 'job_number',        label: 'Job #' },
@@ -1599,11 +1600,41 @@ export default function ServeIntakePage() {
                   >
                     <option value="">— unknown —</option>
                     <option value="residential">Residential</option>
-                    <option value="commercial">Commercial</option>
+                    <option value="corporate">Corporate / Large Business</option>
+                    <option value="small_business">Small Business</option>
+                    <option value="government">Government Office</option>
+                    <option value="business">Business (generic)</option>
                     <option value="gated">Gated / HOA</option>
                     <option value="po_box">PO Box</option>
                   </select>
                   {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
+                  <p className="text-[8px] text-rmpg-500 mt-0.5">Venue overlay can be forced below; otherwise inferred into the OPS tree.</p>
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">Venue overlay</label>
+                  <select
+                    value={editOverrides['venue_kind'] ?? ''}
+                    onChange={e => overrideField('venue_kind', e.target.value)}
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                  >
+                    <option value="">Auto infer</option>
+                    <option value="none">None</option>
+                    <option value="medical_hospice">Medical / Hospice</option>
+                    <option value="hospital">Hospital</option>
+                    <option value="nursing_home">Nursing / Assisted Living</option>
+                    <option value="financial">Bank / Financial</option>
+                    <option value="law_office">Law Office</option>
+                    <option value="school">School / Campus</option>
+                    <option value="hotel">Hotel / Lodging</option>
+                    <option value="warehouse">Warehouse / Industrial</option>
+                    <option value="church">House of Worship</option>
+                    <option value="storage">Self-Storage</option>
+                    <option value="apartment_complex">Apartment Complex</option>
+                    <option value="high_rise">High-Rise / Office</option>
+                    <option value="military">Military / Restricted</option>
+                    <option value="construction">Construction Site</option>
+                    <option value="rural">Rural / Farm</option>
+                  </select>
                 </div>
                 <div>
                   <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
@@ -1827,7 +1858,8 @@ export default function ServeIntakePage() {
                   recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
                 </span>
                 <button
-                  onClick={() => navigate(`/serve?queue_id=${result.duplicate_of!.serve_queue_id}`)}
+                  type="button"
+                  onClick={() => navigate(`/serve?job_id=${result.duplicate_of!.serve_queue_id}`)}
                   className="text-[10px] text-brand-400 whitespace-nowrap hover:underline shrink-0"
                 >
                   View Entry →
@@ -1871,9 +1903,20 @@ export default function ServeIntakePage() {
                 </div>
                 <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + toDisplayLabel(result.extracted.processType.slice(1)) : 'PSO Client Request'} — Pending</p>
-                <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
-                  View in Dispatch →
-                </button>
+                <div className="flex flex-wrap gap-x-2 mt-1">
+                  {result.serve_queue_id != null && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/serve?job_id=${result.serve_queue_id}`)}
+                      className="text-[9px] text-brand-400 hover:underline"
+                    >
+                      Open in Process Server →
+                    </button>
+                  )}
+                  <button type="button" onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 hover:underline">
+                    View in Dispatch →
+                  </button>
+                </div>
               </div>
             </div>
 

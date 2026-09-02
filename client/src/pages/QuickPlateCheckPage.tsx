@@ -3,6 +3,8 @@ import { Search, X, AlertTriangle, Car, User, MapPin, FileText, Clock, ChevronDo
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { parseTimestamp } from '../utils/dateUtils';
+import { plateHistoryToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN',
@@ -736,6 +738,19 @@ export default function QuickPlateCheckPage() {
               >
                 Recent Searches
               </span>
+              <button
+                type="button"
+                onClick={() => downloadTextFile('plate-history.csv', plateHistoryToCsv(history))}
+                style={{ marginLeft: 'auto', fontSize: 10, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+              >CSV</button>
+              <button
+                type="button"
+                onClick={() => {
+                  try { localStorage.removeItem(HISTORY_KEY); } catch { /* ignore */ }
+                  setHistory([]);
+                }}
+                style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+              >Clear</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 14px' }}>
               {history.map((h, i) => (
@@ -768,6 +783,13 @@ export default function QuickPlateCheckPage() {
                     {h.state}
                   </span>
                   {h.plate}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); void copyToClipboard(h.plate); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void copyToClipboard(h.plate); } }}
+                    style={{ fontSize: 9, fontWeight: 400, color: 'var(--text-secondary)' }}
+                  >copy</span>
                 </button>
               ))}
             </div>

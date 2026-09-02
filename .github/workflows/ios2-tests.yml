@@ -1,15 +1,11 @@
 name: ios2 tests (RMPG Flex Connect)
 
+# PARKED 2026-08-28: Flex Connect / iOS CI is on the back burner so it does
+# not gate CAD login/worker PRs. The ios2/ tree stays in the repo.
+# To resume: restore the pull_request + push:main triggers below, or run
+# this workflow manually from the Actions tab.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'ios2/**'
-      - '.github/workflows/ios2-tests.yml'
-  pull_request:
-    paths:
-      - 'ios2/**'
-      - '.github/workflows/ios2-tests.yml'
+  workflow_dispatch:
 
 # Least-privilege GITHUB_TOKEN (CWE-275). Swift test job needs only read access.
 permissions:
@@ -22,7 +18,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [CoreAPI, CoreAuth, DesignSystem, FeatureShell]
+        # Host-safe packages, including CoreCarPlay's call-list / nav / reply
+        # tests. CarPlaySceneDelegate.swift stays excluded from SPM (CarPlay.framework
+        # is iOS-only); swift-build-carplay compiles the rest of that package
+        # with the iOS Simulator SDK.
+        package: [CoreAPI, CoreAuth, CoreCarPlay, DesignSystem, FeatureShell]
     steps:
       - uses: actions/checkout@v7
 
@@ -45,12 +45,12 @@ jobs:
         working-directory: ios2/RMPGFlexConnect/Packages/${{ matrix.package }}
         run: swift test --enable-test-discovery
 
-  # CoreCarPlay can't go through the swift-tests matrix above: its Package.swift
-  # excludes CarPlaySceneDelegate.swift from the SPM target because the CarPlay
-  # framework isn't available to a plain `swift build`/`swift test` host build —
-  # only to an iOS (or CarPlay Simulator) target built through the Xcode
-  # project. `swift test` on this package would silently skip that file rather
-  # than catch a break in it, so it needs a real xcodebuild instead.
+  # CoreCarPlay's Package.swift excludes CarPlaySceneDelegate.swift from the
+  # host `swift test` target (CarPlay.framework is iOS-only). Building the
+  # package with xcodebuild for the iOS Simulator compiles the rest of the
+  # module with an iOS SDK. Do NOT point this job at RMPGFlexConnect.xcodeproj
+  # — that project is created locally in Xcode (README Task 6) and is not in
+  # git; looking for it was a hard exit 66 on every ios2 PR.
   swift-build-carplay:
     runs-on: macos-14
     timeout-minutes: 15
@@ -66,11 +66,12 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Build CoreCarPlay scheme for iOS Simulator
-        working-directory: ios2/RMPGFlexConnect
+      - name: Build CoreCarPlay package for iOS Simulator
+        working-directory: ios2/RMPGFlexConnect/Packages/CoreCarPlay
         run: |
+          set -euo pipefail
+          xcodebuild -list
           xcodebuild build \
-            -project RMPGFlexConnect.xcodeproj \
             -scheme CoreCarPlay \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO

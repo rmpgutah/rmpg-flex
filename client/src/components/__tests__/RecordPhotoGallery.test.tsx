@@ -8,6 +8,7 @@ const mockApiPostForm = vi.fn();
 vi.mock('../../hooks/useApi', () => ({
   apiFetch: (...args: unknown[]) => mockApiFetch(...args),
   apiPostForm: (...args: unknown[]) => mockApiPostForm(...args),
+  authedImageUrl: (u: string) => u,
 }));
 
 describe('RecordPhotoGallery', () => {

@@ -1,5 +1,7 @@
 import { Car, Search, Gauge, Tag, Radio } from 'lucide-react';
+import { useRef } from 'react';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useSlashFocus } from '../../../hooks/useSlashFocus';
 import GaugeRing from './GaugeRing';
 import { STATUS_COLOR, STATUS_LABEL, VEHICLE_STATUSES, UTILIZATION_LIFETIME_MILES } from '../fleetConstants';
 import type { FleetVehicle, FleetVehicleStatus } from '../../../types';
@@ -33,8 +35,10 @@ interface Props {
 export default function FleetVehicleListPanel({
   vehicles, filtered, vehicleTotal, selectedId, isMobile,
   filterStatus, setFilterStatus, searchQuery, setSearchQuery,
-  onSelect, onContextMenu,
+  onSelect,   onContextMenu,
 }: Props) {
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   return (
     <div
       className={`flex flex-col min-h-0 bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`}
@@ -56,8 +60,9 @@ export default function FleetVehicleListPanel({
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
           <input
             id="ff-fleetpage-1"
+            ref={searchRef}
             className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
-            placeholder="Search vehicles..."
+            placeholder="Search vehicles… (/)"
             aria-label="Search fleet vehicles by number, make, model, or plate"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

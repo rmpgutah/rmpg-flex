@@ -6,7 +6,7 @@
 // Writes a JSON count summary to stderr as its final line.
 import { createInterface } from 'node:readline';
 import { projectFeatures } from './project.mjs';
-import { coneFeature } from './cones.mjs';
+import { coneFeatures, stampCameraGeometry } from './cones.mjs';
 import { getGroup } from './catalog.mjs';
 
 const argv = process.argv.slice(2);
@@ -99,6 +99,8 @@ for await (const line of rl) {
     // zoom gating does nothing — with no error, only oversized low-zoom tiles.
     projected.tippecanoe = { minzoom: minzoomFor(projected.properties.cat) };
 
+    if (wantCones) stampCameraGeometry(projected);
+
     counts[projected.properties.cat]++;
     await write(projected);
 
@@ -106,10 +108,9 @@ for await (const line of rl) {
       // Cones need camera:direction, which projectFeatures keeps only if it is
       // in the group's allow-list. Build from the PROJECTED feature so cat is
       // set. `surveillance` is `first-match`, so projectedList has at most one
-      // entry per input feature — exactly one cone per directional camera,
-      // never one per emitted feature.
-      const cone = coneFeature(projected);
-      if (cone) {
+      // parent per input feature. Multi-bearing tags (45;225) emit one wedge
+      // per look-direction — two housings, two cones, still one camera node.
+      for (const cone of coneFeatures(projected)) {
         // Same top-level placement as above — cone.tippecanoe, not
         // cone.properties.tippecanoe. Gated at the PARENT category's own
         // minzoom (alpr=14, camera=15) rather than the group minimum, so a

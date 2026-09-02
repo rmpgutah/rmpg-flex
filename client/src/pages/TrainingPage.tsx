@@ -24,6 +24,8 @@ import type {
   TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
 } from '../types';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { trainingRecordsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [
@@ -408,6 +410,7 @@ export default function TrainingPage() {
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{fetchError}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchData(); }}>Retry</button>
           <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error">
             <X className="w-3 h-3" />
           </IconButton>
@@ -1110,6 +1113,8 @@ function RecordsTab({
 }) {
   void requirements; // currently unused at this layer; reserved for join
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [categoryFilter, setCategoryFilter] = useState<'all' | TrainingCategory>('all');
 
   const filtered = useMemo(() => {
@@ -1146,8 +1151,9 @@ function RecordsTab({
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input id="ff-trainingpage-5"
+            ref={searchRef}
             type="text"
-            placeholder="Search..." aria-label="Search..."
+            placeholder="Search... (/)" aria-label="Search..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className={`input-dark text-[11px] pl-6 ${search ? 'pr-7' : 'pr-2'} py-1 w-40 min-h-[36px]`}
@@ -1192,6 +1198,17 @@ function RecordsTab({
           ))}
         </select>
         <span className="text-[10px] text-rmpg-500 ml-auto">{filtered.length} records</span>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('training-records.csv', trainingRecordsToCsv(filtered.map((r) => ({
+            course_name: r.course_name,
+            status: r.status,
+            completed_at: r.completed_date,
+            due_date: r.expiry_date,
+          }))))}
+        >CSV</button>
       </div>
 
       {/* Records Table — empty-state distinction (v1054):

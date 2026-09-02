@@ -18,6 +18,7 @@ import {
   CreditCard, Shield, Wrench, Zap, Clock, Receipt,
 } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import MoneyInput from '../components/MoneyInput';
 
@@ -246,6 +247,7 @@ export default function FleetCostFormModal({
     isActive: isOpen,
   });
   const [localError, setLocalError] = useState('');
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -284,14 +286,14 @@ export default function FleetCostFormModal({
   };
 
   const guardedClose = () => {
-    if (isDirty && !saving) {
-      if (window.confirm('You have unsaved changes. Discard them?')) {
-        clearDraft();
-        onClose();
-      }
-    } else {
-      onClose();
-    }
+    if (isDirty && !saving) setDiscardOpen(true);
+    else onClose();
+  };
+
+  const confirmDiscard = () => {
+    setDiscardOpen(false);
+    clearDraft();
+    onClose();
   };
 
   return (
@@ -603,6 +605,7 @@ export default function FleetCostFormModal({
           </button>
         </div>
       </div>
+      <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={confirmDiscard} />
     </div>
   );
 }

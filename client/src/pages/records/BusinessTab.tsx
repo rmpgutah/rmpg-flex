@@ -148,9 +148,7 @@ export function useBusinessTab(props: {
   const fetchBusinesses = useCallback(async () => {
     try {
       setLoading(true);
-      // directWorker: bypass the strangler dispatcher, which currently mis-routes
-      // businesses writes to the legacy Worker (404). See useApi.ts. TEMPORARY.
-      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`, { directWorker: true }));
+      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`));
       setBusinesses((data || []).map(mapDbBusiness));
     } catch (err: any) {
       reportError(err.message || 'Failed to load businesses', () => { void fetchBusinesses(); });
@@ -181,9 +179,9 @@ export function useBusinessTab(props: {
     setFormSubmitting(true);
     try {
       if (editingBusiness) {
-        await apiFetch(`/records/businesses/${editingBusiness.id}`, { method: 'PUT', body: JSON.stringify(data), directWorker: true });
+        await apiFetch(`/records/businesses/${editingBusiness.id}`, { method: 'PUT', body: JSON.stringify(data) });
       } else {
-        await apiFetch('/records/businesses', { method: 'POST', body: JSON.stringify(data), directWorker: true });
+        await apiFetch('/records/businesses', { method: 'POST', body: JSON.stringify(data) });
       }
       setShowFormModal(false);
       setEditingBusiness(null);
@@ -587,7 +585,6 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
         {
           method: 'POST',
           body: JSON.stringify({ record_type: 'business', record_id: recordId, parcel_number: parcelNumber }),
-          directWorker: true,
         },
       );
       // Merge the server's never-clobber patch into the local form state. The

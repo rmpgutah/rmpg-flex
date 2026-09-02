@@ -47,6 +47,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { localToday } from '../utils/dateUtils';
 import { DollarSign, FileText, Clock, Receipt, Plus, Pencil, Trash2, Download, AlertTriangle, X } from 'lucide-react';
 import { toDisplayLabel } from '../utils/formatters';
+import { invoicesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 type Invoice = Record<string, any> & { id: number; invoice_number?: string; status?: string; due_date?: string | null };
 
@@ -329,7 +330,12 @@ export default function BillingPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="BILLING & FINANCIAL" icon={DollarSign}>
-        {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
+        {error && (
+          <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3 flex items-center justify-between" role="alert">
+            <span>{error}</span>
+            <button type="button" className="toolbar-btn" style={{ height: 26 }} onClick={() => { setLoading(true); fetchData().finally(() => setLoading(false)); }}>Retry</button>
+          </div>
+        )}
         {canManage && (
           <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }} title="New Invoice (N)">
             <Plus size={13} /> New Invoice
@@ -368,6 +374,13 @@ export default function BillingPage() {
         <span className="text-rmpg-600 ml-auto tabular-nums">
           {filteredInvoices.length} of {invoices.length}
         </span>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 26, padding: '0 8px' }}
+          disabled={filteredInvoices.length === 0}
+          onClick={() => downloadTextFile('invoices.csv', invoicesToCsv(filteredInvoices))}
+        >CSV</button>
       </div>
 
       <DataTable

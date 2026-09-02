@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Loader2, MessageSquareWarning, Eye, UserCheck, Link2,
-  X, ChevronRight,
+  Search, Loader2, MessageSquareWarning, UserCheck, Link2,
+  X, Copy, Download,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { downloadTextFile, tipsToCsv } from '../utils/rmsListExport';
 
 // ── Types ──
 interface Tip {
@@ -64,6 +65,8 @@ export default function TipsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterUrgency, setFilterUrgency] = useState('');
 
   // ── Detail panel state ──
   const [selectedTip, setSelectedTip] = useState<Tip | null>(null);
@@ -94,6 +97,18 @@ export default function TipsPage() {
   }, [searchQuery, filterStatus]);
 
   useEffect(() => { fetchTips(); }, [fetchTips]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedTip) {
+        setSelectedTip(null);
+        setAssignOpen(false);
+        setLinkOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedTip]);
 
   // Fetch investigators for assignment
   useEffect(() => {
@@ -137,6 +152,16 @@ export default function TipsPage() {
     finally { setAssigning(false); }
   };
 
+  const visibleTips = tips.filter((t) => {
+    if (filterType && t.tip_type !== filterType) return false;
+    if (filterUrgency && t.urgency !== filterUrgency) return false;
+    return true;
+  });
+
+  const copyTracking = (num: string) => {
+    navigator.clipboard.writeText(num).catch(() => undefined);
+  };
+
   const handleLinkCase = async () => {
     if (!selectedTip || !linkCaseNumber) return;
     setLinking(true);
@@ -158,15 +183,20 @@ export default function TipsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'New', value: stats.new_tips, color: '[color:var(--panel-header-color)]' },
-          { label: 'Reviewed', value: stats.reviewed, color: 'text-blue-400' },
-          { label: 'Investigating', value: stats.investigating, color: 'text-amber-400' },
-          { label: 'Actionable', value: stats.actionable, color: 'text-green-400' },
+          { label: 'New', value: stats.new_tips, color: '[color:var(--panel-header-color)]', status: 'new' },
+          { label: 'Reviewed', value: stats.reviewed, color: 'text-blue-400', status: 'reviewed' },
+          { label: 'Investigating', value: stats.investigating, color: 'text-amber-400', status: 'investigating' },
+          { label: 'Actionable', value: stats.actionable, color: 'text-green-400', status: 'actionable' },
         ].map(s => (
-          <div key={s.label} className="bg-surface-raised border border-border-default rounded-[2px] p-3">
+          <button
+            type="button"
+            key={s.label}
+            onClick={() => setFilterStatus(filterStatus === s.status ? '' : s.status)}
+            className={`bg-surface-raised border rounded-[2px] p-3 text-left ${filterStatus === s.status ? 'border-accent-silver-600' : 'border-border-default'}`}
+          >
             <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
             <div className="text-[10px] text-rmpg-400 uppercase tracking-wider">{s.label}</div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -177,6 +207,7 @@ export default function TipsPage() {
           <input
             type="text"
             placeholder="Search tracking #, description..."
+            aria-label="Search tips by tracking number or description"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-default rounded-[2px] text-white text-xs focus:border-accent-silver-600 outline-none"
@@ -189,6 +220,28 @@ export default function TipsPage() {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+        <select value={filterType} onChange={e => setFilterType(e.target.value)}
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
+          <option value="">All Types</option>
+          {TIP_TYPES.map(s => (
+            <option key={s} value={s}>{toDisplayLabel(s)}</option>
+          ))}
+        </select>
+        <select value={filterUrgency} onChange={e => setFilterUrgency(e.target.value)}
+          className="bg-surface-sunken border border-border-default rounded-[2px] px-2 py-1.5 text-white text-xs focus:border-accent-silver-600 outline-none">
+          <option value="">All Urgency</option>
+          {['immediate', 'urgent', 'routine'].map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={visibleTips.length === 0}
+          onClick={() => downloadTextFile('tips.csv', tipsToCsv(visibleTips))}
+          className="flex items-center gap-1 px-2 py-1.5 text-xs border border-border-default rounded-[2px] text-rmpg-100 disabled:opacity-40"
+        >
+          <Download className="w-3 h-3" /> CSV
+        </button>
       </div>
 
       {/* Main layout: Table + Detail Panel */}
@@ -207,9 +260,9 @@ export default function TipsPage() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={7} className="text-center py-8 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                ) : tips.length === 0 ? (
+                ) : visibleTips.length === 0 ? (
                   <tr><td colSpan={7} className="text-center py-8 text-rmpg-400">No tips found</td></tr>
-                ) : tips.map(tip => (
+                ) : visibleTips.map(tip => (
                   <tr
                     key={tip.id}
                     onClick={() => handleSelectTip(tip)}
@@ -239,9 +292,14 @@ export default function TipsPage() {
           <div className="w-[380px] shrink-0 bg-surface-raised border border-border-default rounded-[2px] overflow-y-auto max-h-[70vh]">
             <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
               <span className="text-sm font-semibold text-[color:var(--panel-header-color)]">{selectedTip.tracking_number}</span>
+              <div className="flex items-center gap-1">
+              <IconButton aria-label="Copy tracking number" onClick={() => copyTracking(selectedTip.tracking_number)}>
+                <Copy className="w-4 h-4 text-accent-silver-500" />
+              </IconButton>
               <IconButton aria-label="Close detail panel" onClick={() => setSelectedTip(null)}>
                 <X className="w-4 h-4 text-accent-silver-500" />
               </IconButton>
+              </div>
             </div>
 
             <div className="p-4 space-y-4">

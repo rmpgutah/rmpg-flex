@@ -10,6 +10,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { formatDateTime } from '../utils/dateUtils';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { loginHistoryToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface SecurityStatus {
   twoFactorEnabled: boolean; passwordAge: number; trustedDevices: number;
@@ -226,13 +227,23 @@ export default function SecurityDashboardPage() {
   return (
     <div className="p-4 space-y-3">
       <PanelTitleBar title="SECURITY DASHBOARD" icon={Shield}>
+        <button
+          type="button"
+          className="toolbar-btn text-[9px]"
+          disabled={loginHistory.length === 0}
+          onClick={() => downloadTextFile('login-history.csv', loginHistoryToCsv(loginHistory))}
+          title="CSV of time, success, IP — no account names"
+        >CSV</button>
         <button type="button" className="toolbar-btn text-[9px]" onClick={fetchAll} style={{ padding: '2px 8px' }}>
           <RefreshCw className="w-3 h-3" /> Refresh
         </button>
       </PanelTitleBar>
 
       {error && (
-        <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">{error}</div>
+        <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs flex items-center justify-between">
+          <span>{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => void fetchAll()}>Retry</button>
+        </div>
       )}
 
       {/* Status Cards */}

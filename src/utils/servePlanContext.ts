@@ -26,7 +26,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst } from './db';
 import { log } from './logger';
-import type { AddressClass } from './serveAddressClass';
+import { coerceAddressClass, type AddressClass } from './serveAddressClass';
 import type { TimeBand } from './serveScheduleParse';
 import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
 
@@ -56,8 +56,7 @@ export interface PlanContextRow {
 }
 
 function coerceClass(raw: string | null): AddressClass | null {
-  const s = (raw || '').trim().toLowerCase();
-  return s === 'residential' || s === 'business' ? s : null;
+  return coerceAddressClass(raw);
 }
 
 // SQLite json_extract returns integer 1/0 for JSON booleans; be tolerant of a

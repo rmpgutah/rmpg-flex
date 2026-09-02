@@ -15,6 +15,7 @@ import {
   Settings,
   LogOut,
   Phone,
+  PhoneCall,
   QrCode,
   ScrollText,
   Search,
@@ -114,10 +115,10 @@ import PanicButton from './PanicButton';
 // it renders behind a boolean. Layout wraps every authenticated route, so a
 // static import here landed both in the entry chunk on every cold load.
 const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
+const DialerPanel = lazyRetry(() => import('./DialerPanel'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
-import DialerPanel from './DialerPanel';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
 import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
@@ -194,6 +195,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/national-warrant-search': 'National Warrant Search',
   '/downloads': 'Downloads',
   '/geography': 'Dispatch Geography',
+  '/dialer-connect': 'Dialer Connect',
   '/connections': 'Connections',
   '/intel': 'Intel Search',
   '/intel/plate-log': 'Plate Log',
@@ -254,6 +256,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+    { path: '/dialer-connect', icon: PhoneCall, label: 'Dialer Connect' },
   ]},
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
     { path: '/map', icon: Map, label: 'Live Map' },
@@ -319,6 +322,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
+    { path: '/dialer-connect', icon: Phone, label: 'Dial Connect' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -387,7 +391,7 @@ const TOOLBAR_NAV: NavItem[] = [
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/scheduler', '/shift-briefings', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/dialer-connect',
 ]);
 
 // Paths that contract_manager role is NOT allowed to see
@@ -405,9 +409,7 @@ export default function Layout() {
     setProfileDropdownOpen(false);
     const result = await signOut();
     if (!result.ok) {
-      // Shift gate blocked sign-out. Surface via alert() so the operator
-      // can't miss it; the End Shift flow lives on the ShiftCard.
-      try { window.alert(result.message); } catch { /* noop */ }
+      toast?.addToast(result.message, 'error', 8000);
     }
   }, [signOut]);
   const { isConnected, subscribe } = useWebSocket();
@@ -1677,6 +1679,7 @@ export default function Layout() {
                       {item.children!.filter(child => {
                         if (child.adminOnly && !isAdmin) return false;
                         if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(child.path)) return false;
+                        if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(child.path)) return false;
                         return true;
                       }).map((child) => {
                         const ChildIcon = child.icon;
@@ -1893,10 +1896,13 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
-      {/* Dialer — persistent system-wide floating panel (bottom-left).
-          Toasts for ringing/duress are self-contained inside DialerPanel
-          so they appear regardless of which page the user is on. */}
-      <DialerPanel />
+      {/* Dialer — always-on /dialer iframe (authenticated Twilio Client).
+          Dispatch → Dialer Connect docks it into the CAD page. Close (X) parks
+          the iframe off-screen so Twilio stays registered. Pop-out unloads
+          the iframe and opens a named Dial Connect window. */}
+      <React.Suspense fallback={null}>
+        <DialerPanel />
+      </React.Suspense>
 
     </div>
   );

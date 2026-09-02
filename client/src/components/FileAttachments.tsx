@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { parseTimestamp } from '../utils/dateUtils';
+import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import {
   Paperclip,
   Upload,
@@ -25,9 +25,11 @@ import type { UploadProgress, EvidenceMeta } from '../hooks/useApi';
 import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
-import { getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
+import { getGeoFix, contextLabelForEntity, formatStampTimestampMountain } from '../utils/photoStamp';
+import { readImageExifFromBlob } from '../utils/imageExif';
 import { deStampOne } from '../utils/deStampImage';
 import { Eraser } from 'lucide-react';
+import { officerFacingFileError } from '../utils/officerFacingFileError';
 
 interface Attachment {
   id: number;
@@ -111,16 +113,7 @@ function formatDate(dateStr: string): string {
 
 /** Format a timestamp as the evidence stamp line (MM-DD-YYYY at HH:MM:SS TZ) */
 function formatEvidenceDate(iso: string): string {
-  const d = parseTimestamp(iso);
-  const p = (n: number) => String(n).padStart(2, '0');
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Denver',
-    month: '2-digit', day: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false, timeZoneName: 'short',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
-  return `${get('month')}-${get('day')}-${get('year')} at ${get('hour')}:${get('minute')}:${get('second')} (${get('timeZoneName')})`;
+  return formatStampTimestampMountain(parseTimestamp(iso));
 }
 
 // ─── Evidence Overlay Strip ────────────────────────────────────────────────
@@ -181,7 +174,9 @@ interface MetaEditPanelProps {
 function MetaEditPanel({ att, onSaved, onClose }: MetaEditPanelProps) {
   const [lat, setLat] = useState(att.latitude != null ? String(att.latitude) : '');
   const [lon, setLon] = useState(att.longitude != null ? String(att.longitude) : '');
-  const [takenAt, setTakenAt] = useState(att.taken_at ?? att.created_at ?? '');
+  const [takenAt, setTakenAt] = useState(
+    toDatetimeLocalValue(att.taken_at ?? att.created_at ?? ''),
+  );
   const [ref, setRef] = useState(att.reference_notes ?? '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -190,10 +185,11 @@ function MetaEditPanel({ att, onSaved, onClose }: MetaEditPanelProps) {
     setSaving(true);
     setErr(null);
     try {
+      const utcTaken = takenAt ? mtDatetimeLocalToUtc(takenAt).replace(' ', 'T') + 'Z' : null;
       const payload = {
         latitude: lat ? parseFloat(lat) : null,
         longitude: lon ? parseFloat(lon) : null,
-        taken_at: takenAt || null,
+        taken_at: utcTaken,
         reference_notes: ref || null,
       };
       await apiFetch(`/uploads/${att.file_id}/metadata`, {
@@ -233,10 +229,10 @@ function MetaEditPanel({ att, onSaved, onClose }: MetaEditPanelProps) {
 
       <div className="space-y-3 flex-1">
         <div>
-          <label className={labelCls}>Date / Time Taken (ISO-8601)</label>
-          <input type="text" className={inputCls} value={takenAt}
+          <label className={labelCls}>Date / Time Taken (Mountain Time)</label>
+          <input type="datetime-local" step="1" className={inputCls} value={takenAt}
             onChange={e => setTakenAt(e.target.value)}
-            placeholder="2026-08-21T20:59:40Z" />
+            placeholder="2026-08-21T14:59:40" />
         </div>
         <div className="flex gap-2">
           <div className="flex-1">
@@ -497,7 +493,7 @@ export default function FileAttachments({
       const data = await apiFetchAttachments(entityType, entityId);
       setAttachments(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load attachments');
+      setError(officerFacingFileError(err, 'Failed to load attachments'));
     } finally {
       setLoading(false);
     }
@@ -509,17 +505,11 @@ export default function FileAttachments({
     let fileArray = Array.from(files);
     if (fileArray.length === 0) return;
 
-    // Capture geo + timestamp before stamping (best-effort)
+    // Device GPS is fallback only — the photograph's own EXIF wins per file.
     let geo: { lat: number; lon: number } | null = null;
     try { geo = await getGeoFix(); } catch { /* none */ }
-    const takenAt = new Date().toISOString();
-
-    const evidenceMeta: EvidenceMeta = {
-      latitude: geo?.lat,
-      longitude: geo?.lon,
-      taken_at: takenAt,
-      reference_notes: referenceInput.trim() || photoContext || contextLabelForEntity(entityType, caseNumber) || undefined,
-    };
+    const uploadedAt = new Date().toISOString();
+    const defaultRef = referenceInput.trim() || photoContext || contextLabelForEntity(entityType, caseNumber) || undefined;
 
     setUploading(true);
     setError(null);
@@ -529,23 +519,32 @@ export default function FileAttachments({
     setUploadProgress(null);
 
     try {
-      await apiUploadFilesWithProgress(
-        fileArray,
-        entityType,
-        entityId,
-        (progress, fileIndex, totalFiles) => {
-          setUploadProgress(progress);
-          setCurrentFileIndex(fileIndex);
-          setTotalUploadFiles(totalFiles);
-          setCurrentFileName(fileArray[fileIndex]?.name);
-        },
-        evidenceMeta,
-      );
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        setCurrentFileIndex(i);
+        setCurrentFileName(file.name);
+        const exif = file.type.startsWith('image/') ? await readImageExifFromBlob(file) : null;
+        const evidenceMeta: EvidenceMeta = {
+          latitude: exif?.latitude ?? geo?.lat,
+          longitude: exif?.longitude ?? geo?.lon,
+          taken_at: exif?.takenAtIso ?? uploadedAt,
+          reference_notes: defaultRef,
+        };
+        await apiUploadFilesWithProgress(
+          [file],
+          entityType,
+          entityId,
+          (progress) => {
+            setUploadProgress(progress);
+          },
+          evidenceMeta,
+        );
+      }
       await fetchFiles();
       setReferenceInput('');
       setShowRefInput(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      setError(officerFacingFileError(err, 'Upload failed'));
     } finally {
       setUploading(false);
       setUploadProgress(null);

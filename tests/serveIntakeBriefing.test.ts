@@ -1,24 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import {
   clientWindowText, assessOfficerSafety, buildPsoBriefing, recipientPartyStatus,
+  clientServiceRuleText, firstAttemptDirective, diligenceCadenceText, allDaysAuthorized,
 } from '../src/utils/serveIntakeBriefing';
 import type { BriefingInput } from '../src/utils/serveIntakeBriefing';
+import type { QueueRow } from '../src/utils/serveIntakeExtract';
 import { computeScheduleImpossible } from '../src/utils/serveIntakeRecords';
 
-const baseRow = {
+const baseRow: QueueRow = {
   recipient_name: 'DANA WHITFIELD', recipient_address: '1180 E VINE ST',
   recipient_city: 'SALT LAKE CITY', recipient_state: 'UT', recipient_zip: '84121',
   document_type: 'subpoena', case_number: '900904528', court_name: 'THIRD DISTRICT',
   jurisdiction: 'UT', client_name: 'ICU', attorney_name: null,
-  priority: 'rush' as const, deadline: '2026-06-30', service_instructions: null,
+  priority: 'rush', deadline: '2026-06-30', service_instructions: null,
   notes: null, plaintiff: 'AVERY HOLT', defendant: 'NORTHGATE LOGISTICS, LLC',
   court_date: null, sm_job_id: null,
+  recipient_phone: null, recipient_dob: null, recipient_type: null,
+  business_name: null, registered_agent_name: null, registered_office_address: null,
+  attorney_phone: null, attorney_email: null, attorney_bar_number: null,
+  serve_type: null, serve_fee: null, time_window: null,
 };
 
 // Builds a minimal BriefingInput around a queueRow override, and returns the
 // text of the INTAKE note (the structured briefing body) so fix-round-1
 // regression tests can assert on what the officer actually reads.
-function intakeNoteText(queueRowOverrides: Partial<typeof baseRow>): string {
+function intakeNoteText(queueRowOverrides: Partial<QueueRow>): string {
   const input: BriefingInput = {
     fields: {},
     queueRow: { ...baseRow, ...queueRowOverrides },
@@ -218,9 +224,9 @@ describe('briefing decomposition (spec §3.3)', () => {
     ],
   };
 
-  it('emits six notes, one per topic', () => {
+  it('emits seven notes, one per topic including the OPS playbook', () => {
     const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
-    expect(b.notes).toHaveLength(6);
+    expect(b.notes).toHaveLength(7);
   });
 
   it('the safety note comes first so it sits at the top of the feed', () => {
@@ -231,7 +237,7 @@ describe('briefing decomposition (spec §3.3)', () => {
   it('assigns the documented author tags in order', () => {
     const b = buildPsoBriefing(input, '2026-06-26T12:00:00Z');
     expect(b.notes.map((n) => n.author)).toEqual([
-      'OFFICER SAFETY', 'INTAKE', 'DISPATCH', 'DISPATCH', 'DISPATCH', 'DISPATCH',
+      'OFFICER SAFETY', 'INTAKE', 'OPS', 'DISPATCH', 'DISPATCH', 'DISPATCH', 'DISPATCH',
     ]);
   });
 
@@ -455,5 +461,117 @@ describe('R10: party matching is bidirectional', () => {
     expect(recipientPartyStatus('JOHN SMITH JR III', ['JOHN DAVID SMITH'])).toBe('non-party');
     // Guard: only 1 shared token between otherwise unrelated names — no match.
     expect(recipientPartyStatus('JOHN ADAMS JR', ['JOHN KENNEDY SR'])).toBe('non-party');
+  });
+});
+
+// ── Dynamic dispatch-notation extraction (hardening pass) ───────────────
+const RUSH_INSTRUCTIONS =
+  'RUSH - START ATTEMPTS ON TONIGHT OR LATEST WED MORNING. UTAH SUBPOENA. ' +
+  'Rule: Attempt personal; if unable, 1st-attempt abode subservice to resident 18+; employment personal only. ' +
+  'Service Days: 7 days/week. Diligence: 6-9AM, 9AM-6PM, 6-9PM; one Sat/Sun';
+
+describe('dynamic instruction extraction', () => {
+  it('extracts the manner-of-service rule sentences verbatim', () => {
+    const rule = clientServiceRuleText({ ...baseRow, service_instructions: RUSH_INSTRUCTIONS });
+    expect(rule).toContain('Attempt personal');
+    expect(rule).toContain('abode subservice to resident 18+');
+    expect(rule).not.toContain('RUSH - START');
+  });
+
+  it('returns null when no manner-of-service language exists', () => {
+    expect(clientServiceRuleText({ ...baseRow, service_instructions: 'Gate code 4412.' })).toBeNull();
+    expect(clientServiceRuleText({ ...baseRow, service_instructions: null })).toBeNull();
+  });
+
+  it('extracts the first-attempt directive sentence', () => {
+    const d = firstAttemptDirective({ ...baseRow, service_instructions: RUSH_INSTRUCTIONS });
+    expect(d).toBe('RUSH - START ATTEMPTS ON TONIGHT OR LATEST WED MORNING.');
+  });
+
+  it('does not fabricate a first-attempt directive from unrelated text', () => {
+    expect(firstAttemptDirective({ ...baseRow, service_instructions: 'Please serve promptly.' })).toBeNull();
+  });
+
+  it('extracts a diligence cadence only with a real clock range', () => {
+    const c = diligenceCadenceText({ ...baseRow, service_instructions: RUSH_INSTRUCTIONS });
+    expect(c).toContain('6-9AM');
+    // Prose "diligence" without clock times stays silent (R1 discipline).
+    expect(diligenceCadenceText({ ...baseRow, service_instructions: 'Diligence is expected per county norms.' })).toBeNull();
+  });
+
+  it('detects all-7-days authorization but not narrower day scopes', () => {
+    expect(allDaysAuthorized({ ...baseRow, service_instructions: 'Service Days: 7 days/week.' })).toBe(true);
+    expect(allDaysAuthorized({ ...baseRow, service_instructions: 'Service days: Monday-Friday only.' })).toBe(false);
+  });
+
+  it('surfaces the client rule and 7-day authorization in the INTAKE note SERVICE AUTHORITY section', () => {
+    const t = intakeNoteText({ service_instructions: RUSH_INSTRUCTIONS });
+    expect(t).toContain('CLIENT SERVICE RULE (verbatim)');
+    expect(t).toContain('ALL 7 DAYS');
+  });
+});
+
+describe('hardening pass 2: self-explaining notes', () => {
+  it('plan note explains itself when no attempt plan was generated', () => {
+    const input: BriefingInput = {
+      fields: {},
+      queueRow: { ...baseRow, recipient_address: '' },
+      isBusiness: false, agentName: '', fullLocation: '', docCount: 1,
+    };
+    const briefing = buildPsoBriefing(input, '2026-06-20T12:00:00Z');
+    const plan = briefing.notes.find((n) => n.author === 'DISPATCH' && n.text.includes('ATTEMPT PLAN'))!;
+    expect(plan).toBeTruthy();
+    expect(plan.text).toContain('No attempt plan could be generated');
+  });
+
+  it('contacts note explains the missing hiring party instead of going empty', () => {
+    const input: BriefingInput = {
+      fields: {},
+      queueRow: { ...baseRow, client_name: null, attorney_name: null },
+      isBusiness: false, agentName: '', fullLocation: '1180 E Vine St', docCount: 1,
+    };
+    const briefing = buildPsoBriefing(input, '2026-06-20T12:00:00Z');
+    const contacts = briefing.notes.find((n) => n.author === 'DISPATCH' && n.text.includes('CONTACTS'))!;
+    expect(contacts).toBeTruthy();
+    expect(contacts.text).toContain('No hiring party on file');
+    expect(contacts.text).toContain('DANA WHITFIELD');
+  });
+});
+
+describe('location-class briefing copy', () => {
+  it('does not print residential default windows on a corporate LLC suite job', () => {
+    const input: BriefingInput = {
+      fields: {
+        documents_to_serve: { value: '20 DAY SUMMONS; VERIFIED COMPLAINT', confidence: 1 },
+        recipient_county: { value: 'Salt Lake', confidence: 1 },
+      },
+      queueRow: {
+        ...baseRow,
+        recipient_name: 'BRISTOL HOSPICE LLC',
+        recipient_type: 'business',
+        recipient_address: '2005 East 2700 South Suite 200',
+        document_type: 'summons',
+      },
+      isBusiness: true,
+      agentName: 'REGISTERED AGENT SOLUTIONS INC',
+      fullLocation: '2005 East 2700 South Suite 200, Salt Lake City, UT 84109',
+      docCount: 3,
+      addressClass: 'corporate',
+      addressClassConfirmed: false,
+      attemptPlan: [
+        { attempt: 1, date: '2026-08-12', weekday: 'Wednesday', window: '09:30-11:30', focus: 'mid-morning', authority: 'corporate default' },
+        { attempt: 2, date: '2026-08-12', weekday: 'Wednesday', window: '13:30-16:00', focus: 'afternoon', authority: 'corporate default' },
+      ],
+    };
+    const briefing = buildPsoBriefing(input, '2026-08-12T08:26:06Z');
+    const joined = briefing.notes.map((n) => n.text).join('\n');
+    expect(joined).toContain('Location type: Corporate / Large Business');
+    expect(joined).toContain('corporate default');
+    expect(joined).not.toContain('[residential default]');
+    expect(joined).not.toContain('evening — highest residential hit rate');
+    expect(joined).toContain('Documents to Serve:');
+    expect(joined).toContain('1. 20 DAY SUMMONS');
+    expect(joined).toContain('CONTRACT DETAILS AND CONTACTS');
+    expect(joined).toContain('Ask for the registered agent or a manager by name');
   });
 });

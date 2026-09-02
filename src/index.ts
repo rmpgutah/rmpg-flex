@@ -58,7 +58,13 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.use('*', logger());
-app.use('*', secureHeaders());
+// Default CORP is `same-origin`. Electron / off-origin clients still POST
+// cross-origin to this Worker (api.rmpgutah.us). CORP same-origin makes Chrome discard the
+// response as a network error — Dispatch's Files tab then shows "Upload failed"
+// with no HTTP status. `cross-origin` is the correct policy for a public API.
+app.use('*', secureHeaders({
+  crossOriginResourcePolicy: 'cross-origin',
+}));
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
@@ -72,6 +78,22 @@ app.use('*', cors({
     return undefined;
   },
   credentials: true,
+  // Explicit allow-list so preflight is answered even when a Cloudflare WAF
+  // challenge stripped Access-Control-Request-Headers (multipart uploads).
+  // X-Offline-Warm is kept allowed so a stray direct-Worker warmer cannot
+  // reproduce the 2026-08-28 CORS storm; the client warmer itself no longer
+  // sends that header.
+  allowHeaders: [
+    'Authorization',
+    'Content-Type',
+    'X-Requested-With',
+    'Accept',
+    'X-Offline-Warm',
+    'X-Trace-Id',
+  ],
+  allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposeHeaders: ['X-Trace-Id', 'X-Request-Id'],
+  maxAge: 86400,
 }));
 
 // Root probe — useful for "is the Worker even reachable" smoke checks
@@ -187,7 +209,18 @@ app.post('/api/errors', authMiddleware, async (c) => {
 // Lives outside ROUTE_REGISTRY because it's an internal callback,
 // not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  // Constant-time comparison to prevent timing attacks on the secret.
+  // JS string comparison short-circuits on the first differing character,
+  // leaking the mismatch position via response time. Compare SHA-256 hashes
+  // instead — same length, constant-time comparison via timingSafeEqual.
+  const incoming = c.req.header('X-DO-Secret') ?? '';
+  const expected = c.env.JWT_SECRET ?? '';
+  if (incoming.length !== expected.length) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const incomingHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(incoming));
+  const expectedHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(expected));
+  if (!crypto.subtle.timingSafeEqual(incomingHash, expectedHash)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
@@ -631,6 +664,13 @@ export default {
       const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10) % 24;
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
       if (denverHour === 4 && denverMinute === 0) {
+        ctx.waitUntil(
+          import('./utils/corporateWorkflows').then((m) =>
+            m.runNightlyBundle(env.DB, null, 'cron', { ALERT_HUB: env.ALERT_HUB }).then((r) =>
+              log.info(`[corporate-ops] nightly bundle run=${r.run_id} children=${JSON.stringify(r.children)}`),
+            ).catch((err) => log.error('Corporate ops nightly bundle failed:', {}, err)),
+          ).catch(() => {}),
+        );
         ctx.waitUntil(
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();

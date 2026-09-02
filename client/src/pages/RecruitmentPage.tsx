@@ -11,6 +11,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { localToday, safeDateStr } from '../utils/dateUtils';
 import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
 import { toDisplayLabel } from '../utils/formatters';
+import { recruitmentPipelineToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Candidate {
   id: number;
@@ -47,6 +48,9 @@ export default function RecruitmentPage() {
   const [stats, setStats] = useState<RecruitStats>({ applicants: 0, inProcess: 0, hired: 0, academyClasses: 0 });
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = useState(() => {
+    try { return localStorage.getItem('rmpg_recruit_stage') || 'ALL'; } catch { return 'ALL'; }
+  });
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Candidate | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
@@ -78,6 +82,9 @@ export default function RecruitmentPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    try { localStorage.setItem('rmpg_recruit_stage', stageFilter); } catch { /* quota */ }
+  }, [stageFilter]);
 
   // -- Deep-link hydration --
   // Applied once after first successful data load. Strips params after use so
@@ -202,15 +209,18 @@ export default function RecruitmentPage() {
 
   // Filtered view — driven by search input.
   const filtered = useMemo(() => {
-    if (!search.trim()) return candidates;
-    const q = search.toLowerCase();
-    return candidates.filter((c) =>
-      c.candidate_name?.toLowerCase().includes(q) ||
-      c.position?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q) ||
-      c.stage?.toLowerCase().includes(q),
-    );
-  }, [candidates, search]);
+    return candidates.filter((c) => {
+      if (stageFilter !== 'ALL' && c.stage !== stageFilter) return false;
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        c.candidate_name?.toLowerCase().includes(q) ||
+        c.position?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.stage?.toLowerCase().includes(q)
+      );
+    });
+  }, [candidates, search, stageFilter]);
 
   const columns = [
     { key: 'candidate_name', label: 'Name' },
@@ -257,7 +267,12 @@ export default function RecruitmentPage() {
       return <div className="p-6 text-rmpg-400 text-xs">Loading recruitment data…</div>;
     }
     if (loadState === 'error') {
-      return <div className="p-6 text-red-400 text-xs">Failed to load recruitment data. Try refreshing.</div>;
+      return (
+        <div className="p-6 text-red-400 text-xs flex items-center justify-between">
+          <span>Failed to load recruitment data.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoadState('loading'); void fetchData(); }}>Retry</button>
+        </div>
+      );
     }
     return (
       <DataTable
@@ -290,11 +305,27 @@ export default function RecruitmentPage() {
         <input
           type="search"
           placeholder="Search candidates…"
+          aria-label="Search candidates"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input-dark text-xs h-7 px-2 w-44"
-          aria-label="Search candidates"
         />
+        <select
+          aria-label="Filter by stage"
+          className="select-dark text-xs h-7"
+          value={stageFilter}
+          onChange={(e) => setStageFilter(e.target.value)}
+        >
+          <option value="ALL">All stages</option>
+          {STAGES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
+        </select>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('recruitment-pipeline.csv', recruitmentPipelineToCsv(filtered))}
+        >CSV</button>
         {canManage && (
           <button
             onClick={openNew}

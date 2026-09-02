@@ -42,6 +42,7 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
+import { enrichVehicleRecord } from '../utils/vehicleEnrichment/enrichChain';
 
 import { log } from '../utils/logger';
 const alpr = new Hono<Env>();
@@ -236,7 +237,7 @@ function collectParameters(form: FormData): AlprParameters {
  *  record; creates a new one otherwise. Returns null for a plate-less vehicle. */
 async function upsertVehicleRecord(
   db: ReturnType<typeof getDb>, v: AlprVehicle, existingId: number | null,
-): Promise<{ id: number; created: boolean } | null> {
+): Promise<{ id: number; created: boolean; vin: string | null } | null> {
   if (!v.plate || v.plate.length < 2) return null;
   if (existingId) {
     try {
@@ -249,13 +250,14 @@ async function upsertVehicleRecord(
          WHERE id = ?`,
         v.make, v.model, v.color, v.year, v.state, v.vehicleType, v.plateType, existingId);
     } catch (err: any) { console.error('[alpr] vehicle enrich failed:', err?.message); }
-    return { id: existingId, created: false };
+    const existing = await queryFirst<{ vin: string | null }>(db, `SELECT vin FROM vehicles_records WHERE id = ?`, existingId);
+    return { id: existingId, created: false, vin: existing?.vin ?? null };
   }
   const r = await execute(db,
     `INSERT INTO vehicles_records (plate_number, state, make, model, year, color, body_style, plate_type, notes, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
     v.plate, v.state, v.make, v.model, v.year, v.color, v.vehicleType, v.plateType, 'Created from ALPR capture');
-  return { id: Number(r.meta.last_row_id), created: true };
+  return { id: Number(r.meta.last_row_id), created: true, vin: null };
 }
 
 /** Map a Cloudflare Workers AI plate read into the AlprVehicle shape the record
@@ -293,6 +295,7 @@ async function finalizeCapture(
     lat: number | null; lng: number | null; locationText: string | null; userId: number;
     derivedTrust?: number;
   },
+  executionCtx?: { waitUntil(p: Promise<unknown>): void },
 ): Promise<FinalizeResult> {
   const read = args.read;
   const plate = read?.plate ?? null;
@@ -368,6 +371,15 @@ async function finalizeCapture(
       const up = await upsertVehicleRecord(db, cfReadToVehicle(read), screen.vehicleId);
       recordId = up?.id ?? screen.vehicleId ?? null;
       if (recordId) out.recordIds.push(recordId);
+      // Auto-trigger enrichment for newly created records.  Workers AI reads
+      // never produce a VIN, so every new row from this path is VIN-less.
+      // Fire-and-forget via waitUntil — never delays the response.
+      if (up?.created && !up.vin && plate && executionCtx) {
+        executionCtx.waitUntil(
+          enrichVehicleRecord(plate, read.state ?? '', db, env, executionCtx as ExecutionContext)
+            .catch((err: Error) => log.warn('auto-enrich failed', { plate, error: err?.message, stack: err?.stack })),
+        );
+      }
       if (recordId && args.callId != null) {
         try {
           await execute(db,
@@ -509,7 +521,7 @@ alpr.post('/capture', operational, async (c) => {
   // run the read + persist the row (image_url just resolves to a missing object).
   let imageStored = true;
   try {
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, imageKey, bytes, { httpMetadata: { contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env, imageKey, bytes, { httpMetadata: { contentType } });
   } catch (err: any) {
     if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
@@ -562,10 +574,16 @@ alpr.post('/capture', operational, async (c) => {
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
   const captureRowId = Number(ins.meta.last_row_id);
 
+  // Hono throws when accessing executionCtx outside a real worker fetch
+  // (route-level tests drive this handler via app.request(), which has no
+  // ExecutionContext). Degrade to undefined — finalizeCapture already
+  // treats enrichment waitUntil as optional.
+  let execCtx: { waitUntil(p: Promise<unknown>): void } | undefined;
+  try { execCtx = c.executionCtx; } catch { /* no execution context in this runtime */ }
   const fin = await finalizeCapture(c.env, db, {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
     derivedTrust,
-  });
+  }, execCtx);
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   const fieldPhotoLinked = fieldPhotoId !== null;
@@ -976,7 +994,7 @@ alpr.get('/capture/:id/history', operational, async (c) => {
 alpr.get('/image/*', operational, async (c) => {
   const key = c.req.path.replace(/^.*\/image\//, '');
   if (!key.startsWith(ALPR_PREFIX) || key.includes('..')) return c.json({ error: 'Invalid key' }, 400);
-  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, key);
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {
@@ -1020,7 +1038,7 @@ alpr.post('/capture/:photoRowId/photos', operational, async (c) => {
       ? (entry as File) : null;
     if (file) {
       const key = `alpr/vehicles/${id}/${field}.jpg`;
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
+      await putEncrypted(c.env.UPLOADS, db, c.env, key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
       out[`${field}_r2_key`] = key;
     }
   }
@@ -1042,7 +1060,10 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
   if (!plate || plate.length < 2) return c.json({ error: 'Invalid plate' }, 400);
   const rows = await query<Record<string, unknown>>(db,
     `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC`, plate);
-  return c.json({ plate, packages: rows });
+  const vrRow = await db.prepare(
+    `SELECT id FROM vehicles_records WHERE UPPER(TRIM(plate_number)) = UPPER(TRIM(?)) LIMIT 1`
+  ).bind(plate).first<{ id: number }>();
+  return c.json({ plate, packages: rows, vehicle_record_id: vrRow?.id ?? null });
 });
 
 // ── Edge device ingest: Jetson vision-LoRA structured ALPR record ────────────

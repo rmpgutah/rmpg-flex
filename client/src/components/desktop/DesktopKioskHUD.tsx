@@ -51,6 +51,15 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
   const [activeTab, setActiveTab] = useState<TabCategory>('hardware');
   const [searchQuery, setSearchQuery] = useState('');
   const [kioskEnabled, setKioskEnabled] = useState(false);
+
+  // Fetch actual kiosk shell state from main process on mount
+  useEffect(() => {
+    (window as any).electron?.getKioskShellState?.().then((state: { supported: boolean; enabled: boolean } | null) => {
+      if (state && typeof state.enabled === 'boolean') {
+        setKioskEnabled(state.enabled);
+      }
+    }).catch(() => {});
+  }, []);
   const [radarScanning, setRadarScanning] = useState(false);
   const [simulatedDeviceCount, setSimulatedDeviceCount] = useState(24);
   const [selectedFeature, setSelectedFeature] = useState<FeatureItem | null>(null);

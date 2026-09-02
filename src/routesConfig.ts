@@ -124,6 +124,7 @@ import alpr from './routes/alpr';
 import analytics from './routes/analytics';
 import automationRules from './routes/automationRules';
 import carxe from './routes/carxe';
+import vehicleEnrichment from './routes/vehicleEnrichment';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
@@ -154,6 +155,7 @@ import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
+import corporateOps from './routes/corporateOps';
 import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
@@ -168,6 +170,7 @@ import serveQueueEnhanced from './routes/serveQueueEnhanced';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
 import skiptracer from './routes/skiptracer';
+import skiptracerV2 from './routes/skiptracerV2';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
@@ -200,6 +203,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -484,6 +488,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
+  { prefix: '/api/corporate-ops', router: corporateOps, auth: 'required',
+    note: 'Corporate linkage: clock/fleet/HR/dispatch/map/serve snapshot, mileage reconcile, automatic workflow runs.' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/crisis', router: crisisResponse, auth: 'required',
@@ -507,6 +513,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/carxe', router: carxe, auth: 'required',
     note: 'CarsXE vehicle-data lookups: plate decode, VIN specs, lien/theft, history. Manual/officer-triggered only, cached in carxe_lookups (24h TTL). 200 {ok:false,code:\'not_configured\'} when CARXE_API_KEY is unset.' },
+  { prefix: '/api/vehicle-enrichment', router: vehicleEnrichment, auth: 'required',
+    note: 'Vehicle enrichment chain: plate→VIN→specs via PLATE_TO_VIN / VIN_DECODER / PLATE_DECODER APIs. POST /enrich/:vehicleId (client_viewer excluded), GET /cache/:plate, GET /health. 200 {ok:false,code:\'not_configured\'} when all three keys are unset.' },
   { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
     note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
@@ -822,7 +830,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // SM's unsigned POST reaches it without a JWT. The HMAC signature is the guard.
   { prefix: '/api/servemanager-webhook', router: serveManagerWebhookRouter, auth: 'public' },
   { prefix: '/api/servemanager', router: serveManagerRoutes, auth: 'required' },
-  { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
+  { prefix: '/api/skiptracer-v2', router: skiptracerV2, auth: 'required',
+    note: 'Skip Tracker 3.5 — local RMS + MicroBilt cache + optional RapidAPI + enrichment adapters. Replaces stubs mount that returned empty sources/search.' },
 
   // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────
   // Each of these is called by the client SPA but has no real handler on
@@ -833,6 +842,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  // Longer ingest prefix FIRST so Hono does not let the parent router steal POST /ingest.
+  { prefix: '/api/dialer-connect/ingest', router: dialerConnectIngest, auth: 'public',
+    note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
+  { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
+    note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },

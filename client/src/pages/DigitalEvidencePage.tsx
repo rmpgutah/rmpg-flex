@@ -25,10 +25,13 @@ import {
   Play,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
+import { officerFacingFileError } from '../utils/officerFacingFileError';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { digitalEvidenceToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -70,6 +73,12 @@ interface CustodyEntry {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
+
+function digitalEvidenceFilePath(item: Pick<DigitalEvidenceItem, 'id' | 'url'>): string {
+  return item.url && item.url.includes(`/digital/${item.id}/file`)
+    ? item.url
+    : `/api/evidence/digital/${item.id}/file`;
+}
 
 function formatBytes(bytes?: number): string {
   if (!bytes || bytes === 0) return '—';
@@ -184,7 +193,7 @@ function PreviewModal({
   onRelease,
 }: PreviewModalProps) {
   const type = detectType(item);
-  const mediaUrl = authedImageUrl(item.url ?? `/api/evidence/digital/${item.id}/file`);
+  const mediaUrl = authedImageUrl(digitalEvidenceFilePath(item));
 
   return (
     <div
@@ -208,7 +217,7 @@ function PreviewModal({
               {item.original_filename ?? item.filename}
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="shrink-0 p-1 rounded-[2px] hover:bg-[color:var(--surface-base)]"
             aria-label="Close preview"
@@ -250,7 +259,7 @@ function PreviewModal({
           <span className="text-[10px] mr-auto" style={{ color: 'var(--text-secondary)' }}>
             {formatBytes(item.file_size)} · {formatDate(item.created_at)}
           </span>
-          <button
+          <button type="button"
             onClick={() => onChainOfCustody(item)}
             className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px] hover:bg-[color:var(--surface-base)]"
             style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
@@ -258,7 +267,7 @@ function PreviewModal({
             <Link2 size={11} /> Chain of Custody
           </button>
           {canAdmin && item.status !== 'sealed' && (
-            <button
+            <button type="button"
               onClick={() => onSeal(item)}
               className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px] hover:bg-[color:var(--surface-base)]"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--sev-critical)' }}
@@ -267,7 +276,7 @@ function PreviewModal({
             </button>
           )}
           {canAdmin && item.status === 'sealed' && (
-            <button
+            <button type="button"
               onClick={() => onRelease(item)}
               className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px] hover:bg-[color:var(--surface-base)]"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--sev-ok)' }}
@@ -275,7 +284,7 @@ function PreviewModal({
               <Unlock size={11} /> Release
             </button>
           )}
-          <button
+          <button type="button"
             onClick={() => onDownload(item)}
             className="flex items-center gap-1 px-2 py-[3px] text-[11px] rounded-[2px]"
             style={{ background: 'var(--brand-700)', color: 'var(--text-primary)', border: 'none' }}
@@ -324,7 +333,7 @@ function CustodyModal({ item, onClose }: CustodyModalProps) {
           <span className="text-xs font-semibold" style={{ color: 'var(--panel-header-color)' }}>
             Chain of Custody — {item.original_filename ?? item.filename}
           </span>
-          <button onClick={onClose} className="p-1" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-1" aria-label="Close">
             <X size={13} style={{ color: 'var(--text-secondary)' }} />
           </button>
         </div>
@@ -421,8 +430,6 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
     setUploading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('rmpg_token') ?? '';
-      const base = (window as any).__RMPG_API_BASE__ ?? 'https://api.rmpgutah.us';
       for (const file of files) {
         const fd = new FormData();
         fd.append('file', file);
@@ -431,17 +438,12 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
         if (caseId.trim()) fd.append('case_id', caseId.trim());
         if (callId.trim()) fd.append('call_id', callId.trim());
         if (description.trim()) fd.append('description', description.trim());
-        const res = await fetch(`${base}/api/evidence/digital`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: fd,
-        });
-        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+        await apiPostForm('/evidence/digital', fd);
       }
       onUploaded();
       onClose();
-    } catch (err: any) {
-      setError(err.message ?? 'Upload failed');
+    } catch (err: unknown) {
+      setError(officerFacingFileError(err, 'Upload failed'));
     } finally {
       setUploading(false);
     }
@@ -472,7 +474,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           <span className="text-xs font-semibold" style={{ color: 'var(--panel-header-color)' }}>
             Upload Digital Evidence
           </span>
-          <button onClick={onClose} className="p-1" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-1" aria-label="Close">
             <X size={13} style={{ color: 'var(--text-secondary)' }} />
           </button>
         </div>
@@ -507,7 +509,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
                 >
                   <span className="truncate mr-2">{f.name}</span>
                   <span className="shrink-0 mr-2" style={{ color: 'var(--text-secondary)' }}>{formatBytes(f.size)}</span>
-                  <button
+                  <button type="button"
                     onClick={(e) => { e.stopPropagation(); removeFile(i); }}
                     className="shrink-0"
                     aria-label="Remove file"
@@ -569,7 +571,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           className="flex justify-end gap-2 px-3 py-2 shrink-0"
           style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-sunken)' }}
         >
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-3 py-[3px] text-xs rounded-[2px]"
             style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
@@ -577,7 +579,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={handleSubmit}
             disabled={uploading || files.length === 0}
             className="flex items-center gap-1 px-3 py-[3px] text-xs rounded-[2px]"
@@ -612,6 +614,8 @@ export default function DigitalEvidencePage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [previewItem, setPreviewItem] = useState<DigitalEvidenceItem | null>(null);
   const [custodyItem, setCustodyItem] = useState<DigitalEvidenceItem | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -652,7 +656,7 @@ export default function DigitalEvidencePage() {
 
   const handleDownload = useCallback((item: DigitalEvidenceItem) => {
     const electron = (window as any).electron;
-    const fileUrl = item.url ?? `/api/evidence/digital/${item.id}/file`;
+    const fileUrl = digitalEvidenceFilePath(item);
     const authed = authedImageUrl(fileUrl);
     if (electron?.downloadFile) {
       electron.downloadFile(authed, item.original_filename ?? item.filename);
@@ -713,6 +717,19 @@ export default function DigitalEvidencePage() {
     <div className="flex flex-col h-full min-h-0" style={{ background: 'var(--surface-base)' }}>
       {/* Title bar */}
       <PanelTitleBar title="DIGITAL EVIDENCE" icon={FileVideo}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('digital-evidence.csv', digitalEvidenceToCsv(filtered.map((item) => ({
+            filename: item.filename,
+            evidence_type: item.evidence_type,
+            status: item.status,
+            case_number: item.case_number,
+            call_number: item.call_number,
+            created_at: item.created_at,
+          }))))}
+        >CSV</button>
         <div className="flex items-center gap-2 ml-auto">
           {/* Search */}
           <div
@@ -721,16 +738,18 @@ export default function DigitalEvidencePage() {
           >
             <Search size={11} style={{ color: 'var(--text-secondary)' }} />
             <input
+              ref={searchRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search evidence…"
+              placeholder="Search evidence… (/)"
+              aria-label="Search digital evidence"
               className="bg-transparent text-xs outline-none w-40"
               style={{ color: 'var(--text-primary)' }}
             />
           </div>
           {/* Upload button */}
-          <button
+          <button type="button"
             onClick={() => setShowUpload(true)}
             className="flex items-center gap-1 px-2 py-[3px] text-xs rounded-[2px]"
             style={{ background: 'var(--brand-700)', color: 'var(--text-primary)' }}
@@ -749,7 +768,7 @@ export default function DigitalEvidencePage() {
           const Icon = tab.icon;
           const active = filter === tab.id;
           return (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setFilter(tab.id)}
               className="flex items-center gap-1 px-3 py-[4px] text-[11px] font-semibold transition-colors rounded-t-[2px]"
@@ -786,7 +805,7 @@ export default function DigitalEvidencePage() {
           <div className="flex items-center gap-2 m-4 p-3 rounded-[2px]" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)' }}>
             <AlertTriangle size={14} style={{ color: 'var(--sev-critical)' }} />
             <span className="text-xs" style={{ color: 'var(--sev-critical)' }}>{error}</span>
-            <button
+            <button type="button"
               onClick={fetchItems}
               className="ml-auto text-xs px-2 py-[2px] rounded-[2px]"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
@@ -843,7 +862,7 @@ export default function DigitalEvidencePage() {
                 const thumbUrl = item.thumbnail_url
                   ? authedImageUrl(item.thumbnail_url)
                   : type === 'photo' || type === 'screenshot'
-                  ? authedImageUrl(item.url ?? `/api/evidence/digital/${item.id}/file`)
+                  ? authedImageUrl(digitalEvidenceFilePath(item))
                   : null;
 
                 return (
@@ -923,7 +942,7 @@ export default function DigitalEvidencePage() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center gap-1">
-                        <button
+                        <button type="button"
                           onClick={() => setPreviewItem(item)}
                           className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                           aria-label="Preview"
@@ -931,7 +950,7 @@ export default function DigitalEvidencePage() {
                         >
                           <Eye size={11} style={{ color: 'var(--brand-400)' }} />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDownload(item)}
                           className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                           aria-label="Download"
@@ -939,7 +958,7 @@ export default function DigitalEvidencePage() {
                         >
                           <Download size={11} style={{ color: 'var(--text-secondary)' }} />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => setCustodyItem(item)}
                           className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                           aria-label="Chain of custody"
@@ -948,7 +967,7 @@ export default function DigitalEvidencePage() {
                           <Link2 size={11} style={{ color: 'var(--text-secondary)' }} />
                         </button>
                         {canAdmin && item.status !== 'sealed' && (
-                          <button
+                          <button type="button"
                             onClick={() => handleSeal(item)}
                             className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                             aria-label="Seal evidence"
@@ -958,7 +977,7 @@ export default function DigitalEvidencePage() {
                           </button>
                         )}
                         {canAdmin && item.status === 'sealed' && (
-                          <button
+                          <button type="button"
                             onClick={() => handleRelease(item)}
                             className="p-1 rounded-[2px] hover:bg-[color:var(--surface-sunken)]"
                             aria-label="Release evidence"
@@ -985,7 +1004,7 @@ export default function DigitalEvidencePage() {
         >
           <span>{filtered.length} of {items.length} items</span>
           {filter !== 'all' && (
-            <button
+            <button type="button"
               onClick={() => setFilter('all')}
               className="underline"
               style={{ color: 'var(--brand-300)' }}

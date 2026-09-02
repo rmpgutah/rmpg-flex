@@ -1,2 +1,90 @@
+# RMPG Flex — Local Development Secrets
+# Copy this file to .dev.vars and fill in the values.
+# NEVER commit .dev.vars to git (it's in .gitignore).
+
+# Required: JWT signing secret (used for all auth tokens)
+JWT_SECRET=your-jwt-secret-here
+
+# Turso (libSQL) — for local D1-compatible development
 TURSO_URL=libsql://rmpg-flex-secondary-rmpg-utah.turso.io
 TURSO_AUTH_TOKEN=your-turso-auth-token-here
+
+# Mapbox (server-side geocoding, directions, static maps)
+MAPBOX_ACCESS_TOKEN=pk.eyJ1...
+MAPBOX_SECRET_TOKEN=sk.eyJ1...
+
+# Roboflow (ALPR vehicle capture)
+ROBOFLOW_API_KEY=your-roboflow-api-key
+
+# CarsXE (vehicle data: plate decode, VIN specs, lien/theft)
+CARXE_API_KEY=your-carsxe-api-key
+
+# Legal Data Hunter (warrant-charge validation)
+LEGAL_DATA_HUNTER_API_KEY=your-ldh-api-key
+
+# Fleet.io (fleet management sync)
+FLEETIO_API_KEY=your-fleetio-api-key
+FLEETIO_ACCOUNT_TOKEN=your-fleetio-account-token
+FLEETIO_WEBHOOK_SECRET=your-fleetio-webhook-secret
+
+# IPED (digital evidence)
+IPED_API_KEY=your-iped-api-key
+
+# Firecrawl (web scraping for assessor, deep research)
+FIRECRAWL_API_KEY=your-firecrawl-api-key
+
+# Resend (email sending)
+RESEND_API_KEY=your-resend-api-key
+
+# Traccar (GPS fleet tracking)
+TRACCAR_ENC_KEY=your-traccar-encryption-key
+
+# ClearPathGPS (dashcam/GPS)
+CPG_ENC_KEY=your-clearpathgps-encryption-key
+
+# Post-quantum cryptography master key
+RMPG_PQ_MASTER_KEY=your-pq-master-key
+
+# Microsoft 365 / Azure AD (mailbox connect — optional if configured via Admin → Email)
+# MS_EMAIL_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# MS_EMAIL_CLIENT_SECRET=your-azure-client-secret-value
+# MS_EMAIL_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# Email field encryption key (required for email caching)
+EMAIL_FIELD_ENCRYPTION_KEK=your-email-encryption-key
+
+# PDF signing key (optional, falls back to JWT_SECRET)
+PDF_SIGNING_KEY=your-pdf-signing-key
+
+# Recovery key (emergency bypass when no one can log in)
+RECOVERY_KEY=your-recovery-key
+
+# OIDC / SSO (Dial Connect)
+DIALER_OIDC_CLIENT_ID=your-oidc-client-id
+DIALER_OIDC_CLIENT_SECRET=your-oidc-client-secret
+DIALER_OIDC_REDIRECT_URI=http://localhost:5173/sso-callback
+
+# Webhook secrets
+DIAL_CONNECT_WEBHOOK_SECRET=your-dial-connect-webhook-secret
+
+# ALPR edge detection secret
+ALPR_EDGE_SECRET=your-alpr-edge-secret
+
+# Vehicle enrichment APIs (optional)
+PLATE_TO_VIN_API_KEY=your-plate-to-vin-key
+VIN_DECODER_API_KEY=your-vin-decoder-key
+PLATE_DECODER_API_KEY=your-plate-decoder-key
+
+# OpenCorporates (business lookups)
+OPENCORPORATES_API_KEY=your-opencorporates-key
+
+# NumVerify (phone validation)
+NUMVERIFY_API_KEY=your-numverify-key
+
+# Apple Push Notification Service (mobile app)
+APNS_KEY=your-apns-key
+APNS_KEY_ID=your-apns-key-id
+APNS_TEAM_ID=your-apns-team-id
+
+# R2 SQL token (analytics warehouse)
+R2_SQL_TOKEN=your-r2-sql-token

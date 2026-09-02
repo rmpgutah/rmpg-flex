@@ -17,6 +17,7 @@ import { toDisplayLabel } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { cdocResultsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -281,6 +282,14 @@ export default function ColoradoDocPage() {
         <span className="text-[9px] uppercase tracking-wider text-rmpg-500 mr-2">
           Colorado Department of Corrections
         </span>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 26, padding: '0 8px' }}
+          disabled={results.length === 0}
+          onClick={() => downloadTextFile('colorado-doc.csv', cdocResultsToCsv(results))}
+          title="CSV of DOC number, facility, status, gender — no names or DOB"
+        >CSV</button>
       </PanelTitleBar>
 
       <div className="flex-1 flex overflow-hidden">

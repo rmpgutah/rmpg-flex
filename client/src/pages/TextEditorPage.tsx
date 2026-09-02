@@ -48,11 +48,14 @@ export default function TextEditorPage() {
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   // ConfirmDialog state for revert — replaces window.confirm
   const [revertOpen, setRevertOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [wrap, setWrap] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // useRef guard: prevent re-firing deep-link toast on re-render
   const deepLinkApplied = useRef(false);
@@ -75,6 +78,7 @@ export default function TextEditorPage() {
   const fetchContent = useCallback(async () => {
     if (!fileId) { setLoading(false); return; }
     setLoading(true);
+    setLoadFailed(false);
     try {
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = {};
@@ -85,6 +89,7 @@ export default function TextEditorPage() {
       setContent(text);
       setOriginalContent(text);
     } catch (err: any) {
+      setLoadFailed(true);
       addToast(err.message || 'Failed to load file', 'error');
     } finally {
       setLoading(false);
@@ -175,6 +180,10 @@ export default function TextEditorPage() {
 
   const label = langLabel(mimeType, fileName);
   const lineCount = content.split('\n').length;
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const findHits = findQuery.trim()
+    ? content.toLowerCase().split(findQuery.trim().toLowerCase()).length - 1
+    : 0;
 
   // Empty state: no fileId provided (navigated directly to /text-editor without a file)
   if (!fileId && !loading) {
@@ -202,6 +211,11 @@ export default function TextEditorPage() {
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title={`TEXT EDITOR — ${fileName}`} icon={FileText}>
+        {loadFailed && (
+          <button type="button" onClick={() => { void fetchContent(); }} className="toolbar-btn">
+            Retry load
+          </button>
+        )}
         {canEdit && (
           <button
             type="button"
@@ -243,7 +257,21 @@ export default function TextEditorPage() {
         <span className="w-px h-3 bg-rmpg-700" />
         <span>{lineCount.toLocaleString()} lines</span>
         <span className="w-px h-3 bg-rmpg-700" />
+        <span>{wordCount.toLocaleString()} words</span>
+        <span className="w-px h-3 bg-rmpg-700" />
         <span>{content.length.toLocaleString()} chars</span>
+        <input
+          value={findQuery}
+          onChange={(e) => setFindQuery(e.target.value)}
+          placeholder="Find…"
+          aria-label="Find in document"
+          className="ml-auto input-dark text-[10px] h-6 w-36"
+        />
+        {findQuery.trim() && <span>{findHits} match{findHits === 1 ? '' : 'es'}</span>}
+        <label className="flex items-center gap-1 text-[10px]">
+          <input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} />
+          Wrap
+        </label>
         {isDirty && <span className="ml-1 text-brand-gold-500 font-semibold">● unsaved</span>}
         {!canEdit && <span className="ml-auto text-rmpg-600 italic">view only</span>}
       </div>
@@ -251,6 +279,11 @@ export default function TextEditorPage() {
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-rmpg-400" />
+        </div>
+      ) : loadFailed ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-fg-muted" role="alert">
+          <p className="text-xs">Failed to load this file. The editor is empty until reload succeeds.</p>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchContent(); }}>Retry</button>
         </div>
       ) : (
         <textarea
@@ -263,7 +296,7 @@ export default function TextEditorPage() {
           autoCapitalize="off"
           autoCorrect="off"
           className="flex-1 resize-none bg-surface-base text-rmpg-100 p-4 font-mono text-[12px] leading-[1.6] outline-none border-none focus:ring-0 tab-scroll"
-          style={{ tabSize: 2 }}
+          style={{ tabSize: 2, whiteSpace: wrap ? 'pre-wrap' : 'pre' }}
           placeholder={`${fileName} — ${canEdit ? 'start typing…' : 'read-only'}`}
         />
       )}

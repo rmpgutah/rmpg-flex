@@ -172,3 +172,36 @@ describe('nearest-feature fallback', () => {
     expect(label).toMatch(/^\d+ ft N/);
   });
 });
+
+describe('CAD inspect', () => {
+  it('returns a nearby unit ahead of OSM overlays', () => {
+    const map = makeMap(SCREENSHOT_FEATURES);
+    map.project = vi.fn(() => ({ x: 400, y: 300 }));
+    const units = [{
+      id: 'u1', call_sign: '1A12', officer_name: 'Hale', status: 'available',
+      latitude: 40.64199, longitude: -111.85355,
+    }];
+    const { result } = renderHook(() => useMapFeatureInspect(map, true, { units, calls: [] }));
+    act(() => { result.current.toggle(); });
+    act(() => { map._click(CLICK); });
+
+    expect(result.current.result?.features[0].cadKind).toBe('unit');
+    expect(result.current.result?.features[0].properties.call_sign).toBe('1A12');
+    expect(result.current.result?.features.some((f) => f.properties.name === 'Woodstock Elementary School')).toBe(true);
+  });
+
+  it('inspects a beat fill as CAD, not OSM', () => {
+    const beat = {
+      layer: { id: 'geojson-beat-fill' },
+      properties: { beat_code: 'SL2' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const map = makeMap([beat]);
+    const { result } = renderHook(() => useMapFeatureInspect(map, true));
+    act(() => { result.current.toggle(); });
+    act(() => { map._click(CLICK); });
+    expect(result.current.result?.features).toHaveLength(1);
+    expect(result.current.result?.features[0].kind).toBe('cad');
+    expect(result.current.result?.features[0].categoryLabel).toBe('Beat');
+  });
+});

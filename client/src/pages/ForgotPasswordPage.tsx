@@ -105,7 +105,7 @@ export default function ForgotPasswordPage() {
                 </div>
 
                 {error && (
-                  <div className="mb-3 px-3 py-2 text-[10px] font-medium text-red-400 bg-red-900/20 border border-red-700/30">
+                  <div className="mb-3 px-3 py-2 text-[10px] font-medium text-red-400 bg-red-900/20 border border-red-700/30" role="alert" id="reset-email-error">
                     {error}
                   </div>
                 )}
@@ -125,8 +125,11 @@ export default function ForgotPasswordPage() {
                         placeholder="officer@rmpgutah.us"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        autoComplete="email"
                         autoFocus
                         required
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? 'reset-email-error' : undefined}
                       />
                     </div>
                   </div>

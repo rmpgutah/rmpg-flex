@@ -51,7 +51,7 @@ const WMO_CODES: Record<number, string> = {
 
 // Map WMO code to the form dropdown values used in IncidentFormModal
 export function wmoToFormValue(code: number): string {
-  if (code === 0 || code === 1) return 'Clear';
+  if (code === 0 || code === 1) return 'Sunny';
   if (code === 2) return 'Partly Cloudy';
   if (code === 3) return 'Overcast';
   if (code === 45 || code === 48) return 'Fog';
@@ -59,7 +59,7 @@ export function wmoToFormValue(code: number): string {
   if (code >= 71 && code <= 77) return 'Snow';
   if (code >= 80 && code <= 82) return 'Rain';
   if (code >= 85 && code <= 86) return 'Snow';
-  if (code >= 95) return 'Rain'; // thunderstorms
+  if (code >= 95) return 'Thunderstorm';
   return 'Unknown';
 }
 
@@ -70,6 +70,9 @@ const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 export async function fetchWeather(lat?: number, lon?: number): Promise<WeatherData | null> {
   // Return cache if fresh
   if (cachedWeather && Date.now() < cacheExpiry) return cachedWeather;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return cachedWeather;
+  }
 
   // Get coordinates from params or browser geolocation
   let latitude = lat;

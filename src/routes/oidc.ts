@@ -165,7 +165,7 @@ oidc.get('/dialer/login', async (c) => {
   try {
     discovery = await getDiscoveryDoc(env);
   } catch (err) {
-    console.error('[oidc] discovery fetch failed:', err);
+    log.error('[oidc] discovery fetch failed', { traceId: c.get('traceId') }, err as Error);
     return backToLogin(appOrigin, 'error', 'Dialer SSO is temporarily unavailable');
   }
 
@@ -219,7 +219,7 @@ oidc.get('/dialer/callback', async (c) => {
   try {
     discovery = await getDiscoveryDoc(env);
   } catch (err) {
-    console.error('[oidc] discovery fetch failed:', err);
+    log.error('[oidc] discovery fetch failed', { traceId: c.get('traceId') }, err as Error);
     return backToLogin(appOrigin, 'error', 'Dialer SSO is temporarily unavailable');
   }
 
@@ -244,7 +244,7 @@ oidc.get('/dialer/callback', async (c) => {
     if (!tok.id_token) return backToLogin(appOrigin, 'error', 'No id_token returned by dialer');
     idToken = tok.id_token;
   } catch (err) {
-    console.error('[oidc] token exchange error:', err);
+    log.error('[oidc] token exchange error', { traceId: c.get('traceId') }, err as Error);
     return backToLogin(appOrigin, 'error', 'Token exchange failed');
   }
 
@@ -269,7 +269,7 @@ oidc.get('/dialer/callback', async (c) => {
       ? payload.email
       : undefined;
   } catch (err) {
-    console.error('[oidc] id_token verification failed:', err);
+    log.error('[oidc] id_token verification failed', { traceId: c.get('traceId') }, err as Error);
     return backToLogin(appOrigin, 'error', 'Could not verify dialer identity');
   }
 
@@ -292,7 +292,7 @@ oidc.get('/dialer/callback', async (c) => {
         // Unique-index collision (another account already claimed this sub
         // between the SELECT and here) or the column not yet reconciled on
         // this isolate — either way, don't fail the login over it.
-        console.error('[oidc] failed to persist dialer_oidc_sub link:', err);
+        log.error('[oidc] failed to persist dialer_oidc_sub link', { traceId: c.get('traceId') }, err as Error);
       }
     }
   }

@@ -53,7 +53,7 @@ export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
                 renderOption={(s) => (
                   <div>
                     <div className="text-xs font-bold">{s.citation_code}</div>
-                    {s.title && <div className="text-[10px] text-[#888]">{s.title}</div>}
+                    {s.title && <div className="text-[10px] text-fg-muted">{s.title}</div>}
                   </div>
                 )}
                 placeholder="Statute / Code (e.g. UCA 41-6a-601)"
@@ -97,7 +97,7 @@ export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
       <button
         type="button"
         onClick={() => onChange([...value, newDraft()])}
-        className="w-full py-2 text-xs border border-dashed border-rmpg-600 text-[#888] hover:[color:var(--panel-header-color)] hover:[border-color:var(--field-label-color)]"
+        className="w-full py-2 text-xs border border-dashed border-rmpg-600 text-fg-muted hover:[color:var(--panel-header-color)] hover:[border-color:var(--field-label-color)]"
       >
         + Add Violation
       </button>

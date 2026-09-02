@@ -36,6 +36,7 @@ import ExportButton, { downloadExport } from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
 import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
+import { downloadTextFile, recordsIndexToCsv } from '../utils/rmsListExport';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { AssessorBackfillButton } from '../components/AssessorBackfillButton';
@@ -568,6 +569,19 @@ export default function RecordsPage() {
       <PanelTitleBar title={showArchived ? 'RECORDS MGMT — ARCHIVES' : 'RECORDS MANAGEMENT'} icon={showArchived ? Archive : Database}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => {
+            const rows =
+              activeTab === 'persons' ? persons.map((p) => ({ type: 'person', number: String(p.id), status: showArchived ? 'archived' : 'active' }))
+              : activeTab === 'vehicles' ? vehicles.map((v) => ({ type: 'vehicle', number: v.license_plate, status: v.stolen_status ?? '' }))
+              : activeTab === 'properties' ? properties.map((p) => ({ type: 'property', number: String(p.id), status: showArchived ? 'archived' : 'active' }))
+              : activeTab === 'evidence' ? evidence.map((e: { evidence_number?: string; status?: string; id?: string }) => ({ type: 'evidence', number: e.evidence_number ?? String(e.id ?? ''), status: e.status ?? '' }))
+              : businessState.businesses.map((b: { id?: string; status?: string }) => ({ type: 'business', number: String(b.id ?? ''), status: b.status ?? '' }));
+            downloadTextFile('records-index.csv', recordsIndexToCsv(rows));
+          }}
+        >CSV</button>
         <PrintButton />
         {activeTab === 'persons' && (
           <>
@@ -758,7 +772,7 @@ export default function RecordsPage() {
             <button
               type="button"
               onClick={() => { const r = errorRetryRef.current; clearError(); r?.(); }}
-              className="px-2 py-0.5 bg-red-700/60 hover:bg-red-600 border border-red-500/60 text-red-100 font-semibold uppercase tracking-wide rounded-[2px] transition-colors"
+              className="toolbar-btn"
             >
               Retry
             </button>

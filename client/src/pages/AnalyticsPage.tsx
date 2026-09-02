@@ -21,6 +21,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
 import { toDisplayLabel } from '../utils/formatters';
+import { plateSummaryToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface HealthResp {
   ok: boolean; query_ready: boolean; pipeline_bound: boolean;
@@ -334,6 +335,13 @@ export default function AnalyticsPage() {
             </button>
           )}
           <button
+            type="button"
+            disabled={summary.length === 0}
+            onClick={() => downloadTextFile('plate-summary.csv', plateSummaryToCsv(summary))}
+            className="px-2 py-1 text-[11px] font-semibold bg-surface-raised border border-border-default rounded-sm text-rmpg-300 hover:text-brand-400 transition-colors disabled:opacity-40"
+            title="CSV of plate, reads, last seen — current summary window"
+          >CSV</button>
+          <button
             onClick={() => {
               loadHealth();
               if (tab === 'plates') { loadSummary(days); loadDistinctCounts(days); }
@@ -491,7 +499,12 @@ export default function AnalyticsPage() {
         <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
           <Database className="w-4 h-4" /> Busiest plates · last {days} days
         </h3>
-        {summaryError && <p className="text-red-400 text-[12px]">{summaryError}</p>}
+        {summaryError && (
+          <p className="text-red-400 text-[12px] flex items-center justify-between gap-2">
+            <span>{summaryError}</span>
+            <button type="button" className="toolbar-btn text-[10px]" onClick={() => loadSummary(days)}>Retry</button>
+          </p>
+        )}
         {summaryIdle && (
           <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
             <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading plate summary…

@@ -53,6 +53,8 @@ export default function PersonIntelPanel() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [dob, setDob] = useState('');
+  const [age, setAge] = useState('');
+  const [city, setCity] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PersonIntelResult[] | null>(null);
   const [apiAvailable, setApiAvailable] = useState(true);
@@ -120,6 +122,8 @@ export default function PersonIntelPanel() {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           dob: dob.trim() || undefined,
+          age: age.trim() || undefined,
+          city: city.trim() || undefined,
         }),
       });
       setResults(data.results);
@@ -133,7 +137,7 @@ export default function PersonIntelPanel() {
     } finally {
       setLoading(false);
     }
-  }, [firstName, lastName, dob]);
+  }, [firstName, lastName, dob, age, city]);
 
   const ingestWarrant = useCallback(async (warrant: any, result: PersonIntelResult) => {
     const key = warrant.utah_warrant_id || warrant.id;
@@ -152,13 +156,14 @@ export default function PersonIntelPanel() {
           issue_date: warrant.issue_date,
           age: result.age,
           city: result.city,
-          subject_person_id: result.localPersonMatch?.id || null,
+          dob: dob.trim() || result.localPersonMatch?.dob,
+          subject_person_id: result.identityConfidence === 'low' ? null : (result.localPersonMatch?.id || null),
         }),
       });
       setIngested(prev => new Set(prev).add(key));
     } catch { /* ignore */ }
     setIngesting(prev => { const n = new Set(prev); n.delete(key); return n; });
-  }, []);
+  }, [dob]);
 
   return (
     <div className="space-y-4">
@@ -168,7 +173,7 @@ export default function PersonIntelPanel() {
           <Shield className="w-4 h-4 text-brand-400" />
           <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Person Intelligence Search</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <div>
             <label htmlFor="ff-personintelpanel-0" className="text-[9px] uppercase text-rmpg-400 font-bold">First Name *</label>
             <input id="ff-personintelpanel-0"
@@ -192,7 +197,7 @@ export default function PersonIntelPanel() {
             />
           </div>
           <div>
-            <label htmlFor="ff-personintelpanel-2" className="text-[9px] uppercase text-rmpg-400 font-bold">DOB (optional)</label>
+            <label htmlFor="ff-personintelpanel-2" className="text-[9px] uppercase text-rmpg-400 font-bold">DOB</label>
             <input id="ff-personintelpanel-2"
               type="date"
               className="input-dark w-full text-sm"
@@ -200,7 +205,28 @@ export default function PersonIntelPanel() {
               onChange={e => setDob(e.target.value)}
             />
           </div>
-          <div className="flex items-end">
+          <div>
+            <label htmlFor="ff-personintelpanel-age" className="text-[9px] uppercase text-rmpg-400 font-bold">Age</label>
+            <input id="ff-personintelpanel-age"
+              type="text"
+              inputMode="numeric"
+              className="input-dark w-full text-sm"
+              value={age}
+              onChange={e => setAge(e.target.value)}
+              placeholder="24"
+            />
+          </div>
+          <div>
+            <label htmlFor="ff-personintelpanel-city" className="text-[9px] uppercase text-rmpg-400 font-bold">City</label>
+            <input id="ff-personintelpanel-city"
+              type="text"
+              className="input-dark w-full text-sm"
+              value={city}
+              onChange={e => setCity(e.target.value)}
+              placeholder="Salt Lake City"
+            />
+          </div>
+          <div className="flex items-end sm:col-span-5">
             <button type="button"
               onClick={search}
               disabled={loading || !firstName.trim() || !lastName.trim()}
@@ -217,6 +243,9 @@ export default function PersonIntelPanel() {
           </div>
         )}
         {error && <div className="mt-2 text-xs text-red-400">{error}</div>}
+        <p className="mt-2 text-[10px] text-rmpg-500">
+          DOB or age is required to auto-link a local person. Name-only hits stay as leads so a different John Doe is never attached.
+        </p>
       </div>
 
       {/* Results */}

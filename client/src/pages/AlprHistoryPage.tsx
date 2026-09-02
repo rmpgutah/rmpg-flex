@@ -14,6 +14,8 @@ import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import PlateScanModal from '../components/PlateScanModal';
+import { copyToClipboard } from '../utils/contextMenuActions';
+import { alprCapturesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface CaptureRow {
   id: number;
@@ -66,23 +68,6 @@ function dateFrom(filter: DateFilter): string | undefined {
   return new Date(now - days * 86_400_000).toISOString(); // new-date-ok — arithmetic on numeric ms
 }
 
-function exportCsv(rows: CaptureRow[]): void {
-  const header = ['ID','Timestamp','Plate','State','Make','Model','Year','Color','Body','Confidence%',
-    'Accepted','Alerted','Call ID','Source'].join(',');
-  const lines = rows.map((r) => [
-    r.id, r.created_at, r.plate ?? '', r.state ?? '', r.make ?? '', r.model ?? '',
-    r.year ?? '', r.color ?? '', r.vehicle_type ?? '',
-    r.confidence != null ? Math.round(r.confidence * 100) : '',
-    r.accepted ? 'yes' : 'no', r.alerted ? 'yes' : 'no', r.call_id ?? '',
-    r.call_id ? 'field' : r.annotated_image_url?.includes('cpg_dashcam') ? 'dashcam' : 'manual',
-  ].map(String).join(','));
-  const csv = [header, ...lines].join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `alpr-history-${Date.now()}.csv`;
-  a.click();
-}
-
 const REVIEW_STATUS_CHIP: Record<string, { label: string; cls: string }> = {
   confirmed:          { label: 'Confirmed', cls: 'text-green-400 border-green-700' },
   confirmed_unlinked: { label: 'Unlinked',  cls: 'text-yellow-400 border-yellow-700' },
@@ -102,10 +87,12 @@ export default function AlprHistoryPage() {
   const [accepted, setAccepted] = useState<'' | '0' | '1'>('');
   const [showScanModal, setShowScanModal] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const params = new URLSearchParams({ limit: '100', gallery: '1' });
       const from = dateFrom(dateFilter);
@@ -116,13 +103,35 @@ export default function AlprHistoryPage() {
       const data = await apiFetch<CaptureRow[]>(`/alpr/captures?${params}`);
       setRows(data);
     } catch (err: any) {
-      addToast(err?.message ?? 'Failed to load capture history', 'error');
+      const msg = err?.message ?? 'Failed to load capture history';
+      setLoadError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
   }, [plate, dateFilter, sourceFilter, accepted, addToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      if (e.key === 'Escape') {
+        if (plate) {
+          e.stopPropagation();
+          setPlate('');
+        } else {
+          inputRef.current?.blur();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [plate]);
 
   const handleCreated = useCallback((vehicleRecordId: number) => {
     setShowScanModal(false);
@@ -153,7 +162,7 @@ export default function AlprHistoryPage() {
             value={plate}
             onChange={(e) => setPlate(e.target.value.toUpperCase())}
             onKeyDown={(e) => e.key === 'Enter' && load()}
-            placeholder="Plate…"
+            placeholder="Plate… (/ to focus)"
             className="w-full bg-surface-overlay border border-border-default pl-7 pr-2 py-1.5 text-xs text-rmpg-200 placeholder:text-rmpg-500 outline-none focus:border-brand-400 uppercase"
           />
         </div>
@@ -202,15 +211,28 @@ export default function AlprHistoryPage() {
           <Filter className="w-3 h-3" />
           Filter
         </button>
+        {loadError && (
+          <button type="button" onClick={load} className="text-xs border border-red-700 text-red-400 px-2 py-1.5">Retry</button>
+        )}
 
         <div className="ml-auto flex items-center gap-2 text-[10px] text-rmpg-500">
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>{rows.length} record{rows.length !== 1 ? 's' : ''}</span>}
           {rows.length > 0 && (
             <button
               type="button"
-              onClick={() => exportCsv(rows)}
-              aria-label="Export CSV"
-              className="flex items-center gap-1 text-brand-400 hover:underline"
+              onClick={() => downloadTextFile(`alpr-history-${Date.now()}.csv`, alprCapturesToCsv(rows.map((r) => ({
+                id: r.id,
+                created_at: r.created_at,
+                plate: r.plate,
+                state: r.state,
+                make: r.make,
+                model: r.model,
+                accepted: r.accepted,
+                alerted: r.alerted,
+                call_id: r.call_id,
+              }))))}
+              disabled={rows.length === 0}
+              className="toolbar-btn flex items-center gap-1"
             >
               <Download className="w-3 h-3" /> CSV
             </button>
@@ -222,7 +244,11 @@ export default function AlprHistoryPage() {
       {!loading && rows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 gap-3">
           <ScanSearch className="w-8 h-8 opacity-30" />
-          <span className="text-sm">No captures found for the selected filters</span>
+          <span className="text-sm">
+            {plate.trim() || sourceFilter || accepted
+              ? 'No captures match the current plate / source / accepted filters'
+              : 'No captures found for the selected date range'}
+          </span>
           <button
             type="button"
             onClick={() => setShowScanModal(true)}
@@ -264,8 +290,14 @@ export default function AlprHistoryPage() {
                   <span className="font-mono font-bold text-rmpg-100 text-base tracking-widest">
                     {row.plate ?? '—'}
                   </span>
-                  {row.state && (
-                    <span className="text-[10px] text-rmpg-400 font-mono">{row.state}</span>
+                  {row.plate && (
+                    <button
+                      type="button"
+                      className="text-[9px] border border-border-default px-1.5 py-0.5"
+                      onClick={(e) => { e.stopPropagation(); void copyToClipboard(row.plate!); }}
+                    >
+                      Copy plate
+                    </button>
                   )}
                   {row.alerted ? (
                     <span className="flex items-center gap-0.5 text-[9px] font-bold text-red-400 border border-red-700 px-1.5 py-0.5">

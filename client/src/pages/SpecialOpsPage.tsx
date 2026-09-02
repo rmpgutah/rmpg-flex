@@ -10,6 +10,8 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { Swords, Shield, Wrench, AlertTriangle, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { specialOpsCalloutsToCsv, specialOpsEquipmentToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Callout { id: number; date: string; call_type: string; location: string; resolution: string; duration_minutes: number; team_size: number; notes: string; }
 interface Equipment { id: number; equipment_type: string; serial_number: string; condition: string; assigned_to: string; notes: string; }
@@ -30,8 +32,11 @@ export default function SpecialOpsPage() {
   const [stats, setStats] = useState<Stats>({ totalCallouts: 0, totalEquipment: 0, readyEquipment: 0 });
   /** 'loading' | 'empty' | 'ready' — distinguishes loading from genuinely-empty */
   const [loadState, setLoadState] = useState<'loading' | 'empty' | 'ready'>('loading');
+  const [fetchError, setFetchError] = useState(false);
   const [tab, setTab] = useState<'callouts' | 'equipment'>('callouts');
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Callout | Equipment | null>(null);
   const [formData, setFormData] = useState<Record<string, unknown>>(EMPTY_CALLOUT);
@@ -52,14 +57,18 @@ export default function SpecialOpsPage() {
 
   const fetchData = useCallback(async () => {
     setLoadState('loading');
+    setFetchError(false);
     try {
       const [c, e, s] = await Promise.all([
-        apiFetch<Callout[]>('/special-ops/callouts').catch(() => [] as Callout[]),
-        apiFetch<Equipment[]>('/special-ops/equipment').catch(() => [] as Equipment[]),
-        apiFetch<Stats>('/special-ops/stats').catch(
-          () => ({ totalCallouts: 0, totalEquipment: 0, readyEquipment: 0 }) as Stats
-        ),
+        apiFetch<Callout[]>('/special-ops/callouts').catch(() => null),
+        apiFetch<Equipment[]>('/special-ops/equipment').catch(() => null),
+        apiFetch<Stats>('/special-ops/stats').catch(() => null),
       ]);
+      if (c === null && e === null && s === null) {
+        setFetchError(true);
+        setLoadState('empty');
+        return;
+      }
       const safeCallouts = Array.isArray(c) ? c : [];
       const safeEquipment = Array.isArray(e) ? e : [];
       const safeStats =
@@ -71,6 +80,7 @@ export default function SpecialOpsPage() {
       setStats(safeStats);
       setLoadState(safeCallouts.length > 0 || safeEquipment.length > 0 ? 'ready' : 'empty');
     } catch {
+      setFetchError(true);
       setLoadState('empty');
     }
   }, []);
@@ -247,7 +257,7 @@ export default function SpecialOpsPage() {
       width: '80px',
       render: (r: Callout) => (
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); openEdit(r); }}
             className="text-rmpg-400 hover:text-rmpg-100"
             title="Edit"
@@ -255,7 +265,7 @@ export default function SpecialOpsPage() {
             <Pencil size={12} />
           </button>
           {canCreate && (
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setDeleteTarget({ id: r.id, label: r.call_type || `Callout #${r.id}` });
@@ -304,7 +314,7 @@ export default function SpecialOpsPage() {
       width: '80px',
       render: (r: Equipment) => (
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); openEdit(r); }}
             className="text-rmpg-400 hover:text-rmpg-100"
             title="Edit"
@@ -312,7 +322,7 @@ export default function SpecialOpsPage() {
             <Pencil size={12} />
           </button>
           {canCreate && (
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setDeleteTarget({ id: r.id, label: r.equipment_type || `Equipment #${r.id}` });
@@ -364,8 +374,30 @@ export default function SpecialOpsPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SPECIAL OPERATIONS" icon={Swords}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={tab === 'callouts' ? filteredCallouts.length === 0 : filteredEquipment.length === 0}
+          onClick={() => {
+            if (tab === 'callouts') {
+              downloadTextFile('special-ops-callouts.csv', specialOpsCalloutsToCsv(filteredCallouts.map((c) => ({
+                date: c.date,
+                call_type: c.call_type,
+                location: c.location,
+                duration_minutes: c.duration_minutes,
+                team_size: c.team_size,
+              }))));
+            } else {
+              downloadTextFile('special-ops-equipment.csv', specialOpsEquipmentToCsv(filteredEquipment.map((eq) => ({
+                equipment_type: eq.equipment_type,
+                serial_number: eq.serial_number,
+                condition: eq.condition,
+              }))));
+            }
+          }}
+        >CSV</button>
         {canCreate && (
-          <button
+          <button type="button"
             onClick={openNew}
             className="toolbar-btn flex items-center gap-1.5"
             style={{ height: 28, padding: '0 10px' }}
@@ -391,27 +423,35 @@ export default function SpecialOpsPage() {
         <StatsCard label="STATUS" value="STANDBY" icon={Swords} />
       </div>
 
+      {fetchError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load special operations data.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchData(); }}>Retry</button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
-        <button
+        <button type="button"
           onClick={() => setTab('callouts')}
           className={`text-[10px] px-3 py-1 ${tab === 'callouts' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}
         >
           Callouts
         </button>
-        <button
+        <button type="button"
           onClick={() => setTab('equipment')}
           className={`text-[10px] px-3 py-1 ${tab === 'equipment' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}
         >
           Equipment
         </button>
         <input
+          ref={searchRef}
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search..."
+          placeholder="Search... (/)"
+          aria-label="Search special operations"
           className="input-dark text-xs ml-auto"
           style={{ width: 160, height: 26 }}
-          aria-label="Search special ops records"
         />
       </div>
 
@@ -591,10 +631,10 @@ export default function SpecialOpsPage() {
             </div>
 
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>
+              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleSave}
                 disabled={
                   formSubmitting ||

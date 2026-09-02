@@ -13,7 +13,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Navigation, Pencil, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, Navigation, Pencil, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -34,6 +34,11 @@ import {
   extractOverlapConflicts,
   type ScheduleConflict,
 } from '../utils/serveScheduleErrors';
+import { downloadTextFile, serveScheduleToCsv } from '../utils/rmsListExport';
+import {
+  runServeOptimizationV2,
+  type ServeV2Result,
+} from '../utils/mapboxOptimizationV2';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -98,6 +103,8 @@ export default function ServeSchedulerPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
+  const [v2Busy, setV2Busy] = useState(false);
+  const [v2Progress, setV2Progress] = useState('');
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
 
@@ -322,6 +329,56 @@ export default function ServeSchedulerPage() {
     ]);
   }, [canManage, openMenu]);
 
+  // ── V2 Optimization: traffic-aware reroute from scheduler ──────────────────
+  const handleOptimizeV2 = useCallback(async () => {
+    const queueIds = slots.map((s) => s.queue_id).filter((id): id is number => id != null);
+    if (queueIds.length < 2) {
+      addToast('Need at least 2 scheduled stops to optimize', 'warning');
+      return;
+    }
+
+    // Build shift window from the earliest/latest slot dates
+    const dates = slots.map((s) => s.scheduled_date).sort();
+    const shiftStart = dates[0];
+    const shiftEnd = dates[dates.length - 1];
+
+    // Find an officer to assign to (prefer the most-common officer in the schedule, or null)
+    const officerCounts = new Map<number, number>();
+    for (const s of slots) {
+      if (s.officer_id != null) officerCounts.set(s.officer_id, (officerCounts.get(s.officer_id) ?? 0) + 1);
+    }
+    const topOfficer = [...officerCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    setV2Busy(true);
+    setV2Progress('Submitting to Mapbox Optimization V2…');
+    try {
+      const result: ServeV2Result | null = await runServeOptimizationV2({
+        serve_queue_ids: queueIds,
+        officer_unit_id: topOfficer ?? undefined,
+        shift_start: `${shiftStart}T06:00:00.000Z`,
+        shift_end: `${shiftEnd}T23:59:59.000Z`,
+      });
+
+      if (!result) {
+        addToast('Optimization returned no solution — some stops may be unreachable', 'warning');
+        return;
+      }
+
+      const count = result.orderedJobIds.length;
+      const dropped = result.droppedJobIds.length;
+      addToast(
+        `V2 route optimized: ${count} stops${dropped > 0 ? `, ${dropped} dropped (unreachable)` : ''}`,
+        dropped > 0 ? 'warning' : 'success',
+      );
+      refetch();
+    } catch (e) {
+      addToast(`V2 optimization failed: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setV2Busy(false);
+      setV2Progress('');
+    }
+  }, [slots, refetch, addToast]);
+
   // ── Timeline area: loading / error / empty / data ─────────────────────────
   const renderTimeline = () => {
     if (loading) {
@@ -333,8 +390,9 @@ export default function ServeSchedulerPage() {
     }
     if (error) {
       return (
-        <div className="flex items-center justify-center h-32 text-[11px] text-red-300" role="alert">
-          {error}
+        <div className="flex items-center justify-center h-32 text-[11px] text-red-300 gap-2" role="alert">
+          <span>{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void refetch(); }}>Retry</button>
         </div>
       );
     }
@@ -389,6 +447,29 @@ export default function ServeSchedulerPage() {
               <RefreshCcw size={9} className="inline mr-1" /> Rebalance
             </button>
           )}
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={slots.length === 0}
+            onClick={() => downloadTextFile('serve-schedule.csv', serveScheduleToCsv(slots.map((s) => ({
+              job_number: s.case_number ?? String(s.id),
+              status: s.status,
+              court: s.window_label ?? '',
+              hearing_date: s.scheduled_date,
+            }))))}
+          >CSV</button>
+          {canManage && (
+            <button
+              type="button"
+              className="toolbar-btn"
+              disabled={slots.length < 2 || v2Busy}
+              onClick={() => void handleOptimizeV2()}
+              title="Optimize route order with live Mapbox traffic (V2)"
+            >
+              <ArrowUpDown size={9} className="inline mr-1" />
+              {v2Busy ? v2Progress || 'Optimizing…' : 'Optimize V2'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -414,6 +495,11 @@ export default function ServeSchedulerPage() {
           >
             Plan Route <Navigation size={9} className="inline" />
           </a>
+          {v2Busy && (
+            <span className="text-[10px] text-brand-300 animate-pulse font-mono">
+              {v2Progress}
+            </span>
+          )}
         </div>
       )}
 

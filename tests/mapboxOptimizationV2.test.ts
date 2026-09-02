@@ -7,6 +7,7 @@ import {
   type UnitRow,
   type BeatRow,
   type CallRow,
+  resolveOptimizationV2Token,
 } from '../src/utils/mapboxOptimizationV2';
 
 const SHIFT_START = '2026-08-17T08:00:00Z';
@@ -49,7 +50,7 @@ describe('buildServeRunProblem', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
     const svc11 = doc.services.find((s) => s.name === '11');
     expect(svc11?.service_times).toBeDefined();
-    expect(svc11?.service_times![0].type).toBe('soft');
+    expect(svc11?.service_times![0].type).toBe('strict');
     expect(svc11?.service_times![0].earliest).toContain('09:00');
     expect(svc11?.service_times![0].latest).toContain('11:00');
   });
@@ -67,15 +68,91 @@ describe('buildServeRunProblem', () => {
     expect(svc10?.service_times).toBeUndefined();
   });
 
-  it('priority 1 → 1800s duration, priority 2 → 1200s', () => {
+  it('uses 18 min residential / 22 min business onsite duration', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
-    expect(doc.services.find((s) => s.name === '11')?.duration).toBe(1800);
-    expect(doc.services.find((s) => s.name === '12')?.duration).toBe(1200);
+    expect(doc.services.find((s) => s.name === '10')?.duration).toBe(18 * 60);
+    const biz: ServeStop = {
+      id: 30, recipient_address: '1 Commerce', recipient_lat: 40.77, recipient_lng: -111.88,
+      recipient_type: 'business',
+    };
+    const bizDoc = buildServeRunProblem([biz], officer, SHIFT_START, SHIFT_END);
+    expect(bizDoc.services[0].duration).toBe(22 * 60);
   });
 
   it('uses min-schedule-completion-time objective', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
     expect(doc.options?.objectives).toContain('min-schedule-completion-time');
+  });
+
+  it('maps named serve windows onto Denver wall-clock service_times', () => {
+    const morning: ServeStop = {
+      id: 20, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
+      time_window: 'morning',
+    };
+    // Shift starts at 14:00 UTC = 08:00 Denver (MDT) — morning window (06-12) is valid
+    const doc = buildServeRunProblem([morning], officer, '2026-08-28T14:00:00.000Z', '2026-08-28T23:00:00.000Z');
+    const tw = doc.services[0].service_times![0];
+    expect(tw.type).toBe('strict');
+    expect(tw.earliest).toBe('2026-08-28T06:00:00-06:00');
+    expect(tw.latest).toBe('2026-08-28T12:00:00-06:00');
+  });
+
+  it('omits a morning window when the shift starts after noon', () => {
+    const morning: ServeStop = {
+      id: 22, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
+      time_window: 'morning',
+    };
+    // Shift starts at 00:15 UTC Aug 29 = 6:15 PM Denver — well after morning window
+    const doc = buildServeRunProblem([morning], officer, '2026-08-29T00:15:00.000Z', '2026-08-29T08:00:00.000Z');
+    expect(doc.services[0].service_times).toBeUndefined();
+  });
+
+  it('omits anytime windows', () => {
+    const anytime: ServeStop = {
+      id: 21, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
+      time_window: 'anytime',
+    };
+    const doc = buildServeRunProblem([anytime], officer, SHIFT_START, SHIFT_END);
+    expect(doc.services[0].service_times).toBeUndefined();
+  });
+
+  it('locks a circular vehicle to the depot and leaves open-path end unset', () => {
+    const round = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END, { circular: true });
+    expect(round.vehicles[0].end_location).toBe(`officer-${officer.id}-depot`);
+    const open = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END, { circular: false });
+    expect(open.vehicles[0].end_location).toBeUndefined();
+  });
+
+  it('schedules an unpaid lunch break 12:00–13:00 Denver', () => {
+    const doc = buildServeRunProblem(stops, officer, '2026-08-28T14:00:00.000Z', SHIFT_END);
+    const brk = doc.vehicles[0].breaks?.[0];
+    expect(brk?.duration).toBe(1800);
+    expect(brk?.earliest_start).toBeDefined();
+    expect(brk?.latest_end).toBeDefined();
+    const startHour = Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver', hour: 'numeric', hourCycle: 'h23',
+    }).format(new Date(brk!.earliest_start)));
+    expect(startHour).toBe(12);
+  });
+});
+
+describe('resolveOptimizationV2Token', () => {
+  it('prefers MAPBOX_SECRET_TOKEN including sk. worker tokens', () => {
+    expect(resolveOptimizationV2Token({
+      MAPBOX_SECRET_TOKEN: 'sk.live-v2',
+      MAPBOX_ACCESS_TOKEN: 'pk.public',
+    })).toBe('sk.live-v2');
+  });
+
+  it('falls back to MAPBOX_ACCESS_TOKEN', () => {
+    expect(resolveOptimizationV2Token({
+      MAPBOX_ACCESS_TOKEN: 'pk.public',
+    })).toBe('pk.public');
+  });
+
+  it('returns null when neither token is set', () => {
+    expect(resolveOptimizationV2Token({})).toBeNull();
+    expect(resolveOptimizationV2Token({ MAPBOX_SECRET_TOKEN: '  ', MAPBOX_ACCESS_TOKEN: '' })).toBeNull();
   });
 });
 

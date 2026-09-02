@@ -37,6 +37,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { openAuditLogPdf, type AuditLogEntryForPdf } from '../utils/auditLogPdf';
 import { toDisplayLabel } from '../utils/formatters';
+import { auditLogsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // Roles that may access the audit log. AdminRoute at the router level already
 // gates to admin+manager, but we add a belt-and-suspenders in-page gate so
@@ -201,11 +202,7 @@ const AuditLogPage: React.FC = () => {
       if (filters.endDate) queryParams.append('endDate', filters.endDate);
       if (filters.search) queryParams.append('search', filters.search);
 
-      // directWorker: true -- the rmpgutah.us proxy dispatcher (rmpg-api-proxy)
-      // serves stale/empty payloads for the whole /audit/* prefix (verified live:
-      // proxy GET /audit/index-stats returned total_entries:0, direct Worker
-      // returned 3349). Same class of bug as the Fleet dashboard fix.
-      const data = await apiFetch<{ data: AuditLogEntry[]; pagination: { total: number; totalPages: number } }>(`/audit/logs?${queryParams.toString()}`, { directWorker: true });
+      const data = await apiFetch<{ data: AuditLogEntry[]; pagination: { total: number; totalPages: number } }>(`/audit/logs?${queryParams.toString()}`);
 
       setLogs(data?.data || []);
       setTotalPages(data?.pagination?.totalPages || 1);
@@ -223,7 +220,7 @@ const AuditLogPage: React.FC = () => {
   // Fetch stats
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiFetch<AuditStats>('/audit/stats', { directWorker: true });
+      const data = await apiFetch<AuditStats>('/audit/stats');
       setStats(data);
     } catch (err) {
       console.error('Error fetching audit stats:', err);
@@ -236,8 +233,8 @@ const AuditLogPage: React.FC = () => {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-    apiFetch<any>('/audit/compliance-report?days=30', { directWorker: true }).then(d => { if (d) setComplianceReport(d); }).catch(() => {});
-    apiFetch<any>('/audit/index-stats', { directWorker: true }).then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
+    apiFetch<any>('/audit/compliance-report?days=30').then(d => { if (d) setComplianceReport(d); }).catch(() => {});
+    apiFetch<any>('/audit/index-stats').then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
   }, [fetchLogs, fetchStats]);
 
   // Strip the deep-link params from the URL after the initial render. We keep
@@ -337,7 +334,7 @@ const AuditLogPage: React.FC = () => {
       const inTyping = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
 
       // N: focus the search details input (ignore when already typing).
-      if ((e.key === 'n' || e.key === 'N') && !inTyping && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if ((e.key === 'n' || e.key === 'N' || e.key === '/') && !inTyping && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         searchInputRef.current?.focus();
         return;
@@ -447,32 +444,15 @@ const AuditLogPage: React.FC = () => {
     setPage(1);
   };
 
-  // Export to CSV
+  // Export to CSV — operational fields only (no details, IP, or user names).
   const exportToCSV = () => {
-    const headers = ['Timestamp', 'User', 'Badge', 'Action', 'Entity Type', 'Entity ID', 'Details', 'IP Address'];
-    const csvData = logs.map(log => [
-      formatTimestamp(log.created_at),
-      log.user_name || 'System',
-      log.badge_number || 'N/A',
-      log.action,
-      log.entity_type,
-      log.entity_id,
-      log.details,
-      log.ip_address || 'N/A'
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `audit-log-${localToday()}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
+    downloadTextFile(`audit-log-${localToday()}.csv`, auditLogsToCsv(logs.map((log) => ({
+      action: log.action,
+      entity_type: log.entity_type,
+      entity_id: String(log.entity_id ?? ''),
+      created_at: log.created_at,
+      badge_number: log.badge_number,
+    }))));
   };
 
   // ── Court-ready PDF export ──
@@ -570,7 +550,7 @@ const AuditLogPage: React.FC = () => {
             className="toolbar-btn toolbar-btn-primary print:hidden"
           >
             <Download className="w-3.5 h-3.5" />
-            Export CSV
+            CSV
           </button>
           <button type="button"
             onClick={exportToPdf}
@@ -833,7 +813,7 @@ const AuditLogPage: React.FC = () => {
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
-                placeholder="Search details…" aria-label="Search audit log details"
+                placeholder="Search details… (/)" aria-label="Search audit log details"
                 autoComplete="off"
                 className="input-dark text-xs pl-8 min-h-[36px]"
               />
@@ -847,6 +827,7 @@ const AuditLogPage: React.FC = () => {
       {error && (
         <div className="mx-0 mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           <span>{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchLogs(); void fetchStats(); }}>Retry</button>
           <button aria-label="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>

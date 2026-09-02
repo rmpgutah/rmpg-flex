@@ -51,6 +51,7 @@ describe('US unit formatting', () => {
     expect(formatBearing('180')).toBe('S (180°)');
     expect(formatBearing('270')).toBe('W (270°)');
     expect(formatBearing('45')).toBe('NE (45°)');
+    expect(formatBearing('NE')).toBe('NE (45°)');
   });
 
   it('normalises out-of-range and junk bearings', () => {

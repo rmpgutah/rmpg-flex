@@ -32,6 +32,7 @@ import {
   ClipboardList,
   Scale,
   Building2,
+  Link2,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
@@ -40,6 +41,9 @@ import { getMatterCategoryByDocType } from '../../constants/documentTypes';
 import ServeReceiptActions from './ServeReceiptActions';
 import DiligencePanel from './DiligencePanel';
 import ServeJobComments from './ServeJobComments';
+import ServeJobOpsPanel from './ServeJobOpsPanel';
+import ServeJobQuickFields from './ServeJobQuickFields';
+import { parseServeJobMeta } from '../../utils/serveJobIntake';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -53,6 +57,7 @@ interface ServeJobCardProps {
   onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
   /** Open audit trail modal for this job. */
   onAudit?: (jobId: number) => void;
+  onOpsSaved?: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   // ── Selection mode (bulk actions) ──────────────────────────────────────────
@@ -147,6 +152,7 @@ export default React.memo(function ServeJobCard({
   onEdit,
   onEditAttempt,
   onAudit,
+  onOpsSaved,
   isExpanded = false,
   onToggleExpand,
   isSelected = false,
@@ -177,7 +183,7 @@ export default React.memo(function ServeJobCard({
   // supposed to mean "act now".
   // Carries the tier rather than a boolean so the JSX below narrows without a
   // non-null assertion.
-  const shownUrgency = isOpenJob && job.urgency_tier && job.urgency_tier !== 'normal'
+  const shownUrgency = isOpenJob && job.urgency_tier && job.urgency_tier !== 'standard'
     ? job.urgency_tier
     : null;
   const isCritical = isOpenJob && job.urgency_tier === 'critical';
@@ -189,6 +195,7 @@ export default React.memo(function ServeJobCard({
 
   const TimeIcon = TIME_WINDOW_CONFIG[job.time_window]?.icon ?? Clock;
   const timeLabel = TIME_WINDOW_CONFIG[job.time_window]?.label ?? job.time_window;
+  const opsMeta = useMemo(() => parseServeJobMeta(job.parsed_data), [job.parsed_data]);
 
   // Selection mode is active whenever the prop is wired up (parent has at
   // least one card selected or is displaying the selection UI).
@@ -262,6 +269,16 @@ export default React.memo(function ServeJobCard({
             {/* Status LED */}
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusCfg.bg} ${statusCfg.glow}`} aria-label={`Status: ${job.status}`} />
             <span className="text-sm font-bold text-rmpg-100 truncate">{job.recipient_name}</span>
+            {((Number(job.linked_attempt_number) || Number(linkedCall?.pso_attempt_number) || 0) > 1
+              || !!job.linked_parent_call_id || !!linkedCall?.parent_call_id) && (
+              <span
+                title="Return visits stay on this same Process Server job"
+                className="flex-shrink-0 text-[8px] font-bold font-mono px-1 py-0 rounded-[2px] border"
+                style={{ color: 'var(--panel-header-color)', borderColor: 'rgb(var(--brand-gold-rgb)/0.35)', background: 'rgb(var(--brand-gold-rgb)/0.08)' }}
+              >
+                VISIT {job.linked_attempt_number || linkedCall?.pso_attempt_number || 1}
+              </span>
+            )}
             {/* Intake-screened shield — warrant check completed */}
             {job.intake_screened_at && (
               <span
@@ -354,6 +371,19 @@ export default React.memo(function ServeJobCard({
             <TimeIcon className="w-2.5 h-2.5" />
             {timeLabel}
           </span>
+          {opsMeta.venue && opsMeta.venue !== 'none' && (
+            <span className="text-[8px] font-bold uppercase font-mono px-1 py-0 border rounded-[2px] text-brand-200 border-brand-700/40 bg-brand-900/20">
+              {(opsMeta.venueLabel || opsMeta.venue).replace(/_/g, ' ')}
+            </span>
+          )}
+          {opsMeta.addressClass && opsMeta.addressClass !== 'unknown' && (
+            <span className="text-[8px] font-mono px-1 py-0 rounded-[2px] border border-rmpg-600/40 text-rmpg-300">
+              {opsMeta.addressClass.replace(/_/g, ' ')}
+            </span>
+          )}
+          {opsMeta.ops?.no_sunday && (
+            <span className="text-[8px] font-bold px-1 py-0 rounded-[2px] border border-amber-700/50 text-amber-300">NO SUN</span>
+          )}
 
           {/* Enhancement 46: Deadline countdown */}
           {isDueSoon && job.deadline && (() => {
@@ -483,6 +513,12 @@ export default React.memo(function ServeJobCard({
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-rmpg-300">
                 <div><span className="text-rmpg-400">Status:</span> <span className="font-mono">{linkedCall.status?.toUpperCase()}</span></div>
                 <div><span className="text-rmpg-400">Priority:</span> <span className="font-mono">{linkedCall.priority?.toUpperCase()}</span></div>
+                {(linkedCall.pso_attempt_number || job.linked_attempt_number) && (
+                  <div><span className="text-fg-muted">Visit:</span> <span className="font-mono">{linkedCall.pso_attempt_number || job.linked_attempt_number}</span></div>
+                )}
+                {job.id != null && (
+                  <div className="flex items-center gap-1"><Link2 className="w-3 h-3 text-fg-muted" /><span className="text-fg-muted">Job ID:</span> <span className="font-mono">{job.id}</span></div>
+                )}
                 {linkedCall.pso_requestor_name && (
                   <div><span className="text-rmpg-400">Requestor:</span> {linkedCall.pso_requestor_name}</div>
                 )}
@@ -490,6 +526,22 @@ export default React.memo(function ServeJobCard({
                   <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-rmpg-400">{linkedCall.contract_id}</span></div>
                 )}
               </div>
+              {(linkedCall.parent_call || linkedCall.parentCall || (linkedCall.child_calls?.length ?? linkedCall.childCalls?.length ?? 0) > 0) && (
+                <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/40 space-y-0.5">
+                  <div className="text-[9px] text-fg-muted">Return visits share this job — they do not create a new queue entry.</div>
+                  {(linkedCall.parent_call || linkedCall.parentCall) && (
+                    <div className="text-[10px] text-fg-secondary">
+                      Original:{' '}
+                      <span className="font-mono">{(linkedCall.parent_call || linkedCall.parentCall)?.call_number}</span>
+                    </div>
+                  )}
+                  {(linkedCall.child_calls || linkedCall.childCalls || []).map((c) => (
+                    <div key={c.id} className="text-[10px] text-fg-secondary">
+                      Visit {c.pso_attempt_number ?? '—'} · <span className="font-mono">{c.call_number}</span> · {c.status}
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* PSO Compliance mini-indicator */}
               {linkedCall.pso_service_windows && (() => {
                 try {
@@ -504,6 +556,11 @@ export default React.memo(function ServeJobCard({
                 } catch { return null; }
               })()}
             </div>
+          )}
+
+          <ServeJobOpsPanel meta={opsMeta} compact />
+          {onOpsSaved && job.status !== 'served' && job.status !== 'archived' && (
+            <ServeJobQuickFields job={job} onUpdated={() => onOpsSaved()} />
           )}
 
           {/* Feature 19-20: Contact info — phone, email, DOB */}
@@ -565,6 +622,20 @@ export default React.memo(function ServeJobCard({
                 <span className="font-mono tabular-nums text-rmpg-400">{job.case_number}</span>
               </div>
             )}
+            {job.court_date && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-rmpg-400" />
+                <span className="text-rmpg-400">Court date:</span>
+                <span>{job.court_date}</span>
+              </div>
+            )}
+            {opsMeta.ops?.documents_to_serve && (
+              <div className="flex items-start gap-1 col-span-2">
+                <FileText className="w-3 h-3 text-rmpg-400 flex-shrink-0 mt-0.5" />
+                <span className="text-rmpg-400 flex-shrink-0">Packet:</span>
+                <span className="text-rmpg-300">{opsMeta.ops.documents_to_serve}</span>
+              </div>
+            )}
             {job.sm_job_id && (
               <div className="flex items-center gap-1">
                 <span className="text-rmpg-400">Job #:</span>
@@ -596,6 +667,33 @@ export default React.memo(function ServeJobCard({
                 <User className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Attorney:</span>
                 <span>{job.attorney_name}</span>
+              </div>
+            )}
+            {job.attorney_phone && (
+              <div className="flex items-center gap-1">
+                <Phone className="w-3 h-3 text-fg-muted" />
+                <span className="text-fg-muted">Atty phone:</span>
+                <a href={`tel:${job.attorney_phone}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline">{job.attorney_phone}</a>
+              </div>
+            )}
+            {job.attorney_email && (
+              <div className="flex items-center gap-1">
+                <Mail className="w-3 h-3 text-fg-muted" />
+                <span className="text-fg-muted">Atty email:</span>
+                <a href={`mailto:${job.attorney_email}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline truncate max-w-[160px]">{job.attorney_email}</a>
+              </div>
+            )}
+            {job.attorney_bar_number && (
+              <div className="flex items-center gap-1">
+                <span className="text-fg-muted">Bar #:</span>
+                <span className="font-mono tabular-nums">{job.attorney_bar_number}</span>
+              </div>
+            )}
+            {job.registered_agent_name && (
+              <div className="flex items-center gap-1 col-span-2">
+                <User className="w-3 h-3 text-fg-muted" />
+                <span className="text-fg-muted">Registered agent:</span>
+                <span>{job.registered_agent_name}</span>
               </div>
             )}
             {job.deadline && (

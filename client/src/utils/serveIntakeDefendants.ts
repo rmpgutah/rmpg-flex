@@ -71,13 +71,7 @@ export function parseDefendants(defendantField: string | undefined | null): Dete
     const name = clean(raw);
     if (!name) continue;
     const is_business = BUSINESS_RE.test(name);
-    if (is_business) {
-      // Business entities are handled by the registered-agent path upstream.
-      // Log the skip so callers processing mixed individual/entity documents
-      // can detect it during debugging rather than silently losing defendants.
-      console.warn('[serveIntakeDefendants] skipping business-entity defendant (registered-agent path expected to handle):', name);
-      continue;
-    }
+    if (is_business) continue;        // spec: registered-agent path handles businesses, not us
     out.push({ name, raw_source: raw, split_confidence: confidence, is_business });
   }
   return out;

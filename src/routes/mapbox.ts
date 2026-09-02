@@ -103,7 +103,7 @@ mapbox.get('/reverse-geocode', async (c) => {
 });
 
 // ── Directions ─────────────────────────────────────────────
-// GET /api/mapbox/directions?coordinates=&profile=&alternatives=&annotations=  → { routes: [...] }
+// GET /api/mapbox/directions?coordinates=&profile=&alternatives=&annotations=&depart_at=  → { routes: [...] }
 mapbox.get('/directions', async (c) => {
   const tk = token(c);
   if (!tk) return tokenMissing(c);
@@ -123,6 +123,11 @@ mapbox.get('/directions', async (c) => {
   // just want the polyline.
   const annotations = c.req.query('annotations');
   if (annotations) params.set('annotations', annotations);
+  // depart_at enables time-of-day traffic-aware routing (driving-traffic only).
+  // Mapbox rejects depart_at > ~30 min in the past with HTTP 422 — callers
+  // should clamp via clampDepartAtForMapbox before sending.
+  const departAt = c.req.query('depart_at');
+  if (departAt && profile === 'driving-traffic') params.set('depart_at', departAt);
   try {
     const data = await mbFetch(`${MB}/directions/v5/mapbox/${encodeURIComponent(profile)}/${coordinates}?${params}`);
     const routes = data?.routes ?? [];

@@ -130,6 +130,13 @@ class AppUpdater {
       await autoUpdater.checkForUpdates();
     } catch (err) {
       console.error('[UPDATER] Check failed:', err.message);
+      // Reset the in-progress flag so future checks aren't permanently blocked.
+      // isUpdateInProgress is set on 'update-available' but if checkForUpdates()
+      // throws before that event fires, the flag stays false — however if it
+      // throws after 'update-available' fired (race), we must reset here.
+      if (this.isUpdateInProgress) {
+        this.isUpdateInProgress = false;
+      }
       this._sendToRenderer('update-status', {
         status: 'error',
         message: err.message,

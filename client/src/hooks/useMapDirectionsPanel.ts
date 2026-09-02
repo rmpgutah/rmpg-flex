@@ -155,7 +155,7 @@ export function useMapDirectionsPanel(
           type: 'line',
           source: SOURCE_ID,
           paint: {
-            'line-color': '#d4a017',
+            'line-color': '#c3ccd6',
             'line-width': 4,
             'line-opacity': 0.85,
           },

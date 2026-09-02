@@ -127,11 +127,11 @@ function ContextMenu({ items, children }: ContextMenuProps) {
           ref={menuRef}
           role="menu"
           style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999, minWidth: MENU_MIN_WIDTH }}
-          className="bg-surface-deep border border-[#2a2a2a] rounded-sm py-1 shadow-lg"
+          className="bg-surface-deep border border-border-default rounded-sm py-1 shadow-lg"
         >
           {items.map((item, i) => {
             if (item.divider) {
-              return <div key={i} className="border-t border-[#2a2a2a] my-1" />;
+              return <div key={i} className="border-t border-border-default my-1" />;
             }
 
             const Icon = item.icon;
@@ -145,10 +145,10 @@ function ContextMenu({ items, children }: ContextMenuProps) {
                 disabled={item.disabled}
                 className={`
                   w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px]
-                  ${item.danger ? 'text-red-400' : 'text-[#cccccc]'}
+                  ${item.danger ? 'text-red-400' : 'text-fg-muted'}
                   ${item.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
-                  ${focused ? 'bg-[#1e1e1e]' : ''}
-                  ${!item.disabled ? 'hover:bg-[#1e1e1e]' : ''}
+                  ${focused ? 'bg-surface-raised' : ''}
+                  ${!item.disabled ? 'hover:bg-surface-raised' : ''}
                 `}
                 onClick={() => {
                   if (!item.disabled) {

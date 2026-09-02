@@ -1,22 +1,33 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
+import { enrichmentHeaders, splitPersonName } from './http';
 
 export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<SourceResult> {
   const start = Date.now();
   const source = 'fbi_wanted';
+  const { first, last } = splitPersonName(seed.first_name, seed.last_name);
+  const title = [first, last].filter(Boolean).join(' ') || last || first;
+  if (!title) {
+    return { source, ok: true, latency_ms: Date.now() - start, records: [] };
+  }
   try {
     const params = new URLSearchParams({
-      title: seed.last_name,
+      title,
       pageSize: '20',
     });
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    // User-Agent is required — empty UA gets a Cloudflare challenge (403).
     const res = await fetch(
       `https://api.fbi.gov/wanted/v1/list?${params}`,
-      { signal: ctrl.signal, headers: { Accept: 'application/json' } },
+      { signal: ctrl.signal, headers: enrichmentHeaders() },
     ).finally(() => clearTimeout(timer));
 
-    if (!res.ok) return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const challenge = /just a moment/i.test(body) ? ' (cloudflare_challenge)' : '';
+      return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}${challenge}` };
+    }
 
     const data = await res.json() as { items?: Array<{
       title?: string;

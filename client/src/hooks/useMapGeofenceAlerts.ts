@@ -90,7 +90,7 @@ function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): strin
 
   return `
     <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:220px;max-width:320px;">
-      <div style="font-weight:700;color:#d4a017;margin-bottom:4px;font-size:10px;text-transform:uppercase;">⚠ PREMISE ALERTS (${alerts.length})</div>
+      <div style="font-weight:700;color:#c3ccd6;margin-bottom:4px;font-size:10px;text-transform:uppercase;">⚠ PREMISE ALERTS (${alerts.length})</div>
       <div style="color:#888;font-size:10px;margin-bottom:6px;">${escapeHtml(address)}</div>
       ${alertsHtml}
     </div>`;
@@ -242,7 +242,7 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark', maxWidth: '340px',
       })
         .setLngLat([lng, lat])
-        .setHTML(`<div style="background:#141414;color:#d4a017;padding:8px;font-size:10px;font-family:ui-monospace,monospace;">Checking premise alerts…</div>`)
+        .setHTML(`<div style="background:#141414;color:#c3ccd6;padding:8px;font-size:10px;font-family:ui-monospace,monospace;">Checking premise alerts…</div>`)
         .addTo(map);
       popupRef.current = loadingPopup;
 

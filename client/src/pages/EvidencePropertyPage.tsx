@@ -31,6 +31,8 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
 import { parseTimestamp, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { evidencePropertyToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -102,6 +104,8 @@ export default function EvidencePropertyPage() {
   // narrows to evidence linked to that case (relies on the API's ?search=
   // param which the backend checks against incident_number / case_id).
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('case_id') || '');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || '');
   const [filterType, setFilterType] = useState('');
   const [page, setPage] = useState(1);
@@ -567,6 +571,19 @@ export default function EvidencePropertyPage() {
       {/* ── Left Panel: Evidence List ── */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={items.length === 0}
+            onClick={() => downloadTextFile('evidence-property.csv', evidencePropertyToCsv(items.map((item: { evidence_number?: string; type?: string; evidence_type?: string; status?: string; storage_location?: string; location_found?: string }) => ({
+              evidence_number: item.evidence_number,
+              type: item.type,
+              evidence_type: item.evidence_type,
+              status: item.status,
+              storage_location: item.storage_location,
+              location_found: item.location_found,
+            }))))}
+          >CSV</button>
           <button type="button"
             onClick={() => setNewEvidenceOpen(true)}
             className="toolbar-btn toolbar-btn-primary print:hidden"
@@ -580,6 +597,7 @@ export default function EvidencePropertyPage() {
           <div className="mx-3 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
             <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
             <span className="flex-1">{fetchError}</span>
+            <button type="button" className="toolbar-btn" onClick={() => { void fetchItems(); }}>Retry</button>
             <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
           </div>
         )}
@@ -653,9 +671,10 @@ export default function EvidencePropertyPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
               <input id="ff-evidencepropertypage-0"
+                ref={searchRef}
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-                placeholder="Search evidence..." aria-label="Search evidence..."
+                placeholder="Search evidence... (/)" aria-label="Search evidence..."
                 className="input-dark w-full pl-7 pr-2 py-1 text-xs min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
               />
             </div>
@@ -697,8 +716,12 @@ export default function EvidencePropertyPage() {
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-rmpg-500">
               <Package className="w-10 h-10 mb-3 text-rmpg-600" />
-              <p className="text-xs font-medium">No evidence items found</p>
-              <p className="text-[9px] text-rmpg-600 mt-1">Adjust your filters or create a new item</p>
+              <p className="text-xs font-medium">
+                {(searchQuery || filterStatus || filterType) ? 'No evidence matches this filter' : 'No evidence items found'}
+              </p>
+              <p className="text-[9px] text-rmpg-600 mt-1">
+                {(searchQuery || filterStatus || filterType) ? 'Adjust your search or filters' : 'Adjust your filters or create a new item'}
+              </p>
               <button type="button" onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn toolbar-btn-primary text-[10px] mt-3">
                 <Plus style={{ width: 10, height: 10 }} /> Create Evidence Item
               </button>

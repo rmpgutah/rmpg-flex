@@ -4,7 +4,11 @@ import type { RawWarrantHit, PersonRow } from '../../src/utils/warrantSources/ty
 
 const dobPerson: PersonRow = { id: 7, first_name: 'John', middle_name: null, last_name: 'Smith', dob: '1990-01-01' };
 const noDobPerson: PersonRow = { id: 8, first_name: 'John', middle_name: null, last_name: 'Smith', dob: '' };
-const hit = (o: Partial<RawWarrantHit>): RawWarrantHit => ({ source_key: 's1', warrant_id: 'W1', first_name: 'John', last_name: 'Smith', ...o });
+const hit = (o: Partial<RawWarrantHit>): RawWarrantHit => ({
+  source_key: 's1', warrant_id: 'W1', first_name: 'John', last_name: 'Smith',
+  age: trueAge('1990-01-01'),
+  ...o,
+});
 
 // Compute the person's true age from DOB + the real current date so the
 // "corroborates" assertions stay honest regardless of the run year.
@@ -62,9 +66,9 @@ describe('reconcileHits', () => {
 
   // --- additional valuable cases ---
 
-  it('DOB person but hit has NO age => still confirmed (absence is not disconfirming)', () => {
+  it('DOB person but hit has NO age => excluded (identity gate requires positive evidence on the hit)', () => {
     const out = reconcileHits([hit({ warrant_id: 'W1', age: null })], dobPerson);
-    expect(out[0].confidence).toBe('confirmed');
+    expect(out).toHaveLength(0);
   });
 
   it('age off by exactly 1 is within tolerance => confirmed', () => {

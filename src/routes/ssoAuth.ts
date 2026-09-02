@@ -48,13 +48,18 @@ ssoAuth.get('/check', async (c) => {
   const ok = await rateLimitAllow(c.env.KV, `sso:check:${ip}`, 20, 300);
   if (!ok) return c.json({ ssoEnabled: false });
 
-  const db = getDb(c.env);
-  const user = await queryFirst<{ sso_enabled: number | null }>(
-    db,
-    `SELECT sso_enabled FROM users WHERE LOWER(email) = ? AND status = 'active'`,
-    email,
-  );
-  return c.json({ ssoEnabled: !!user?.sso_enabled });
+  try {
+    const db = getDb(c.env);
+    const user = await queryFirst<{ sso_enabled: number | null }>(
+      db,
+      `SELECT sso_enabled FROM users WHERE LOWER(email) = ? AND status = 'active'`,
+      email,
+    );
+    return c.json({ ssoEnabled: !!user?.sso_enabled });
+  } catch {
+    // D1 failure must not block login — degrade to password-only.
+    return c.json({ ssoEnabled: false });
+  }
 });
 
 // GET /api/oidc/dialer/login -- start the PKCE authorization-code flow.

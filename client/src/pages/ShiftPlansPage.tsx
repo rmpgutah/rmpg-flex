@@ -64,6 +64,7 @@ import { apiFetch } from '../hooks/useApi';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openShiftPlanPdf } from '../utils/shiftPlanPdf';
 import { formatEnumValue } from '../utils/formatters';
+import { downloadTextFile, shiftPlansToCsv } from '../utils/rmsListExport';
 
 // ── Role gate ──────────────────────────────────────────────
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -523,6 +524,17 @@ export default function ShiftPlansPage() {
               Briefing PDF
             </button>
           )}
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={plansForDate.length === 0}
+            onClick={() => downloadTextFile('shift-plans.csv', shiftPlansToCsv(plansForDate.map((p) => ({
+              plan_date: p.date,
+              shift: p.shiftType,
+              status: p.status,
+              district: p.name,
+            }))))}
+          >CSV</button>
           <ExportButton exportUrl="/api/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           {canManage && (
             <button type="button"

@@ -39,8 +39,9 @@ const FOCUS_ASSIST_KEY = 'rmpg_focus_assist';
 const BRIGHTNESS_KEY = 'rmpg_brightness';
 const RADIO_KEY = 'rmpg_radio_channel';
 const WELFARE_KEY = 'rmpg_welfare_timer';
-const CLIP_KEY = 'rmpg_clipboard_history';
-const MAX_CLIP = 15;
+import {
+  addClipEntry as persistClip, loadClipHistory, MAX_CLIP,
+} from '../utils/clipboardStore';
 
 const DesktopSystemContext = createContext<(DesktopSystemState & DesktopSystemActions) | null>(null);
 
@@ -65,7 +66,7 @@ function loadWelfare(): WelfareTimer | null {
 }
 
 function loadClip(): string[] {
-  try { const raw = localStorage.getItem(CLIP_KEY); return raw ? JSON.parse(raw) : []; }
+  try { return loadClipHistory(); }
   catch { return []; }
 }
 
@@ -206,13 +207,7 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
   }, [updateAvailable]);
 
   const addClipboardEntry = useCallback((text: string) => {
-    if (!text.trim()) return;
-    setClipboardHistory(prev => {
-      const filtered = prev.filter(e => e !== text);
-      const next = [text, ...filtered].slice(0, MAX_CLIP);
-      try { localStorage.setItem(CLIP_KEY, JSON.stringify(next)); } catch { /* quota */ }
-      return next;
-    });
+    setClipboardHistory((prev) => persistClip(prev, text).slice(0, MAX_CLIP));
   }, []);
 
   const setUnitStatus = useCallback(async (status: string) => {

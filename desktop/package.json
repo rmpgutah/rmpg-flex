@@ -39,6 +39,7 @@
       "updater.js",
       "localDb.js",
       "connectivityMonitor.js",
+      "wifiInfo.js",
       "pinManager.js",
       "offlineRouter.js",
       "syncManager.js",
@@ -144,7 +145,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
-    "electron": "^41.10.5",
+    "electron": "^41.10.7",
     "electron-builder": "^26.15.2"
   },
   "overrides": {

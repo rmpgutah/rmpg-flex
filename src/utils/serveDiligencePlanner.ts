@@ -16,7 +16,8 @@
 import type { ServePriority } from './serveIntakeExtract';
 import type { TimeBand } from './serveScheduleParse';
 import type { AddressClass } from './serveAddressClass';
-import { selectWindows, usesBusinessTiming, type WindowAuthority } from './serveAttemptWindows';
+import { selectWindows, usesBusinessTiming, defaultAuthorityForClass, type WindowAuthority } from './serveAttemptWindows';
+import type { VenueKind } from './serveIntakeOutputTree';
 import { log } from './logger';
 
 export interface AttemptWindow {
@@ -50,6 +51,7 @@ export interface PlanOptions {
     hours_end?: string | null;
     cutoff_time?: string | null;
   } | null;
+  venueKind?: VenueKind | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -97,6 +99,7 @@ export function planAttemptWindows(
     addressClassConfirmed: options.addressClassConfirmed,
     clientBands: options.clientBands ?? [],
     locationNote: locationNote ?? null,
+    venueKind: options.venueKind ?? null,
   });
 
   // Allowed days: client constraint > location note > address-class default.
@@ -326,7 +329,8 @@ export interface ReplanQueueCtx {
 
 function failedBandKind(window: string | null): 'morning' | 'midday' | 'afternoon' | 'evening' | null {
   if (!window) return null;
-  const startH = parseInt(window.split('–')[0]?.split(':')[0] ?? '', 10);
+  const startToken = window.split(/[-–—]/)[0] ?? '';
+  const startH = parseInt(startToken.split(':')[0] ?? '', 10);
   if (Number.isNaN(startH)) return null;
   if (startH < 11) return 'morning';
   if (startH < 14) return 'midday';
@@ -339,10 +343,38 @@ export function replanAfterFailedAttempt(
   queue: ReplanQueueCtx,
   tz = 'America/Denver',
 ): AttemptWindow | null {
-  // Already at max → caller transitions queue to status='failed'.
   if (queue.attempt_count + 1 > queue.max_attempts) return null;
 
-  // Start re-planning ≥ 24 h after the failed attempt.
+  const failedKind = failedBandKind(failed.window);
+  const failLocal = localParts(new Date(Date.parse(failed.attempt_at)), tz);
+  const sameDayOk = failedKind === 'morning' || failedKind === 'midday' || failedKind === 'afternoon';
+
+  if (sameDayOk) {
+    if (queue.clientBands?.length) {
+      const failStart = parseInt((failed.window || '00:00').split(/[-–—]/)[0] ?? '0', 10);
+      const later = queue.clientBands.find((b) => parseInt(b.start, 10) > failStart) ?? queue.clientBands[0];
+      return {
+        attempt: queue.attempt_count + 1,
+        date: failLocal.date,
+        weekday: failLocal.weekday,
+        window: `${later.start}-${later.end}`,
+        focus: 'client-specified attempt band — do not attempt outside these hours',
+        authority: 'client-specified',
+      };
+    }
+    const window = failedKind === 'morning' ? '12:00-17:00' : '18:00-21:00';
+    return {
+      attempt: queue.attempt_count + 1,
+      date: failLocal.date,
+      weekday: failLocal.weekday,
+      window,
+      focus: 'diligence rotation — later band the same day after a failed attempt',
+      authority: usesBusinessTiming(queue.addressClass ?? 'unknown', queue.addressClassConfirmed)
+        ? defaultAuthorityForClass(queue.addressClass ?? 'unknown')
+        : 'residential default',
+    };
+  }
+
   const replanStart = new Date(Date.parse(failed.attempt_at) + DAY_MS).toISOString();
 
   const plan = planAttemptWindows(replanStart, queue.deadline, tz, {
@@ -356,17 +388,10 @@ export function replanAfterFailedAttempt(
   });
   if (!plan.length) return null;
 
-  // Diligence rule: vary time-of-day from the failed attempt.
-  // Under deadline pressure, date proximity beats band diversity: return the
-  // earliest available date even if the band repeats rather than slip a day.
-  const failedKind = failedBandKind(failed.window);
   const days = daysUntilDeadline(replanStart, queue.deadline);
   const isDeadlineTight = days !== null && days <= 4;
 
   if (failedKind && !isDeadlineTight) {
-    // Normal (non-tight) path: prefer a different time-of-day band.
-    // Override `attempt`: plan positions are 1-based within the regenerated sub-plan;
-    // the queue tracks the lifetime attempt count.
     const differentBand = plan.find((w) => failedBandKind(w.window) !== failedKind);
     if (differentBand) return { ...differentBand, attempt: queue.attempt_count + 1 };
   }

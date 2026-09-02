@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import { apiFetch } from '../../../hooks/useApi';
+import { shiftsToCsv, downloadTextFile } from '../../../utils/rmsListExport';
+import { copyToClipboard } from '../../../utils/contextMenuActions';
 
 const W = 700;
 const H = 500;
@@ -42,12 +44,27 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
   });
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadShifts = () => {
+    setLoadError(null);
     apiFetch<Shift[]>('/schedules/my-schedule')
       .then(setShifts)
-      .catch(() => setShifts([]));
-  }, []);
+      .catch((err) => {
+        setShifts([]);
+        setLoadError(err instanceof Error ? err.message : 'Failed to load schedule');
+      });
+  };
+
+  useEffect(() => { loadShifts(); }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const shiftSet = new Set(shifts.map(s => s.date?.slice(0, 10)));
 
@@ -156,7 +173,19 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
           onClick={() => setView('week')}
           style={{ fontSize: 10, padding: '3px 10px', borderRadius: 2, border: '1px solid var(--border-default)', cursor: 'pointer', background: view === 'week' ? 'var(--surface-sunken)' : 'none', color: 'var(--text-primary)' }}
         >Week</button>
+        <button
+          type="button"
+          onClick={() => downloadTextFile('shifts.csv', shiftsToCsv(shifts))}
+          disabled={shifts.length === 0}
+          style={{ fontSize: 10, padding: '3px 10px', borderRadius: 2, border: '1px solid var(--border-default)', cursor: 'pointer', background: 'none', color: 'var(--text-primary)' }}
+        >CSV</button>
       </div>
+      {loadError && (
+        <div style={{ padding: '4px 12px', fontSize: 11, color: 'var(--sev-critical)', display: 'flex', justifyContent: 'space-between' }}>
+          <span>{loadError}</span>
+          <button type="button" onClick={loadShifts} style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}>Retry</button>
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {view === 'month' ? (
@@ -180,6 +209,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
         {selected && (
           <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-default)', background: 'var(--surface-base)', flexShrink: 0 }}>
             <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>{selected}</span>
+            <button type="button" onClick={() => void copyToClipboard(selected)} style={{ fontSize: 9, marginLeft: 8, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Copy date</button>
             {selectedShifts.length === 0 ? (
               <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 12 }}>No scheduled shifts</span>
             ) : selectedShifts.map(s => (

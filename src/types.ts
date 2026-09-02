@@ -41,7 +41,15 @@ export type Bindings = {
   // Wraps a fresh random per-file Data Encryption Key for each protected upload. Base64 of
   // 32 random bytes — provision via:
   //   node scripts/generate-quantum-key.mjs 32 | wrangler secret put FILE_ENCRYPTION_KEK
+  // Optional: when unset, encryptedR2 derives a stable KEK from JWT_SECRET
+  // (same pattern as PDF_SIGNING_KEY). Reads also try JWT-derived and
+  // FILE_ENCRYPTION_KEK_PREVIOUS / JWT_SECRET_PREVIOUS so adding a dedicated
+  // KEK does not brick files already wrapped under JWT_SECRET. R2 bytes are
+  // never rewritten; only the D1 wrapped DEK is re-wrapped on a successful
+  // historical unwrap.
   FILE_ENCRYPTION_KEK?: string;
+  FILE_ENCRYPTION_KEK_PREVIOUS?: string;
+  JWT_SECRET_PREVIOUS?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
   // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
@@ -113,12 +121,29 @@ export type Bindings = {
   ROBOFLOW_API_URL?: string;
   USPS_USER_ID?: string;
   OPENCORPORATES_API_KEY?: string;
+  OPENSANCTIONS_API_KEY?: string;
   NUMVERIFY_API_KEY?: string;
+  USA_PEOPLE_SEARCH_RAPIDAPI_KEY?: string;
+  USA_PEOPLE_SEARCH_HOST?: string;
+  USA_PEOPLE_SEARCH_PATH?: string;
+  HUNTER_API_KEY?: string;
+  PDL_API_KEY?: string;
+  APOLLO_API_KEY?: string;
+  HIBP_API_KEY?: string;
+  COURTLISTENER_TOKEN?: string;
   CARXE_API_KEY?: string;
   CARXE_API_BASE?: string;
+  PLATE_TO_VIN_API_KEY?: string;
+  VIN_DECODER_API_KEY?: string;
+  PLATE_DECODER_API_KEY?: string;
   RESEND_API_KEY?: string;
   IPED_API_KEY?: string;
   EMAIL_FIELD_ENCRYPTION_KEK?: string;
+  // Microsoft 365 / Azure AD app registration (optional — Admin → Email tab
+  // stores encrypted copies in D1; env bindings take precedence when set).
+  MS_EMAIL_CLIENT_ID?: string;
+  MS_EMAIL_CLIENT_SECRET?: string;
+  MS_EMAIL_TENANT_ID?: string;
   // Analytics pipeline (optional — provisioned separately)
   ANALYTICS?: AnalyticsPipeline;
   EVENTS?: AnalyticsPipeline;

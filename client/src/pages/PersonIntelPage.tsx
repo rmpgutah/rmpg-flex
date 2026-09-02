@@ -13,9 +13,13 @@ import { formatEnumValue } from '../utils/formatters';
 interface IntelSeed {
   name?: string;
   dob?: string;
+  age?: string;
   phone?: string;
   email?: string;
   plate?: string;
+  address?: string;
+  city?: string;
+  state?: string;
 }
 
 interface Dossier {
@@ -28,6 +32,7 @@ interface Dossier {
   risk_flags: string | null;
   linked_person_id: number | null;
   data_points_found: number;
+  cross_refs_found?: number;
   created_at: string;
   completed_at: string | null;
 }
@@ -233,16 +238,20 @@ export default function PersonIntelPage() {
 
       {showForm && (
         <div className="bg-surface-raised rounded p-4 space-y-3 border border-border-default">
-          <p className="text-xs font-semibold text-rmpg-200">New OSINT Investigation — enter any known identifiers</p>
+          <p className="text-xs font-semibold text-rmpg-200">New OSINT Investigation — name plus DOB or age is required to auto-link records</p>
           <div className="grid grid-cols-2 gap-2">
             {[
               { key: 'name', label: 'Full Name', placeholder: 'John Doe' },
-              { key: 'dob', label: 'Date of Birth', placeholder: 'YYYY-MM-DD' },
+              { key: 'dob', label: 'Date of Birth', placeholder: '10/11/2001 or YYYY-MM-DD' },
+              { key: 'age', label: 'Age', placeholder: '24' },
+              { key: 'city', label: 'City', placeholder: 'Salt Lake City' },
+              { key: 'state', label: 'State', placeholder: 'UT' },
+              { key: 'address', label: 'Address', placeholder: 'Residential address' },
               { key: 'phone', label: 'Phone', placeholder: '8015551234' },
               { key: 'email', label: 'Email', placeholder: 'john@example.com' },
               { key: 'plate', label: 'License Plate', placeholder: 'ABC123' },
             ].map(f => (
-              <div key={f.key} className={f.key === 'name' ? 'col-span-2' : ''}>
+              <div key={f.key} className={f.key === 'name' || f.key === 'address' ? 'col-span-2' : ''}>
                 <label className="block text-[10px] text-rmpg-400 mb-0.5">{f.label}</label>
                 <input
                   type="text"
@@ -348,6 +357,9 @@ export default function PersonIntelPage() {
                         </span>
                       )}
                       <span className="text-[10px] text-rmpg-500">{d.data_points_found} data points</span>
+                      {!!d.cross_refs_found && (
+                        <span className="text-[10px] text-brand-400">{d.cross_refs_found} xrefs</span>
+                      )}
                       {flags.slice(0, 3).map(f => (
                         <span key={f} className="text-[10px] text-red-400">{f.toUpperCase()}</span>
                       ))}

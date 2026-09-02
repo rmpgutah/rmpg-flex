@@ -28,6 +28,7 @@ interface NsopwStatus {
 
 export default function NsopwLookupPage() {
   const [status, setStatus] = useState<NsopwStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
   // ── URL deep-link inputs ──
   // The page accepts three forms (sorted by precedence below):
   //   offender_id  → loads the offender record straight from the worker
@@ -60,11 +61,13 @@ export default function NsopwLookupPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
+  const loadStatus = () => {
+    setStatusError(false);
     apiFetch<NsopwStatus>('/nsopw/status')
       .then(setStatus)
-      .catch((err) => console.warn('nsopw status failed:', err));
-  }, []);
+      .catch(() => setStatusError(true));
+  };
+  useEffect(() => { loadStatus(); }, []);
 
   return (
     <div className="p-3 space-y-3 max-w-6xl mx-auto">
@@ -78,6 +81,12 @@ export default function NsopwLookupPage() {
         recommended on every search.
       </div>
 
+      {statusError && (
+        <div className="text-[11px] text-red-400 flex items-center justify-between">
+          <span>Could not load NSOPW status.</span>
+          <button type="button" className="px-2 py-[1px] border border-border-default" onClick={loadStatus}>Retry</button>
+        </div>
+      )}
       {status && !status.configured && (
         <div className="bg-amber-950/40 border border-amber-700/50 text-amber-300 px-2 py-2 text-[11px]">
           <div className="font-bold flex items-center gap-1">

@@ -25,8 +25,21 @@ public struct AuthAPI: Sendable {
         // The Worker may include other fields; we only model what M0 needs.
 
         enum CodingKeys: String, CodingKey {
-            case token, role
+            case token, role, user
             case userId = "user_id"
+        }
+
+        private struct NestedUser: Decodable, Sendable {
+            let id: Int?
+            let role: String?
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            token = try container.decode(String.self, forKey: .token)
+            let nested = try container.decodeIfPresent(NestedUser.self, forKey: .user)
+            userId = try container.decodeIfPresent(Int.self, forKey: .userId) ?? nested?.id
+            role = try container.decodeIfPresent(String.self, forKey: .role) ?? nested?.role
         }
     }
 

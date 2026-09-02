@@ -93,17 +93,32 @@ describe('ServeJobCard urgency chrome', () => {
   });
 
   it('keeps a non-critical tier visible while open, and drops it when closed', () => {
-    const { unmount } = renderCard(makeJob({ status: 'pending', urgency_tier: 'high' }));
-    expect(screen.getByText('HIGH')).toBeTruthy();
+    const { unmount } = renderCard(makeJob({ status: 'pending', urgency_tier: 'tight' }));
+    expect(screen.getByText('TIGHT')).toBeTruthy();
     unmount();
 
-    renderCard(makeJob({ status: 'served', urgency_tier: 'high' }));
-    expect(screen.queryByText('HIGH')).toBeNull();
+    renderCard(makeJob({ status: 'served', urgency_tier: 'tight' }));
+    expect(screen.queryByText('TIGHT')).toBeNull();
   });
 
-  it('never renders a tier chip for the normal tier', () => {
-    renderCard(makeJob({ status: 'pending', urgency_tier: 'normal' }));
-    expect(screen.queryByText('NORMAL')).toBeNull();
+  it('never renders a tier chip for the standard tier', () => {
+    renderCard(makeJob({ status: 'pending', urgency_tier: 'standard' }));
+    expect(screen.queryByText('STANDARD')).toBeNull();
+  });
+
+  it('shows venue overlay from parsed_data on the card', () => {
+    renderCard(makeJob({
+      parsed_data: JSON.stringify({
+        _intake: {
+          address_class: { klass: 'corporate', confirmed: true },
+          venue: 'medical_hospice',
+          output_tree: { venue_label: 'Medical / Hospice', fired_ids: ['venue.medical_hospice'] },
+        },
+        _ops: { no_sunday: true },
+      }),
+    }));
+    expect(screen.getByText('Medical / Hospice')).toBeTruthy();
+    expect(screen.getByText('NO SUN')).toBeTruthy();
   });
 });
 

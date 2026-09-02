@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AlertOctagon, Plus, CheckCircle, Calendar, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -39,6 +40,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   const [form, setForm] = useState({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Recall | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -104,7 +106,6 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   };
 
   const handleDelete = async (r: Recall) => {
-    if (!window.confirm(`Delete recall ${r.recall_number || (r as any).nhtsa_number || r.id}?`)) return;
     try { await apiFetch(`/fleet/recalls/${r.id}`, { method: 'DELETE' }); addToast('Recall deleted', 'success'); load(); }
     catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete recall', 'error'); }
   };
@@ -166,7 +167,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                 </div>
                 <div className="flex gap-1">
                   <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>
-                  <button type="button" onClick={() => handleDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
+                  <button type="button" onClick={() => setPendingDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
                   {r.status !== 'completed' && r.status !== 'not_applicable' && (
                     <>
                       {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
@@ -179,6 +180,19 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
           ))}
         </div>
       )}
+      <ConfirmDialog
+        isOpen={pendingDelete != null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const r = pendingDelete;
+          setPendingDelete(null);
+          if (r) void handleDelete(r);
+        }}
+        title="Delete recall"
+        message={pendingDelete ? `Delete recall ${pendingDelete.recall_number || (pendingDelete as any).nhtsa_number || pendingDelete.id}?` : ''}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

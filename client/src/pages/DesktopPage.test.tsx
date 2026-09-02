@@ -35,6 +35,7 @@ vi.mock('../context/AuthContext', () => ({
 // useAuth is mocked above.
 vi.mock('../components/ToastProvider', () => ({
   useToast: () => ({ addToast: vi.fn() }),
+  useToastSafe: () => ({ addToast: vi.fn() }),
 }));
 
 vi.mock('../utils/featureFlags', () => ({
@@ -144,23 +145,22 @@ describe('DesktopPage', () => {
   });
 
   it('Reset to Default clears sticky notes and the following debounced PUT reflects the reset state', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+    fireEvent.click(screen.getByText('New Sticky Note'));
+    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+    fireEvent.click(screen.getByText('FlexOS Settings…'));
+    fireEvent.click(screen.getByText('Desktop & Icons'));
+    fireEvent.click(screen.getByText('Reset to Default'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+    // Reset's real effect: the note is actually gone, not just "confirmed".
+    expect(screen.queryByLabelText('Delete note')).not.toBeInTheDocument();
+
     vi.useFakeTimers();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     try {
-      render(<MemoryRouter><DesktopPage /></MemoryRouter>);
-      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-      fireEvent.click(screen.getByText('New Sticky Note'));
-      expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
-
-      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-      fireEvent.click(screen.getByText('FlexOS Settings…'));
-      fireEvent.click(screen.getByText('Desktop & Icons'));
-      fireEvent.click(screen.getByText('Reset to Default'));
-
-      expect(confirmSpy).toHaveBeenCalled();
-      // Reset's real effect: the note is actually gone, not just "confirmed".
-      expect(screen.queryByLabelText('Delete note')).not.toBeInTheDocument();
-
       apiFetchMock.mockClear();
       await act(async () => { await vi.advanceTimersByTimeAsync(800); });
 
@@ -170,7 +170,6 @@ describe('DesktopPage', () => {
       expect(JSON.parse(body.desktop_notes_json)).toEqual([]);
     } finally {
       vi.useRealTimers();
-      confirmSpy.mockRestore();
     }
   });
 });

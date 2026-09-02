@@ -176,6 +176,16 @@ export function mapDbCall(row: any): CallForService {
     scene_safety: row.scene_safety || undefined,
     weather_conditions: row.weather_conditions || undefined,
     lighting_conditions: row.lighting_conditions || undefined,
+    weather_snapshot: (() => {
+      const raw = row.weather_snapshot;
+      if (!raw) return undefined;
+      if (typeof raw === 'object') return raw;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return undefined; }
+      }
+      return undefined;
+    })(),
+    weather_manual: !!row.weather_manual,
     // Flags
     alcohol_involved: !!row.alcohol_involved,
     drugs_involved: !!row.drugs_involved,
@@ -213,6 +223,12 @@ export function mapDbCall(row: any): CallForService {
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
     court_name: row.court_name || undefined,
+    attorney_name: row.attorney_name || undefined,
+    plaintiff_name: row.plaintiff_name || undefined,
+    jurisdiction: row.jurisdiction || undefined,
+    deadline: row.deadline || undefined,
+    time_window: row.time_window || undefined,
+    service_instructions: row.service_instructions || undefined,
     // Damage
     damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,
@@ -246,16 +262,12 @@ export function mapDbCall(row: any): CallForService {
     serve_queue_id: row.serve_queue_id ?? undefined,
     // Pinned-to-top flag (sticky at top of dispatcher's call list)
     pinned: row.pinned ? 1 : 0,
-    // PDF-required + ext-table fields
-    attorney_name: row.attorney_name || undefined,
-    jurisdiction: row.jurisdiction || undefined,
-    deadline: row.deadline || undefined,
-    time_window: row.time_window || undefined,
-    service_instructions: row.service_instructions || undefined,
     pso_72hr_deadline: row.pso_72hr_deadline || undefined,
     pso_72hr_notified: row.pso_72hr_notified || undefined,
     case_id: row.case_id ?? undefined,
     parent_call_id: row.parent_call_id ?? undefined,
+    parent_call: row.parent_call || undefined,
+    child_calls: row.child_calls || undefined,
   };
 }
 

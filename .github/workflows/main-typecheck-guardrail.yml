@@ -233,22 +233,22 @@ jobs:
         id: client-tests
         run: cd client && npx vitest run
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Client tests — PDF suite
         run: cd client && npx vitest run --config vitest.pdf.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Client tests — map suite
         run: cd client && npx vitest run --config vitest.maps.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Client tests — desktop components
         run: cd client && npx vitest run --config vitest.desktop.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Open issue on failure
         if: failure() && steps.client-tests.conclusion == 'failure'

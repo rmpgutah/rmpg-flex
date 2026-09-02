@@ -509,7 +509,9 @@ export function drawFormSection(
   // Check if section fits on current page
   let curY = config.y;
   if (curY + totalH > pageH - bottomMargin) {
-    if (config.onPageBreak) {
+    if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) {
+      // Door notices must never add a continuation page — stay on sheet one.
+    } else if (config.onPageBreak) {
       curY = config.onPageBreak(doc, totalH);
     } else {
       doc.addPage();

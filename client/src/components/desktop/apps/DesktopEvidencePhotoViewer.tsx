@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Image, Search, X, ChevronLeft, ChevronRight, Download, MapPin } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../../hooks/useApi';
 import { formatDate, formatDateTime } from '../../../utils/dateUtils';
+import { copyToClipboard } from '../../../utils/clipboard';
+import { fieldPhotosToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 interface FieldPhoto {
   id: number;
@@ -14,6 +16,7 @@ interface FieldPhoto {
   latitude?: number;
   longitude?: number;
   url?: string;
+  r2_key?: string;
   signed_url?: string;
   thumbnail_url?: string;
 }
@@ -30,18 +33,14 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [nameQ, setNameQ] = useState('');
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const resolvePhotoUrl = useCallback(async (photo: FieldPhoto): Promise<string> => {
     if (photo.signed_url) return photo.signed_url;
     if (photo.url) return authedImageUrl(photo.url);
-    // Try to get a signed URL
-    try {
-      const r = await apiFetch<{ url: string }>(`/field-photos/${photo.id}/url`);
-      return r.url;
-    } catch {
-      return authedImageUrl(`/api/field-photos/${photo.id}/image`);
-    }
+    if (photo.r2_key) return authedImageUrl(`/api/field-photos/file/${photo.r2_key}`);
+    return '';
   }, []);
 
   const load = useCallback(async (id: string) => {
@@ -67,21 +66,30 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
   // Keyboard navigation for lightbox
   useEffect(() => {
     if (lightboxIdx === null) return;
+    const visCount = nameQ.trim()
+      ? photos.filter((p) => (p.original_filename ?? p.filename ?? `photo-${p.id}`).toLowerCase().includes(nameQ.trim().toLowerCase())).length
+      : photos.length;
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setLightboxIdx(null);
       if (e.key === 'ArrowLeft') setLightboxIdx(i => i !== null ? Math.max(0, i - 1) : null);
-      if (e.key === 'ArrowRight') setLightboxIdx(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
+      if (e.key === 'ArrowRight') setLightboxIdx(i => i !== null ? Math.min(visCount - 1, i + 1) : null);
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [lightboxIdx, photos.length]);
+  }, [lightboxIdx, photos, nameQ]);
 
   const handleSearch = () => {
     setActiveCallId(callIdInput.trim());
     void load(callIdInput.trim());
   };
 
-  const currentPhoto = lightboxIdx !== null ? photos[lightboxIdx] : null;
+  const photoFilename = (p: FieldPhoto) => p.original_filename ?? p.filename ?? `photo-${p.id}`;
+  const photoDate = (p: FieldPhoto) => p.created_at ?? p.uploaded_at;
+  const visiblePhotos = nameQ.trim()
+    ? photos.filter((p) => photoFilename(p).toLowerCase().includes(nameQ.trim().toLowerCase()))
+    : photos;
+
+  const currentPhoto = lightboxIdx !== null ? visiblePhotos[lightboxIdx] : null;
   const [currentUrl, setCurrentUrl] = useState<string>('');
 
   useEffect(() => {
@@ -89,9 +97,6 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
       resolvePhotoUrl(currentPhoto).then(setCurrentUrl).catch(() => setCurrentUrl(''));
     }
   }, [currentPhoto, resolvePhotoUrl]);
-
-  const photoFilename = (p: FieldPhoto) => p.original_filename ?? p.filename ?? `photo-${p.id}`;
-  const photoDate = (p: FieldPhoto) => p.created_at ?? p.uploaded_at;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)' }}>
@@ -122,21 +127,43 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
           >
             <Search size={11} /> Load
           </button>
+          <input
+            type="search"
+            value={nameQ}
+            onChange={(e) => setNameQ(e.target.value)}
+            placeholder="Filter filename…"
+            aria-label="Filter photos by filename"
+            style={{ width: 140, fontSize: 11, padding: '4px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+          />
+          <button
+            type="button"
+            disabled={photos.length === 0}
+            onClick={() => downloadTextFile('field-photos.csv', fieldPhotosToCsv(photos))}
+            style={{ fontSize: 11, padding: '4px 10px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >CSV</button>
         </div>
       )}
 
       {/* Photo grid */}
       <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
         {loading && <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>Loading…</p>}
-        {error && <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--sev-critical)' }}>{error}</p>}
+        {error && (
+          <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--sev-critical)' }}>
+            {error}{' '}
+            <button type="button" onClick={() => void load(activeCallId || callIdInput)} style={{ fontSize: 10, marginLeft: 8, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button>
+          </p>
+        )}
         {!loading && !error && photos.length === 0 && activeCallId && (
           <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>No photos attached to this call</p>
+        )}
+        {!loading && !error && photos.length > 0 && visiblePhotos.length === 0 && (
+          <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>No photos match the filename filter</p>
         )}
         {!loading && !activeCallId && !propCallId && (
           <p style={{ textAlign: 'center', marginTop: 60, fontSize: 11, color: 'var(--text-secondary)' }}>Enter a call ID to view its evidence photos</p>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {photos.map((p, i) => (
+          {visiblePhotos.map((p, i) => (
             <div
               key={p.id}
               onClick={() => setLightboxIdx(i)}
@@ -145,6 +172,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
               <PhotoThumb photo={p} resolveUrl={resolvePhotoUrl} />
               <div style={{ padding: '4px 6px' }}>
                 <div style={{ fontSize: 9, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{photoFilename(p)}</div>
+                <button type="button" onClick={(e) => { e.stopPropagation(); void copyToClipboard(photoFilename(p)); }} style={{ fontSize: 8, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>Copy name</button>
                 {photoDate(p) && <div style={{ fontSize: 8, color: 'var(--text-secondary)' }}>{formatDate(photoDate(p))}</div>}
               </div>
             </div>

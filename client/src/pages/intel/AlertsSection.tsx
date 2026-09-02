@@ -9,7 +9,7 @@ export default function AlertsSection() {
   const { selectEntity } = useIntelContext();
   return (
     <div className="p-3 space-y-2">
-      <div className="font-mono text-[10px] tracking-widest text-[#888] uppercase">Alerts</div>
+      <div className="font-mono text-[10px] tracking-widest text-fg-muted uppercase">Alerts</div>
       <ActiveAlertsWidget rows={data?.alerts || []} onSelect={selectEntity} />
     </div>
   );

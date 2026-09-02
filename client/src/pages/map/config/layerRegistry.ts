@@ -16,15 +16,15 @@
 
 import {
   Activity, AlertTriangle, Anchor, Boxes, Brush, Camera, CircleDot, Cloud, Compass,
-  CloudLightning, Crosshair, DoorOpen, Footprints, Gauge, Globe, Grid3x3, Hexagon,
+  CloudLightning, Crosshair, DoorOpen, Droplets, Flame, Footprints, Gauge, Globe, Grid3x3, Hexagon,
   History, Landmark, Layers, LineChart, Locate, MapPin, Mountain, Move3d, Navigation,
-  PenTool, PlayCircle, Plug, Radar, Radio, Route, Ruler, Search, Shield, Siren,
+  PenTool, PlayCircle, Plug, Radar, Radio, Route, Ruler, ScanLine, School, Search, Shield, Siren,
   SquareDashed, Star, Sun, Timer, TrafficCone, Volume2, Waypoints, Wrench,
   Zap, type LucideIcon,
 } from 'lucide-react';
 import { HIERARCHY_CONFIGS } from '../../../hooks/useDistrictHierarchyLayers';
 import { GEO_LAYER_CONFIGS } from '../../../hooks/useGeoJsonLayers';
-import { OSM_VECTOR_CONFIGS } from '../../../hooks/useVectorTileLayers';
+import { OSM_VECTOR_CONFIGS, VECTOR_TILE_CONFIGS } from '../../../hooks/useVectorTileLayers';
 
 export type MapLayerGroup =
   | 'Live Conditions' | 'Units & Calls' | 'Historical Analysis'
@@ -186,20 +186,77 @@ const OSM_GROUP_META: Record<string, { group: MapLayerGroup; icon: LucideIcon; c
 // (client/src/hooks/useVectorTileLayers.ts) so a new category can never leave
 // the registry stale. id matches the config id exactly — that id is also the
 // binding key used in MapboxMapPage's layerBindings.
+const OSM_CAT_REGISTRY: Record<string, { icon?: LucideIcon; colorVar?: string; pinned?: boolean }> = {
+  alpr: { icon: ScanLine, colorVar: 'var(--sev-info)', pinned: true },
+  camera: { icon: Camera, colorVar: 'var(--accent-silver-400)' },
+  camera_cone: { icon: Crosshair, colorVar: 'var(--sev-info)' },
+  hydrant: { icon: Flame, colorVar: 'var(--sev-critical)', pinned: true },
+  station: { icon: Siren, colorVar: 'var(--sev-critical)', pinned: true },
+  inlet: { icon: Droplets, colorVar: 'var(--sev-high)' },
+  water: { icon: Droplets, colorVar: 'var(--sev-info)' },
+  emerg: { icon: Siren, colorVar: 'var(--sev-critical)' },
+  heli: { icon: Navigation, colorVar: 'var(--sev-info)' },
+  rail_x: { icon: AlertTriangle, colorVar: 'var(--sev-critical)', pinned: true },
+  rail_infra: { icon: AlertTriangle, colorVar: 'var(--sev-high)' },
+  hazard: { icon: AlertTriangle, colorVar: 'var(--sev-warn)', pinned: true },
+  fourwd: { icon: AlertTriangle, colorVar: 'var(--sev-warn)' },
+  maxspeed: { icon: Gauge, colorVar: 'var(--accent-silver-400)' },
+  restriction: { icon: AlertTriangle, colorVar: 'var(--sev-high)' },
+  control: { icon: TrafficCone, colorVar: 'var(--accent-silver-500)' },
+  calming: { icon: TrafficCone, colorVar: 'var(--accent-silver-500)' },
+  crossing: { icon: Footprints, colorVar: 'var(--sev-warn)' },
+  junction: { icon: Waypoints, colorVar: 'var(--accent-silver-400)' },
+  school: { icon: School, colorVar: 'var(--sev-warn)' },
+  gov: { icon: Landmark, colorVar: 'var(--sev-special)' },
+  financial: { icon: Landmark, colorVar: 'var(--accent-silver-500)' },
+  military: { icon: Shield, colorVar: 'var(--sev-critical)' },
+  protected: { icon: Hexagon, colorVar: 'var(--sev-ok)' },
+  tribal: { icon: Shield, colorVar: 'var(--sev-special)' },
+  barrier: { icon: DoorOpen, colorVar: 'var(--accent-silver-400)' },
+  clearance: { icon: Ruler, colorVar: 'var(--sev-warn)' },
+  transit: { icon: MapPin, colorVar: 'var(--sev-info)' },
+  parking: { icon: CircleDot, colorVar: 'var(--accent-silver-400)' },
+  charging: { icon: Plug, colorVar: 'var(--sev-ok)' },
+  power: { icon: Zap, colorVar: 'var(--sev-warn)' },
+  pole: { icon: Zap, colorVar: 'var(--accent-silver-500)' },
+  pipeline: { icon: Plug, colorVar: 'var(--sev-high)' },
+  lamp: { icon: Sun, colorVar: 'var(--sev-warn)' },
+  ford: { icon: Droplets, colorVar: 'var(--sev-info)' },
+  seasonal: { icon: Cloud, colorVar: 'var(--sev-warn)' },
+  restricted: { icon: SquareDashed, colorVar: 'var(--sev-high)' },
+  unpaved: { icon: Route, colorVar: 'var(--accent-silver-500)' },
+  track: { icon: Route, colorVar: 'var(--accent-silver-600)' },
+  cliff: { icon: Mountain, colorVar: 'var(--sev-warn)' },
+  spring: { icon: Droplets, colorVar: 'var(--sev-info)' },
+  extraction: { icon: Boxes, colorVar: 'var(--sev-high)' },
+};
+
+const UGRC_LAYERS: MapLayerDef[] = VECTOR_TILE_CONFIGS.map((cfg): MapLayerDef => ({
+  id: cfg.id,
+  label: cfg.label,
+  icon: cfg.id === 'utah_addresses' ? MapPin : Route,
+  group: 'Administrative Boundaries',
+  colorVar: cfg.id === 'utah_addresses' ? 'var(--accent-silver-500)' : 'var(--accent-silver-400)',
+  description: cfg.description,
+}));
+
 const OSM_LAYERS: MapLayerDef[] = OSM_VECTOR_CONFIGS.map((cfg): MapLayerDef => {
   const groupName = cfg.name.replace(/^osm-/, '');
   const meta = OSM_GROUP_META[groupName] ?? { group: 'OSM Sites', icon: Layers, colorVar: 'var(--accent-silver-400)' };
+  const cat = cfg.categoryFilter ?? '';
+  const catMeta = OSM_CAT_REGISTRY[cat];
   return {
     id: cfg.id,
     label: cfg.label,
-    icon: meta.icon,
+    icon: catMeta?.icon ?? meta.icon,
     group: meta.group,
-    colorVar: meta.colorVar,
-    description: cfg.coverage ?? cfg.description,
+    colorVar: catMeta?.colorVar ?? meta.colorVar,
+    description: cfg.description || cfg.coverage || cfg.label,
+    pinned: catMeta?.pinned,
   };
 });
 
-export const MAP_LAYER_REGISTRY: MapLayerDef[] = [...STATIC_LAYERS, ...BOUNDARY_LAYERS, ...OSM_LAYERS];
+export const MAP_LAYER_REGISTRY: MapLayerDef[] = [...STATIC_LAYERS, ...BOUNDARY_LAYERS, ...UGRC_LAYERS, ...OSM_LAYERS];
 
 export const LAYER_BY_ID: ReadonlyMap<string, MapLayerDef> = new Map(
   MAP_LAYER_REGISTRY.map((l) => [l.id, l]),

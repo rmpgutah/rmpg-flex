@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { knowledgeBaseSearch, kbTypeLabel, KB_TYPE_META, type KbResult } from '../utils/knowledgeBase';
 import { generateKnowledgeBaseSearchPdf } from '../utils/knowledgeBaseSearchPdf';
+import { kbHitsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -332,6 +333,13 @@ export default function KnowledgeBasePage() {
         <BookOpen className="w-5 h-5 text-brand-400" />
         <h1 className="text-[13px] font-bold uppercase tracking-widest text-rmpg-100">Knowledge Base</h1>
         <span className="text-[10px] text-rmpg-500">— system-wide search</span>
+        <button
+          type="button"
+          className="toolbar-btn ml-2"
+          disabled={shown.length === 0}
+          onClick={() => downloadTextFile('knowledge-base.csv', kbHitsToCsv(shown))}
+          title="CSV of type, record id, route — no names or warrant titles"
+        >CSV</button>
         {canPrint && (
           <div className="ml-auto">
             <button

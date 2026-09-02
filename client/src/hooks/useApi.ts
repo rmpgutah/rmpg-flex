@@ -3,6 +3,7 @@ import { uploadWithProgress, putFileDirect } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
 import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
+import { isAppHostname, WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -216,15 +217,17 @@ async function fetchWithRetry(
   const dedupKey = isMutation ? `${method}:${url}` : '';
 
   const doFetch = async (): Promise<Response> => {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const maxAttempts = offline ? 0 : retries;
     let lastError: Error | null = null;
-    for (let attempt = 0; attempt <= retries; attempt++) {
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       try {
         // Per-attempt timeout (not cumulative across retries) — if a single
         // attempt hangs for `timeoutMs`, abort it and try again.
         const res = await fetchWithTimeout(url, init);
-        if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
+        if (RETRY_STATUS_CODES.includes(res.status) && attempt < maxAttempts) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
+          console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${maxAttempts})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
@@ -232,9 +235,10 @@ async function fetchWithRetry(
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
         lastError = err instanceof Error ? err : new Error(String(err));
-        if (attempt < retries) {
+        const stillOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+        if (attempt < maxAttempts && !stillOffline) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`[API] ${init.method || 'GET'} ${url} → network error, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
+          console.warn(`[API] ${init.method || 'GET'} ${url} → network error, retrying in ${delay / 1000}s (${attempt + 1}/${maxAttempts})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
@@ -414,27 +418,42 @@ function maybeRedirectToCfWorker(url: string): string {
   return url;
 }
 
-// ─── TEMPORARY: direct-to-rewrite escape hatch ──────────────────────────
-// The rmpgutah.us strangler dispatcher (rmpg-api-proxy) currently mis-routes
-// some methods: POST /api/records/businesses 404s because the dispatcher sends
-// it to the legacy Worker (no handler) instead of the rewrite, while the
-// rewrite at api.rmpgutah.us serves it correctly (verified: proxy POST → 404,
-// direct POST → 400). `directWorker: true` bypasses the dispatcher for the
-// affected calls. Safe: the rewrite has permissive CORS for rmpgutah.us and
-// uses Bearer auth (no cookies), and a live probe confirmed connect-src allows
-// this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
-const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
+// Kept for downloadUrl() (absolute Worker origin) and the unused
+// `directWorker` flag. Authenticated SPA traffic must NOT use this host:
+// the managed-challenge skip is /api/health only. Prefer same-origin /api/*.
+const CF_WORKER_DIRECT_BASE = WORKER_HTTP_ORIGIN;
 
-// Cloudflare Pages does NOT support 200-rewrites to another origin in
-// _redirects (it only honours redirect statuses). So a relative /api/uploads
-// from the Pages SPA (rmpgutah.us) resolves to the Pages domain, not the
-// Worker — which causes ERR_HTTP2_PROTOCOL_ERROR. All multipart upload POSTs
-// must go directly to the Worker in production.
-const UPLOADS_URL = import.meta.env.DEV ? '/api/uploads' : `${CF_WORKER_DIRECT_BASE}/api/uploads`;
+/**
+ * Where POST /api/uploads should go.
+ *
+ * On the live SPA (rmpgutah.us / www) this MUST be same-origin. The zone
+ * Worker `rmpg-api-proxy` already intercepts `rmpgutah.us/api/*` (and www)
+ * and service-binds to rmpg-flex-api, so a relative path never hits Pages.
+ *
+ * The previous production value was an absolute `https://api.rmpgutah.us/...`
+ * URL. That was added to dodge a Pages 200-rewrite that produced
+ * ERR_HTTP2_PROTOCOL_ERROR — before the proxy existed. Cross-origin POSTs to
+ * the API hostname now fail at the Cloudflare edge: the managed-challenge
+ * skip is scoped to `/api/health` only, so the browser either gets challenge
+ * HTML (no CORS) or a CORP `same-origin` block. Dispatch Files then shows
+ * the generic "Upload failed" banner.
+ *
+ * Off the app origin (Electron file://, unknown hosts) we still target the
+ * Worker hostname directly.
+ */
+export function resolveUploadsUrl(opts: { isDev: boolean; hostname?: string }): string {
+  if (opts.isDev) return '/api/uploads';
+  const host = (opts.hostname || '').toLowerCase();
+  if (isAppHostname(host)) return '/api/uploads';
+  return `${CF_WORKER_DIRECT_BASE}/api/uploads`;
+}
 
-/** Absolute URL for POST /api/uploads in production; relative in dev (Vite proxies it). */
+/** URL for POST /api/uploads — relative on the app origin, Worker host otherwise. */
 export function uploadsUrl(): string {
-  return UPLOADS_URL;
+  return resolveUploadsUrl({
+    isDev: import.meta.env.DEV,
+    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+  });
 }
 
 /**
@@ -741,20 +760,20 @@ async function apiUploadFilesMultipart(
     if (evidenceMeta?.reference_notes) formData.append('reference_notes', evidenceMeta.reference_notes);
 
     try {
-      const res = await fetchWithTimeout(UPLOADS_URL, {
+      const res = await fetchWithTimeout(uploadsUrl(), {
         method: 'POST',
         headers,
         body: formData,
         timeoutMs: opts?.timeoutMs,
       });
       if (res.ok) {
-        chimeForApiSuccess('POST', UPLOADS_URL);
+        chimeForApiSuccess('POST', uploadsUrl());
         return res.json();
       }
       const errData = await res.json().catch(() => ({}));
-      const err = new Error(
-        errData.error || errData.message || `Upload failed with status ${res.status}`,
-      ) as Error & { status?: number };
+      const base = errData.error || errData.message || `Upload failed with status ${res.status}`;
+      const diag = errData.details || errData.detail;
+      const err = new Error(diag ? `${base}: ${diag}` : base) as Error & { status?: number };
       err.status = res.status;
       throw err;
     } catch (err) {
@@ -837,7 +856,7 @@ export async function apiUploadFilesWithProgress(
     if (evidenceMeta?.reference_notes) formData.append('reference_notes', evidenceMeta.reference_notes);
 
     const result = await uploadWithProgress(
-      UPLOADS_URL,
+      uploadsUrl(),
       formData,
       token,
       (progress) => onProgress(progress, i, files.length),

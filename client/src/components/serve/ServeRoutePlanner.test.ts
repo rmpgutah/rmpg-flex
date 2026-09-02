@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected, reorderList,
-  describeMissedDeadlines,
+  describeMissedDeadlines, plannedStartToMs, formatEtaDenver, computeArrivalsFromLegDurations,
+  clampArrivalToServeWindow, computeArrivalsInOrder,
 } from './ServeRoutePlanner';
 
 function stop(id: number, lat: number, lng: number, deadline: string | null = null, recipient_name = `Recipient ${id}`) {
@@ -99,6 +100,22 @@ describe('nearestNeighborOrder', () => {
     const { missedDeadlineJobIds } = nearestNeighborOrder([alreadyLate], origin, start);
     expect(missedDeadlineJobIds).toEqual([1]);
   });
+
+  it('does not put an evening next-attempt stop first when the run starts at 14:30', () => {
+    const start = Date.parse('2026-08-28T20:30:00.000Z'); // 14:30 MDT
+    const origin = { lat: 40.6945, lng: -111.8817 };
+    const evening = stop(1, 40.695, -111.882);
+    evening.job.next_attempt_window = '18:00-21:00';
+    evening.job.next_attempt_date = '2026-08-28';
+    evening.job.time_window = 'anytime';
+    const business = stop(2, 40.72, -111.89);
+    business.job.recipient_type = 'business';
+    business.job.time_window = 'anytime';
+    const { ordered, perStopArrivalMs } = nearestNeighborOrder([evening, business], origin, start, '2026-08-28');
+    expect(ordered.map(s => s.job.id)).toEqual([2, 1]);
+    const eveningEta = perStopArrivalMs[ordered.findIndex(s => s.job.id === 1)];
+    expect(eveningEta).toBeGreaterThanOrEqual(Date.parse('2026-08-29T00:00:00.000Z')); // 18:00 MDT
+  });
 });
 
 describe('describeMissedDeadlines', () => {
@@ -174,5 +191,68 @@ describe('reorderList', () => {
     const result = reorderList(list, 0, 2);
     expect(list).toEqual(['a', 'b', 'c']);
     expect(result).not.toBe(list);
+  });
+});
+
+describe('plannedStartToMs / formatEtaDenver', () => {
+  it('interprets the date picker as America/Denver wall clock, not the browser zone', () => {
+    const ms = plannedStartToMs('2026-08-28', '14:30');
+    expect(new Date(ms).toISOString()).toBe('2026-08-28T20:30:00.000Z'); // new-date-ok — epoch ms from plannedStartToMs
+  });
+
+  it('labels a next-day arrival so 11:45 AM is not mistaken for the same afternoon', () => {
+    const nextMorning = Date.parse('2026-08-29T17:45:00.000Z'); // 11:45 AM MDT Aug 29
+    expect(formatEtaDenver(nextMorning, '2026-08-28')).toMatch(/11:45\sAM \(\+1d\)/);
+  });
+});
+
+describe('computeArrivalsFromLegDurations', () => {
+  it('walks driving seconds then dwell so the last ETA matches the footer clock', () => {
+    const a = stop(1, 40.76, -111.89);
+    const b = stop(2, 40.77, -111.88);
+    const start = Date.parse('2026-08-28T20:30:00.000Z');
+    const { arrivals, totalDurationMinutes } = computeArrivalsFromLegDurations(
+      [a, b],
+      start,
+      [600, 300], // 10 min then 5 min
+    );
+    expect(arrivals.get(1)).toBe(start + 600_000);
+    // 10 min drive + 18 min individual dwell + 5 min drive
+    expect(arrivals.get(2)).toBe(start + 600_000 + 18 * 60_000 + 300_000);
+    expect(totalDurationMinutes).toBeCloseTo(10 + 18 + 5 + 18, 5);
+  });
+});
+
+describe('same-day windows at a 6pm start', () => {
+  it('does not label a missed morning band as +1d', () => {
+    const start = plannedStartToMs('2026-08-28', '18:00');
+    const evening = start + 15 * 60_000;
+    const clamped = clampArrivalToServeWindow(evening, '08:00', '12:00', '2026-08-28');
+    expect(clamped).toBe(evening);
+    expect(formatEtaDenver(clamped, '2026-08-28')).not.toMatch(/\+1d/);
+  });
+
+  it('keeps a 3-stop evening run on tonight’s clock', () => {
+    const start = plannedStartToMs('2026-08-28', '18:00');
+    const a = stop(1, 40.6945, -111.8819);
+    a.job.time_window = 'evening';
+    a.job.next_attempt_window = '18:00-21:00';
+    const b = stop(2, 40.70, -111.88);
+    b.job.time_window = 'morning';
+    b.job.next_attempt_window = '08:00-12:00';
+    b.job.next_attempt_date = '2026-08-29';
+    const c = stop(3, 40.71, -111.87);
+    c.job.time_window = 'morning';
+    c.job.next_attempt_window = '08:00-12:00';
+    const { arrivals, totalDurationMinutes } = computeArrivalsInOrder(
+      [a, b, c],
+      { lat: 40.6945, lng: -111.8819 },
+      start,
+      '2026-08-28',
+    );
+    expect(formatEtaDenver(arrivals.get(2)!, '2026-08-28')).not.toMatch(/\+1d/);
+    expect(formatEtaDenver(arrivals.get(3)!, '2026-08-28')).not.toMatch(/\+1d/);
+    expect(totalDurationMinutes).toBeLessThan(90);
+    expect(formatEtaDenver(arrivals.get(2)!, '2026-08-28')).toMatch(/PM/);
   });
 });

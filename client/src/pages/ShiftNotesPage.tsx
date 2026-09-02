@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { NotebookPen, Plus, Trash2, Eye, EyeOff, Users, Tag, X } from 'lucide-react';
+import { NotebookPen, Plus, Trash2, Eye, EyeOff, Users, Tag, X, Download, Copy, Search } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
+import { downloadTextFile, shiftNotesToCsv } from '../utils/rmsListExport';
 
 interface ShiftNote {
   id: number;
@@ -96,6 +97,10 @@ export default function ShiftNotesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [noteSearch, setNoteSearch] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [visFilter, setVisFilter] = useState('');
 
   const MAX_CHARS = 2000;
 
@@ -155,16 +160,24 @@ export default function ShiftNotesPage() {
     try {
       await apiFetch(`/shift-notes/${id}`, { method: 'DELETE' });
       setNotes(prev => prev.filter(n => n.id !== id));
-    } catch {
-      // silent — note stays
+      setConfirmDeleteId(null);
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to delete note');
     } finally {
       setDeletingId(null);
     }
   };
 
-  const displayedNotes = activeTab === 'mine'
+  const displayedNotes = (activeTab === 'mine'
     ? notes.filter(n => n.officer_name === (user?.first_name ? `${user.first_name} ${user.last_name ?? ''}`.trim() : (user?.username ?? '')))
-    : notes;
+    : notes
+  ).filter(n => {
+    if (tagFilter && !(n.tags ?? []).includes(tagFilter)) return false;
+    if (visFilter && n.visibility !== visFilter) return false;
+    const q = noteSearch.trim().toLowerCase();
+    if (!q) return true;
+    return n.content.toLowerCase().includes(q) || n.officer_name.toLowerCase().includes(q);
+  });
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%' }}>
@@ -213,6 +226,41 @@ export default function ShiftNotesPage() {
             </button>
           ))}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+          <Search size={12} color="var(--text-secondary)" />
+          <input
+            value={noteSearch}
+            onChange={e => setNoteSearch(e.target.value)}
+            placeholder="Search notes…"
+            aria-label="Search shift notes"
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', fontSize: 12, padding: '3px 7px' }}
+          />
+          <select
+            value={visFilter}
+            onChange={e => setVisFilter(e.target.value)}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', fontSize: 11, padding: '3px 6px' }}
+          >
+            <option value="">All visibility</option>
+            <option value="private">Private</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="all">All officers</option>
+          </select>
+          <button
+            type="button"
+            disabled={displayedNotes.length === 0}
+            onClick={() => downloadTextFile('shift-notes.csv', shiftNotesToCsv(displayedNotes))}
+            style={{ fontSize: 10, padding: '3px 8px', border: '1px solid var(--border-subtle)', borderRadius: 2, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(displayedNotes.map(n => n.content).join('\n\n')).catch(() => undefined)}
+            style={{ fontSize: 10, padding: '3px 8px', border: '1px solid var(--border-subtle)', borderRadius: 2, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            Copy visible
+          </button>
+        </div>
       </div>
 
       {/* New note form */}
@@ -235,8 +283,18 @@ export default function ShiftNotesPage() {
         <textarea
           value={content}
           onChange={e => setContent(e.target.value.slice(0, MAX_CHARS))}
+          onKeyDown={e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+            }
+            if (e.key === 'Escape') {
+              setContent('');
+              setSelectedTags([]);
+            }
+          }}
           rows={4}
-          placeholder="Write your shift observation, reminder, or note…"
+          placeholder="Write your shift observation, reminder, or note… (Ctrl+Enter to save)"
           style={{
             background: 'var(--surface-base)',
             border: '1px solid var(--border-subtle)',
@@ -349,6 +407,13 @@ export default function ShiftNotesPage() {
             No notes for this shift.
           </div>
         )}
+        {confirmDeleteId !== null && (
+          <div style={{ fontSize: 12, color: 'var(--sev-critical)', padding: 8, border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
+            Delete this note?
+            <button type="button" onClick={() => handleDelete(confirmDeleteId)} style={{ marginLeft: 8 }}>Confirm</button>
+            <button type="button" onClick={() => setConfirmDeleteId(null)} style={{ marginLeft: 8 }}>Cancel</button>
+          </div>
+        )}
         {!loading && displayedNotes.map(note => {
           const isOwn = note.officer_name === (user?.first_name ? `${user.first_name} ${user.last_name ?? ''}`.trim() : (user?.username ?? ''));
           return (
@@ -375,7 +440,7 @@ export default function ShiftNotesPage() {
                 <VisibilityBadge visibility={note.visibility} />
                 {isOwn && (
                   <button
-                    onClick={() => handleDelete(note.id)}
+                    onClick={() => setConfirmDeleteId(note.id)}
                     disabled={deletingId === note.id}
                     aria-label="Delete note"
                     style={{
@@ -401,6 +466,9 @@ export default function ShiftNotesPage() {
                   {note.tags.map(tag => (
                     <span
                       key={tag}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
                       style={{
                         fontSize: 10,
                         fontWeight: 600,
@@ -431,6 +499,13 @@ export default function ShiftNotesPage() {
               }}>
                 {note.content}
               </p>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(note.content).catch(() => undefined)}
+                style={{ alignSelf: 'flex-start', fontSize: 10, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <Copy size={10} /> Copy
+              </button>
             </div>
           );
         })}

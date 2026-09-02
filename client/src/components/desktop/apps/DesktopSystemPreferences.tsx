@@ -4,6 +4,7 @@ import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import type { DesktopSettingsAppProps } from '../DesktopSettingsApp';
 import DesktopSettingsApp from '../DesktopSettingsApp';
 import { apiFetch } from '../../../hooks/useApi';
+import { apiHttpBase } from '../../../utils/apiOrigin';
 
 const W = 740;
 const H = 520;
@@ -101,7 +102,7 @@ function ThemePanel({ props }: { props: DesktopSettingsAppProps }) {
     try {
       const form = new FormData();
       form.append('wallpaper', file);
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'https://api.rmpgutah.us'}/api/preferences/wallpaper`, {
+      const res = await fetch(`${apiHttpBase()}/api/preferences/wallpaper`, {
         method: 'POST',
         body: form,
         headers: { Authorization: `Bearer ${localStorage.getItem('rmpg_token') ?? ''}` },

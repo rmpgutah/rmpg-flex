@@ -49,6 +49,8 @@ for (const group of OSM_GROUPS) {
 }
 
 function tintFor(cat: string): string {
+  if (cat === 'alpr') return '#38bdf8';
+  if (cat === 'camera') return '#a78bfa';
   return GROUP_TINT[GROUP_BY_CAT[cat] ?? ''] ?? '#c3ccd6';
 }
 
@@ -220,8 +222,9 @@ const SORT_KEY: Record<string, number> = {
   hydrant: 1, inlet: 2, emerg: 3, station: 4, water: 5, heli: 6,
   // Immediate hazards rank with life safety, not with their own group.
   hazard: 7, rail_x: 8,
-  // Surveillance — canvass value on scene.
-  camera: 10, alpr: 11,
+  // Surveillance — ALPR before generic CCTV: plate readers are the canvass
+  // object an officer is looking for on a vehicle stop.
+  alpr: 9, camera: 10,
   // Traffic control affects the approach.
   control: 20, crossing: 21, calming: 22, ford: 23, junction: 24, access_pt: 25,
   // Access and passage.

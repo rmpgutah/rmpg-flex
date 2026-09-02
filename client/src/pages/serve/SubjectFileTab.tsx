@@ -2,15 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { useEnrichment } from '../../hooks/useEnrichment';
 import type { EnrichmentSeed, EnrichmentAddress, SourceResult } from '../../hooks/useEnrichment';
 import {
-  User, FileText, MapPin, Phone, Mail, Calendar, Briefcase, Scale,
-  Clock, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
-  DollarSign, Camera, MessageSquare, RefreshCw, Search, Download, QrCode,
+  User, MapPin, Phone, Calendar, Briefcase, Scale,
+  Clock, CheckCircle, AlertTriangle, ChevronDown, ChevronRight,
+  DollarSign, Camera, MessageSquare, RefreshCw, Search, QrCode, FolderOpen, Shield,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
-import PanelTitleBar from '../../components/PanelTitleBar';
+import ServeAttemptFileFolders from '../../components/serve/ServeAttemptFileFolders';
 import type { ServeJob, ServeAttempt, ServeSkipTrace } from '../../types';
 import { formatEnumValue } from '../../utils/formatters';
-import { safeDateStr } from '../../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
+import { splitPersonName } from '../../utils/documentIntakeSaveHandlers';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -81,84 +82,88 @@ type SubjectFileJob = ServeJob;
 function Field({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
   if (value == null || value === '') return null;
   return (
-    <div className="flex flex-col gap-[2px]">
+    <div className="flex flex-col gap-[3px] min-w-0">
       <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>{label}</span>
-      <span className={`text-[11px] text-text-primary ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className={`text-[12px] text-text-primary leading-snug ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   );
 }
 
-function Section({ title, icon: Icon, children, defaultOpen = true }: {
+function Section({ title, icon, children, defaultOpen = true }: {
   title: string; icon: React.ElementType; children: React.ReactNode; defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border border-border-subtle rounded-[2px] overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3 py-[6px] bg-surface-raised hover:bg-surface-hover transition-colors text-left"
-      >
-        <Icon size={12} style={{ color: 'var(--panel-header-color)' }} />
+    <section className="border border-border-subtle bg-surface-raised overflow-hidden border-l-2 border-l-accent-silver-500">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-3 py-2 bg-surface-sunken hover:bg-surface-hover text-left border-b border-border-subtle">
+        {icon && (() => { const Icon = icon; return <Icon size={12} style={{ color: 'var(--panel-header-color)' }} />; })()}
         <span className="text-[10px] font-semibold uppercase tracking-wider flex-1" style={{ color: 'var(--panel-header-color)' }}>{title}</span>
         {open ? <ChevronDown size={12} className="text-text-secondary" /> : <ChevronRight size={12} className="text-text-secondary" />}
       </button>
-      {open && <div className="px-3 py-3 grid grid-cols-2 gap-x-6 gap-y-3 bg-surface-base">{children}</div>}
-    </div>
+      {open && <div className="px-3 py-3 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 bg-surface-base">{children}</div>}
+    </section>
   );
 }
 
-function AttemptRow({ attempt, index }: { attempt: ServeAttempt; index: number }) {
-  const [open, setOpen] = useState(false);
+function AttemptRow({ attempt }: { attempt: ServeAttempt }) {
+  const [open, setOpen] = useState(true);
   const resultColor: Record<string, string> = {
     served: 'text-green-400', no_answer: 'text-amber-400', refused: 'text-red-400',
     wrong_address: 'text-red-400', moved: 'text-orange-400', other: 'text-text-secondary',
   };
   return (
-    <div className="border border-border-subtle rounded-[2px] overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-3 py-2 bg-surface-raised hover:bg-surface-hover transition-colors text-left"
-      >
-        <span className="text-[10px] font-mono text-text-secondary w-5">#{index + 1}</span>
-        <span className={`text-[10px] font-semibold flex-1 ${resultColor[attempt.result] ?? 'text-text-secondary'}`}>
-          {formatEnumValue(attempt.result)}
-        </span>
-        <span className="text-[10px] text-text-secondary">{safeDateStr(attempt.attempt_at)}</span>
-        {open ? <ChevronDown size={11} className="text-text-secondary" /> : <ChevronRight size={11} className="text-text-secondary" />}
-      </button>
-      {open && (
-        <div className="px-3 py-3 grid grid-cols-2 gap-x-6 gap-y-3 bg-surface-base">
-          <Field label="Type" value={formatEnumValue(attempt.attempt_type)} />
-          <Field label="Disposition" value={attempt.disposition_code} mono />
-          <Field label="Officer" value={attempt.officer_name} />
-          <Field label="Attempt At" value={safeDateStr(attempt.attempt_at)} />
-          <Field label="Person Served" value={attempt.person_served_name} />
-          <Field label="Relationship" value={attempt.person_served_relationship} />
-          <Field label="Description" value={attempt.person_served_description} />
-          <Field label="GPS" value={attempt.latitude != null ? `${Number(attempt.latitude).toFixed(5)}, ${Number(attempt.longitude).toFixed(5)}` : null} mono />
-          <Field label="Address Verified" value={attempt.address_verified ? 'Yes' : 'No'} />
-          {(attempt.photo_ids?.length ?? 0) > 0 && (
-            <div className="col-span-2 flex flex-col gap-1">
-              <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>
-                Photos ({attempt.photo_ids!.length})
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {attempt.photo_ids!.map((fileId) => (
-                  <a key={fileId} href={authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`)} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`)}
-                      alt="Attempt photo"
-                      className="w-14 h-14 object-cover rounded-[2px] border border-border-subtle hover:border-brand-400 transition-colors"
-                    />
-                  </a>
-                ))}
+    <div className="relative pl-6">
+      <div className="absolute left-[7px] top-3 bottom-0 w-px bg-border-subtle" />
+      <div className={`absolute left-0 top-2.5 w-[15px] h-[15px] border-2 bg-surface-base ${
+        attempt.result === 'served' ? 'border-green-400' : attempt.result === 'refused' || attempt.result === 'wrong_address' ? 'border-red-400' : 'border-accent-silver-400'
+      }`} />
+      <div className="border border-border-subtle bg-surface-raised overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center gap-3 px-3 py-2 hover:bg-surface-hover transition-colors text-left"
+        >
+          <span className="text-[10px] font-mono text-text-secondary">#{attempt.attempt_number || '—'}</span>
+          <span className={`text-[11px] font-semibold flex-1 ${resultColor[attempt.result] ?? 'text-text-secondary'}`}>
+            {formatEnumValue(attempt.result)}
+          </span>
+          <span className="text-[10px] text-text-secondary">{safeDateStr(attempt.attempt_at)}</span>
+          {open ? <ChevronDown size={12} className="text-text-secondary" /> : <ChevronRight size={12} className="text-text-secondary" />}
+        </button>
+        {open && (
+          <div className="px-3 py-3 grid grid-cols-2 gap-x-6 gap-y-3 bg-surface-base border-t border-border-subtle">
+            <Field label="Type" value={formatEnumValue(attempt.attempt_type)} />
+            <Field label="Disposition" value={attempt.disposition_code} mono />
+            <Field label="Officer" value={attempt.officer_name} />
+            <Field label="Attempt At" value={safeDateStr(attempt.attempt_at)} />
+            <Field label="Person Served" value={attempt.person_served_name} />
+            <Field label="Relationship" value={attempt.person_served_relationship} />
+            <Field label="Description" value={attempt.person_served_description} />
+            <Field label="GPS" value={attempt.latitude != null ? `${Number(attempt.latitude).toFixed(5)}, ${Number(attempt.longitude).toFixed(5)}` : null} mono />
+            <Field label="Address Verified" value={attempt.address_verified ? 'Yes' : 'No'} />
+            {(attempt.photo_ids?.length ?? 0) > 0 && (
+              <div className="col-span-2 flex flex-col gap-1">
+                <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>
+                  Photos ({attempt.photo_ids!.length})
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {attempt.photo_ids!.map((fileId) => (
+                    <a key={fileId} href={authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`)} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`)}
+                        alt="Attempt photo"
+                        className="w-16 h-16 object-cover border border-border-subtle hover:border-accent-silver-400 transition-colors"
+                      />
+                    </a>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-          <Field label="Signature" value={attempt.signature_data ? 'Captured' : null} />
-          {attempt.notes && <div className="col-span-2"><Field label="Notes" value={attempt.notes} /></div>}
-        </div>
-      )}
+            )}
+            <Field label="Signature" value={attempt.signature_data ? 'Captured' : null} />
+            {attempt.notes && <div className="col-span-2"><Field label="Notes" value={attempt.notes} /></div>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -198,15 +203,15 @@ function JobSelector({ jobs, selectedId, onSelect, search, onSearch }: JobSelect
   });
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-2 border-b border-border-subtle">
-        <div className="flex items-center gap-2 px-2 py-1 bg-surface-raised rounded-[2px] border border-border-subtle">
-          <Search size={11} className="text-text-secondary shrink-0" />
+    <div className="flex flex-col h-full min-h-0 bg-surface-sunken">
+      <div className="px-3 py-2 border-b border-border-subtle bg-surface-raised">
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-border-subtle">
+          <Search size={12} className="text-text-secondary shrink-0" />
           <input
             value={search}
             onChange={e => onSearch(e.target.value)}
             placeholder="Name, case #, client…"
-            className="flex-1 bg-transparent text-[11px] text-text-primary placeholder-text-secondary outline-none"
+            className="flex-1 bg-transparent text-[12px] text-text-primary placeholder-text-secondary outline-none"
           />
         </div>
       </div>
@@ -217,16 +222,22 @@ function JobSelector({ jobs, selectedId, onSelect, search, onSearch }: JobSelect
         {filtered.map(j => (
           <button
             key={j.id}
+            type="button"
             onClick={() => onSelect(j.id)}
-            className={`w-full text-left px-3 py-2 border-b border-border-subtle transition-colors ${
-              j.id === selectedId ? 'bg-rmpg-800/40 border-l-2 border-l-rmpg-400' : 'hover:bg-surface-hover'
+            className={`w-full text-left px-3 py-2.5 border-b border-border-subtle transition-colors ${
+              j.id === selectedId
+                ? 'bg-surface-raised border-l-2 border-l-accent-silver-400'
+                : 'hover:bg-surface-hover border-l-2 border-l-transparent'
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium text-text-primary truncate">{j.recipient_name}</span>
+              <span className="text-[12px] font-medium text-text-primary truncate">{j.recipient_name}</span>
               <StatusBadge status={j.status} />
             </div>
-            {j.case_number && <div className="text-[10px] text-text-secondary mt-[1px]">{j.case_number}</div>}
+            <div className="flex items-center gap-2 mt-0.5">
+              {j.case_number && <span className="text-[10px] font-mono text-text-secondary">{j.case_number}</span>}
+              <span className="text-[10px] text-text-secondary ml-auto tabular-nums">{j.attempt_count}/{j.max_attempts}</span>
+            </div>
             {j.client_name && <div className="text-[10px] text-text-secondary truncate">{j.client_name}</div>}
           </button>
         ))}
@@ -251,8 +262,9 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [comments, setComments] = useState<ServeComment[]>([]);
   const [qrScans, setQrScans] = useState<QrScan[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dossierTab, setDossierTab] = useState<'overview' | 'evidence' | 'intel' | 'activity'>('overview');
 
-  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, error: enrichError, reset: enrichReset } = useEnrichment();
 
   const load = useCallback(async (id: number) => {
     setLoading(true);
@@ -288,27 +300,31 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
 
   const handleLocateSubject = useCallback(() => {
     if (!job) return;
-    const parts = (job.recipient_name ?? '').split(' ');
+    const { first, last } = splitPersonName(job.recipient_name ?? '');
+    // documentIntake split maps mononyms to last-only; enrichment needs both
+    // first+last (or an address) to run registry sources.
+    const firstName = first || last;
+    const lastName = last || first;
     const seed: EnrichmentSeed = {
-      first_name: parts[0] ?? '',
-      last_name:  parts.slice(1).join(' '),
+      first_name: firstName,
+      last_name:  lastName,
       dob:        (job.recipient_dob as string | undefined) ?? undefined,
       address:    job.recipient_address ?? undefined,
       city:       job.recipient_city ?? undefined,
       state:      job.recipient_state ?? undefined,
       phone:      job.recipient_phone ?? undefined,
     };
-    enrichSearch(seed);
-  }, [job, enrichSearch]);
+    enrichSearch(seed, { refresh: Boolean(enrichResult) });
+  }, [job, enrichSearch, enrichResult]);
 
   const priorityColor: Record<string, string> = {
     urgent: 'text-red-400', rush: 'text-orange-400', normal: 'text-amber-400', routine: 'text-text-secondary',
   };
 
   return (
-    <div className="flex h-full min-h-0 gap-0">
+    <div className="flex h-full min-h-0 bg-surface-sunken">
       {/* Left sidebar — job list */}
-      <div className="w-56 shrink-0 border-r border-border-subtle bg-surface-base flex flex-col min-h-0">
+      <div className="w-72 shrink-0 border-r border-border-subtle bg-surface-base flex flex-col min-h-0">
         <div className="px-3 py-2 border-b border-border-subtle bg-surface-raised">
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
             {jobs.length} Jobs
@@ -318,7 +334,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
       </div>
 
       {/* Right — subject file detail */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
         {!selectedId && (
           <div className="flex items-center justify-center h-full text-[12px] text-text-secondary">
             Select a job from the list
@@ -332,34 +348,66 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
         )}
 
         {selectedId && !loading && job && (
-          <div className="p-4 space-y-3 max-w-4xl">
-            {/* Header */}
+          <div className="flex flex-col h-full min-h-0">
+            <div className="shrink-0 px-4 py-3 border-b border-border-subtle bg-surface-raised">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-[14px] font-semibold text-text-primary">{job.recipient_name}</h2>
+                  <h2 className="text-[16px] font-semibold text-text-primary tracking-tight">{job.recipient_name}</h2>
                   <StatusBadge status={job.status} />
                   {job.priority !== 'routine' && (
                     <span className={`text-[10px] font-bold uppercase ${priorityColor[job.priority]}`}>
                       {formatEnumValue(job.priority)}
                     </span>
                   )}
-                  {job.urgency_tier && job.urgency_tier !== 'normal' && (
+                  {job.urgency_tier && job.urgency_tier !== 'standard' && (
                     <AlertTriangle size={13} className={job.urgency_tier === 'critical' ? 'text-red-400' : 'text-amber-400'} />
                   )}
                 </div>
-                {job.case_number && (
-                  <div className="text-[11px] text-text-secondary mt-1 font-mono">{job.case_number}</div>
-                )}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-text-secondary">
+                  {job.case_number && <span className="font-mono text-text-primary">{job.case_number}</span>}
+                  {job.document_type && <span>{formatEnumValue(job.document_type)}</span>}
+                  {job.recipient_phone && <span className="inline-flex items-center gap-1"><Phone size={10} />{job.recipient_phone}</span>}
+                  {job.deadline && <span className="inline-flex items-center gap-1"><Calendar size={10} />Due {safeDateStr(job.deadline)}</span>}
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => load(job.id)}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary border border-border-subtle rounded-[2px] transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary border border-border-subtle transition-colors"
               >
                 <RefreshCw size={10} /> Refresh
               </button>
             </div>
+            <div className="flex gap-0 mt-3 -mb-3 overflow-x-auto" role="tablist" aria-label="Subject file sections">
+              {([
+                ['overview', 'Overview', User],
+                ['evidence', 'Attempts & files', FolderOpen],
+                ['intel', 'Intelligence', Shield],
+                ['activity', 'Activity', MessageSquare],
+              ] as const).map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={dossierTab === id}
+                  onClick={() => setDossierTab(id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium border-b-2 whitespace-nowrap ${
+                    dossierTab === id
+                      ? 'text-text-primary border-accent-silver-400'
+                      : 'text-text-secondary border-transparent hover:text-text-primary'
+                  }`}
+                >
+                  <Icon size={12} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            </div>
 
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {dossierTab === 'overview' && (
+            <>
             {/* Subject Identity */}
             <Section title="Subject Identity" icon={User}>
               <Field label="Full Name" value={job.recipient_name} />
@@ -458,8 +506,11 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
               />
               <Field label="Mileage" value={job.mileage_actual != null ? `${Number(job.mileage_actual).toFixed(1)} mi` : null} />
             </Section>
+            </>
+            )}
 
-            {/* Attempt History */}
+            {dossierTab === 'evidence' && (
+            <>
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Camera size={12} style={{ color: 'var(--panel-header-color)' }} />
@@ -471,13 +522,19 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                 <div className="text-[11px] text-text-secondary px-2">No attempts recorded</div>
               ) : (
                 <div className="space-y-2">
-                  {attempts.map((a, i) => <AttemptRow key={a.id} attempt={a} index={i} />)}
+                  {attempts.map((a) => <AttemptRow key={a.id} attempt={a} />)}
                 </div>
               )}
             </div>
 
+            <ServeAttemptFileFolders queueId={job.id} />
+            </>
+            )}
+
+            {dossierTab === 'intel' && (
+            <>
             {/* Open-Source Intelligence — enrichment */}
-            <div className="border border-border-subtle rounded bg-surface-raised overflow-hidden">
+            <div className="border border-border-subtle border-l-2 border-l-accent-silver-500 bg-surface-raised overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border-subtle bg-surface-sunken">
                 <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
@@ -502,7 +559,9 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     {enrichResult.sources.map((s: SourceResult) => {
                       const label = s.source.replace(/_/g, ' ').toUpperCase();
                       const status = !s.ok
-                        ? <span className="text-red-400">(error)</span>
+                        ? s.error === 'not_configured'
+                          ? <span className="text-text-secondary">(not configured)</span>
+                          : <span className="text-red-400">(error)</span>
                         : s.records.length === 0
                         ? <span className="text-text-secondary">(0 hits)</span>
                         : <span className="text-green-400">({s.records.length} hit{s.records.length !== 1 ? 's' : ''})</span>;
@@ -574,12 +633,26 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
 
                   {/* Footer */}
                   <div className="text-[9px] text-text-secondary border-t border-border-subtle/50 pt-1">
-                    Searched: {new Date(enrichResult.searched_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })} @ {new Date(enrichResult.searched_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                    {(() => {
+                      const searched = parseTimestamp(enrichResult.searched_at);
+                      if (!searched) return <>Searched: {enrichResult.searched_at}</>;
+                      return (
+                        <>
+                          Searched: {searched.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
+                          {' @ '}
+                          {searched.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
 
-              {!enrichResult && !enrichLoading && (
+              {enrichError && (
+                <p className="px-3 py-2 text-[10px] text-red-400">{enrichError}</p>
+              )}
+
+              {!enrichResult && !enrichLoading && !enrichError && (
                 <p className="px-3 py-2 text-[9px] text-text-secondary">Click "Locate Subject" to run open-source intelligence search.</p>
               )}
             </div>
@@ -697,16 +770,21 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                 ))}
               </Section>
             )}
+            </>
+            )}
 
-            {/* Comments */}
-            {comments.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <MessageSquare size={12} style={{ color: 'var(--panel-header-color)' }} />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
-                    Comments ({comments.filter(c => !c.is_system).length})
-                  </span>
-                </div>
+            {dossierTab === 'activity' && (
+            <>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare size={12} style={{ color: 'var(--panel-header-color)' }} />
+                <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                  Comments ({comments.filter(c => !c.is_system).length})
+                </span>
+              </div>
+              {comments.length === 0 ? (
+                <div className="text-[11px] text-text-secondary px-2">No comments on this job</div>
+              ) : (
                 <div className="space-y-2">
                   {comments.map(c => (
                     <div key={c.id} className={`px-3 py-2 rounded-[2px] border border-border-subtle ${c.is_system ? 'bg-surface-raised opacity-60' : 'bg-surface-base'}`}>
@@ -719,14 +797,16 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Timestamps */}
             <div className="pt-2 border-t border-border-subtle grid grid-cols-3 gap-4">
               <Field label="Created" value={safeDateStr(job.created_at)} />
               <Field label="Updated" value={safeDateStr(job.updated_at)} />
               {job.closed_at && <Field label="Closed" value={safeDateStr(job.closed_at)} />}
+            </div>
+            </>
+            )}
             </div>
           </div>
         )}
