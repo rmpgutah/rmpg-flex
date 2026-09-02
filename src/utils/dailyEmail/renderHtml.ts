@@ -202,23 +202,56 @@ export function renderDailyEmailHtml(
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:4px;">
         <tr>
           <td colspan="2" style="padding:8px;font-size:13px;font-weight:700;color:#1e3a5f;background-color:#f9fafb;">
-            Calls for Service Detail
+            Calls for Service Detail (${callCount})
           </td>
         </tr>
         <tr style="background-color:#f9fafb;">
-          <td style="padding:4px 8px;font-size:11px;font-weight:600;color:#6b7280;">TIME</td>
+          <td style="padding:4px 8px;font-size:11px;font-weight:600;color:#6b7280;width:80px;">TIME</td>
           <td style="padding:4px 8px;font-size:11px;font-weight:600;color:#6b7280;">CALL / TYPE / UNIT / OFFICER</td>
         </tr>
         ${blotter.operations.calls.map((c) => `
         <tr>
           <td style="padding:3px 8px;font-size:12px;color:#374151;white-space:nowrap;vertical-align:top;">
-            ${esc(fmtTime(c.received_at))}
+            ${esc(fmtTime(c.received_at))}<br/>
+            <span style="font-size:10px;color:#9ca3af;">${esc(c.source ?? '')}</span>
           </td>
           <td style="padding:3px 8px;font-size:12px;color:#111827;">
-            ${esc(c.call_number ?? '—')} &mdash; ${esc(toDisplayLabel(c.incident_type))} (P${esc(String(c.priority ?? '—'))})<br/>
+            ${esc(c.call_number ?? '—')} &mdash; ${esc(toDisplayLabel(c.incident_type))} (P${esc(String(c.priority ?? '—'))}) ${esc(c.secondary_type ? `[${toDisplayLabel(c.secondary_type)}]` : '')}<br/>
             <span style="color:#6b7280;font-size:11px;">
-              ${esc(c.location_address ?? '—')} | ${esc(fmtUnits(c.unit_call_signs))} | ${esc(c.responding_officer ?? '—')} | ${esc(c.disposition ?? c.status ?? '—')}
+              ${esc(c.location_address ?? '—')} | ${esc(fmtUnits(c.unit_call_signs))} | ${esc(c.responding_officer ?? '—')} | ${esc(toDisplayLabel(c.disposition ?? c.status ?? '—'))}
             </span>
+            ${c.description ? `<br/><span style="color:#374151;font-size:11px;"><b>Dispatch:</b> ${esc(c.description.slice(0,200))}${(c.description?.length ?? 0) > 200 ? '…' : ''}</span>` : ''}
+            ${c.notes ? `<br/><span style="color:#374151;font-size:11px;"><b>Notes:</b> ${esc(c.notes.slice(0,200))}${(c.notes?.length ?? 0) > 200 ? '…' : ''}</span>` : ''}
+            ${c.action_taken ? `<br/><span style="color:#374151;font-size:11px;"><b>Action:</b> ${esc(c.action_taken.slice(0,200))}${(c.action_taken?.length ?? 0) > 200 ? '…' : ''}</span>` : ''}
+            ${c.damage_description ? `<br/><span style="color:#374151;font-size:11px;"><b>Damage:</b> ${esc(c.damage_description.slice(0,200))}${(c.damage_description?.length ?? 0) > 200 ? '…' : ''} ${c.damage_estimate ? `($${c.damage_estimate})` : ''}</span>` : ''}
+            <br/>
+            <span style="font-size:10px;color:#9ca3af;">
+              ${[c.sector_name ? `Sector: ${esc(c.sector_name)}` : '', c.zone_name ? `Zone: ${esc(c.zone_name)}` : '', c.beat_name ? `Beat: ${esc(c.beat_name)}` : '', c.dispatch_code ? `Code: ${esc(c.dispatch_code)}` : '', c.caller_relationship ? `Caller: ${esc(c.caller_relationship)}` : '', c.caller_name ? `${esc(c.caller_name)}` : ''].filter(Boolean).join(' | ')}
+            </span>
+            <br/>
+            <span style="font-size:10px;color:#9ca3af;">
+              ${[
+                c.response_time_seconds != null ? `Response: ${Math.round(c.response_time_seconds / 60)}m${c.response_time_seconds % 60}s` : '',
+                c.onscene_duration_seconds != null ? `On-Scene: ${Math.round(c.onscene_duration_seconds / 60)}m${c.onscene_duration_seconds % 60}s` : '',
+                c.scene_safety ? `Safety: ${esc(c.scene_safety)}` : '',
+              ].filter(Boolean).join(' | ')}
+            </span>
+            <br/>
+            <span style="font-size:10px;color:#9ca3af;">
+              ${[
+                c.weapons_involved ? 'WEAPONS' : '',
+                c.domestic_violence ? 'DV' : '',
+                c.mental_health_crisis ? 'MENTAL HEALTH' : '',
+                c.juvenile_involved ? 'JUVENILE' : '',
+                c.felony_in_progress ? 'FELONY' : '',
+                c.officer_safety_caution ? 'OFFICER SAFETY' : '',
+                c.k9_requested ? 'K9' : '',
+                c.ems_requested ? 'EMS' : '',
+                c.le_notified ? `LE: ${esc(c.le_case_number ?? '—')}` : '',
+                c.supervisor_notified ? 'SUPERVISOR' : '',
+              ].filter(Boolean).map(f => `<span style="background:#fef3c7;color:#92400e;padding:1px 4px;border-radius:2px;margin-right:4px;">${f}</span>`).join(' ')}
+            </span>
+            ${c.pso_requestor_name ? `<br/><span style="font-size:10px;color:#9ca3af;">PSO Request: ${esc(c.pso_requestor_name)} — ${esc(c.pso_service_type ?? '—')}</span>` : ''}
           </td>
         </tr>`).join('')}
       </table>
@@ -287,7 +320,7 @@ export function renderDailyEmailHtml(
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ef4444;border-radius:4px;">
         <tr>
           <td colspan="2" style="padding:8px;font-size:13px;font-weight:700;color:#dc2626;background-color:#fef2f2;">
-            ALPR Alerts (${extended.alpr.alertedCount})
+            ALPR Alerts (${extended.alpr.alertedCount} of ${extended.alpr.totalCount} captures)
           </td>
         </tr>
         ${extended.alpr.rows.filter((a) => a.alerted === 1).map((a) => `
@@ -295,7 +328,37 @@ export function renderDailyEmailHtml(
           <td style="padding:3px 8px;font-size:12px;color:#111827;">
             ${esc(a.plate ?? '—')} (${esc(a.state ?? '—')}) &mdash; ${esc(a.make ?? '')} ${esc(a.model ?? '')} ${esc(a.color ?? '')}<br/>
             <span style="color:#6b7280;font-size:11px;">
-              Confidence: ${a.confidence != null ? `${Math.round(a.confidence * 100)}%` : '—'} | Risk: ${a.risk_score != null ? a.risk_score.toFixed(2) : '—'}
+              Confidence: ${a.confidence != null ? `${Math.round(a.confidence * 100)}%` : '—'} | Risk: ${a.risk_score != null ? a.risk_score.toFixed(2) : '—'} | ${fmtTime(a.created_at)}
+            </span>
+          </td>
+        </tr>`).join('')}
+      </table>
+    </td>
+  </tr>` : ''}
+
+  <!-- Incidents Detail (if any) -->
+  ${extended.incidents.totalCount > 0 ? `
+  <tr>
+    <td style="padding:0 24px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:4px;">
+        <tr>
+          <td colspan="2" style="padding:8px;font-size:13px;font-weight:700;color:#1e3a5f;background-color:#f9fafb;">
+            Incidents Detail (${extended.incidents.totalCount})
+          </td>
+        </tr>
+        <tr style="background-color:#f9fafb;">
+          <td style="padding:4px 8px;font-size:11px;font-weight:600;color:#6b7280;">TIME</td>
+          <td style="padding:4px 8px;font-size:11px;font-weight:600;color:#6b7280;">INCIDENT / TYPE / STATUS / LOCATION</td>
+        </tr>
+        ${extended.incidents.rows.map((inc) => `
+        <tr>
+          <td style="padding:3px 8px;font-size:12px;color:#374151;white-space:nowrap;vertical-align:top;">
+            ${esc(fmtTime(inc.created_at))}
+          </td>
+          <td style="padding:3px 8px;font-size:12px;color:#111827;">
+            ${esc(inc.incident_number ?? '—')} &mdash; ${esc(toDisplayLabel(inc.incident_type))} (P${esc(String(inc.priority ?? '—'))})<br/>
+            <span style="color:#6b7280;font-size:11px;">
+              ${esc(inc.location_address ?? '—')} | ${esc(toDisplayLabel(inc.status ?? '—'))}
             </span>
           </td>
         </tr>`).join('')}

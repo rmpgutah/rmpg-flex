@@ -308,12 +308,13 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     noActivityRow(cur, font, doc);
   } else {
     const cols = [
-      { label: 'TIME', w: 80 },
-      { label: 'CALL #', w: 100 },
+      { label: 'TIME', w: 65 },
+      { label: 'CALL #', w: 90 },
       { label: 'TYPE', w: 120 },
-      { label: 'P', w: 24 },
-      { label: 'LOCATION', w: 140 },
+      { label: 'P', w: 20 },
+      { label: 'LOCATION', w: 130 },
       { label: 'UNIT', w: 52 },
+      { label: 'DISP', w: 69 },
     ];
     const widths = cols.map(c => c.w);
     tableHeader(cur, cols, bold, doc);
@@ -323,23 +324,69 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
       tableRow(cur, [
         fmtMt(c.received_at),
         c.call_number ?? '—',
-        toDisplayLabel(c.incident_type),
+        truncate(toDisplayLabel(c.incident_type), 130, font, 7.5),
         `P${c.priority ?? '—'}`,
-        c.location_address ?? '—',
+        truncate(c.location_address ?? '—', 130, font, 7.5),
         fmtUnits(c.unit_call_signs),
+        truncate(toDisplayLabel(c.disposition ?? c.status ?? '—'), 69, font, 7.5),
       ], widths, font, doc, i % 2 === 1);
-    }
 
-    // Officer + disposition detail rows
-    cur.y -= 4;
-    for (const c of data.operations.calls) {
-      const detail = `    ${c.responding_officer ?? '—'}  |  ${c.disposition ?? c.status ?? '—'}`;
+      // Extra detail line: flags, source, zone, response time
+      const flags = [
+        c.weapons_involved ? 'WEAPONS' : '',
+        c.domestic_violence ? 'DV' : '',
+        c.mental_health_crisis ? 'MENTAL HEALTH' : '',
+        c.juvenile_involved ? 'JUVENILE' : '',
+        c.felony_in_progress ? 'FELONY' : '',
+        c.officer_safety_caution ? 'OFFICER SAFETY' : '',
+        c.k9_requested ? 'K9' : '',
+        c.ems_requested ? 'EMS' : '',
+        c.le_notified ? `LE:${c.le_case_number ?? '—'}` : '',
+        c.supervisor_notified ? 'SUPERVISOR' : '',
+      ].filter(Boolean).join(' | ');
+
+      const meta = [
+        c.source ? `Src:${c.source}` : '',
+        c.sector_name ? `Sec:${c.sector_name}` : '',
+        c.zone_name ? `Z:${c.zone_name}` : '',
+        c.beat_name ? `B:${c.beat_name}` : '',
+        c.dispatch_code ? `Code:${c.dispatch_code}` : '',
+        c.caller_relationship ? `Caller:${c.caller_relationship}` : '',
+        c.response_time_seconds != null ? `Resp:${Math.round(c.response_time_seconds / 60)}m${c.response_time_seconds % 60}s` : '',
+        c.onscene_duration_seconds != null ? `Scene:${Math.round(c.onscene_duration_seconds / 60)}m${c.onscene_duration_seconds % 60}s` : '',
+        c.scene_safety ? `Safe:${c.scene_safety}` : '',
+        c.pso_requestor_name ? `PSO:${c.pso_requestor_name}(${c.pso_service_type ?? ''})` : '',
+      ].filter(Boolean).join(' | ');
+
+      const detailLine = [
+        c.responding_officer ?? '—',
+        flags,
+        meta,
+      ].filter(Boolean).join('  |  ');
+
       ensureSpace(cur, 1, doc);
-      cur.page.drawText(truncate(detail, USABLE_W, font, 7), {
-        x: MARGIN_L, y: cur.y, size: 7,
-        font, color: rgb(0.4, 0.4, 0.4),
+      cur.page.drawText(truncate(detailLine, USABLE_W, font, 6.5), {
+        x: MARGIN_L + 6, y: cur.y, size: 6.5,
+        font, color: rgb(0.45, 0.45, 0.45),
       });
-      cur.y -= 9;
+      cur.y -= 8;
+
+      // Description / notes / action
+      const textParts = [
+        c.description ? `Dispatch: ${c.description}` : '',
+        c.notes ? `Notes: ${c.notes}` : '',
+        c.action_taken ? `Action: ${c.action_taken}` : '',
+        c.damage_description ? `Damage: ${c.damage_description}${c.damage_estimate ? ` ($${c.damage_estimate})` : ''}` : '',
+      ].filter(Boolean);
+      if (textParts.length > 0) {
+        const detailText = textParts.join('  |  ');
+        ensureSpace(cur, 1, doc);
+        cur.page.drawText(truncate(detailText, USABLE_W, font, 6.5), {
+          x: MARGIN_L + 6, y: cur.y, size: 6.5,
+          font, color: rgb(0.55, 0.55, 0.55),
+        });
+        cur.y -= 9;
+      }
     }
   }
 
@@ -352,8 +399,9 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     const cols = [
       { label: 'DATE', w: 80 },
       { label: 'CITATION #', w: 100 },
-      { label: 'VIOLATION', w: 230 },
-      { label: 'FINE', w: 80 },
+      { label: 'VIOLATION', w: 200 },
+      { label: 'OFFICER', w: 80 },
+      { label: 'FINE', w: 56 },
     ];
     const widths = cols.map(c => c.w);
     tableHeader(cur, cols, bold, doc);
@@ -363,11 +411,16 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
       tableRow(cur, [
         fmtMt(c.citation_date),
         c.citation_number ?? '—',
-        c.violation_description ?? '—',
+        truncate(c.violation_description ?? '—', 200, font, 7.5),
+        truncate(c.issuing_officer_name ?? '—', 80, font, 7.5),
         `$${c.fine_amount ?? 0}`,
       ], widths, font, doc, i % 2 === 1);
     }
   }
+
+  // ── Extended: Incidents ─────────────────────────────────
+  // Note: incidents are collected via collectExtendedActivity, not passed to this PDF renderer.
+  // PDF only covers base blotter data; incidents are in the HTML email only.
 
   // ── FLEET: Trips & Mileage ──────────────────────────────
   sectionHeader(cur, 'Fleet — Trips & Mileage', bold, doc);
