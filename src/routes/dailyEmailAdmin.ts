@@ -11,7 +11,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
-import { requireRole } from '../middleware/auth';
+import { authMiddleware, requireRole } from '../middleware/auth';
 import { getDb } from '../utils/db';
 import { getConfig, setConfig, type DailyEmailConfig } from '../utils/dailyEmail/config';
 import { sendViaResend } from '../utils/resendEmail';
@@ -20,15 +20,20 @@ import type { Bindings, Variables } from '../types';
 
 const dailyEmailAdmin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// All endpoints require admin role.
-// TEMPORARY: test-send bypasses auth when ?dev=true (remove after testing).
+// Auth: all endpoints require admin role EXCEPT test-send with ?dev=true (temp bypass for testing).
 dailyEmailAdmin.use('*', async (c, next) => {
-  // Skip auth for test-send with dev bypass
+  // TEMPORARY dev bypass for test-send only
   if (c.req.path.endsWith('/test-send') && c.req.query('dev') === 'true') {
     log.warn('[daily-email] dev auth bypass used', { path: c.req.path });
     return next();
   }
-  return requireRole('admin')(c, next);
+  // Standard auth: verify JWT then check admin role
+  await authMiddleware(c, async () => {});
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') {
+    return c.json({ error: 'Admin role required' }, 403);
+  }
+  return next();
 });
 
 // GET /recipients — return current config
