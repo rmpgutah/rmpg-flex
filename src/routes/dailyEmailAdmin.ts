@@ -41,6 +41,16 @@ dailyEmailAdmin.get('/test-open', async (c) => {
     const db = getDb(c.env);
     const toOverride = c.req.query('to');
     const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
+
+    // Debug mode: ?debug=1 returns raw blotter data
+    if (c.req.query('debug') === '1') {
+      const { collectDailyReport, isEmpty } = await import('../utils/dailyReport/collect');
+      const { denverDayBoundsUtc } = await import('../utils/dailyReport/dates');
+      const bounds = denverDayBoundsUtc(date);
+      const blotter = await collectDailyReport(db, date);
+      return c.json({ date, bounds, empty: isEmpty(blotter), calls: blotter.operations.calls.length, citations: blotter.operations.citations.length });
+    }
+
     const { sendDailyEmails } = await import('../utils/dailyEmail/sendDailyEmails');
     const result = await sendDailyEmails(db, resendApiKey, date, {
       force: true,
