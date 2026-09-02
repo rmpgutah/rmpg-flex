@@ -42,7 +42,8 @@ import { formatServerAssignLabel, type CorporateServer } from '../utils/corporat
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
-import { toDisplayLabel } from '../utils/formatters';
+import { toDisplayLabel, formatEnumValue } from '../utils/formatters';
+import { autoSaveServePdfToSubjectFile } from '../utils/saveServePdfToSubjectFile';
 import { ORGANIZATION } from '../constants/organizationConstants';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
@@ -401,7 +402,7 @@ export default function ServePage() {
   // download/edit flow AND the new preview-modal flow (which regenerates
   // the doc every time the office/mobile toggle changes) share one source
   // of truth instead of duplicating the attempt-filtering logic.
-  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string }) | null> => {
+  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string; latestAttemptId?: number }) | null> => {
     // GET /:id returns the job row + its serve_attempts (joined w/ officer).
     const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
     const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -472,19 +473,33 @@ export default function ServePage() {
       attempts,
       nextAttemptNote,
       filename: `Notice-of-Attempt-${job.case_number || job.id}.pdf`,
-    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string };
+      latestAttemptId: latestAttempt.id,
+    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string; latestAttemptId?: number };
   };
 
   const handleNoticeOfAttempt = async (jobId: number, editBeforePrint?: boolean) => {
     try {
       const data = await buildNoticeOfAttemptData(jobId);
       if (!data) return;
-      const { filename, ...noticeData } = data;
+      const { filename, latestAttemptId, ...noticeData } = data;
       const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
       // Notice of Attempt is always printed in the field from the in-vehicle
       // Brother PJ thermal printer — never a desk laser — so this always
       // renders mobile-safe margins, no office option.
       const pdf = await generateNoticeOfAttempt(noticeData, { printTarget: 'mobile' });
+
+      // Automatically save the generated Notice of Attempt to the Subject File
+      if (latestAttemptId) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: latestAttemptId,
+          pdf,
+          filename,
+          title: 'Notice of Attempt to Serve (NOA)',
+          documentType: 'notice',
+          description: `Auto-generated Notice of Attempt for attempt #${data.attempts.length}`,
+        });
+      }
 
       if (editBeforePrint) {
         const { storePdfForEditor } = await importWithRetry(() => import('../utils/openPdfDocument'));
@@ -691,8 +706,21 @@ export default function ServePage() {
         signature: serviceAttempt.signature_data || undefined,
       });
 
+      const filename = `Affidavit-of-Service-${job.case_number || job.id}.pdf`;
+      if (serviceAttempt.id) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: serviceAttempt.id,
+          pdf,
+          filename,
+          title: 'Affidavit of Service (AOS)',
+          documentType: 'affidavit',
+          description: `Sworn Affidavit of Service (${method}) filed for record`,
+        });
+      }
+
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Affidavit-of-Service-${job.case_number || job.id}.pdf`);
+      openPdfDocument(pdf, filename);
     } catch (err) {
       console.error('[serve] Affidavit of Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Service — please try again.');
@@ -757,8 +785,22 @@ export default function ServePage() {
         signature: (user as any)?.signature_data || undefined,
       });
 
+      const filename = `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`;
+      const latestUnsuccessful = (job.attempts || []).filter(a => (a.result || '').toLowerCase() !== 'served').pop();
+      if (latestUnsuccessful?.id) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: latestUnsuccessful.id,
+          pdf,
+          filename,
+          title: 'Affidavit of Due Diligence / Non-Service (AONS)',
+          documentType: 'affidavit',
+          description: `Sworn Affidavit of Non-Service (${attempts.length} attempts documented)`,
+        });
+      }
+
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`);
+      openPdfDocument(pdf, filename);
     } catch (err) {
       console.error('[serve] Affidavit of Non-Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Non-Service — please try again.');
