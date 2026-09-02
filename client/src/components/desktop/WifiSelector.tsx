@@ -84,7 +84,7 @@ function DetailRow({ label, value, mono = false }: { label: string; value: strin
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
       <span style={{ fontSize: 9, color: 'var(--field-label-color)', flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</span>
-      <span style={{ fontSize: 9, color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-all', fontFamily: mono ? 'monospace' : undefined }}>{value}</span>
+      <span style={{ fontSize: 9, color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-all', fontFamily: mono ? 'Arial, sans-serif' : undefined }}>{value}</span>
     </div>
   );
 }
@@ -141,7 +141,7 @@ function NetworkDetail({ net }: { net: ScannedNetwork }) {
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 4, borderLeft: '2px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <SignalBars signal={b.signal} size={10} />
-              <span style={{ fontSize: 9, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{b.bssid ?? '—'}</span>
+              <span style={{ fontSize: 9, fontFamily: 'Arial, sans-serif', color: 'var(--text-primary)' }}>{b.bssid ?? '—'}</span>
               {b.vendor && (
                 <span style={{ fontSize: 8, color: 'var(--text-secondary)', flexShrink: 0 }}>{b.vendor}</span>
               )}

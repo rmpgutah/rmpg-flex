@@ -70,7 +70,7 @@ const ZONE_TYPE_COLORS: Record<string, string> = {
 function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): string {
   if (alerts.length === 0) {
     return `
-      <div style="background:#141414;color:#22c55e;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:ui-monospace,monospace;font-size:11px;">
+      <div style="background:#141414;color:#22c55e;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:'Arial, sans-serif';font-size:11px;">
         ✓ No premise alerts at this location
       </div>`;
   }
@@ -242,7 +242,7 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark', maxWidth: '340px',
       })
         .setLngLat([lng, lat])
-        .setHTML(`<div style="background:#141414;color:#d4a017;padding:8px;font-size:10px;font-family:ui-monospace,monospace;">Checking premise alerts…</div>`)
+        .setHTML(`<div style="background:#141414;color:#d4a017;padding:8px;font-size:10px;font-family:'Arial, sans-serif';">Checking premise alerts…</div>`)
         .addTo(map);
       popupRef.current = loadingPopup;
 
@@ -259,7 +259,7 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         }
       } catch (err) {
         if (popupRef.current === loadingPopup) {
-          loadingPopup.setHTML(`<div style="background:#141414;color:#ef4444;padding:8px;font-size:10px;font-family:ui-monospace,monospace;">Failed to check premise alerts</div>`);
+          loadingPopup.setHTML(`<div style="background:#141414;color:#ef4444;padding:8px;font-size:10px;font-family:'Arial, sans-serif';">Failed to check premise alerts</div>`);
         }
       }
     };

@@ -267,7 +267,7 @@ export default function QuickPlateCheckPage() {
                     letterSpacing: '0.15em',
                     padding: '10px 44px 10px 14px',
                     outline: 'none',
-                    fontFamily: 'monospace',
+                    fontFamily: 'Arial, sans-serif',
                     boxSizing: 'border-box',
                     transition: 'border-color 0.15s',
                   }}
@@ -463,7 +463,7 @@ export default function QuickPlateCheckPage() {
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span
                       style={{
-                        fontFamily: 'monospace',
+                        fontFamily: 'Arial, sans-serif',
                         fontSize: 22,
                         fontWeight: 700,
                         letterSpacing: '0.12em',
@@ -754,7 +754,7 @@ export default function QuickPlateCheckPage() {
                     color: 'var(--text-primary)',
                     cursor: 'pointer',
                     fontSize: 12,
-                    fontFamily: 'monospace',
+                    fontFamily: 'Arial, sans-serif',
                     fontWeight: 700,
                     letterSpacing: '0.08em',
                     padding: '4px 10px',

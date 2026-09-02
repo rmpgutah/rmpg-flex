@@ -660,7 +660,7 @@ function getOfflineHTML() {
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-family: Arial, sans-serif;
           background: #172a3f;
           color: #f0f4f9;
           display: flex;
@@ -720,21 +720,21 @@ function getOfflineHTML() {
           cursor: pointer;
           text-transform: uppercase;
           letter-spacing: 0.12em;
-          font-family: inherit;
+          font-family: Arial, sans-serif;
           transition: background 0.15s;
         }
         button:hover { background: #3b6a9a; }
         .countdown {
           font-size: 11px;
           color: #8fa3b8;
-          font-family: monospace;
+          font-family: Arial, sans-serif;
           min-width: 120px;
         }
         .server-url {
           margin-top: 16px;
           font-size: 10px;
           color: #4a6a8a;
-          font-family: monospace;
+          font-family: Arial, sans-serif;
         }
         .status-dot {
           display: inline-block;
@@ -829,7 +829,7 @@ function getCrashLoopHTML() {
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-family: Arial, sans-serif;
           background: #000000;
           color: #fff;
           display: flex;
@@ -4461,8 +4461,88 @@ guardedHandle('geo:ip-locate', async () => {
               });
             } else {
               reject(new Error(parsed.error));
-            }
-          });
+}
+});
+
+// ─── Device: get capture log ──────────────────────────────────────
+guardedHandle('device:get-log', async () => {
+  return { ok: true, log: [], latestEntry: null };
+});
+
+// ─── Device: export capture log ──────────────────────────────────
+guardedHandle('device:export-log', async () => {
+  return { ok: true };
+});
+
+// ─── Device: clear capture log ───────────────────────────────────
+guardedHandle('device:clear-log', async () => {
+  return { ok: true };
+});
+
+// ─── Device: delete a log entry ──────────────────────────────────
+guardedHandle('device:delete-entry', async (_event, id) => {
+  return { ok: true };
+});
+
+// ─── Device: full RF scan ────────────────────────────────────────
+guardedHandle('device:scan-all', async () => {
+  try {
+    const result = await runRfScan({});
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
+
+// ─── Device: ARP / NDP scan ───────────────────────────────────────
+guardedHandle('device:scan-arp', async () => {
+  try {
+    const result = await runRfScan({ protocol: 'arp' });
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
+
+// ─── Device: Bluetooth scan ───────────────────────────────────────
+guardedHandle('device:scan-bt', async () => {
+  try {
+    const result = await runRfScan({ protocol: 'bt' });
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
+
+// ─── Device: SSDP / UPnP scan ───────────────────────────────────────
+guardedHandle('device:scan-sd', async () => {
+  try {
+    const result = await runRfScan({ protocol: 'ssdp' });
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
+
+// ─── Device: mDNS scan ─────────────────────────────────────────────
+guardedHandle('device:scan-md', async () => {
+  try {
+    const result = await runRfScan({ protocol: 'mdns' });
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
+
+// ─── Device: NetBIOS scan ──────────────────────────────────────────
+guardedHandle('device:scan-nb', async () => {
+  try {
+    const result = await runRfScan({ protocol: 'nb' });
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
         });
         request.on('error', reject);
         request.write(JSON.stringify({}));

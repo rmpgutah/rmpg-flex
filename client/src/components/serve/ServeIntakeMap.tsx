@@ -773,7 +773,7 @@ function buildPopupHtml(item: QueueMapItem): string {
     : '—';
 
   return `
-    <div style="font-family:monospace;font-size:11px;color:#c9d6e3;min-width:200px;">
+    <div style="font-family:'Arial, sans-serif';font-size:11px;color:#c9d6e3;min-width:200px;">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
         <span style="font-size:14px;">${isBusiness ? '🏢' : '👤'}</span>
         <div>
@@ -789,16 +789,16 @@ function buildPopupHtml(item: QueueMapItem): string {
       <div style="color:#64748b;font-size:10px;">Next window: ${escapeHtml(nextStr)}</div>
       ${noteBlock}
       <div style="margin-top:8px;display:flex;gap:6px;">
-        <button data-action="open" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="open" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">
           Open Record
         </button>
-        <button data-action="note" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d9bd72;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="note" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d9bd72;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">
           ${item.location_note_id ? 'View Notation' : 'Add Notation'}
         </button>
-        <button data-action="trail" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="trail" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">
           History
         </button>
-        <button data-action="preview" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="preview" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">
           Preview drive time
         </button>
       </div>

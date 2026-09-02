@@ -356,7 +356,7 @@ export default function ScheduledUpdatesPage() {
                 background: 'var(--surface-base)', border: '1px solid var(--border-subtle)',
                 borderRadius: 2, padding: 8, margin: 0,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                fontFamily: 'inherit', maxHeight: 180, overflowY: 'auto',
+                fontFamily: 'Arial, sans-serif', maxHeight: 180, overflowY: 'auto',
               }}>
                 {updateInfo.releaseNotes}
               </pre>

@@ -854,7 +854,7 @@ export default function ConnectionsPage() {
                   })()}
                   <text
                     x={n.x} y={n.y - 1} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="monospace" fontWeight="bold"
+                    fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="Arial, sans-serif" fontWeight="bold"
                     style={{ pointerEvents: 'none' }}
                   >
                     {n.type[0].toUpperCase()}
@@ -862,7 +862,7 @@ export default function ConnectionsPage() {
                   {annotations[n.id] && (
                     <text
                       x={n.x + r - 4} y={n.y - r + 8}
-                      fontSize={10} fill="var(--brand-gold)" fontFamily="monospace" fontWeight="bold"
+                      fontSize={10} fill="var(--brand-gold)" fontFamily="Arial, sans-serif" fontWeight="bold"
                       style={{ pointerEvents: 'none' }}
                     >
                       ✎
@@ -921,7 +921,7 @@ export default function ConnectionsPage() {
                     fontSize={9}
                     fill={isSeed ? 'var(--brand-gold)' : important ? '#fff' : '#ccc'}
                     fontWeight={important ? 'bold' : 'normal'}
-                    fontFamily="monospace"
+                    fontFamily="Arial, sans-serif"
                   >
                     {truncated}
                   </text>

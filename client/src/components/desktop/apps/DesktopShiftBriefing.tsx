@@ -198,7 +198,7 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
                   background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 64,
                 }}>
-                  <span style={{ color: 'var(--accent-silver-400)', fontFamily: 'monospace' }}>{u.unit_id ?? u.unit_number ?? `U${u.id}`}</span>
+                  <span style={{ color: 'var(--accent-silver-400)', fontFamily: 'Arial, sans-serif' }}>{u.unit_id ?? u.unit_number ?? `U${u.id}`}</span>
                   {(u.officer_name ?? u.officer) && (
                     <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontWeight: 400, textAlign: 'center' }}>
                       {u.officer_name ?? u.officer}

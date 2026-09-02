@@ -48,7 +48,7 @@ export default function MobileContextBar({
         <span
           style={{
             fontSize: 11,
-            fontFamily: 'var(--font-mono, monospace)',
+            fontFamily: 'Arial, sans-serif',
             fontWeight: 700,
             color: 'var(--text-secondary)',
             textTransform: 'uppercase',
@@ -65,7 +65,7 @@ export default function MobileContextBar({
         <span
           style={{
             fontSize: 10,
-            fontFamily: 'var(--font-mono, monospace)',
+            fontFamily: 'Arial, sans-serif',
             color: radioChannel ? 'var(--sev-ok)' : 'var(--text-muted)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
@@ -81,7 +81,7 @@ export default function MobileContextBar({
             <span
               style={{
                 fontSize: 10,
-                fontFamily: 'var(--font-mono, monospace)',
+                fontFamily: 'Arial, sans-serif',
                 color: 'var(--brand-gold)',
                 fontWeight: 600,
                 whiteSpace: 'nowrap',
@@ -99,7 +99,7 @@ export default function MobileContextBar({
         <span
           style={{
             fontSize: 10,
-            fontFamily: 'var(--font-mono, monospace)',
+            fontFamily: 'Arial, sans-serif',
             color: gpsTracking ? 'var(--sev-ok)' : 'var(--text-muted)',
           }}
         >

@@ -183,7 +183,7 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
                       {expanded === c.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
                     <td style={td}>{formatDateTime(c.captured_at)}</td>
-                    <td style={{ ...td, fontWeight: 700, fontFamily: 'monospace' }}>{c.plate_number ?? '—'}</td>
+                    <td style={{ ...td, fontWeight: 700, fontFamily: 'Arial, sans-serif' }}>{c.plate_number ?? '—'}</td>
                     <td style={td}>{[c.make, c.model].filter(Boolean).join(' ') || '—'}</td>
                     <td style={td}>{c.color ?? '—'}</td>
                     <td style={td}>{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : '—'}</td>

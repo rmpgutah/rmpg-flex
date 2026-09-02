@@ -17,7 +17,7 @@
 .writer-content .ProseMirror {
   outline: none;
   color: inherit;
-  font-family: var(--writer-font, "Times New Roman", Times, serif);
+  font-family: var(--writer-font, Arial, sans-serif);
   font-size: var(--writer-size, 12pt);
   line-height: var(--writer-line-height, 1.5);
   min-height: 100%;
@@ -46,7 +46,7 @@
   font-style: italic;
 }
 .writer-content .ProseMirror code {
-  font-family: Consolas, monospace;
+  font-family: Arial, monospace;
   background: rgba(128, 128, 128, 0.18);
   padding: 0.1em 0.3em;
   border-radius: 2px;
@@ -222,10 +222,10 @@
 .writer-content .ProseMirror .doc-subtitle { font-size: 16px; opacity: 0.7; text-align: center; font-style: italic; }
 
 /* Style-gallery presets (feature 48) */
-.writer-content .ProseMirror .style-legal { font-family: "Times New Roman", serif; font-size: 13pt; line-height: 2; }
+.writer-content .ProseMirror .style-legal { font-family: Arial, sans-serif; font-size: 13pt; line-height: 2; }
 .writer-content .ProseMirror .style-memo { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; }
 /* Legal-numbered list preset — double-spaced, decimal markers */
-.writer-content .ProseMirror ol.style-legal-list { font-family: "Times New Roman", serif; line-height: 2; list-style-type: decimal; padding-left: 2em; }
+.writer-content .ProseMirror ol.style-legal-list { font-family: Arial, sans-serif; line-height: 2; list-style-type: decimal; padding-left: 2em; }
 
 /* Horizontal ruler / margin guides (feature 26) */
 .writer-ruler {

@@ -749,7 +749,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   const doc = printWindow.document;
                   doc.open();
                   const container = doc.createElement('div');
-                  container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;font-family:monospace;';
+                  container.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;font-family:'Arial, sans-serif';";
                   const h2 = doc.createElement('h2');
                   h2.textContent = selectedEvidence.evidence_number || '';
                   container.appendChild(h2);

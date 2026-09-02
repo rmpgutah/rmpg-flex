@@ -67,7 +67,7 @@ export default function DesktopHardwareTelemetryPanel() {
         border: '1px solid rgba(59, 130, 246, 0.2)',
         color: '#e2e8f0',
         padding: 20,
-        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontFamily: 'Arial, sans-serif',
         fontSize: 11,
       }}
     >
@@ -98,7 +98,7 @@ export default function DesktopHardwareTelemetryPanel() {
 
           <div>
             <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LOCAL IPS (WEBRTC)</div>
-            <div style={{ fontSize: 11, color: '#38bdf8', fontFamily: 'monospace', marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: '#38bdf8', fontFamily: 'Arial, sans-serif', marginTop: 2 }}>
               {JSON.stringify(telemetry.localIpsWebRTC)}
             </div>
           </div>
@@ -178,7 +178,7 @@ export default function DesktopHardwareTelemetryPanel() {
 
           <div>
             <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>CANVAS FINGERPRINT</div>
-            <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', wordBreak: 'break-all', marginTop: 2 }}>
+            <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'Arial, sans-serif', wordBreak: 'break-all', marginTop: 2 }}>
               {telemetry.canvasFingerprint}
             </div>
           </div>

@@ -123,7 +123,7 @@ export default function DesktopClipboard({ onClose }: DesktopClipboardProps) {
                 transition: 'background 0.12s, border-color 0.12s',
               }}
             >
-              <div style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.4, wordBreak: 'break-word', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.4, wordBreak: 'break-word', fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                 {preview(item.text)}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>

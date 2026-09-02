@@ -56,7 +56,7 @@ const S: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'flex-start',
     padding: '24px 16px 40px',
-    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+    fontFamily: 'Arial, sans-serif',
   },
   card: {
     background: C.cardBg,

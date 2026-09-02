@@ -545,7 +545,7 @@ export default function CompanyBrowserPage() {
               onChange={e => setAddressInput(e.target.value)}
               onFocus={e => e.target.select()}
               placeholder="Enter URL or search…"
-              style={{ width: '100%', background: 'none', border: 'none', outline: 'none', fontSize: 11, color: 'var(--text-primary)', fontFamily: 'monospace' }}
+              style={{ width: '100%', background: 'none', border: 'none', outline: 'none', fontSize: 11, color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}
             />
           </form>
           {addressInput && (
@@ -796,7 +796,7 @@ export default function CompanyBrowserPage() {
               {security.secure
                 ? <Wifi style={{ width: 9, height: 9, color: 'var(--accent-silver-400)' }} />
                 : <WifiOff style={{ width: 9, height: 9, color: 'var(--sev-warn)' }} />}
-              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
                 {activeTab.loading ? 'Loading…' : activeTab.url}
               </span>
             </>

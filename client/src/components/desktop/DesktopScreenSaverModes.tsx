@@ -101,7 +101,7 @@ export default function DesktopScreenSaverModes({ mode, time, date, stats, pos }
 
       {/* Mode 5: Matrix Security Stream */}
       {mode === 'matrix-stream' && (
-        <div style={{ fontFamily: 'monospace', fontSize: 10, letterSpacing: '0.3em', color: '#10b981', marginBottom: 12, opacity: 0.8 }}>
+        <div style={{ fontFamily: 'Arial, sans-serif', fontSize: 10, letterSpacing: '0.3em', color: '#10b981', marginBottom: 12, opacity: 0.8 }}>
           {matrixChars.join(' ')}
         </div>
       )}

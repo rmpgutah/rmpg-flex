@@ -143,7 +143,7 @@ function EvidenceOverlay({ att, className = '' }: { att: Attachment; className?:
       style={{
         background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.60) 70%, transparent 100%)',
         padding: '18px 12px 8px',
-        fontFamily: '"Courier New", Courier, monospace',
+        fontFamily: 'Arial, sans-serif',
       }}
     >
       {/* Agency badge top-right — mirroring RMPG in the ALPR photos */}
@@ -151,7 +151,7 @@ function EvidenceOverlay({ att, className = '' }: { att: Attachment; className?:
         position: 'absolute', top: 8, right: 10,
         fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
         color: 'rgba(255,200,80,0.90)',
-        fontFamily: '"Courier New", Courier, monospace',
+        fontFamily: 'Arial, sans-serif',
       }}>RMPG</div>
 
       {line1 && (
@@ -217,7 +217,7 @@ function MetaEditPanel({ att, onSaved, onClose }: MetaEditPanelProps) {
       style={{
         position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.92)',
         display: 'flex', flexDirection: 'column', padding: 16, zIndex: 10,
-        fontFamily: '"Courier New", Courier, monospace',
+        fontFamily: 'Arial, sans-serif',
       }}
       onClick={e => e.stopPropagation()}
     >
@@ -354,7 +354,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
       <div style={{
         position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
         fontSize: 10, color: 'rgba(255,255,255,0.45)',
-        fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.1em',
+        fontFamily: 'Arial, sans-serif', letterSpacing: '0.1em',
       }}>
         {idx + 1} / {attachments.length}
       </div>
@@ -418,7 +418,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
           flexShrink: 0,
         }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: '"Courier New", Courier, monospace' }}>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Arial, sans-serif' }}>
               {att.original_name}
             </div>
           </div>
@@ -452,7 +452,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
           </a>
         </div>
         {destampMsg && (
-          <div style={{ padding: '4px 10px', fontSize: 9, fontFamily: '"Courier New", Courier, monospace', color: destampMsg.startsWith('Failed') || destampMsg.startsWith('Error') ? 'rgba(255,120,120,0.9)' : 'rgba(120,255,150,0.9)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ padding: '4px 10px', fontSize: 9, fontFamily: 'Arial, sans-serif', color: destampMsg.startsWith('Failed') || destampMsg.startsWith('Error') ? 'rgba(255,120,120,0.9)' : 'rgba(120,255,150,0.9)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             {destampMsg}
           </div>
         )}
@@ -882,7 +882,7 @@ function EvidenceThumb({
         style={{
           background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)',
           padding: '10px 5px 4px',
-          fontFamily: '"Courier New", Courier, monospace',
+          fontFamily: 'Arial, sans-serif',
           pointerEvents: 'none',
         }}
       >
@@ -903,7 +903,7 @@ function EvidenceThumb({
         position: 'absolute', top: 4, right: 5,
         fontSize: 7, fontWeight: 700, letterSpacing: '0.12em',
         color: 'rgba(255,200,80,0.75)',
-        fontFamily: '"Courier New", Courier, monospace',
+        fontFamily: 'Arial, sans-serif',
         pointerEvents: 'none',
       }}>RMPG</div>
 

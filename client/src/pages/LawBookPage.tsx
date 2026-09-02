@@ -84,7 +84,7 @@ const LEVELS: { key: string; short: string; dot: string }[] = [
 function StatuteBody({ text }: { text: string }) {
   const segs = parseOutline(text);
   return (
-    <div style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+    <div style={{ fontFamily: 'Arial, sans-serif' }}>
       {segs.map((s, i) => (
         <p
           key={i}

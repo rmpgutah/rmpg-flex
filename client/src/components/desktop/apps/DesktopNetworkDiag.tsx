@@ -351,7 +351,7 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
                         <td style={{ ...tdStyle, fontWeight: 600 }}>{iface.name}</td>
                         <td style={tdStyle}>{iface.ipv4 ?? '—'}</td>
                         <td style={tdStyle}>{iface.ipv6 ?? '—'}</td>
-                        <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 9 }}>{iface.mac ?? '—'}</td>
+                        <td style={{ ...tdStyle, fontFamily: 'Arial, sans-serif', fontSize: 9 }}>{iface.mac ?? '—'}</td>
                         <td style={{ ...tdStyle, color: iface.status === 'up' ? 'var(--sev-ok)' : 'var(--text-muted)' }}>{iface.status ?? 'unknown'}</td>
                       </tr>
                     ))}

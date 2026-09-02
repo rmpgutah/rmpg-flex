@@ -142,7 +142,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
         style={{
           flex: 1, resize: 'none', border: 'none', outline: 'none',
           background: 'var(--surface-base)', color: 'var(--text-primary)',
-          fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6,
+          fontFamily: 'Arial, sans-serif', fontSize: 11, lineHeight: 1.6,
           padding: '10px 12px',
         }}
       />

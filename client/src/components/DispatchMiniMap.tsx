@@ -86,7 +86,7 @@ export function buildCallMarker(label: string, priority?: string): HTMLElement {
   tag.style.cssText = `
     background:${color};color:${CALL_MARKER_INK};font-size:7px;font-weight:900;
     padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
-    white-space:nowrap;font-family:'JetBrains Mono',monospace;
+    white-space:nowrap;font-family:'Arial',sans-serif;
     letter-spacing:0.03em;border-radius:1px;
     box-shadow:0 0 8px ${withAlpha(color, '50')};
   `;
@@ -526,7 +526,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               backdropFilter: 'blur(4px)',
               borderLeft: `2px solid ${priorityColor}`,
               color: 'var(--text-secondary)',
-              fontFamily: "'JetBrains Mono', monospace",
+              fontFamily: "'Arial', sans-serif",
               display: 'flex', alignItems: 'center', gap: 3,
             }}>
             <MapPin style={{ width: 8, height: 8, color: priorityColor }} />
@@ -542,7 +542,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
                 background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
                 backdropFilter: 'blur(4px)',
                 color: 'var(--text-muted)',
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: "'Arial', sans-serif",
               }}>
               {assignedWithGpsCount}/{assignedUnits.length} UNITS
               {assignedWithGpsCount > 0 && <span style={{ color: 'var(--sev-ok)', marginLeft: 3 }}>●</span>}
@@ -588,7 +588,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
               <polygon points="8,2 6.5,9 8,7.5 9.5,9" style={{ fill: 'var(--panel-header-color)' }} />
               <polygon points="8,14 6.5,7 8,8.5 9.5,7" style={{ fill: 'var(--text-muted)' }} />
-              <text x="8" y="1.5" textAnchor="middle" style={{ fill: 'var(--panel-header-color)' }} fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
+              <text x="8" y="1.5" textAnchor="middle" style={{ fill: 'var(--panel-header-color)' }} fontSize="3" fontFamily="Arial, sans-serif" fontWeight="bold">N</text>
             </svg>
           </div>
         </div>
@@ -603,7 +603,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
           borderLeft: '2px solid var(--sev-ok)',
         }}>
-          <span style={{ fontSize: 8, color: 'var(--text-secondary)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--text-secondary)', fontWeight: 900, fontFamily: "'Arial', sans-serif" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: 'var(--text-primary)', fontWeight: 900 }}>{activeRoute.eta}</span>
@@ -627,7 +627,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
             padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
           }}>
-            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'Arial', sans-serif" }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
             <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
@@ -719,7 +719,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             borderRadius: 2,
           }}>
             <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'Arial', sans-serif" }}>
               RECONNECTING
             </span>
           </div>
@@ -738,7 +738,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             borderRadius: 2,
           }}>
             <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'Arial', sans-serif" }}>
               OFFLINE
             </span>
           </div>

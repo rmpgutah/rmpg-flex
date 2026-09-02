@@ -164,7 +164,7 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
             <tbody>
               {mutualAidRows.map(r => (
                 <tr key={r.callId}>
-                  <td style={{ ...td, fontFamily: 'monospace', fontSize: 10, fontWeight: 700 }}>{r.callNumber}</td>
+                  <td style={{ ...td, fontFamily: 'Arial, sans-serif', fontSize: 10, fontWeight: 700 }}>{r.callNumber}</td>
                   <td style={td}>{r.nature}</td>
                   <td style={{ ...td, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.location}</td>
                   <td style={{ ...td, fontSize: 10, fontWeight: 700, color: 'var(--accent-silver-400)' }}>{r.requestingAgency}</td>
@@ -177,7 +177,7 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
                       ))}
                     </div>
                   </td>
-                  <td style={{ ...td, fontFamily: 'monospace', fontSize: 10, color: 'var(--text-secondary)' }}>
+                  <td style={{ ...td, fontFamily: 'Arial, sans-serif', fontSize: 10, color: 'var(--text-secondary)' }}>
                     {r.units.join(', ')}
                   </td>
                 </tr>

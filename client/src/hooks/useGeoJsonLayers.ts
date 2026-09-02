@@ -459,7 +459,7 @@ export function useGeoJsonLayers({
 
           if (!popup) return;
 
-          let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
+          let html = `<div style="font-family:'Arial, sans-serif';color:#d4d4d4;font-size:11px;min-width:140px;">`;
 
           const entry = cfg.id === 'beat'
             ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)

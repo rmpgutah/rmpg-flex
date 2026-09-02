@@ -233,7 +233,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                     stroke="var(--border-default)" strokeWidth={1.5} strokeDasharray="4,3"
                   />
                   {e.label && (
-                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--text-muted)" fontFamily="monospace">
+                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--text-muted)" fontFamily="Arial, sans-serif">
                       <title>{sentence}</title>
                       {e.label}
                     </text>
@@ -269,14 +269,14 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Type icon letter */}
                   <text
                     x={n.x} y={n.y - 2} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={r > 20 ? 10 : 8} fill={color} fontFamily="monospace" fontWeight="bold"
+                    fontSize={r > 20 ? 10 : 8} fill={color} fontFamily="Arial, sans-serif" fontWeight="bold"
                   >
                     {n.type === 'person' ? '👤' : n.type[0].toUpperCase()}
                   </text>
                   {/* Label below */}
                   <text
                     x={n.x} y={n.y + r + 10} textAnchor="middle"
-                    fontSize={8} fill="var(--text-secondary)" fontFamily="monospace"
+                    fontSize={8} fill="var(--text-secondary)" fontFamily="Arial, sans-serif"
                   >
                     {n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label}
                   </text>
@@ -284,7 +284,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {n.subLabel && (
                     <text
                       x={n.x} y={n.y + r + 19} textAnchor="middle"
-                      fontSize={6} fill="var(--text-muted)" fontFamily="monospace"
+                      fontSize={6} fill="var(--text-muted)" fontFamily="Arial, sans-serif"
                     >
                       {n.subLabel}
                     </text>
@@ -299,7 +299,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
               return types.map((t, i) => (
                 <g key={`legend-${t}`} transform={`translate(10, ${viewH - 14 - (types.length - 1 - i) * 14})`}>
                   <circle cx={6} cy={0} r={4} fill={NODE_COLORS[t]} />
-                  <text x={14} y={3} fontSize={8} fill="#888" fontFamily="monospace">
+                  <text x={14} y={3} fontSize={8} fill="#888" fontFamily="Arial, sans-serif">
                     {recordTypeLabel(t).toUpperCase()}
                   </text>
                 </g>

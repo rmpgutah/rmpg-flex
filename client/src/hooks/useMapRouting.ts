@@ -798,7 +798,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     el.style.cssText =
       'width:24px;height:24px;border-radius:2px;display:flex;align-items:center;justify-content:center;' +
       'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #d4a017;' +
-      "color:#d4a017;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900;line-height:1;" +
+      "color:#d4a017;font-family:'Arial, sans-serif';font-size:12px;font-weight:900;line-height:1;" +
       'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0 0 0 / 0.6);' +
       'cursor:default;';
     el.textContent = String(order);

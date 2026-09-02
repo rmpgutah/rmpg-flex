@@ -52,7 +52,7 @@ function defaultState(): GState {
   return {
     ctm: { ...ID }, lineWidth: 1,
     strokeColor: [0, 0, 0], fillColor: [0, 0, 0],
-    fontSize: 12, fontFamily: 'Helvetica',
+    fontSize: 12, fontFamily: 'Arial, sans-serif',
     charSpacing: 0, wordSpacing: 0, horizScaling: 100,
     leading: 0, textRise: 0,
     tm: { ...ID }, tlm: { ...ID },

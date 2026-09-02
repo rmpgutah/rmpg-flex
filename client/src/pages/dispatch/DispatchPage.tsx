@@ -256,7 +256,7 @@ const UNIT_STATUS_EDIT_OPTIONS = [
   { value: 'enroute', label: 'En Route' },
   { value: 'onscene', label: 'On Scene' },
 ] as const;
-const STATUS_BAR_STYLE: React.CSSProperties = { background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" };
+const STATUS_BAR_STYLE: React.CSSProperties = { background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: 'Arial, sans-serif' };
 const SCROLL_CONTAIN_STYLE: React.CSSProperties = { overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties;
 
 const PROCESS_SERVICE_RESULT_GROUPS = [

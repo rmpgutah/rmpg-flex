@@ -31,14 +31,14 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
     <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{label}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'Arial, sans-serif', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
 
 /* ── Shared axis / grid props ───────────────────────────────── */
-const AXIS_STYLE = { fill: 'var(--text-secondary)', fontSize: 9, fontFamily: 'monospace' };
+const AXIS_STYLE = { fill: 'var(--text-secondary)', fontSize: 9, fontFamily: 'Arial, sans-serif' };
 const GRID_PROPS = { stroke: 'var(--border-subtle)', strokeDasharray: '3 3' } as const;
 
 export default function CrimeAnalysisPage() {

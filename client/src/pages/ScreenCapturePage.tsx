@@ -606,7 +606,7 @@ export default function ScreenCapturePage() {
                 borderRadius: 1,
                 pointerEvents: 'none',
                 letterSpacing: '0.04em',
-                fontFamily: 'monospace',
+                fontFamily: 'Arial, sans-serif',
               }}
             >
               {watermarkText}

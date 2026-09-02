@@ -58,7 +58,7 @@ export function Cmd({ children }: { children: string }) {
           border: '1px solid var(--border-subtle)',
           color: 'var(--text-secondary)',
           borderRadius: 2,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          fontFamily: 'Arial, sans-serif',
         }}
       >
         {children}

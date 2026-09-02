@@ -35,7 +35,7 @@ export default function ClipboardManagerPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {clipboardHistory.map((entry, i) => (
           <div key={i} style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, wordBreak: 'break-all', fontFamily: 'Arial, sans-serif' }}>
               {entry.slice(0, 200)}{entry.length > 200 ? '…' : ''}
             </div>
             <button type="button" onClick={() => copyEntry(entry)} title="Copy" style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>

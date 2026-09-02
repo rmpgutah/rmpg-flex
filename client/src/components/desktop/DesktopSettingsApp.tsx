@@ -1233,7 +1233,7 @@ export default function DesktopSettingsApp({
                     {healthInterfaces.map((iface, i) => (
                       <div key={i} style={{ fontSize: 11, color: 'var(--text-primary)', display: 'flex', gap: 10 }}>
                         <span style={{ color: 'var(--text-secondary)', minWidth: 80 }}>{iface.name}</span>
-                        <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{iface.ipv4 ?? '—'}</span>
+                        <span style={{ fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{iface.ipv4 ?? '—'}</span>
                       </div>
                     ))}
                   </div>
@@ -1262,7 +1262,7 @@ export default function DesktopSettingsApp({
                   <tbody>
                     {startupWindows.map((w, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{w.path}</td>
+                        <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}>{w.path}</td>
                         <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-primary)' }}>{w.title}</td>
                         <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{w.width} × {w.height}</td>
                         <td style={{ padding: '2px 6px' }}>

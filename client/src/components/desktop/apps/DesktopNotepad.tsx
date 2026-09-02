@@ -127,7 +127,7 @@ export default function DesktopNotepad({ onClose }: DesktopNotepadProps) {
           background: 'var(--surface-base)',
           color: 'var(--text-primary)',
           fontSize: 12,
-          fontFamily: 'monospace',
+          fontFamily: 'Arial, sans-serif',
           lineHeight: 1.6,
           padding: 12,
           caretColor: 'var(--text-primary)',

@@ -355,4 +355,166 @@ iped.get('/jobs', async (c) => {
   }
 });
 
+// POST /jobs — create a new IPED processing job.
+iped.post('/jobs', async (c) => {
+  try {
+    const actor = c.get('user') as { id: number; name?: string; username?: string; role: string } | undefined;
+    if (!actor || !['admin', 'manager', 'supervisor'].includes(actor.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+    const actorName = actor.name || actor.username || 'unknown';
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      jobType?: string;
+      inputPath?: string;
+      outputPath?: string;
+      evidenceId?: number;
+      profile?: string;
+    }>();
+    const inputPath = body.inputPath?.trim();
+    if (!inputPath) return c.json({ error: 'inputPath is required' }, 400);
+    const jobType = body.jobType || 'hash';
+    const profile = body.profile || 'forensic';
+    const outputPath = body.outputPath?.trim() || null;
+    const evidenceId = body.evidenceId || null;
+    const result = await execute(
+      db,
+      `INSERT INTO iped_imports (import_type, source_query, item_count, summary, imported_by, imported_by_name)
+       VALUES (?, ?, 0, ?, ?, ?)`,
+       jobType, inputPath, `Profile: ${profile}`, actor.id, actorName,
+    );
+    return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to create job', 'JOB_CREATE_ERROR');
+  }
+});
+
+// GET /jobs/:id — get job detail with hashes.
+iped.get('/jobs/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    const job = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ii.*, fc.lab_number FROM iped_imports ii
+       LEFT JOIN forensic_cases fc ON ii.forensic_case_id = fc.id
+       WHERE ii.id = ?`, id,
+    );
+    if (!job) return c.json({ error: 'Job not found' }, 404);
+    const hashes = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, evidence_id, md5, sha1, sha256, flagged, flag_reason, created_at
+       FROM forensic_hash_results WHERE iped_job_id = ? LIMIT 100`, id,
+    );
+    return c.json({ job, hashes });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to get job', 'JOB_GET_ERROR');
+  }
+});
+
+// POST /jobs/:id/cancel — cancel a running job (stub: marks summary).
+iped.post('/jobs/:id/cancel', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    await execute(db, `UPDATE iped_imports SET summary = summary || ' [CANCELLED]' WHERE id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to cancel job', 'JOB_CANCEL_ERROR');
+  }
+});
+
+// POST /hash-sets/import — import a hash set file.
+iped.post('/hash-sets/import', async (c) => {
+  try {
+    const actor = c.get('user') as { id: number; name?: string; username?: string; role: string } | undefined;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+    const actorName = actor.name || actor.username || 'unknown';
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      filePath?: string;
+      setName?: string;
+      category?: string;
+      hashType?: string;
+    }>();
+    const filePath = body.filePath?.trim();
+    const setName = body.setName?.trim();
+    if (!filePath || !setName) return c.json({ error: 'filePath and setName are required' }, 400);
+    const category = body.category || 'known_bad';
+    const hashType = body.hashType || 'md5';
+    // Check if set already exists
+    const existing = await queryFirst<{ id: number }>(
+      db, `SELECT id FROM forensic_hash_sets WHERE name = ?`, setName,
+    );
+    let setId: number;
+    if (existing) {
+      await execute(db, `UPDATE forensic_hash_sets SET updated_at = datetime('now') WHERE id = ?`, existing.id);
+      setId = existing.id;
+    } else {
+      const r = await execute(
+        db,
+        `INSERT INTO forensic_hash_sets (name, set_type, description, source_file, version, imported_by_name)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+         setName, category, `Imported from ${filePath}`, filePath, '1.0', actorName,
+      );
+      setId = r.meta.last_row_id as number;
+    }
+    // Read and parse the hash file (one hash per line)
+    const lines = filePath.split(/\r?\n/).filter(l => l.trim().length > 0);
+    let imported = 0;
+    for (const line of lines.slice(0, 10000)) {
+      const hash = line.trim().toLowerCase();
+      if (hashType === 'md5' && hash.length === 32 ||
+          hashType === 'sha1' && hash.length === 40 ||
+          hashType === 'sha256' && hash.length === 64) {
+        await execute(
+          db,
+          `INSERT OR IGNORE INTO forensic_hash_entries (hash_set_id, hash_value, hash_type)
+           VALUES (?, ?, ?)`, setId, hash, hashType,
+        );
+        imported++;
+      }
+    }
+    await execute(
+      db,
+      `UPDATE forensic_hash_sets SET hash_count = (SELECT COUNT(*) FROM forensic_hash_entries WHERE hash_set_id = ?) WHERE id = ?`,
+      setId, setId,
+    );
+    return c.json({ success: true, imported, setId });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to import hash set', 'HASH_IMPORT_ERROR');
+  }
+});
+
+// GET /hashes/search?q=<hash> — search for a hash across all sets.
+iped.get('/hashes/search', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q')?.trim();
+    if (!q) return c.json({ results: [] });
+    const pattern = `%${q.toLowerCase()}%`;
+    const results = await query<Record<string, unknown>>(
+      db,
+      `SELECT fe.id, fe.hash_value, fe.hash_type, fe.file_name, fe.category,
+              hs.name AS set_name, hs.set_type
+       FROM forensic_hash_entries fe
+       JOIN forensic_hash_sets hs ON fe.hash_set_id = hs.id
+       WHERE fe.hash_value LIKE ?
+       ORDER BY hs.name
+       LIMIT 50`, pattern,
+    );
+    return c.json({ results });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to search hashes', 'HASH_SEARCH_ERROR');
+  }
+});
+
 export default iped;

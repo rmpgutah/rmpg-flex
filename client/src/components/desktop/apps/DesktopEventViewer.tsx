@@ -138,12 +138,12 @@ function ApiErrorsTab({ isAdmin }: { isAdmin: boolean }) {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 10 }}>{r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}</td>
                   <td style={{ padding: '3px 8px' }}><SeverityBadge sev={r.severity} /></td>
                   <td style={{ padding: '3px 8px', color: 'var(--text-secondary)' }}>{r.category}</td>
                   <td style={{ padding: '3px 8px', color: 'var(--text-primary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.message}>{r.message}</td>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: 10 }}>{r.source ?? '—'}</td>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 10 }}>{r.trace_id ? r.trace_id.slice(0, 12) + '…' : '—'}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{r.source ?? '—'}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{r.trace_id ? r.trace_id.slice(0, 12) + '…' : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -215,7 +215,7 @@ function LocalLogTab() {
         ref={taRef}
         readOnly
         value={lines.join('\n')}
-        style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'var(--surface-sunken)', color: 'var(--text-primary)', fontSize: 10, fontFamily: 'monospace', lineHeight: 1.5, padding: 10, caretColor: 'transparent' }}
+        style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'var(--surface-sunken)', color: 'var(--text-primary)', fontSize: 10, fontFamily: 'Arial, sans-serif', lineHeight: 1.5, padding: 10, caretColor: 'transparent' }}
       />
     </div>
   );
