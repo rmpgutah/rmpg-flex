@@ -39,13 +39,15 @@ export async function sendDailyEmails(
   db: D1Database,
   resendApiKey: string,
   date: string,
+  options?: { force?: boolean; recipients?: string[] },
 ): Promise<SendDailyEmailsResult> {
   // ── 1. Check config ──────────────────────────────────────
   const config = await getConfig(db);
-  if (!config.enabled) {
+  if (!options?.force && !config.enabled) {
     return { sent: 0, failed: 0, skipped: true, reason: 'daily_email_disabled' };
   }
-  if (config.recipients.length === 0) {
+  const recipients = options?.recipients ?? config.recipients;
+  if (recipients.length === 0) {
     return { sent: 0, failed: 0, skipped: true, reason: 'no_recipients' };
   }
 
@@ -95,7 +97,7 @@ export async function sendDailyEmails(
   let failed = 0;
   const subject = `RMPG Daily Activity Report — ${date}`;
 
-  for (const recipient of config.recipients) {
+  for (const recipient of recipients) {
     try {
       const result: ResendResult = await sendViaResend(resendApiKey, {
         from: 'RMPG Flex <noreply@rmpgutah.us>',

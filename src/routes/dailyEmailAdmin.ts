@@ -29,7 +29,7 @@ async function requireAdmin(c: any, next: any) {
 }
 
 // GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
-// Sends a simple test email to verify Resend is configured.
+// Sends the FULL daily report (HTML + PDF) bypassing the enabled check.
 // Query params: ?to=email (override recipient)
 dailyEmailAdmin.get('/test-open', async (c) => {
   const resendApiKey = c.env.RESEND_API_KEY;
@@ -40,25 +40,13 @@ dailyEmailAdmin.get('/test-open', async (c) => {
   try {
     const db = getDb(c.env);
     const toOverride = c.req.query('to');
-    const config = await getConfig(db);
-    const recipients = toOverride ? [toOverride] : config.recipients;
-    if (recipients.length === 0) {
-      return c.json({ ok: false, error: 'No recipients configured' }, 400);
-    }
     const date = new Date().toISOString().slice(0, 10);
-    const result = await sendViaResend(resendApiKey, {
-      from: 'RMPG Flex <noreply@rmpgutah.us>',
-      to: recipients[0],
-      subject: `[TEST] RMPG Daily Activity Report — ${date}`,
-      html: `<html><body>
-        <h2>Test Email</h2>
-        <p>This is a test of the daily email report system.</p>
-        <p>If you received this, Resend is configured correctly.</p>
-        <p style="color:#6b7280;font-size:12px;">Sent at ${new Date().toISOString()}</p>
-      </body></html>`,
+    const { sendDailyEmails } = await import('../utils/dailyEmail/sendDailyEmails');
+    const result = await sendDailyEmails(db, resendApiKey, date, {
+      force: true,
+      recipients: toOverride ? [toOverride] : undefined,
     });
-
-    return c.json({ ok: true, status: result.status, id: result.id });
+    return c.json({ ok: !result.skipped, ...result });
   } catch (err) {
     log.error('GET /admin/daily-email/test-open failed', {
       src: 'routes/dailyEmailAdmin.ts',
