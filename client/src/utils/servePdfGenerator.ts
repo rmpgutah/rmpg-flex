@@ -2125,21 +2125,21 @@ function drawInstrumentTitle(doc: jsPDF, y: number, title: string): number {
   // right of every header/panel/signature block below it and then
   // overshot the right rail by that same 1mm — the exact "sized from
   // getContentWidth but drawn from getLeftX" bug pdfTokens.ts warns about.
-  const barH = SPACING.SECTION_HEADER_H + 1.5;
-  y = checkPageBreak(doc, y, barH + SPACING.LG);
+  const barH = SPACING.SECTION_HEADER_H + 0.5;
+  y = checkPageBreak(doc, y, barH + SPACING.SM);
 
   const titleAccentRgb = resolveSectionAccentColor(title);
   doc.setFillColor(titleAccentRgb[0], titleAccentRgb[1], titleAccentRgb[2]);
   doc.rect(getRailX(), y, getRailWidth(doc), barH, 'F');
 
   doc.setFont('Arial', 'bold');
-  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE + 1);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  const capH = (FONT.SIZE_SECTION_TITLE + 2) * 0.35;
+  const capH = (FONT.SIZE_SECTION_TITLE + 1) * 0.35;
   doc.text(sanitizePdfText(title.toUpperCase()), cx, y + (barH + capH) / 2, { align: 'center' });
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + barH + (tightLayout ? SPACING.MD : SPACING.LG);
+  return y + barH + (tightLayout ? SPACING.XS : SPACING.SM);
 }
 
 interface SubjectRow {
@@ -2674,7 +2674,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       ];
 
   {
-    const reserve = SPACING.SECTION_HEADER_H + 26;
+    const reserve = SPACING.SECTION_HEADER_H + 20;
     y = checkPageBreak(doc, y, reserve);
     const startY = y;
     const hA = drawSubjectPanel(
@@ -2752,7 +2752,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // Itemized as a table rather than a sentence: a dispute over service
   // is almost always a dispute over WHICH papers changed hands, and a
   // row-per-document with a copy count is what answers that.
-  y = checkPageBreak(doc, y, 26);
+  y = checkPageBreak(doc, y, 20);
   {
     // COPIES held 18% of the width for a single digit, leaving it stranded
     // far from the title it counts. Tightened so the document title -- the
@@ -2802,7 +2802,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // on an instrument that must fit one sheet.
   const hasIdData = !blank && (data.recipientDlNumber || data.recipientGender || data.recipientHeight || data.idScanMethod);
   if (hasIdData) {
-    y = checkPageBreak(doc, y, 18);
+    y = checkPageBreak(doc, y, 14);
     const sec = openAutoSection(doc, 'Recipient Identification', y); y = sec.contentY;
 
     // Verification method
@@ -2882,9 +2882,9 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // absolutely at the page foot worked while blank forms were short and
   // silently printed ON the signature block once they filled the sheet.
   const handoffH = blank && data.qrDataUrl ? 7 : 0;
-  const executionH = (SPACING.XL + SPACING.MD) + declLineH + SPACING.LG
+  const executionH = (SPACING.XL) + declLineH + SPACING.MD
     + (SPACING.SIGNATURE_BOX_H - 3)
-    + SPACING.XL + footnoteH + handoffH + 3;
+    + SPACING.LG + footnoteH + handoffH + 3;
   // Dense only: reserve the TAIL, not the whole block.
   //
   // Reserving every declaration plus the signature moves all of Article IV
@@ -2931,7 +2931,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // the recipient then stated. Never on a blank — there is nothing to
   // photograph before the encounter has happened.
   if (!blank && Array.isArray(data.photos) && data.photos.length > 0) {
-    y = checkPageBreak(doc, y, 34);
+    y = checkPageBreak(doc, y, 28);
     const sec = openAutoSection(doc, 'III(b).  Photographs at Signature', y);
     y = sec.contentY + SPACING.MD;
     // Two across. Bigger than a thumbnail so a door number is readable;
@@ -2985,7 +2985,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // closeAutoSection draws its rule AT the y it returns. The execution
   // clause needs a full line below it, not a compressed fraction — at
   // tight spacing the rule sat on the clause's ascenders.
-  y += SPACING.XL + SPACING.MD;
+  y += SPACING.XL;
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -3008,7 +3008,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
       + `on ${withZone(`${signedDate} at ${signedTime}`)}.`,
       lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
   }
-  y += SPACING.LG;
+  y += SPACING.MD;
 
   // Role label names the SIGNER, not the server. The process server's
   // own sworn statement belongs on the affidavit filed with the court,
@@ -3038,7 +3038,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     },
   );
 
-  y += SPACING.XL;
+  y += SPACING.LG;
 
   // Authority note, set as a genuine footnote BELOW the signature. It
   // explains the rule the variation rests on; it is not something the
