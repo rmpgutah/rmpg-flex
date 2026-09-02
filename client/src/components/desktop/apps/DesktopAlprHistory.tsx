@@ -185,13 +185,7 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
                       {expanded === c.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
                     <td style={td}>{formatDateTime(c.captured_at)}</td>
-                    <td style={{ ...td, fontWeight: 700, fontFamily: 'monospace' }}>
-                      {c.plate_number ?? '—'}
-                      {c.plate_number && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); void copyToClipboard(c.plate_number ?? ''); }}
-                          style={{ marginLeft: 6, fontSize: 9, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>Copy</button>
-                      )}
-                    </td>
+                    <td style={{ ...td, fontWeight: 700, fontFamily: 'Arial, sans-serif' }}>{c.plate_number ?? '—'}</td>
                     <td style={td}>{[c.make, c.model].filter(Boolean).join(' ') || '—'}</td>
                     <td style={td}>{c.color ?? '—'}</td>
                     <td style={td}>{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : '—'}</td>

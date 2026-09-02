@@ -27,7 +27,7 @@
     "@hono/zod-validator": "^0.9.0",
     "@libsql/client": "^0.17.4",
     "@mapbox/vector-tile": "^3.0.0",
-    "@noble/post-quantum": "^0.7.0",
+    "@noble/post-quantum": "^0.7.1",
     "@simplewebauthn/server": "^13.3.2",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
@@ -43,7 +43,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.120.0",
+    "@anthropic-ai/sdk": "^0.122.0",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260822.1",
     "@types/bcryptjs": "^2.4.6",
@@ -51,10 +51,10 @@
     "@types/uuid": "^10.0.0",
     "husky": "^9.1.7",
     "patch-package": "^8.0.1",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.125.0"
+    "wrangler": "^4.127.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"

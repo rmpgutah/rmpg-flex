@@ -24,7 +24,7 @@ const FILL = 'choro-fill';
 // Mapbox paint properties don't resolve CSS variables — they need literal
 // colors at parse time. Use the night-theme value of --border-default here
 // (the map surfaces stay dark always per the .tactical-dark rule).
-const RAMP = ['#2a3a4d', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
+const RAMP = ['#2a3a4d', '#c3ccd6', '#f59e0b', '#fb923c', '#ef4444'];
 
 export interface ChoroLegend { level: ChoroLevel; max: number; thresholds: number[]; colors: string[]; }
 

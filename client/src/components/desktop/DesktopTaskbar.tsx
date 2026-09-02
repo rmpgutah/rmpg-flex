@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
 import ContextMenu from '../ContextMenu';
 import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
 import { getQuickLaunchPins, setQuickLaunchPins } from '../../utils/quickLaunchPreferences';
@@ -117,11 +118,12 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
     setClockBusy(true);
     const wasOnDuty = onDuty;
     try {
-      await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
+      const punch = await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
         method: 'POST',
         body: JSON.stringify({ officer_id: user.id }),
       });
       setOnDuty(v => !v);
+      if (!wasOnDuty) toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
     } catch (err: any) {
       // apiFetch has no toast interceptor of its own — on failure it only plays
       // a best-effort audio chime (nackForApiFailure in actionChimes.ts), so

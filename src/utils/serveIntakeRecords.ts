@@ -40,7 +40,7 @@ import {
   planAttemptWindows, escalatePriorityForDeadline,
   clusterByProximity, applyUrgencyTier, daysUntilDeadline,
 } from './serveDiligencePlanner';
-import type { AttemptWindow } from './serveDiligencePlanner';
+import type { AttemptWindow, UrgencyTier } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { resolveAddressClass } from './serveAddressClass';
@@ -786,7 +786,11 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   // ── Deadline-driven priority escalation + diligence plan ──
   // ≤3 days to deadline → urgent, ≤7 → rush (raise-only). Computed BEFORE
   // the briefing/call/queue writes so every consumer sees the same value.
-  queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
+  // ONLY escalate if priority was not explicitly set or overridden by operator (confidence === 1.0).
+  const hasExplicitPriority = fields['priority']?.confidence === 1.0;
+  if (!hasExplicitPriority) {
+    queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
+  }
 
   const isBusiness = get('recipient_type').toLowerCase() === 'business';
   const businessName = get('recipient_business_name') || (isBusiness ? get('recipient_last_name') : '');
@@ -1319,12 +1323,15 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       coords?.lng ?? null,
       queueRow.recipient_zip ?? null,
     );
-    const urgencyTier = applyUrgencyTier(
-      queueRow.deadline ?? null,
-      0,                                // intake = no attempts yet
-      3,                                // QueueRow has no max_attempts; use default
-      nowIso,
-    );
+    const rawTier = fields['urgency_tier']?.value;
+    const urgencyTier: UrgencyTier = (rawTier === 'critical' || rawTier === 'tight' || rawTier === 'standard')
+      ? rawTier
+      : applyUrgencyTier(
+          queueRow.deadline ?? null,
+          0,                                // intake = no attempts yet
+          3,                                // QueueRow has no max_attempts; use default
+          nowIso,
+        );
     const urgencyComputedAt = nowIso;
     const ins = await execute(
       db,

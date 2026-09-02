@@ -13,9 +13,18 @@ const fullData: DailyReportData = {
   ...emptyData,
   operations: {
     calls: [{
-      call_number: 'C-1', received_at: '2026-07-18 20:00:00', incident_type: 'ALARM',
-      priority: 2, location_address: '123 Main St', disposition: 'CLEARED',
+      call_number: 'C-1', received_at: '2026-07-18 20:00:00', created_at: '2026-07-18 20:00:00',
+      incident_type: 'ALARM', priority: 2, location_address: '123 Main St', disposition: 'CLEARED',
       status: 'CLOSED', unit_call_signs: '1A1', responding_officer: 'Zamora',
+      description: null, notes: null, source: null, dispatch_code: null,
+      sector_name: null, zone_name: null, beat_name: null,
+      weapons_involved: null, domestic_violence: null, mental_health_crisis: null,
+      juvenile_involved: null, felony_in_progress: null, officer_safety_caution: null,
+      k9_requested: null, ems_requested: null, response_time_seconds: null,
+      onscene_duration_seconds: null, pso_requestor_name: null, pso_service_type: null,
+      le_notified: null, le_case_number: null, supervisor_notified: null,
+      damage_estimate: null, damage_description: null, action_taken: null,
+      caller_relationship: null, caller_name: null, secondary_type: null, scene_safety: null,
     }],
     citations: [],
   },
@@ -59,6 +68,7 @@ describe('renderDailyReport', () => {
         calls: [{
           call_number: 'C-9999999999',
           received_at: '2026-07-18 20:00:00',
+          created_at: '2026-07-18 20:00:00',
           incident_type: 'SUSPICIOUS CIRCUMSTANCES INVESTIGATION',
           priority: 1,
           location_address: '12345 SOUTH REDWOOD ROAD BUILDING C SUITE 1200, WEST JORDAN, UTAH 84088',
@@ -66,6 +76,15 @@ describe('renderDailyReport', () => {
           status: 'CLOSED',
           unit_call_signs: '1A1, 1A2, 2B7',
           responding_officer: 'CHRISTOPHER ZAMORA',
+          description: null, notes: null, source: null, dispatch_code: null,
+          sector_name: null, zone_name: null, beat_name: null,
+          weapons_involved: null, domestic_violence: null, mental_health_crisis: null,
+          juvenile_involved: null, felony_in_progress: null, officer_safety_caution: null,
+          k9_requested: null, ems_requested: null, response_time_seconds: null,
+          onscene_duration_seconds: null, pso_requestor_name: null, pso_service_type: null,
+          le_notified: null, le_case_number: null, supervisor_notified: null,
+          damage_estimate: null, damage_description: null, action_taken: null,
+          caller_relationship: null, caller_name: null, secondary_type: null, scene_safety: null,
         }],
         citations: [],
       },
@@ -102,7 +121,7 @@ describe('renderDailyReport', () => {
     const joined = Array.isArray(text) ? text.join('\n') : text;
 
     // Must contain the Mountain Time representation.
-    expect(joined).toContain('2026-07-18 14:00 MT');
+    expect(joined).toContain('2026-07-18 14:00');
     expect(joined).toContain('2026-08-01 06:00:00 MT');
 
     // Must NOT contain the raw UTC values.

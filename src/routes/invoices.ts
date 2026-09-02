@@ -13,14 +13,17 @@
 // referenced from the client but never implemented on the Worker, so all
 // three PDF buttons silently 404'd. Field names match the InvoicePdfData
 // interface in invoicePdfGenerator.ts exactly; missing columns in our
-// schema (period_start/end, discount_amount, late_fee_amount, payment_terms,
-// line_type) are filled with sensible defaults via COALESCE.
+// schema (period_start/end, discount_amount, late_fee_amount, payment_terms)
+// are filled with sensible defaults via COALESCE. line_type is a real
+// column (migration 0170); missing values default to 'custom'.
 // ============================================================
 
 import { Hono } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import { getDb, query, queryFirst, execute } from '../utils/db';
+import { ensureInvoiceSchema, generateInvoiceNumber, regenerateDraftInvoiceLines } from './billing';
+import { requireRole } from '../middleware/auth';
 
 import { log } from '../utils/logger';
 const invoices = new Hono<Env>();
@@ -72,8 +75,8 @@ invoices.get('/stats', async (c) => {
 //   invoices.paid_amount       -> amount_paid
 //   total - paid_amount        -> balance_due
 //   invoice_line_items.line_total -> amount
-//   (no line_type column)      -> 'service' default
-//   (no period_start/end col)  -> issue_date / due_date fallback
+//   invoice_line_items.line_type  -> line_type (fallback 'custom')
+//   invoices.period_start/end     -> period (fallback issue_date / due_date)
 //   (no discount/late_fee col) -> 0
 //   clients.payment_terms      -> payment_terms (fallback 'Net 30')
 //   users.full_name (created)  -> created_by_name
@@ -85,6 +88,7 @@ invoices.get('/:id/pdf-data', async (c) => {
   }
   try {
     const db = getDb(c.env);
+    await ensureInvoiceSchema(db);
     const tbl = await queryFirst<{ n: number }>(db,
       "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='invoices'");
     if (!tbl?.n) return c.json({ error: 'Invoice not found' }, 404);
@@ -106,8 +110,8 @@ invoices.get('/:id/pdf-data', async (c) => {
          0                                                     AS discount_amount,
          0                                                     AS late_fee_amount,
          i.notes,
-         COALESCE(i.issue_date, '')                           AS period_start,
-         COALESCE(i.due_date,   i.issue_date, '')             AS period_end,
+         COALESCE(i.period_start, i.issue_date, '')           AS period_start,
+         COALESCE(i.period_end,   i.due_date, i.issue_date, '') AS period_end,
          cl.name                                              AS client_name,
          cl.address                                           AS client_address,
          cl.contact_name                                      AS contact_name,
@@ -126,11 +130,10 @@ invoices.get('/:id/pdf-data', async (c) => {
       id);
     if (!inv) return c.json({ error: 'Invoice not found' }, 404);
 
-    // Line items — `line_type` does not exist in our schema, so default to
-    // 'service' (the PDF generator only uses it for display fallback).
+    // Line items — persist line_type (0170). Older rows default to custom.
     const lineItems = await query<Record<string, unknown>>(db,
       `SELECT
-         'service'                          AS line_type,
+         COALESCE(line_type, 'custom')        AS line_type,
          description,
          COALESCE(quantity, 0)              AS quantity,
          COALESCE(unit_price, 0)            AS unit_price,
@@ -184,6 +187,69 @@ invoices.get('/', async (c) => {
     return c.json({ data: rows, total: total?.cnt ?? 0, page, limit });
   } catch {
     return c.json({ data: [], total: 0 });
+  }
+});
+
+const INVOICE_WRITE_ROLES = ['admin', 'manager', 'contract_manager'] as const;
+
+// Aliases for InvoicesPage, which historically called /api/invoices/* for
+// mutations while CRUD actually lives under /api/billing/invoices.
+invoices.post('/', requireRole(...INVOICE_WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const b = await c.req.json<Record<string, unknown>>();
+    if (!b.client_id) return c.json({ error: 'client_id required' }, 400);
+    const invoiceNumber = await generateInvoiceNumber(db);
+    const dueDate = (b.due_date as string | undefined) ?? new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const result = await execute(db,
+      `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, due_date, tax_rate, status, notes, created_by)
+       VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, ?)`,
+      invoiceNumber, b.client_id, b.contract_id ?? null, dueDate, b.tax_rate ?? 0, 'draft', b.notes ?? null, userId);
+    const newId = Number(result.meta.last_row_id);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', newId);
+    return c.json({ data: created, invoice_number: invoiceNumber }, 201);
+  } catch (err) {
+    log.error('POST /api/invoices failed', { src: 'src/routes/invoices.ts' }, err);
+    return c.json({ error: 'Failed to create invoice' }, 500);
+  }
+});
+
+invoices.post('/:id/generate', requireRole(...INVOICE_WRITE_ROLES), async (c) => {
+  const invoiceId = parseInt(c.req.param('id') ?? '', 10);
+  if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
+    return c.json({ error: 'Invalid invoice id' }, 400);
+  }
+  try {
+    const result = await regenerateDraftInvoiceLines(getDb(c.env), invoiceId);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ data: result.data });
+  } catch (err) {
+    log.error('POST /api/invoices/:id/generate failed', { src: 'src/routes/invoices.ts' }, err);
+    return c.json({ error: 'Failed to regenerate line items' }, 500);
+  }
+});
+
+const VALID_INVOICE_STATUSES = new Set(['draft', 'sent', 'partial', 'paid', 'overdue', 'void', 'cancelled']);
+
+invoices.put('/:id/status', requireRole(...INVOICE_WRITE_ROLES), async (c) => {
+  const invoiceId = parseInt(c.req.param('id') ?? '', 10);
+  if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
+    return c.json({ error: 'Invalid invoice id' }, 400);
+  }
+  try {
+    const b = await c.req.json<{ status?: string }>();
+    const status = String(b.status || '');
+    if (!VALID_INVOICE_STATUSES.has(status)) {
+      return c.json({ error: `invalid status: ${status}` }, 400);
+    }
+    await execute(getDb(c.env), `UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?`, status, invoiceId);
+    const updated = await queryFirst<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM invoices WHERE id = ?', invoiceId);
+    if (!updated) return c.json({ error: 'Invoice not found' }, 404);
+    return c.json({ data: updated });
+  } catch (err) {
+    log.error('PUT /api/invoices/:id/status failed', { src: 'src/routes/invoices.ts' }, err);
+    return c.json({ error: 'Failed to update status' }, 500);
   }
 });
 

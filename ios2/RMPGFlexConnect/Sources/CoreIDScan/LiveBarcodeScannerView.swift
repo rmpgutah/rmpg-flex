@@ -134,7 +134,11 @@ final class LiveBarcodeScannerController: UIViewController, AVCaptureMetadataOut
             return
         }
         session.beginConfiguration()
-        session.sessionPreset = .high
+        if session.canSetSessionPreset(.hd1920x1080) {
+            session.sessionPreset = .hd1920x1080
+        } else {
+            session.sessionPreset = .high
+        }
         if session.canAddInput(input) { session.addInput(input) }
 
         let metadataOutput = AVCaptureMetadataOutput()
@@ -172,6 +176,9 @@ final class LiveBarcodeScannerController: UIViewController, AVCaptureMetadataOut
         try? device.lockForConfiguration()
         if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
         if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5) }
+        if device.isAutoFocusRangeRestrictionSupported {
+            device.autoFocusRangeRestriction = .near
+        }
         device.unlockForConfiguration()
 
         // Permission is requested asynchronously, so `viewDidAppear` may
@@ -237,8 +244,12 @@ final class LiveBarcodeScannerController: UIViewController, AVCaptureMetadataOut
         // itself isn't Sendable, so the array can't cross into the
         // MainActor Task below; only the payload string does.
         guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-              object.type == .pdf417,
-              let payload = object.stringValue else { return }
+              object.type == .pdf417 else { return }
+        // AAMVA headers contain 0x1E (RS). AVFoundation UTF-8-decodes PDF417,
+        // so stringValue is often nil even when the barcode was found. Still
+        // take a non-empty string when present; Vision on the video feed
+        // recovers the latin-1 payload when this is empty.
+        guard let payload = object.stringValue, payload.count > 20 else { return }
 
         Task { @MainActor in
             guard markDetectedAndCaptureRecordPhoto() else { return }
@@ -256,12 +267,9 @@ final class LiveBarcodeScannerController: UIViewController, AVCaptureMetadataOut
         }
     }
 
-    /// Sampled frames from the video-data output, used ONLY for the MRZ
-    /// path — the barcode path above is handled entirely by the hardware
-    /// metadata output and never touches this delegate. Runs on
-    /// `videoQueue`, not `.main`, so `hasDetected`/`isProcessingMRZFrame`
-    /// are read/written back on the MainActor inside the Task, same pattern
-    /// as the barcode delegate above.
+    /// Sampled frames from the video-data output. PDF417 is tried first via
+    /// Vision (recovers AAMVA payloads AVFoundation left as nil stringValue),
+    /// then the MRZ OCR pass. Runs on `videoQueue`, not `.main`.
     nonisolated func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
@@ -271,7 +279,32 @@ final class LiveBarcodeScannerController: UIViewController, AVCaptureMetadataOut
         Task { @MainActor in
             guard !hasDetected, !isProcessingMRZFrame else { return }
             isProcessingMRZFrame = true
-            runMRZPass(on: cgImage)
+            runBarcodeThenMRZ(on: cgImage)
+        }
+    }
+
+    @MainActor
+    private func runBarcodeThenMRZ(on cgImage: CGImage) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let barcodeRequest = VNDetectBarcodesRequest()
+            barcodeRequest.symbologies = [.pdf417]
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            try? handler.perform([barcodeRequest])
+            let payload = (barcodeRequest.results as? [VNBarcodeObservation])?
+                .first(where: { $0.symbology == .pdf417 })?
+                .payloadStringValue
+            if let payload, payload.count > 20 {
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.isProcessingMRZFrame = false
+                    guard self.markDetectedAndCaptureRecordPhoto() else { return }
+                    self.onDetect(payload)
+                }
+                return
+            }
+            Task { @MainActor in
+                self?.runMRZPass(on: cgImage)
+            }
         }
     }
 

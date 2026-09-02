@@ -381,7 +381,7 @@ export default React.memo(function ServeJobCard({
               {opsMeta.addressClass.replace(/_/g, ' ')}
             </span>
           )}
-          {opsMeta.ops.no_sunday && (
+          {opsMeta.ops?.no_sunday && (
             <span className="text-[8px] font-bold px-1 py-0 rounded-[2px] border border-amber-700/50 text-amber-300">NO SUN</span>
           )}
 
@@ -629,7 +629,7 @@ export default React.memo(function ServeJobCard({
                 <span>{job.court_date}</span>
               </div>
             )}
-            {opsMeta.ops.documents_to_serve && (
+            {opsMeta.ops?.documents_to_serve && (
               <div className="flex items-start gap-1 col-span-2">
                 <FileText className="w-3 h-3 text-rmpg-400 flex-shrink-0 mt-0.5" />
                 <span className="text-rmpg-400 flex-shrink-0">Packet:</span>

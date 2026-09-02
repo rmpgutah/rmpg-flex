@@ -148,7 +148,6 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Investigations',
     icon: Search,
     functions: [
-      { path: '/microbilt', label: 'Skip Tracer', icon: Search, description: 'Multi-source skip tracing (OSINT, RapidAPI, enrichment) across public and proprietary databases' },
       { path: '/skip-tracer', label: 'Skip Tracer (local)', icon: Search, description: 'Local D1 skip-trace cache search (legacy V1)' },
       { path: '/web-research', label: 'Web Research', icon: Globe, description: 'Open-source intelligence (OSINT) web research tools' },
       { path: '/colorado-doc', label: 'Colorado DOC Search', icon: User, description: 'Colorado Department of Corrections inmate search' },

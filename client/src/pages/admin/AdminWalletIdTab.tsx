@@ -164,7 +164,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
         }
       />
       {working && (
-        <div className="flex items-center gap-2 text-[11px] text-[#888]">
+        <div className="flex items-center gap-2 text-[11px] text-fg-muted">
           <Loader2 className="w-3 h-3 animate-spin" /> Working…
         </div>
       )}

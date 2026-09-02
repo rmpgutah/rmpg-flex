@@ -254,9 +254,9 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
 
         {/* Footer hint */}
         <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text-muted)' }}>
-          <span><kbd style={{ fontFamily: 'monospace' }}>↑↓</kbd> navigate</span>
-          <span><kbd style={{ fontFamily: 'monospace' }}>↵</kbd> open</span>
-          <span><kbd style={{ fontFamily: 'monospace' }}>Esc</kbd> dismiss</span>
+          <span><kbd style={{ fontFamily: 'Arial, sans-serif' }}>↑↓</kbd> navigate</span>
+          <span><kbd style={{ fontFamily: 'Arial, sans-serif' }}>↵</kbd> open</span>
+          <span><kbd style={{ fontFamily: 'Arial, sans-serif' }}>Esc</kbd> dismiss</span>
         </div>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

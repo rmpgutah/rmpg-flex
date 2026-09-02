@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef, useState, useEffect } from 'react';
 import RichTextArea from '../../../components/RichTextArea';
 import { useToast } from '../../../components/ToastProvider';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetVehicle } from '../../../types';
 
@@ -37,16 +38,23 @@ export default function FleetPretripModal({ vehicle, isOpen, onClose, onSaved }:
 
   const [form, setForm] = useState<PretripForm>({ ...PRETRIP_DEFAULTS, notes: '' });
   const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const isDirty = PRETRIP_ITEMS.some((it) => !(form as Record<string, unknown>)[it.key])
     || form.notes.trim() !== '';
 
   const close = useCallback(() => {
     if (saving) return;
-    if (isDirty && !window.confirm('Discard this pre-trip checklist?')) return;
+    if (isDirty) { setDiscardOpen(true); return; }
     setForm({ ...PRETRIP_DEFAULTS, notes: '' } as PretripForm);
     onClose();
   }, [saving, isDirty, onClose]);
+
+  const confirmDiscard = () => {
+    setDiscardOpen(false);
+    setForm({ ...PRETRIP_DEFAULTS, notes: '' } as PretripForm);
+    onClose();
+  };
 
   const submit = useCallback(async () => {
     if (!vehicle) return;
@@ -133,6 +141,12 @@ export default function FleetPretripModal({ vehicle, isOpen, onClose, onSaved }:
           </button>
         </div>
       </div>
+      <DiscardUnsavedDialog
+        isOpen={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={confirmDiscard}
+        message="Discard this pre-trip checklist?"
+      />
     </div>
   );
 }

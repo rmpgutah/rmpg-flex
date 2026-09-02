@@ -16,6 +16,7 @@ import {
   TrendingUp, TrendingDown, CornerUpRight, Printer, Trash2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import MovementReportDrawer from './MovementReportDrawer';
 import { buildMovementReport, type FixPoint } from './vehicleTelemetry';
 import {
@@ -169,13 +170,12 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Trip | null>(null);
 
   // Delete a falsely-detected trip. Server enforces who may delete (privileged
   // roles or the trip's own officer) and audits the removal — the client just
   // confirms intent and refreshes the chain. 403/409 surface as a brief notice.
   const handleDelete = async (trip: Trip) => {
-    const label = `${tripLabel(trip)} · ${fmtDateShort(trip.start_time)} ${fmtClock(trip.start_time)} · ${tripMiles(trip).toFixed(1)} mi`;
-    if (!window.confirm(`Delete this trip record as FALSE?\n\n${label}\n\nThis removes it from the trip log (the deletion is audited).`)) return;
     try {
       setDeleteError(null);
       await apiFetch(`/dispatch/trips/${trip.id}`, { method: 'DELETE' });
@@ -293,6 +293,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
         <span className="flex-1" />
         <span className="text-[11px] font-mono text-rmpg-400">{timeline.length}</span>
         <button
+          type="button"
           onClick={handleExportPdf}
           disabled={exporting || timeline.length === 0}
           className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-rmpg-700 disabled:hover:text-brand-300"
@@ -303,7 +304,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
           {exporting ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Printer className="w-2.5 h-2.5" />}
           Export PDF
         </button>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close trips"><X className="w-4 h-4" /></button>
+        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close trips"><X className="w-4 h-4" /></button>
       </div>
 
       {/* timeline */}
@@ -318,6 +319,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
             <RouteIcon className="w-5 h-5 text-rmpg-700" />
             {unitId != null ? 'No trips logged for this unit yet.' : 'No trips logged yet.'}
             <button
+              type="button"
               onClick={reload}
               className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
               style={{ borderRadius: 2 }}
@@ -330,9 +332,24 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
           <div className="text-[9px] text-red-400 px-2 pb-1 text-center" role="alert">{deleteError}</div>
         )}
         {timeline.map(({ trip, active }) => (
-          <TripRow key={trip.id} trip={trip} active={active} showUnit={unitId == null} onOpen={() => setSelectedTripId(trip.id)} onDelete={handleDelete} />
+          <TripRow key={trip.id} trip={trip} active={active} showUnit={unitId == null} onOpen={() => setSelectedTripId(trip.id)} onDelete={setPendingDelete} />
         ))}
       </div>
+      <ConfirmDialog
+        isOpen={pendingDelete != null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const trip = pendingDelete;
+          setPendingDelete(null);
+          if (trip) void handleDelete(trip);
+        }}
+        title="Delete trip as FALSE"
+        message={pendingDelete
+          ? `Delete this trip record as FALSE? ${tripLabel(pendingDelete)} · ${fmtDateShort(pendingDelete.start_time)} ${fmtClock(pendingDelete.start_time)} · ${tripMiles(pendingDelete).toFixed(1)} mi. This removes it from the trip log (the deletion is audited).`
+          : ''}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

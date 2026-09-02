@@ -7,6 +7,8 @@ import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
+import ConfirmDialog from './ConfirmDialog';
+import { useToastSafe } from './ToastProvider';
 
 import RichTextArea from './RichTextArea';
 import { composeAddressUnit, splitAddressUnit } from '../utils/addressUnit';
@@ -279,6 +281,8 @@ export default function VehicleFormModal({
   const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
   const [showNcicReminder, setShowNcicReminder] = useState(false);
   const [vinDecoding, setVinDecoding] = useState(false);
+  const [dupPlateOpen, setDupPlateOpen] = useState(false);
+  const toast = useToastSafe();
   const ncicFieldRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -373,16 +377,25 @@ export default function VehicleFormModal({
           `/records/vehicles/plate-lookup?plate=${encodeURIComponent(form.plate_number)}${form.state ? `&state=${encodeURIComponent(form.state)}` : ''}`
         );
         if (Array.isArray(existing) && existing.length > 0) {
-          const confirmed = window.confirm(`A vehicle with plate ${form.plate_number} already exists. Create anyway?`);
-          if (!confirmed) return;
+          setDupPlateOpen(true);
+          return;
         }
-      } catch { /* ignore check errors and proceed */ }
+      } catch {
+        toast?.addToast('Could not check for an existing plate. You can still create the record.', 'warning');
+      }
     }
     signalSaved();
     onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 
+  const submitAfterDupConfirm = () => {
+    setDupPlateOpen(false);
+    signalSaved();
+    onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
+  };
+
   return (
+    <>
     <FormModal
       isOpen={isOpen}
       onClose={onClose}
@@ -804,5 +817,15 @@ export default function VehicleFormModal({
         </>
       )}
     </FormModal>
+      <ConfirmDialog
+        isOpen={dupPlateOpen}
+        onClose={() => setDupPlateOpen(false)}
+        onConfirm={submitAfterDupConfirm}
+        title="Duplicate plate"
+        message={`A vehicle with plate ${form.plate_number} already exists. Create anyway?`}
+        confirmLabel="Create anyway"
+        confirmVariant="warning"
+      />
+    </>
   );
 }

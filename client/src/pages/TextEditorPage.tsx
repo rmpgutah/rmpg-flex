@@ -48,6 +48,7 @@ export default function TextEditorPage() {
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -77,6 +78,7 @@ export default function TextEditorPage() {
   const fetchContent = useCallback(async () => {
     if (!fileId) { setLoading(false); return; }
     setLoading(true);
+    setLoadFailed(false);
     try {
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = {};
@@ -87,6 +89,7 @@ export default function TextEditorPage() {
       setContent(text);
       setOriginalContent(text);
     } catch (err: any) {
+      setLoadFailed(true);
       addToast(err.message || 'Failed to load file', 'error');
     } finally {
       setLoading(false);
@@ -208,6 +211,11 @@ export default function TextEditorPage() {
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title={`TEXT EDITOR — ${fileName}`} icon={FileText}>
+        {loadFailed && (
+          <button type="button" onClick={() => { void fetchContent(); }} className="toolbar-btn">
+            Retry load
+          </button>
+        )}
         {canEdit && (
           <button
             type="button"
@@ -271,6 +279,11 @@ export default function TextEditorPage() {
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-rmpg-400" />
+        </div>
+      ) : loadFailed ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-fg-muted" role="alert">
+          <p className="text-xs">Failed to load this file. The editor is empty until reload succeeds.</p>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchContent(); }}>Retry</button>
         </div>
       ) : (
         <textarea

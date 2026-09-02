@@ -284,7 +284,7 @@ export default function Radar360Panel({ radar, centerLabel, onClose }: Props) {
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontSize={8}
-                fontFamily="monospace"
+                fontFamily="Arial, sans-serif"
                 fill="var(--text-muted)"
                 opacity={0.8}
               >
@@ -294,10 +294,10 @@ export default function Radar360Panel({ radar, centerLabel, onClose }: Props) {
           })}
 
           {/* Range labels */}
-          <text x={CX + 4} y={CY - MAX_R * 0.5 - 2} fontSize={7} fill="var(--text-muted)" opacity={0.5} fontFamily="monospace">
+          <text x={CX + 4} y={CY - MAX_R * 0.5 - 2} fontSize={7} fill="var(--text-muted)" opacity={0.5} fontFamily="Arial, sans-serif">
             {(radiusMi * 0.5).toFixed(1)}mi
           </text>
-          <text x={CX + 4} y={CY - MAX_R + 8} fontSize={7} fill="var(--text-muted)" opacity={0.5} fontFamily="monospace">
+          <text x={CX + 4} y={CY - MAX_R + 8} fontSize={7} fill="var(--text-muted)" opacity={0.5} fontFamily="Arial, sans-serif">
             {radiusMi}mi
           </text>
 

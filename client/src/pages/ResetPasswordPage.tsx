@@ -20,6 +20,30 @@ export default function ResetPasswordPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const deepLinkConsumed = useRef(false);
 
+  const validateResetToken = (t: string) => {
+    setValidating(true);
+    setTokenError('');
+    fetch(`/api/auth/reset-password/validate?token=${encodeURIComponent(t)}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to validate reset link');
+        return res.json();
+      })
+      .then(data => {
+        if (data.valid) {
+          setTokenValid(true);
+          setUsername(data.username || '');
+        } else {
+          setTokenValid(false);
+          setTokenError(data.error || 'Invalid or expired reset link');
+        }
+      })
+      .catch(() => {
+        setTokenValid(false);
+        setTokenError('Unable to validate reset link. Please try again.');
+      })
+      .finally(() => setValidating(false));
+  };
+
   // Extract token from URL via useSearchParams, strip after use
   useEffect(() => {
     const t = searchParams.get('token');
@@ -38,24 +62,7 @@ export default function ResetPasswordPage() {
       setSearchParams(next, { replace: true });
     }
 
-    // Validate token
-    fetch(`/api/auth/reset-password/validate?token=${encodeURIComponent(t)}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to validate reset link');
-        return res.json();
-      })
-      .then(data => {
-        if (data.valid) {
-          setTokenValid(true);
-          setUsername(data.username || '');
-        } else {
-          setTokenError(data.error || 'Invalid or expired reset link');
-        }
-      })
-      .catch(() => {
-        setTokenError('Unable to validate reset link. Please try again.');
-      })
-      .finally(() => setValidating(false));
+    validateResetToken(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // N — focus password input; Esc — clear error state
@@ -147,7 +154,7 @@ export default function ResetPasswordPage() {
 
             {/* Token invalid */}
             {!validating && !tokenValid && !success && (
-              <div className="text-center py-4">
+              <div className="text-center py-4" role="alert">
                 <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                   <XCircle className="w-6 h-6 text-red-400" />
                 </div>
@@ -155,6 +162,15 @@ export default function ResetPasswordPage() {
                 <p className="text-[10px] leading-relaxed text-rmpg-400">
                   {tokenError}
                 </p>
+                {token ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-100"
+                    onClick={() => validateResetToken(token)}
+                  >
+                    Retry validation
+                  </button>
+                ) : null}
                 <a
                   href="/forgot-password"
                   className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-100 transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"

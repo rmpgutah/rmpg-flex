@@ -665,6 +665,13 @@ export default {
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
       if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(
+          import('./utils/corporateWorkflows').then((m) =>
+            m.runNightlyBundle(env.DB, null, 'cron', { ALERT_HUB: env.ALERT_HUB }).then((r) =>
+              log.info(`[corporate-ops] nightly bundle run=${r.run_id} children=${JSON.stringify(r.children)}`),
+            ).catch((err) => log.error('Corporate ops nightly bundle failed:', {}, err)),
+          ).catch(() => {}),
+        );
+        ctx.waitUntil(
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();
             return m.runDailyRebalance(env.DB, nowIso).then((r) =>
@@ -753,6 +760,39 @@ export default {
               category: 'cron',
               message: err instanceof Error ? err.message : String(err),
               source: 'scheduled:daily-blotter',
+            }, ctx);
+          }),
+        );
+      }
+
+      // Daily email reports at 23:55 America/Denver — sends the day's
+      // activity summary to configured recipients (managers, admins,
+      // supervisors). Runs before the blotter (00:05) so the email
+      // goes out while the day is still "today" for the recipient.
+      if (denverHour === 23 && denverMinute === 55) {
+        ctx.waitUntil(
+          (async () => {
+            const resendApiKey = (env as Record<string, unknown>).RESEND_API_KEY as string | undefined;
+            if (!resendApiKey) {
+              log.warn('[daily-email] RESEND_API_KEY unbound; skipping send');
+              return;
+            }
+            const { sendDailyEmails } = await import('./utils/dailyEmail/sendDailyEmails');
+            const { denverToday } = await import('./utils/dailyReport/dates');
+            const today = denverToday(Date.now());
+            const res = await sendDailyEmails(env.DB, resendApiKey, today);
+            if (!res.skipped) {
+              log.info(`[daily-email] sent=${res.sent} failed=${res.failed} date=${today}`);
+            } else {
+              log.info(`[daily-email] skipped reason=${res.reason} date=${today}`);
+            }
+          })().catch((err) => {
+            log.error('[daily-email] send failed:', {}, err);
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: err instanceof Error ? err.message : String(err),
+              source: 'scheduled:daily-email',
             }, ctx);
           }),
         );

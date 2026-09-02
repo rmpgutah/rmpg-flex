@@ -27,7 +27,7 @@ import SubjectFileTab from './serve/SubjectFileTab';
 import CollectionDatabaseTab from './serve/CollectionDatabaseTab';
 import { apiFetch } from '../hooks/useApi';
 import {
-  ADDRESS_CLASS_OPTIONS, VENUE_OPTIONS, parseServeJobMeta, EMPTY_SERVE_JOB_OPS,
+  ADDRESS_CLASS_OPTIONS, VENUE_OPTIONS, parseServeJobMeta, EMPTY_SERVE_JOB_OPS, ensureServeJobOps,
 } from '../utils/serveJobIntake';
 import ServeJobOpsPanel from '../components/serve/ServeJobOpsPanel';
 import { useOptimizationV2 } from '../hooks/useOptimizationV2';
@@ -37,10 +37,13 @@ import { importWithRetry } from '../utils/importWithRetry';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
+import { formatServerAssignLabel, type CorporateServer } from '../utils/corporateOpsClient';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
-import { toDisplayLabel } from '../utils/formatters';
+import { toDisplayLabel, formatEnumValue } from '../utils/formatters';
+import { autoSaveServePdfToSubjectFile } from '../utils/saveServePdfToSubjectFile';
 import { ORGANIZATION } from '../constants/organizationConstants';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
@@ -174,7 +177,7 @@ function buildServeClusterMarkerElement(cluster: { count: number; dominantPriori
     width:28px;height:28px;border-radius:50%;
     background:${color};border:2px solid rgba(255,255,255,0.85);
     display:flex;align-items:center;justify-content:center;
-    font-family:monospace;font-weight:700;font-size:11px;color:#fff;
+    font-family:'Arial, sans-serif';font-weight:700;font-size:11px;color:#fff;
     cursor:pointer;
   `;
   el.textContent = String(cluster.count);
@@ -335,7 +338,7 @@ export default function ServePage() {
   const [deleteJob, setDeleteJob] = useState<ServeJob | null>(null);
   const [deleting, setDeleting] = useState(false);
   // ── Officers for route planner ──────────────────────────────────────
-  const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  const [officers, setOfficers] = useState<{ id: number; name: string; onDuty?: boolean; vehicle?: string | null; milesToday?: number | null }[]>([]);
   // ── Clients (hiring parties) for the Add Job form selector ──────────
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
   // ── Saved route state ───────────────────────────────────────────────
@@ -377,6 +380,7 @@ export default function ServePage() {
     defaultValue: EMPTY_FORM,
     isActive: createJobOpen,
   });
+  const formOps = ensureServeJobOps(formData.ops);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [opsPreview, setOpsPreview] = useState<{
     venue_label?: string;
@@ -398,7 +402,7 @@ export default function ServePage() {
   // download/edit flow AND the new preview-modal flow (which regenerates
   // the doc every time the office/mobile toggle changes) share one source
   // of truth instead of duplicating the attempt-filtering logic.
-  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string }) | null> => {
+  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string; latestAttemptId?: number }) | null> => {
     // GET /:id returns the job row + its serve_attempts (joined w/ officer).
     const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
     const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -469,19 +473,33 @@ export default function ServePage() {
       attempts,
       nextAttemptNote,
       filename: `Notice-of-Attempt-${job.case_number || job.id}.pdf`,
-    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string };
+      latestAttemptId: latestAttempt.id,
+    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string; latestAttemptId?: number };
   };
 
   const handleNoticeOfAttempt = async (jobId: number, editBeforePrint?: boolean) => {
     try {
       const data = await buildNoticeOfAttemptData(jobId);
       if (!data) return;
-      const { filename, ...noticeData } = data;
+      const { filename, latestAttemptId, ...noticeData } = data;
       const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
       // Notice of Attempt is always printed in the field from the in-vehicle
       // Brother PJ thermal printer — never a desk laser — so this always
       // renders mobile-safe margins, no office option.
       const pdf = await generateNoticeOfAttempt(noticeData, { printTarget: 'mobile' });
+
+      // Automatically save the generated Notice of Attempt to the Subject File
+      if (latestAttemptId) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: latestAttemptId,
+          pdf,
+          filename,
+          title: 'Notice of Attempt to Serve (NOA)',
+          documentType: 'notice',
+          description: `Auto-generated Notice of Attempt for attempt #${data.attempts.length}`,
+        });
+      }
 
       if (editBeforePrint) {
         const { storePdfForEditor } = await importWithRetry(() => import('../utils/openPdfDocument'));
@@ -688,8 +706,21 @@ export default function ServePage() {
         signature: serviceAttempt.signature_data || undefined,
       });
 
+      const filename = `Affidavit-of-Service-${job.case_number || job.id}.pdf`;
+      if (serviceAttempt.id) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: serviceAttempt.id,
+          pdf,
+          filename,
+          title: 'Affidavit of Service (AOS)',
+          documentType: 'affidavit',
+          description: `Sworn Affidavit of Service (${method}) filed for record`,
+        });
+      }
+
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Affidavit-of-Service-${job.case_number || job.id}.pdf`);
+      openPdfDocument(pdf, filename);
     } catch (err) {
       console.error('[serve] Affidavit of Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Service — please try again.');
@@ -754,8 +785,22 @@ export default function ServePage() {
         signature: (user as any)?.signature_data || undefined,
       });
 
+      const filename = `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`;
+      const latestUnsuccessful = (job.attempts || []).filter(a => (a.result || '').toLowerCase() !== 'served').pop();
+      if (latestUnsuccessful?.id) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: latestUnsuccessful.id,
+          pdf,
+          filename,
+          title: 'Affidavit of Due Diligence / Non-Service (AONS)',
+          documentType: 'affidavit',
+          description: `Sworn Affidavit of Non-Service (${attempts.length} attempts documented)`,
+        });
+      }
+
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`);
+      openPdfDocument(pdf, filename);
     } catch (err) {
       console.error('[serve] Affidavit of Non-Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Non-Service — please try again.');
@@ -936,7 +981,27 @@ export default function ServePage() {
         const res = await apiFetch<any>('/personnel?status=active');
         if (cancelled) return;
         const list = Array.isArray(res) ? res : res?.data ?? [];
-        setOfficers(list.map((u: any) => ({ id: u.id, name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
+        const roster: { id: number; name: string; onDuty: boolean; vehicle: string | null; milesToday: number | null }[] = list.map((u: Record<string, unknown>) => ({
+          id: Number(u.id),
+          name: String(u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || ''),
+          onDuty: false,
+          vehicle: null,
+          milesToday: null,
+        }));
+        try {
+          const servers = await apiFetch<{ officers?: CorporateServer[] }>('/corporate-ops/servers');
+          const byId = new Map((servers.officers ?? []).map((s) => [Number(s.officer_id), s]));
+          for (const o of roster) {
+            const s = byId.get(o.id);
+            if (s) {
+              o.onDuty = true;
+              o.vehicle = s.vehicle_number ?? s.call_sign ?? null;
+              o.milesToday = s.miles_today ?? null;
+            }
+          }
+          roster.sort((a, b) => Number(b.onDuty) - Number(a.onDuty) || a.name.localeCompare(b.name));
+        } catch { /* snapshot is manager-tier; keep personnel fallback */ }
+        if (!cancelled) setOfficers(roster);
       } catch { /* non-critical */ }
     })();
     return () => { cancelled = true; };
@@ -1323,7 +1388,7 @@ export default function ServePage() {
             ...formData,
             address_class: formData.address_class,
             address_class_confirmed: formData.address_class_confirmed,
-            ops: formData.ops,
+            ops: formOps,
           }),
         });
       } else {
@@ -1334,7 +1399,7 @@ export default function ServePage() {
             serve_date: formData.serve_date || selectedDate,
             address_class: formData.address_class,
             address_class_confirmed: formData.address_class_confirmed,
-            ops: formData.ops,
+            ops: formOps,
           }),
         });
       }
@@ -1347,11 +1412,11 @@ export default function ServePage() {
     } finally {
       setFormSubmitting(false);
     }
-  }, [formData, editJob, selectedDate, clearFormDraft, refreshJobs]);
+  }, [formData, formOps, editJob, selectedDate, clearFormDraft, refreshJobs]);
 
   const handleFormChange = useCallback((field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-  }, []);
+  }, [setFormData]);
 
   useEffect(() => {
     if (!createJobOpen) { setOpsPreview(null); return; }
@@ -1387,7 +1452,7 @@ export default function ServePage() {
           plaintiff_name: formData.plaintiff_name,
           defendant_name: formData.defendant_name,
           court_date: formData.court_date,
-          ops: formData.ops,
+          ops: formOps,
         }),
       }).then(setOpsPreview).catch(() => {});
     }, 350);
@@ -1399,7 +1464,7 @@ export default function ServePage() {
     formData.business_name, formData.registered_agent_name, formData.document_type,
     formData.case_number, formData.court_name, formData.jurisdiction, formData.client_name,
     formData.attorney_name, formData.priority, formData.deadline, formData.service_instructions,
-    formData.notes, formData.plaintiff_name, formData.defendant_name, formData.court_date, formData.ops,
+    formData.notes, formData.plaintiff_name, formData.defendant_name, formData.court_date, formOps,
   ]);
 
   // ── Feature 31: Clone job ────────────────────────────────────────────
@@ -1928,8 +1993,8 @@ export default function ServePage() {
                 <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
                 <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(toDisplayLabel(job.status))} &middot; ${escapeHtml(toDisplayLabel(job.document_type || ''))}</div>
                 <div style="margin-top:8px;display:flex;gap:6px;">
-                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
-                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>
+                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">History</button>
+                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">Preview drive time</button>
                 </div>
               </div>
             `).addTo(mapRef.current!);
@@ -2486,6 +2551,8 @@ export default function ServePage() {
           )}
         </div>
       </div>
+
+      <CorporateLinkageStrip />
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
       <div className="border-b border-border-subtle bg-surface-sunken">
@@ -3653,7 +3720,10 @@ export default function ServePage() {
         />
       )}
 
-      {/* Create / Edit Job Modal */}
+      {/* Create / Edit Job Modal — only mount when open so a missing
+          formData.ops on a restored draft cannot crash the Queue tab
+          (JSX children are evaluated even when FormModal returns null). */}
+      {createJobOpen && (
       <FormModal
         isOpen={createJobOpen}
         onClose={() => { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }}
@@ -4130,7 +4200,11 @@ export default function ServePage() {
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 >
                   <option value="">— Unassigned —</option>
-                  {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  {officers.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {formatServerAssignLabel(o)}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -4366,8 +4440,8 @@ export default function ServePage() {
                 <div>
                   <label className="block text-[11px] text-fg-muted mb-1">Venue overlay</label>
                   <select
-                    value={formData.ops.venue_kind}
-                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, venue_kind: e.target.value } }))}
+                    value={formOps.venue_kind}
+                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), venue_kind: e.target.value } }))}
                     className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                   >
                     {VENUE_OPTIONS.map(([v, l]) => <option key={v || 'auto'} value={v}>{l}</option>)}
@@ -4376,8 +4450,8 @@ export default function ServePage() {
                 <div>
                   <label className="block text-[11px] text-fg-muted mb-1">Best contact window</label>
                   <input
-                    value={formData.ops.best_contact_window}
-                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, best_contact_window: e.target.value } }))}
+                    value={formOps.best_contact_window}
+                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), best_contact_window: e.target.value } }))}
                     placeholder="e.g. after 14:00 weekdays"
                     className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                   />
@@ -4386,8 +4460,8 @@ export default function ServePage() {
               <div>
                 <label className="block text-[11px] text-fg-muted mb-1">Documents in packet</label>
                 <textarea
-                  value={formData.ops.documents_to_serve}
-                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, documents_to_serve: e.target.value } }))}
+                  value={formOps.documents_to_serve}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), documents_to_serve: e.target.value } }))}
                   rows={2}
                   placeholder="20 DAY SUMMONS; VERIFIED COMPLAINT; …"
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none"
@@ -4395,32 +4469,32 @@ export default function ServePage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <input
-                  value={formData.ops.gate_code}
-                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, gate_code: e.target.value } }))}
+                  value={formOps.gate_code}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), gate_code: e.target.value } }))}
                   placeholder="Gate / call-box code"
                   className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                 />
                 <input
-                  value={formData.ops.authorized_acceptor}
-                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, authorized_acceptor: e.target.value } }))}
+                  value={formOps.authorized_acceptor}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), authorized_acceptor: e.target.value } }))}
                   placeholder="Who may accept (name/title)"
                   className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                 />
                 <input
-                  value={formData.ops.language_needed}
-                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, language_needed: e.target.value } }))}
+                  value={formOps.language_needed}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), language_needed: e.target.value } }))}
                   placeholder="Language needed"
                   className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                 />
                 <input
-                  value={formData.ops.physical_description}
-                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, physical_description: e.target.value } }))}
+                  value={formOps.physical_description}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), physical_description: e.target.value } }))}
                   placeholder="Physical description"
                   className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                 />
                 <input
-                  value={formData.ops.vehicle_description}
-                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, vehicle_description: e.target.value } }))}
+                  value={formOps.vehicle_description}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), vehicle_description: e.target.value } }))}
                   placeholder="Vehicle (plate / color / make)"
                   className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
                 />
@@ -4437,8 +4511,8 @@ export default function ServePage() {
                   <label key={k} className="inline-flex items-center gap-1 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={!!formData.ops[k]}
-                      onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, [k]: e.target.checked } }))}
+                      checked={!!formOps[k]}
+                      onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), [k]: e.target.checked } }))}
                       className="w-3.5 h-3.5 rounded-[2px] border-rmpg-600 bg-surface-deep"
                     />
                     {lab}
@@ -4452,9 +4526,9 @@ export default function ServePage() {
                     meta={{
                       addressClass: formData.address_class || 'unknown',
                       addressClassConfirmed: formData.address_class_confirmed,
-                      venue: opsPreview.venue_label ? formData.ops.venue_kind || 'inferred' : null,
+                      venue: opsPreview.venue_label ? formOps.venue_kind || 'inferred' : null,
                       venueLabel: opsPreview.venue_label || null,
-                      ops: formData.ops,
+                      ops: formOps,
                       firedIds: opsPreview.fired_ids || [],
                       windows: opsPreview.windows || [],
                     }}
@@ -4509,6 +4583,7 @@ export default function ServePage() {
 
         </div>
       </FormModal>
+      )}
 
       {/* Delete-job confirm — replaces the v480 window.confirm + window.alert. */}
       {/* Same destructive-action contract as Code Enforcement / Cases: pre-     */}

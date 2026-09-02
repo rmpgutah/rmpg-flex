@@ -99,7 +99,7 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
       filter: ['has', 'point_count'],
       paint: {
         'circle-radius': ['step', ['get', 'point_count'], 15, 10, 20, 30, 28],
-        'circle-color': '#d4a017',
+        'circle-color': '#c3ccd6',
         'circle-opacity': 0.7,
         'circle-stroke-color': '#0a0a0a',
         'circle-stroke-width': 1.5,

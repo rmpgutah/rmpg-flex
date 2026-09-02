@@ -83,6 +83,7 @@ export default function IntelSearchPage() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search persons, vehicles, plates, phones, DOBs, case numbers…"
+        aria-label="Search persons, vehicles, plates, phones, dates of birth, and case numbers"
         className="w-full bg-surface-overlay border border-border-default px-3 py-2 text-sm text-rmpg-200 focus:[border-color:var(--field-label-color)] outline-none"
       />
       <div className="flex gap-2 flex-wrap items-center">

@@ -48,6 +48,8 @@ class StubBrowserWindow {
     this.webContents = {
       send: mock.fn(),
       executeJavaScript: mock.fn(() => Promise.resolve()),
+      on: mock.fn(),
+      setWindowOpenHandler: mock.fn(() => ({ action: 'deny' })),
     };
   }
   loadURL() {}
@@ -166,5 +168,37 @@ describe('CameraScanner', () => {
     const listenerCountAfter = (fakeListeners['_camera-frame'] || []).length;
     assert.ok(listenerCountBefore > 0, 'listener should be registered while running');
     assert.equal(listenerCountAfter, 0, 'listener should be removed after stop');
+  });
+
+  it('start() locks down navigation and window-open on the scanner window', () => {
+    const mw = makeMainWindow();
+    scanner.start(mw, StubBrowserWindow);
+    const navLocks = scanner._win.webContents.on.mock.calls.filter(c => c.arguments && c.arguments[0] === 'will-navigate');
+    assert.ok(navLocks.length > 0, 'will-navigate lock should be registered');
+    assert.ok(scanner._win.webContents.setWindowOpenHandler.mock.calls.length > 0, 'window-open handler should be registered');
+  });
+
+  it('_decodeFrame() rejects non-integer, non-positive, or absurd geometry', () => {
+    const mw = makeMainWindow();
+    scanner.start(mw, StubBrowserWindow);
+    jsqrReturnValue = { data: 'SHOULD-NOT-DECODE' };
+    const fakeBuffer = new ArrayBuffer(4);
+
+    scanner._decodeFrame(fakeBuffer, NaN, 1);        // NaN
+    scanner._decodeFrame(fakeBuffer, -1, 1);         // negative
+    scanner._decodeFrame(fakeBuffer, 1.5, 1);        // non-integer
+    scanner._decodeFrame(fakeBuffer, 5000, 5000);    // exceeds MAX_FRAME_BYTES
+    scanner._decodeFrame(fakeBuffer, 2, 2);          // undersized (needs 16 bytes, has 4)
+
+    assert.equal(mw.webContents.send.mock.calls.length, 0, 'no scan should be emitted');
+  });
+
+  it('_decodeFrame() ignores a padded-but-reasonable oversized frame', () => {
+    const mw = makeMainWindow();
+    scanner.start(mw, StubBrowserWindow);
+    jsqrReturnValue = null;
+    // 2x2 frame needs 16 bytes; provide exactly that (no throw, no scan since jsQR null)
+    scanner._decodeFrame(new ArrayBuffer(16), 2, 2);
+    assert.equal(mw.webContents.send.mock.calls.length, 0);
   });
 });

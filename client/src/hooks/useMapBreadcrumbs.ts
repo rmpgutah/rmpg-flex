@@ -106,7 +106,7 @@ export function useMapBreadcrumbs(
       const newTrails: UnitTrail[] = perUnit.flat().filter(Boolean).map(t => ({
         unitId: String(t.unit_id),
         callSign: t.call_sign,
-        color: unitColors[String(t.unit_id)] || '#d4a017',
+        color: unitColors[String(t.unit_id)] || '#c3ccd6',
         points: (t.points || []).map(p => ({
           latitude: p.lat,
           longitude: p.lng,

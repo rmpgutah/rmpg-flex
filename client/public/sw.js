@@ -3,6 +3,10 @@
 // Provides offline caching for static assets and API GET responses.
 // API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
+// v1108: FetchEvent rejections still fire from stale controllers AND from
+//        dialer.rmpgutah.us/sw.js (separate origin). Wrap the Flex fetch
+//        handler so a throw never rejects respondWith. Never take ownership
+//        of Cloudflare Insights or any other cross-origin URL.
 // v1106: Login navigations must not become an empty 503 Offline when the
 //        document URL has a query string (`/login?return=%2F`) that missed
 //        the precached `/` shell. Match ignoreSearch and always stash `/`.
@@ -266,6 +270,19 @@ function fetchWithRetry(request, opts) {
   );
 }
 
+// A promise given to event.respondWith must never reject. Network errors,
+// cache failures, and blocked third-party hosts otherwise surface as
+// "Uncaught (in promise) TypeError: Failed to fetch" on the FetchEvent.
+function settleFetch(promise, fallback) {
+  return Promise.resolve(promise).catch(function () {
+    return fallback || new Response('', { status: 503, statusText: 'Offline' });
+  });
+}
+
+function safeRespond(event, promise) {
+  event.respondWith(settleFetch(promise));
+}
+
 // Install — pre-cache core shell, immediately activate.
 // cache.addAll is ATOMIC — if ANY single file fails (one sound file on spotty
 // cellular), NOTHING gets cached, including index.html. Use individual puts so
@@ -507,6 +524,7 @@ async function flushClientFirings() {
 
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
+  try {
   var url;
   try {
     url = new URL(event.request.url);
@@ -514,12 +532,34 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Cloudflare Insights is injected on both rmpgutah.us and dialer.rmpgutah.us.
+  // Taking ownership (204 or fetch()) either fails SRI or rejects the
+  // FetchEvent when the beacon is blocked. Never respondWith these.
+  if (
+    url.hostname === 'static.cloudflareinsights.com' ||
+    url.hostname.endsWith('.cloudflareinsights.com')
+  ) {
+    return;
+  }
+
+  // Cross-origin: never fetch() on the worker's behalf. Operator networks
+  // (DNS sinkhole / ad block / managed challenge) routinely block the
+  // Cloudflare beacon, Mapbox telemetry, and the dialer iframe. Owning those
+  // requests turns a silent block into "The FetchEvent for <url> resulted in
+  // a network error response: the promise was rejected".
+  if (url.origin !== self.location.origin) {
+    if (TELEMETRY_HOSTS.includes(url.hostname)) {
+      safeRespond(event, new Response(null, { status: 204 }));
+    }
+    return;
+  }
+
   // Cloudflare Web Analytics is injected with integrity="sha512-…". Taking
   // ownership (204 or fetch()) either fails SRI or, when the network is
-  // down, rejects the FetchEvent ("the promise was rejected" +
-  // Uncaught TypeError: Failed to fetch in sw.js). Let the browser handle
-  // the blocked beacon; the navigation handler strips the <script> tag
-  // so subsequent loads never request it.
+  // down, rejects the FetchEvent. Let the browser handle the blocked beacon;
+  // the navigation handler strips the <script> tag so subsequent loads never
+  // request it. (Redundant with the origin check above; kept as a named
+  // guard if Pages ever same-origin-proxies the beacon.)
   if (url.hostname === 'static.cloudflareinsights.com') {
     return;
   }
@@ -538,7 +578,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (TELEMETRY_HOSTS.includes(url.hostname)) {
-    event.respondWith(new Response(null, { status: 204 }));
+    safeRespond(event,new Response(null, { status: 204 }));
     return;
   }
 
@@ -553,7 +593,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api') &&
     !API_NO_CACHE.some((prefix) => url.pathname.startsWith(prefix))
   ) {
-    event.respondWith(
+    safeRespond(event,
       fetchWithRetry(event.request)
         .then((response) => {
           if (response.ok) {
@@ -593,7 +633,7 @@ self.addEventListener('fetch', (event) => {
   // index.html from a previous deploy (the SW cache is the offline fallback,
   // not the HTTP cache).
   if (event.request.mode === 'navigate') {
-    event.respondWith(
+    safeRespond(event,
       fetchWithRetry(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.ok) {
@@ -632,7 +672,7 @@ self.addEventListener('fetch', (event) => {
           cacheMatch(event.request, { ignoreSearch: true })
             .then((cached) => cached || cacheMatch(new URL('/', self.location.origin).href) || cacheMatch('/'))
             .then((fallback) => fallback || new Response(
-              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#172a3f;color:#f0f4f9;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #2a4a6b;background:#1e3550;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#f0f4f9}p{margin:0 0 20px;color:#8fa3b8;font-size:13px;line-height:1.5}button{background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#3b6a9a}.cd{font-size:10px;color:#8fa3b8;font-family:monospace;margin-top:12px}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection.</p><button onclick="window.location.reload()" type="button">Retry Connection</button><div class="cd" id="cd">Retrying in 5s...</div></div><script>var r=5,t=setInterval(function(){r--;if(r<=0){clearInterval(t);window.location.reload()}else{document.getElementById("cd").textContent="Retrying in "+r+"s..."}},1000)</script></body></html>',
+              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#172a3f;color:#f0f4f9;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #2a4a6b;background:#1e3550;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#f0f4f9}p{margin:0 0 20px;color:#8fa3b8;font-size:13px;line-height:1.5}button{background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#3b6a9a}.cd{font-size:10px;color:#8fa3b8;font-family:Arial;margin-top:12px}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection.</p><button onclick="window.location.reload()" type="button">Retry Connection</button><div class="cd" id="cd">Retrying in 5s...</div></div><script>var r=5,t=setInterval(function(){r--;if(r<=0){clearInterval(t);window.location.reload()}else{document.getElementById("cd").textContent="Retrying in "+r+"s..."}},1000)</script></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }
             ))
         )
@@ -653,7 +693,7 @@ self.addEventListener('fetch', (event) => {
 
     if (isHashedAsset) {
       // Cache-first — return immediately if we have it, only hit network on miss.
-      event.respondWith(
+      safeRespond(event,
         cacheMatch(event.request).then((cached) => {
           if (cached) return cached;
           return fetchWithRetry(event.request)
@@ -686,7 +726,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Non-hashed JS/CSS → network first
-    event.respondWith(
+    safeRespond(event,
       fetchWithRetry(event.request)
         .then((response) => {
           // Same poison guard as the hashed branch — never cache/return HTML
@@ -715,7 +755,7 @@ self.addEventListener('fetch', (event) => {
   // (true offline, first visit), return an empty FeatureCollection so the map
   // renders without overlays rather than logging a 503 console error.
   if (url.pathname.startsWith('/geojson/') && url.pathname.endsWith('.geojson')) {
-    event.respondWith(
+    safeRespond(event,
       cacheMatch(event.request).then((cached) => {
         var networkFetch = fetchWithRetry(event.request)
           .then((response) => {
@@ -728,7 +768,7 @@ self.addEventListener('fetch', (event) => {
           ));
         if (cached) {
           // Serve the cached version immediately; refresh in the background.
-          event.waitUntil(networkFetch);
+          event.waitUntil(networkFetch.catch(function () {}));
           return cached;
         }
         return networkFetch;
@@ -738,7 +778,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Images, fonts, etc. — cache first (these rarely change for same filename)
-  event.respondWith(
+  safeRespond(event,
     cacheMatch(event.request).then((cached) => {
       if (cached) return cached;
       return fetchWithRetry(event.request)
@@ -751,6 +791,16 @@ self.addEventListener('fetch', (event) => {
         .catch(() => new Response('', { status: 503, statusText: 'Offline' }));
     })
   );
+  } catch (err) {
+    // A throw from the fetch handler after respondWith is not possible, but a
+    // throw BEFORE respondWith is silent. After respondWith, an uncaught
+    // exception is logged as FetchEvent network error. Never let either leak.
+    try {
+      event.respondWith(new Response('', { status: 503, statusText: 'Offline' }));
+    } catch {
+      /* respondWith already called */
+    }
+  }
 });
 
 // ─── Background Sync ────────────────────────────────────────

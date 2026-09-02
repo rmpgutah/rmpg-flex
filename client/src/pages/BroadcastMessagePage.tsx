@@ -386,6 +386,7 @@ export default function BroadcastMessagePage() {
             value={histSearch}
             onChange={(e) => setHistSearch(e.target.value)}
             placeholder="Search history…"
+            aria-label="Search broadcast history"
             className="ml-auto w-36 rounded border border-rmpg-600 bg-surface-base text-rmpg-100 text-[10px] px-2 py-1"
           />
           <select

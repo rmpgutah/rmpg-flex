@@ -387,7 +387,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   <title>Invoice ${data.invoice_number}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #fff; padding: 30px; max-width: 800px; margin: 0 auto; }
+    body { font-family: 'Arial, sans-serif'; color: #333; background: #fff; padding: 30px; max-width: 800px; margin: 0 auto; }
     @media print { body { padding: 0; } }
     .header { background: #2b2b2b; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
     .header img { width: 42px; height: 42px; border-radius: 50%; }

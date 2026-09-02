@@ -31,6 +31,8 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [retryTick, setRetryTick] = useState(0);
+
   useEffect(() => {
     let alive = true;
     setLoading(true); setError(null); setData(null);
@@ -42,7 +44,7 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
       .catch((e) => { if (alive) setError(e?.message || 'Failed to load record'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [record.kind, record.id]);
+  }, [record.kind, record.id, retryTick]);
 
   const title = record.kind === 'person'
     ? (data ? `${data.last_name || ''}, ${data.first_name || ''}`.replace(/^, |, $/g, '') || 'Person' : 'Person')
@@ -75,7 +77,9 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
             <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--rt-muted, var(--text-muted))' }} role="status" aria-label="Loading record" />
           </div>
         )}
-        {error && <p style={{ color: 'var(--sev-critical-soft)' }}>{error}</p>}
+        {error && <p style={{ color: 'var(--sev-critical-soft)' }} role="alert">{error}{' '}
+          <button type="button" className="underline" onClick={() => setRetryTick((n) => n + 1)}>Retry</button>
+        </p>}
         {data && record.kind === 'person' && <PersonFields p={data} />}
         {data && record.kind === 'vehicle' && <VehicleFields v={data} />}
       </div>

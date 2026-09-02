@@ -41,6 +41,8 @@ import PageLabelsDialog from './components/PageLabelsDialog';
 import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl, uploadsUrl } from '../../hooks/useApi';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import PromptDialog from '../../components/PromptDialog';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { importWithRetry } from '../../utils/importWithRetry';
 
@@ -193,6 +195,9 @@ export default function PdfEditorPage() {
   const [labelsOpen, setLabelsOpen] = useState(false);   // custom page-label rules
   const [calibrationOpen, setCalibrationOpen] = useState(false); // measurement scale
   const [insertPdfOpen, setInsertPdfOpen] = useState(false);     // insert another PDF at a position
+  const [clearPageOpen, setClearPageOpen] = useState(false);
+  const [clearPageCount, setClearPageCount] = useState(0);
+  const [goToPageOpen, setGoToPageOpen] = useState(false);
   // Default category applied to new sticky notes (toolbar dropdown).
   const [stickyCategory, setStickyCategory] = useState<StickyCategory>('general');
   const [showBookmarks, setShowBookmarks] = useState(false);
@@ -572,11 +577,8 @@ export default function PdfEditorPage() {
   const clearAllOnPage = () => {
     const count = state.annotations.filter(a => a.page === activePage).length;
     if (count === 0) { pushToast('No annotations on this page', 'info'); return; }
-    if (!window.confirm(`Delete all ${count} annotation(s) on page ${activePage}?`)) return;
-    mutate({ annotations: state.annotations.filter(a => a.page !== activePage) });
-    setSelectedIds(new Set());
-    setActiveId(null);
-    pushToast(`Cleared ${count} annotation(s) on page ${activePage}`, 'ok');
+    setClearPageCount(count);
+    setClearPageOpen(true);
   };
 
   // Toggle the simple "Page N of M" footer (distinct from Bates numbering).
@@ -1648,9 +1650,7 @@ export default function PdfEditorPage() {
       if (meta && k === 'a') { e.preventDefault(); selectAllOnPage(); return; }
       if (meta && k === 'g') {
         e.preventDefault();
-        const target = window.prompt(`Go to page (1–${state.pageOrder.length}):`, String(activePage));
-        const n = target ? parseInt(target, 10) : NaN;
-        if (!Number.isNaN(n) && n >= 1 && n <= state.pageOrder.length) jumpToPage(n - 1);
+        setGoToPageOpen(true);
         return;
       }
       // Stroke width Cmd/Ctrl + ] / [ adjust by 1, clamped 1–20.
@@ -2371,6 +2371,37 @@ export default function PdfEditorPage() {
         forcePdfjs={forcePdfjs}
         onClose={() => setPresentationOpen(false)}
         onPageChange={(p) => setActivePage(p)}
+      />
+      <ConfirmDialog
+        isOpen={clearPageOpen}
+        onClose={() => setClearPageOpen(false)}
+        onConfirm={() => {
+          mutate({ annotations: state.annotations.filter(a => a.page !== activePage) });
+          setSelectedIds(new Set());
+          setActiveId(null);
+          pushToast(`Cleared ${clearPageCount} annotation(s) on page ${activePage}`, 'ok');
+          setClearPageOpen(false);
+        }}
+        title="Clear page annotations"
+        message={`Delete all ${clearPageCount} annotation(s) on page ${activePage}?`}
+        confirmLabel="Clear"
+        confirmVariant="danger"
+      />
+      <PromptDialog
+        isOpen={goToPageOpen}
+        onClose={() => setGoToPageOpen(false)}
+        onSubmit={(raw) => {
+          const n = parseInt(raw, 10);
+          if (!Number.isNaN(n) && n >= 1 && n <= state.pageOrder.length) jumpToPage(n - 1);
+          setGoToPageOpen(false);
+        }}
+        title="Go to page"
+        message={`Jump to a page (1–${state.pageOrder.length || 1}).`}
+        label="Page"
+        defaultValue={String(activePage)}
+        inputType="number"
+        inputMode="numeric"
+        confirmLabel="Go"
       />
     </div>
   );

@@ -35,6 +35,8 @@ import { Volume2, VolumeX, Vibrate } from 'lucide-react';
 import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
 import { formatDateTime, localToday, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../utils/corporateOpsClient';
+import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
 import { openShiftReportPdf } from '../utils/shiftReportPdf';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
@@ -614,8 +616,9 @@ export default function MdtPage() {
     }
     try {
       if (newStatus === 'available' && myUnit.status === 'off_duty') {
-        await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
+        const started = await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
         addToast('On duty — clocked in, vehicle assigned', 'success');
+        toastClockLinkWarnings(addToast, started as ClockLinkFlags);
       } else {
         await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
           method: 'PUT',
@@ -835,6 +838,7 @@ export default function MdtPage() {
       <PremiseAlertModal />
       {/* DI-4: Welfare-check ack modal — listens for welfare_check WS event */}
       <WelfareCheckModal />
+      <CorporateLinkageStrip mode="mine" />
 
       {/* ── ConfirmDialog: End Shift (off_duty) ── */}
       <ConfirmDialog

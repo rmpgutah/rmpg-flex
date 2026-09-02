@@ -263,9 +263,9 @@ export default function InteragencyPage() {
           ref={searchRef}
           className="input-dark w-full max-w-xs"
           placeholder="Search partners… (/)"
+          aria-label="Search partner agencies"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search interagency partners"
         />
         <select aria-label="Filter by type" className="select-dark text-[11px]" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="ALL">All types</option>

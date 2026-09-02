@@ -572,7 +572,7 @@ export function useVectorTileLayers({
   const buildPopupHtml = useCallback((cfg: VectorTileLayerConfig, props: Record<string, any>): string => {
     const titleRaw = props[cfg.labelProp];
     const title = titleRaw != null && String(titleRaw).trim() !== '' ? String(titleRaw) : cfg.label;
-    let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:150px;">`;
+    let html = `<div style="font-family:'Arial, sans-serif';color:#d4d4d4;font-size:11px;min-width:150px;">`;
     html += `<div style="font-weight:bold;font-size:12px;color:${cfg.color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeHtml(title)}</div>`;
     // Subtitle: layer label + (for address points) a colored property-type chip.
     let subtitle = `<span style="color:#888;font-size:9px;text-transform:uppercase;">${escapeHtml(cfg.label)}</span>`;
@@ -886,7 +886,7 @@ export function useVectorTileLayers({
             let html = buildPopupHtml(cfg, props);
             const canUse = !!onUseLocationRef.current;
             if (canUse) {
-              html += `<button id="vt-use-loc" style="margin-top:6px;width:100%;padding:4px;font-family:'Courier New',monospace;font-size:10px;font-weight:bold;letter-spacing:0.5px;color:#0a0a0a;background:${cfg.color};border:none;border-radius:2px;cursor:pointer;text-transform:uppercase;">Use This Location</button>`;
+              html += `<button id="vt-use-loc" style="margin-top:6px;width:100%;padding:4px;font-family:'Arial, sans-serif';font-size:10px;font-weight:bold;letter-spacing:0.5px;color:#0a0a0a;background:${cfg.color};border:none;border-radius:2px;cursor:pointer;text-transform:uppercase;">Use This Location</button>`;
             }
             pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
             if (canUse) {

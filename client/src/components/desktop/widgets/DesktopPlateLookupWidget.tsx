@@ -99,7 +99,7 @@ export default function DesktopPlateLookupWidget() {
               borderRadius: 2,
               color: 'var(--text-primary)',
               outline: 'none',
-              fontFamily: 'monospace',
+              fontFamily: 'Arial, sans-serif',
               letterSpacing: '0.1em',
             }}
           />
@@ -142,7 +142,7 @@ export default function DesktopPlateLookupWidget() {
                   padding: '3px 6px',
                   cursor: 'pointer',
                   color: 'var(--text-primary)',
-                  fontFamily: 'monospace',
+                  fontFamily: 'Arial, sans-serif',
                   letterSpacing: '0.08em',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-base)')}

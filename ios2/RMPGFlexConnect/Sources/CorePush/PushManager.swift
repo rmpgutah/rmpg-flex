@@ -1,6 +1,6 @@
 import Foundation
 import UIKit
-import CoreAPI
+
 
 /// Posted by `RMPGFlexNotificationDelegate.application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`
 /// with the raw `Data` token as `object` — decouples the UIKit AppDelegate

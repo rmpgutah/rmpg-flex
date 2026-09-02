@@ -68,6 +68,7 @@
 		<string>audio</string>
 		<string>bluetooth-peripheral</string>
 		<string>processing</string>
+		<string>push-to-talk</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

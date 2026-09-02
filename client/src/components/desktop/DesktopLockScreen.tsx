@@ -237,7 +237,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
         background: 'linear-gradient(160deg, var(--surface-sunken) 0%, var(--surface-raised) 60%, var(--surface-overlay) 100%)',
         backdropFilter: 'blur(20px)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'inherit', overflow: 'hidden',
+        fontFamily: 'Arial, sans-serif', overflow: 'hidden',
       }}
     >
       {/* Subtle grid texture */}

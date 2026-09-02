@@ -4,7 +4,7 @@ import type { EnrichmentSeed, EnrichmentAddress, SourceResult } from '../../hook
 import {
   User, MapPin, Phone, Calendar, Briefcase, Scale,
   Clock, CheckCircle, AlertTriangle, ChevronDown, ChevronRight,
-  DollarSign, Camera, MessageSquare, RefreshCw, Search, QrCode, FolderOpen, Shield,
+  DollarSign, Camera, MessageSquare, RefreshCw, Search, QrCode, FolderOpen, Shield, Printer,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import ServeAttemptFileFolders from '../../components/serve/ServeAttemptFileFolders';
@@ -12,6 +12,8 @@ import type { ServeJob, ServeAttempt, ServeSkipTrace } from '../../types';
 import { formatEnumValue } from '../../utils/formatters';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { splitPersonName } from '../../utils/documentIntakeSaveHandlers';
+import { generateSubjectDossierPdf } from '../../utils/subjectDossierPdfGenerator';
+import { openPdfDocument } from '../../utils/openPdfDocument';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -317,6 +319,27 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
     enrichSearch(seed, { refresh: Boolean(enrichResult) });
   }, [job, enrichSearch, enrichResult]);
 
+  const [printingDossier, setPrintingDossier] = useState(false);
+  const handlePrintDossier = useCallback(async () => {
+    if (!job) return;
+    setPrintingDossier(true);
+    try {
+      const pdf = await generateSubjectDossierPdf({
+        job,
+        attempts,
+        skipTraces,
+        comments,
+        qrScans,
+        osintResult: enrichResult,
+      });
+      openPdfDocument(pdf, `Subject-Dossier-${job.case_number || job.id}.pdf`);
+    } catch (err) {
+      console.error('[SubjectFileTab] Failed to generate subject dossier PDF:', err);
+    } finally {
+      setPrintingDossier(false);
+    }
+  }, [job, attempts, skipTraces, comments, qrScans, enrichResult]);
+
   const priorityColor: Record<string, string> = {
     urgent: 'text-red-400', rush: 'text-orange-400', normal: 'text-amber-400', routine: 'text-text-secondary',
   };
@@ -371,13 +394,25 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                   {job.deadline && <span className="inline-flex items-center gap-1"><Calendar size={10} />Due {safeDateStr(job.deadline)}</span>}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => load(job.id)}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary border border-border-subtle transition-colors"
-              >
-                <RefreshCw size={10} /> Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrintDossier}
+                  disabled={printingDossier}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-text-primary bg-surface-base hover:bg-surface-hover border border-border-subtle transition-colors disabled:opacity-50"
+                  title="Print full subject file dossier (Form PS-400)"
+                >
+                  <Printer size={11} className="text-brand-400" />
+                  <span>{printingDossier ? 'Generating…' : 'Print Dossier (PS-400)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => load(job.id)}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary border border-border-subtle transition-colors"
+                >
+                  <RefreshCw size={10} /> Refresh
+                </button>
+              </div>
             </div>
             <div className="flex gap-0 mt-3 -mb-3 overflow-x-auto" role="tablist" aria-label="Subject file sections">
               {([

@@ -6,6 +6,8 @@ import { getDb, query, queryFirst, execute, queryInChunks, ensureTimeEntryColumn
 import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
 import { nowDualStamp } from '../utils/denverTime';
+import { CLOCK_ON_BEHALF_ROLES, resolveClockOfficerId, capBreakMinutes, isFatigueRisk, FATIGUE_REST_HOURS } from '../utils/corporateOps';
+import { enrichTimeEntryOnClockIn, finalizeTimeEntryOnClockOut, recordTardyIfLate, ensureCorporateOpsSchema } from '../utils/corporateWorkflows';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 // Side-effect import: registers upload + stream handlers on
 // bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
@@ -720,6 +722,7 @@ personnel.get('/time', async (c) => {
 
   try {
     const db = getDb(c.env);
+    await ensureCorporateOpsSchema(db);
     const startParam = c.req.query('start_date');
     const endParam = c.req.query('end_date');
     const officerIdParam = c.req.query('officer_id');
@@ -733,9 +736,10 @@ personnel.get('/time', async (c) => {
     // against `YYYY-MM-DD` boundaries (lex-sortable for ISO).
     const bindings: unknown[] = [start, end + 'T23:59:59'];
     let sql = `
-      SELECT te.id, te.officer_id, te.schedule_id,
+      SELECT te.id, te.officer_id, te.schedule_id, te.unit_id, te.vehicle_id,
              te.clock_in, te.clock_out, te.clock_in_latitude, te.clock_in_longitude,
              te.total_hours, te.break_start, te.break_minutes, te.status,
+             te.starting_mileage, te.ending_mileage, te.total_miles, te.clock_source,
              te.notes, te.created_at,
              u.full_name AS officer_name
         FROM time_entries te
@@ -833,19 +837,54 @@ personnel.post('/time/clock-in', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
-    const existing = await queryFirst<{ id: number }>(db,
-      `SELECT id FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
-    if (existing) return c.json({ error: 'Already clocked in', entry_id: existing.id }, 409);
+    const existing = await queryFirst<Record<string, unknown>>(db,
+      `SELECT * FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (existing) {
+      return c.json({
+        error: 'Already clocked in',
+        code: 'ALREADY_CLOCKED_IN',
+        entry_id: existing.id,
+        entry: existing,
+        vehicle_id: existing.vehicle_id ?? null,
+        unit_id: existing.unit_id ?? null,
+      }, 409);
+    }
 
+    const lastShift = await queryFirst<{ clock_out: string }>(
+      db, 'SELECT clock_out FROM time_entries WHERE officer_id = ? AND clock_out IS NOT NULL ORDER BY clock_out DESC LIMIT 1', officerId,
+    ).catch(() => null);
+    if (lastShift?.clock_out) {
+      const hoursSince = Math.round((Date.now() - new Date(lastShift.clock_out).getTime()) / 3600000 * 10) / 10;
+      if (isFatigueRisk(hoursSince, FATIGUE_REST_HOURS) && c.req.query('override_fatigue') !== '1') {
+        return c.json({
+          warning: 'fatigue_risk',
+          message: `Only ${hoursSince}h since last shift ended. Add ?override_fatigue=1 to proceed.`,
+          hours_since_last_shift: hoursSince,
+          code: 'FATIGUE_RISK',
+        }, 409);
+      }
+    }
+
+    const lat = body.latitude ?? body.clock_in_latitude;
+    const lng = body.longitude ?? body.clock_in_longitude;
     const stamp = nowDualStamp();
     const result = await execute(db,
       `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now'))`,
       officerId, stamp.utc, stamp.local);
-    const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', Number(result.meta.last_row_id));
-    return c.json(entry, 201);
+    const entryId = Number(result.meta.last_row_id);
+    const linked = await enrichTimeEntryOnClockIn(db, entryId, officerId, {
+      clockSource: 'personnel',
+      lat: lat != null ? Number(lat) : null,
+      lng: lng != null ? Number(lng) : null,
+    });
+    await recordTardyIfLate(db, officerId, stamp.utc, selfId ?? null);
+    const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entryId);
+    return c.json({ ...(entry ?? {}), ...linked }, 201);
   } catch (err) {
     console.error('POST /personnel/time/clock-in failed:', err);
     return dbErrorResponse(c, err, 'Clock in failed');
@@ -859,21 +898,20 @@ personnel.post('/time/clock-out', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
-    const entry = await queryFirst<{ id: number; clock_in: string; break_minutes: number }>(db,
-      `SELECT id, clock_in, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
-    if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
+    const entry = await queryFirst<{
+      id: number; clock_in: string; break_minutes: number | null; break_start: string | null;
+      starting_mileage: number | null; vehicle_id: number | null; status: string;
+    }>(db,
+      `SELECT id, clock_in, break_minutes, break_start, starting_mileage, vehicle_id, status
+         FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (!entry) return c.json({ error: 'No active clock-in found', code: 'NO_ACTIVE_CLOCK' }, 404);
 
-    const stamp = nowDualStamp();
-    const a = new Date(entry.clock_in).getTime();
-    const b = new Date(stamp.utc).getTime();
-    const hrs = Number.isFinite(a) && Number.isFinite(b) && b > a
-      ? Math.round(((b - a) / 3_600_000 - (entry.break_minutes || 0) / 60) * 100) / 100
-      : 0;
-
-    await execute(db, `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp.utc, stamp.local, hrs, entry.id);
+    await finalizeTimeEntryOnClockOut(db, entry, body.ending_mileage);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {
@@ -889,8 +927,10 @@ personnel.post('/time/start-break', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
     const entry = await queryFirst<{ id: number; status: string }>(db,
       `SELECT id, status FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
@@ -914,8 +954,10 @@ personnel.post('/time/end-break', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
     const entry = await queryFirst<{ id: number; break_start: string | null; break_minutes: number }>(db,
       `SELECT id, break_start, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
@@ -925,7 +967,7 @@ personnel.post('/time/end-break', async (c) => {
     const breakStart = new Date(entry.break_start).getTime();
     const now = Date.now();
     const addedMinutes = Number.isFinite(breakStart) ? Math.round((now - breakStart) / 60000) : 0;
-    const totalBreak = (entry.break_minutes || 0) + addedMinutes;
+    const totalBreak = capBreakMinutes((entry.break_minutes || 0) + addedMinutes);
 
     await execute(db, `UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`, totalBreak, entry.id);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);

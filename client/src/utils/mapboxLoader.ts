@@ -149,7 +149,7 @@ export function monitorTileLoading(
         right: 8px;
         background: rgba(212, 160, 23, 0.85);
         color: #0a0a0a;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Arial, sans-serif';
         font-size: 10px;
         font-weight: 600;
         padding: 3px 10px;
@@ -323,7 +323,7 @@ const TRAIL_LAYER = 'rmpg-mapbox-trail-line';
 export function addMapboxTrail(
   map: mapboxgl.Map,
   coords: [number, number][],
-  color: string = '#d4a017',
+  color: string = '#c3ccd6',
 ): void {
   if (!map || !map.style || !coords?.length) return;
   const data: GeoJSON.Feature<GeoJSON.LineString> = {

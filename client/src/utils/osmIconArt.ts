@@ -498,7 +498,7 @@ export const CONTROL_VARIANTS: Record<string, GlyphArt> = {
       + ` fill="#06111d" opacity="0.85"/>`
       + `<path d="M24.3 11.8 h15.4 L50.6 22.7 v15.4 L39.7 49.0 h-15.4 L13.4 38.1 v-15.4 z"`
       + ` fill="#c1121f" stroke="#f5f7fa" stroke-width="2.7" stroke-linejoin="round"/>`
-      + `<text x="32" y="35.4" font-family="Helvetica,Arial,sans-serif" font-weight="700"`
+      + `<text x="32" y="35.4" font-family="Arial, sans-serif" font-weight="700"`
       + ` font-size="13.6" letter-spacing="0.3" text-anchor="middle" fill="#f5f7fa">STOP</text>`,
     overIsIdentity: true,
   },

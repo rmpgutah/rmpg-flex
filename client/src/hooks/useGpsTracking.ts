@@ -418,8 +418,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
    *
    * This gates only the LOG. Restart/retry behaviour is deliberately untouched:
    * a vehicle CAD must keep trying to reacquire, and the surrounding code says
-   * so emphatically. Staleness is still reported every time at debug level, and
-   * the UI `error` string still surfaces the degradation.
+   * so emphatically. The UI `error` string still surfaces the degradation.
    */
   const STALE_WARN_INTERVAL_MS = 5 * 60 * 1000;
   // True while a one-shot "restart on the next user gesture" listener is armed,
@@ -1408,9 +1407,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const withinAggressivePhase = heartbeatRestartCountRef.current < MAX_HEARTBEAT_RESTARTS;
         const warnIntervalElapsed = now - lastGlobalStaleWarnAt >= STALE_WARN_INTERVAL_MS;
         const shouldWarn = withinAggressivePhase && warnIntervalElapsed;
-        if (shouldWarn) lastGlobalStaleWarnAt = now;
-        const log = shouldWarn ? console.warn : console.debug;
-        log(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        if (shouldWarn) {
+          lastGlobalStaleWarnAt = now;
+          console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        }
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
           startIpFallbackPoller();

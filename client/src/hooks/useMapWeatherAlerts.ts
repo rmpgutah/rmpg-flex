@@ -267,7 +267,7 @@ export function useMapWeatherAlerts(
       popupRef.current = new mapboxgl.Popup({ closeButton: true, maxWidth: '320px' })
         .setLngLat(e.lngLat)
         .setHTML(`
-          <div style="background:var(--surface-raised,#15212e);color:var(--text-primary,#e6edf5);padding:8px 12px;border:1px solid ${p.color};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;">
+          <div style="background:var(--surface-raised,#15212e);color:var(--text-primary,#e6edf5);padding:8px 12px;border:1px solid ${p.color};border-radius:2px;font-family:Arial,sans-serif;font-size:11px;">
             <div style="font-weight:700;color:${p.color};font-size:12px;">${escapeHtml(p.event ?? '')}</div>
             ${p.severity ? `<div style="color:var(--text-muted,#8fa3b8);font-size:9px;font-weight:700;letter-spacing:0.04em;">${escapeHtml(p.severity.toUpperCase())}</div>` : ''}
             ${p.area_desc ? `<div style="color:var(--text-muted,#8fa3b8);font-size:10px;margin-top:4px;">${escapeHtml(p.area_desc)}</div>` : ''}

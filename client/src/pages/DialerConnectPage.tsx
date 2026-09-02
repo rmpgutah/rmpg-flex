@@ -508,7 +508,7 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
       {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1.5 items-center shrink-0">
         <Search className="w-3 h-3 text-rmpg-500" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search transcript / number" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search transcript / number" aria-label="Search transcripts or numbers" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={unread} onChange={(e) => setUnread(e.target.checked)} /> Unheard</label>
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={starred} onChange={(e) => setStarred(e.target.checked)} /> Starred</label>
         <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Archive</label>
@@ -565,10 +565,22 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
             )}
             {v.notes && <div className="text-[10px] text-rmpg-500 pl-5">Note: {v.notes}</div>}
             <div className="flex flex-wrap gap-1 pl-5">
-              <IconAction label="Play" onClick={() => play(v.id).catch((e) => addToast(String(e), 'error'))}>
-                {playing === v.id ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              <IconAction
+                label="Play"
+                onClick={() => {
+                  if (!hasAudio(v)) { addToast('No recording for this voicemail', 'error'); return; }
+                  play(v.id).catch((e) => addToast(String(e), 'error'));
+                }}
+              >
+                {playing === v.id ? <Pause className="w-3 h-3" /> : <Play className={`w-3 h-3 ${hasAudio(v) ? '' : 'opacity-40'}`} />}
               </IconAction>
-              <IconAction label="Download recording" onClick={() => downloadAudio('voicemail', v.id).catch((e) => addToast(String(e), 'error'))}><Download className="w-3 h-3" /></IconAction>
+              <IconAction
+                label="Download recording"
+                onClick={() => {
+                  if (!hasAudio(v)) { addToast('No recording for this voicemail', 'error'); return; }
+                  downloadAudio('voicemail', v.id).catch((e) => addToast(String(e), 'error'));
+                }}
+              ><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
               <IconAction label="Copy transcript" onClick={() => copyToClipboard(v.transcript || '').then((ok) => addToast(ok ? 'Copied transcript' : 'Nothing to copy', ok ? 'success' : 'warning'))}><Copy className="w-3 h-3" /></IconAction>
@@ -758,10 +770,22 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
               </div>
             )}
             <div className="flex flex-wrap gap-1 pl-5 mt-1">
-              <IconAction label="Play recording" onClick={() => play(c.id).catch((e) => addToast(String(e), 'error'))}>
+              <IconAction
+                label="Play recording"
+                onClick={() => {
+                  if (!hasAudio(c)) { addToast('No recording for this call', 'error'); return; }
+                  play(c.id).catch((e) => addToast(String(e), 'error'));
+                }}
+              >
                 {playing === c.id ? <Pause className="w-3 h-3" /> : <Play className={`w-3 h-3 ${hasAudio(c) ? '' : 'opacity-40'}`} />}
               </IconAction>
-              <IconAction label="Download recording" onClick={() => downloadAudio('call', c.id).catch((e) => addToast(String(e), 'error'))}><Download className="w-3 h-3" /></IconAction>
+              <IconAction
+                label="Download recording"
+                onClick={() => {
+                  if (!hasAudio(c)) { addToast('No recording for this call', 'error'); return; }
+                  downloadAudio('call', c.id).catch((e) => addToast(String(e), 'error'));
+                }}
+              ><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
               <IconAction label="Copy transcript" onClick={() => copyToClipboard(c.transcript || counterparty(c)).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}><Copy className="w-3 h-3" /></IconAction>

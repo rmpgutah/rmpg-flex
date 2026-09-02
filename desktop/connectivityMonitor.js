@@ -121,9 +121,10 @@ class ConnectivityMonitor {
         // Notify renderer
         this._emit('offline:connectivity-changed', { isOnline: reachable });
 
-      // Notify main process callback
-      if (this._onTransition) {
-        this._onTransition(reachable);
+        // Notify main process callback
+        if (this._onTransition) {
+          this._onTransition(reachable);
+        }
       }
     } finally {
       this._checkInProgress = false;

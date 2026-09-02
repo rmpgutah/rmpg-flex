@@ -32,7 +32,7 @@
 .spm-status-grid { display: flex; flex-direction: column; min-height: 0; background: #0a0a0a; border: 1px solid #2a2f37; }
 .spm-status-grid-head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 6px; background: #b9c0cb; color: #1c2530; }
 .spm-status-grid-title { font-weight: 600; }
-.spm-status-grid-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; table-layout: fixed; }
+.spm-status-grid-table { width: 100%; border-collapse: collapse; font-family: Arial, monospace; font-size: 11px; table-layout: fixed; }
 .spm-status-grid-table th { background: #1c1f24; color: #9aa3b0; font-weight: 600; padding: 2px 4px; text-align: left; cursor: default; user-select: none; }
 .spm-status-grid-table th[aria-sort] { cursor: pointer; }
 .spm-status-grid-table td { padding: 1px 4px; color: #cfd6e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -49,7 +49,7 @@
    blanket rule). Form controls don't inherit font-family by default in
    the browser UA stylesheet, so they need an explicit rule. */
 .cad-detail-body {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: Arial, monospace;
   line-height: 1.35;
 }
 .cad-detail-body input,

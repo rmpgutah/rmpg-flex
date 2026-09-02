@@ -179,7 +179,7 @@ function ThemePanel({ props }: { props: DesktopSettingsAppProps }) {
             >
               Apply
             </button>
-            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{customAccent}</span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif' }}>{customAccent}</span>
           </div>
         </div>
       )}
@@ -227,7 +227,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', borderBottom: '1px solid var(--border-default)', padding: '6px 0' }}>
       <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 160, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 11, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{value}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}>{value}</span>
     </div>
   );
 }

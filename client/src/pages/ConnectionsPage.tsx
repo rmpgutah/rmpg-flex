@@ -587,12 +587,12 @@ export default function ConnectionsPage() {
             ref={searchRef}
             type="text"
             placeholder="Search for a person, vehicle, case, incident... (/)"
+            aria-label="Seed search"
             className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-brand-400 focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => { if (results.length) setDropdownOpen(true); }}
-            aria-label="Seed search"
           />
           {searching && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
           {canManage && (
@@ -884,7 +884,7 @@ export default function ConnectionsPage() {
                   })()}
                   <text
                     x={n.x} y={n.y - 1} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="monospace" fontWeight="bold"
+                    fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="Arial, sans-serif" fontWeight="bold"
                     style={{ pointerEvents: 'none' }}
                   >
                     {n.type[0].toUpperCase()}
@@ -892,7 +892,7 @@ export default function ConnectionsPage() {
                   {annotations[n.id] && (
                     <text
                       x={n.x + r - 4} y={n.y - r + 8}
-                      fontSize={10} fill="var(--brand-gold)" fontFamily="monospace" fontWeight="bold"
+                      fontSize={10} fill="var(--brand-gold)" fontFamily="Arial, sans-serif" fontWeight="bold"
                       style={{ pointerEvents: 'none' }}
                     >
                       ✎
@@ -951,7 +951,7 @@ export default function ConnectionsPage() {
                     fontSize={9}
                     fill={isSeed ? 'var(--brand-gold)' : important ? '#fff' : '#ccc'}
                     fontWeight={important ? 'bold' : 'normal'}
-                    fontFamily="monospace"
+                    fontFamily="Arial, sans-serif"
                   >
                     {truncated}
                   </text>

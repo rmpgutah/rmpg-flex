@@ -109,7 +109,7 @@ export default function DesktopUnitConverter({ onClose }: DesktopUnitConverterPr
   const inputStyle: React.CSSProperties = {
     flex: 1, padding: '5px 8px', fontSize: 14, background: 'var(--surface-sunken)',
     border: '1px solid var(--border-subtle)', color: 'var(--text-primary)',
-    borderRadius: 2, outline: 'none', fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace',
+    borderRadius: 2, outline: 'none', fontVariantNumeric: 'tabular-nums', fontFamily: 'Arial, sans-serif',
   };
 
   return (

@@ -11,11 +11,20 @@ const ADDRESS_ONLY_SOURCES = new Set(['census_geocoder', 'sl_assessor', 'usps'])
 /** Sources that need a phone seed; skipped when phone is absent. */
 const PHONE_ONLY_SOURCES = new Set(['numverify']);
 
+/** Sources that need an email seed; skipped when email is absent. */
+const EMAIL_ONLY_SOURCES = new Set(['hibp', 'hunter']);
+
+/** Reverse-lookup sources that can run on phone without a name. */
+const NAMELESS_PHONE_SOURCES = new Set(['numverify', 'usa_people_search', 'pdl']);
+
+/** Reverse-lookup sources that can run on email without a name. */
+const NAMELESS_EMAIL_SOURCES = new Set(['hibp', 'hunter', 'usa_people_search', 'pdl']);
+
 export function seedHasPersonName(seed: EnrichmentSeed): boolean {
   return Boolean(seed.first_name?.trim() && seed.last_name?.trim());
 }
 
-function sourcesForSeed(
+export function sourcesForSeed(
   sources: EnrichmentSourceDefinition[],
   seed: EnrichmentSeed,
 ): EnrichmentSourceDefinition[] {
@@ -24,13 +33,18 @@ function sourcesForSeed(
     if (seed.address?.trim()) {
       out = out.filter(s => ADDRESS_ONLY_SOURCES.has(s.key));
     } else if (seed.phone?.trim()) {
-      out = out.filter(s => PHONE_ONLY_SOURCES.has(s.key));
+      out = out.filter(s => NAMELESS_PHONE_SOURCES.has(s.key));
+    } else if (seed.email?.trim()) {
+      out = out.filter(s => NAMELESS_EMAIL_SOURCES.has(s.key));
     } else {
       return [];
     }
   }
   if (!seed.phone?.trim()) {
     out = out.filter(s => !PHONE_ONLY_SOURCES.has(s.key));
+  }
+  if (!seed.email?.trim()) {
+    out = out.filter(s => !EMAIL_ONLY_SOURCES.has(s.key));
   }
   if (!seed.address?.trim()) {
     out = out.filter(s => s.key !== 'usps' && s.key !== 'census_geocoder' && s.key !== 'sl_assessor');

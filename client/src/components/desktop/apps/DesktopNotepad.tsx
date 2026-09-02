@@ -142,48 +142,25 @@ export default function DesktopNotepad({ onClose }: DesktopNotepadProps) {
         {status && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{status}</span>}
       </div>
 
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ width: 168, borderRight: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column', background: 'var(--surface-sunken)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 6 }}>
-            <Search size={10} style={{ color: 'var(--text-muted)' }} />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search notes"
-              style={{ flex: 1, fontSize: 10, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', padding: '2px 4px' }} />
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {visibleNotes.map((n) => (
-              <button key={n.id} type="button" onClick={() => setActiveId(n.id)}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: 11,
-                  background: n.id === active.id ? 'var(--surface-base)' : 'none',
-                  border: 'none', borderLeft: n.id === active.id ? '2px solid var(--brand-400)' : '2px solid transparent',
-                  color: 'var(--text-primary)', cursor: 'pointer',
-                }}>
-                <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title || 'Untitled'}</div>
-                <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>{n.body.slice(0, 40) || 'Empty'}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <input
-            value={active.title}
-            onChange={e => patchActive({ title: e.target.value })}
-            placeholder="Title"
-            style={{ fontSize: 12, fontWeight: 600, padding: '6px 10px', border: 'none', borderBottom: '1px solid var(--border-default)', background: 'var(--surface-base)', color: 'var(--text-primary)', outline: 'none' }}
-          />
-          <textarea
-            value={active.body}
-            onChange={e => patchActive({ body: e.target.value })}
-            placeholder="Start typing your note…"
-            style={{
-              flex: 1, resize: 'none', border: 'none', outline: 'none',
-              background: 'var(--surface-base)', color: 'var(--text-primary)',
-              fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6, padding: 12,
-              caretColor: 'var(--text-primary)',
-            }}
-          />
-        </div>
-      </div>
+      {/* Text area */}
+      <textarea
+        value={active.body}
+        onChange={e => patchActive({ body: e.target.value })}
+        placeholder="Start typing your note…"
+        style={{
+          flex: 1,
+          resize: 'none',
+          border: 'none',
+          outline: 'none',
+          background: 'var(--surface-base)',
+          color: 'var(--text-primary)',
+          fontSize: 12,
+          fontFamily: 'Arial, sans-serif',
+          lineHeight: 1.6,
+          padding: 12,
+          caretColor: 'var(--text-primary)',
+        }}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', padding: '3px 10px', background: 'var(--surface-sunken)', borderTop: '1px solid var(--border-default)', flexShrink: 0 }}>
         <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{notes.length} notes · {wordCount} words · {active.body.length} chars</span>

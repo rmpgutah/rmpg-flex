@@ -114,7 +114,7 @@ export default function VerifyIdPage() {
               </div>
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => { setResult(null); setOfficer(null); }}
             className="mt-3 text-[11px] underline opacity-80"
           >
@@ -132,14 +132,14 @@ export default function VerifyIdPage() {
           </div>
           {camError && <div className="text-[11px] text-[color:var(--sev-critical)]">{camError}</div>}
           {!scanning ? (
-            <button
+            <button type="button"
               onClick={startCamera}
               className="w-full rounded-[2px] bg-brand-600 text-rmpg-100 font-semibold text-sm py-2"
             >
               Start camera scan
             </button>
           ) : (
-            <button
+            <button type="button"
               onClick={stopCamera}
               className="w-full rounded-[2px] border border-border-default text-rmpg-300 text-sm py-2"
             >
@@ -157,7 +157,7 @@ export default function VerifyIdPage() {
               className="w-full rounded-[2px] bg-surface-overlay border border-border-default text-rmpg-300 text-[11px] p-2"
               placeholder="walletId.exp.sig"
             />
-            <button
+            <button type="button"
               onClick={() => verifyToken(manualToken.trim())}
               disabled={busy || !manualToken.trim()}
               className="w-full rounded-[2px] border border-border-default text-rmpg-300 text-sm py-2 disabled:opacity-40"

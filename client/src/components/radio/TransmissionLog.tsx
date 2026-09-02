@@ -147,7 +147,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
             <div
               key={entry.id}
               className="flex items-start gap-1.5 py-px"
-              style={{ fontFamily: 'monospace' }}
+              style={{ fontFamily: 'Arial, sans-serif' }}
               onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}
             >
               <span className="text-[10px] text-fg-muted tabular-nums shrink-0 whitespace-nowrap">

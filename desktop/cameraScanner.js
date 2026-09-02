@@ -22,6 +22,13 @@ try {
 }
 
 const SCAN_INTERVAL_MS = 250;
+
+// Upper bound on a single decoded frame (RGBA bytes). The offscreen window is
+// 640x480 so a real frame is ~1.2MB; 4096x4096 is already an extreme cap for
+// a QR/barcode scanner and prevents a malformed or compromised renderer from
+// making the MAIN process allocate an unbounded buffer out of `_camera-frame`
+// IPC payloads sent per 250ms tick.
+const MAX_FRAME_BYTES = 4096 * 4096 * 4;
 const SCAN_HTML = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head><body>
 <video id="v" autoplay playsinline style="display:none"></video>
@@ -70,7 +77,20 @@ class CameraScanner {
 
     this._mainWindow = mainWindow;
 
-    // Hidden off-screen window — no frame, never shown to user
+    // Hidden off-screen window — no frame, never shown to user.
+    //
+    // SECURITY TRADEOFF (accepted, mirrors main.js's barcode-buffer comment):
+    // this is the ONE window in the app that does NOT use
+    // hardenWebPreferencesDefaults(). It runs an offscreen `data:` page that
+    // needs (a) `nodeIntegration: true` to hand each video frame straight to
+    // ipcRenderer.send as a raw buffer (avoiding the structured-clone cost of
+    // a contextBridge round-trip per 250ms tick) and (b) `webSecurity: false`
+    // so `getUserMedia` is allowed on an opaque-origin `data:` URL. That is
+    // only reachable because the page is a hardcoded, static, offline string
+    // (SCAN_HTML) with no user input, no links, and — via the navigation
+    // locks added below — no way to navigate anywhere else. If this window is
+    // ever repurposed to load remote content, it MUST be refactored onto a
+    // preload + contextBridge with nodeIntegration off first.
     this._win = new BrowserWindowClass({
       width: 640,
       height: 480,
@@ -79,8 +99,20 @@ class CameraScanner {
         offscreen: true,
         nodeIntegration: true,
         webSecurity: false,
+        contextIsolation: true,
+        enableWebSQL: false,
+        allowRunningInsecureContent: false,
       },
     });
+
+    // The scanner page must never be able to navigate away from the static
+    // data: URL or open a window. This is defense-in-depth on top of the fact
+    // that SCAN_HTML contains no such capability.
+    this._win.webContents.on('will-navigate', (navEvent, url) => {
+      console.warn('[CAMERA-SCANNER] Blocked navigation to:', url);
+      navEvent.preventDefault();
+    });
+    this._win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
     this._win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SCAN_HTML));
 
@@ -127,9 +159,30 @@ class CameraScanner {
    */
   _decodeFrame(buffer, width, height) {
     if (!jsQR) return;
+    // Never trust the renderer's reported geometry or buffer length. A
+    // malformed/oversized frame must not allocate an unbounded buffer in the
+    // main process (the `_camera-frame` IPC channel is otherwise unbounded).
+    const w = Number(width);
+    const h = Number(height);
+    if (!Number.isInteger(w) || !Number.isInteger(h) || w <= 0 || h <= 0) {
+      console.warn('[CAMERA-SCANNER] Ignoring frame with invalid geometry:', width, height);
+      return;
+    }
+    const expectedBytes = w * h * 4;
+    if (expectedBytes > MAX_FRAME_BYTES) {
+      console.warn('[CAMERA-SCANNER] Ignoring frame larger than max size:', w, h);
+      return;
+    }
+    const byteLength = buffer instanceof ArrayBuffer
+      ? buffer.byteLength
+      : ArrayBuffer.isView(buffer) ? buffer.byteLength : 0;
+    if (byteLength < expectedBytes) {
+      console.warn('[CAMERA-SCANNER] Ignoring undersized frame buffer:', byteLength, '<', expectedBytes);
+      return;
+    }
     try {
       const data = new Uint8ClampedArray(buffer);
-      const result = jsQR(data, width, height);
+      const result = jsQR(data, w, h);
       if (result && result.data) {
         console.log('[CAMERA-SCANNER] Decoded:', result.data);
         this._mainWindow?.webContents.send('hardware:barcode-scan', {

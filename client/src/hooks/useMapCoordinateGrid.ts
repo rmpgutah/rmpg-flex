@@ -125,7 +125,7 @@ export function useMapCoordinateGrid(
         source: SOURCE_ID,
         filter: ['==', ['get', 'gridType'], 'line'],
         paint: {
-          'line-color': '#d4a017',
+          'line-color': '#c3ccd6',
           'line-opacity': 0.2,
           'line-width': 0.5,
           'line-dasharray': [4, 4],
@@ -146,7 +146,7 @@ export function useMapCoordinateGrid(
           'text-font': ['DIN Pro Regular', 'Arial Unicode MS Regular'],
         },
         paint: {
-          'text-color': '#d4a017',
+          'text-color': '#c3ccd6',
           'text-opacity': 0.5,
           'text-halo-color': '#000',
           'text-halo-width': 1,

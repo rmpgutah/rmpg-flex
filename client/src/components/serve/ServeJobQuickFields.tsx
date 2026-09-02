@@ -2,9 +2,9 @@ import React, { useCallback, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import {
   ADDRESS_CLASS_OPTIONS,
-  EMPTY_SERVE_JOB_OPS,
   VENUE_OPTIONS,
   parseServeJobMeta,
+  ensureServeJobOps,
   type ServeJobOps,
 } from '../../utils/serveJobIntake';
 import type { ServeJob } from '../../types';
@@ -17,7 +17,7 @@ export default function ServeJobQuickFields({
   onUpdated: (parsedData: string) => void;
 }) {
   const meta = parseServeJobMeta(job.parsed_data);
-  const [ops, setOps] = useState<ServeJobOps>({ ...EMPTY_SERVE_JOB_OPS, ...meta.ops });
+  const [ops, setOps] = useState<ServeJobOps>(ensureServeJobOps(meta.ops));
   const [klass, setKlass] = useState(meta.addressClass);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);

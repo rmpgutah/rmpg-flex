@@ -333,9 +333,9 @@ export default function AlarmManagementPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search accounts…"
+          aria-label="Search alarm accounts"
           className="input-dark text-xs w-64"
           style={{ height: 28 }}
-          aria-label="Search alarm accounts"
         />
         <select
           aria-label="Filter by alarm type"

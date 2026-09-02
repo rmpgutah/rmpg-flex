@@ -67,6 +67,7 @@ import tips from './routes/tips';
 import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
 import adminMapData from './routes/adminMapData';
+import dailyEmailAdmin from './routes/dailyEmailAdmin';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import oidc from './routes/oidc';
@@ -154,6 +155,7 @@ import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
+import corporateOps from './routes/corporateOps';
 import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
@@ -427,6 +429,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/map-data', router: adminMapData, auth: 'required' },
+  { prefix: '/api/daily-email', router: dailyEmailAdmin, auth: 'public',
+    note: 'Daily email report recipient management: GET/PUT /recipients, POST /test-send, GET /test-open (public). Admin-only (auth handled per-route).' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
   { prefix: '/api/email', router: emailRoute, auth: 'required',
     note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
@@ -484,6 +488,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
+  { prefix: '/api/corporate-ops', router: corporateOps, auth: 'required',
+    note: 'Corporate linkage: clock/fleet/HR/dispatch/map/serve snapshot, mileage reconcile, automatic workflow runs.' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/crisis', router: crisisResponse, auth: 'required',

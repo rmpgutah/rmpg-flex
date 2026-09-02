@@ -232,6 +232,7 @@ export default function AccreditationsPage() {
           <input
             type="text"
             placeholder="Search officer, type, issuing body…"
+            aria-label="Search accreditations by officer, type, or issuing body"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-100 placeholder-rmpg-500 focus:border-accent-silver-400 focus:outline-none"

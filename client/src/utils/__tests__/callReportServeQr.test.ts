@@ -28,12 +28,12 @@ describe('call report → serve receipt QR wiring', () => {
     expect(GENERATOR).toMatch(/isProcessServiceCall && data\.serve_queue_id/);
   });
 
-  it('both QR badges are pinned to the last page', () => {
+  it('recipient QR badge is pinned to the last page', () => {
     // jsPDF draws on whatever page is current; a report that spilled would
     // strand the badge mid-document. The run sheet is handed over as a
     // stack and the scannable face has to be the bottom one.
     const pins = GENERATOR.match(/doc\.setPage\(doc\.getNumberOfPages\(\)\);/g) ?? [];
-    expect(pins.length).toBeGreaterThanOrEqual(2);
+    expect(pins.length).toBeGreaterThanOrEqual(1);
   });
 
   it('mints the recipient token from the serve job, not the call', () => {

@@ -23,7 +23,7 @@ const path = require('path');
 function buildCspHeaderValue() {
   const directives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.mapbox.com https://challenges.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*.mapbox.com https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline' https://*.mapbox.com https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://*.mapbox.com https://*.rmpgutah.us",
     "font-src 'self' data: https://fonts.gstatic.com",

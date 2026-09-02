@@ -70,6 +70,7 @@ export interface JobPollResult {
   solution?: V2Solution;
   error?: string;
   skipped?: boolean;
+  avg_mpg?: number | null;
 }
 
 // ─── API wrappers ─────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ export interface ServeV2Result {
   orderedJobIds: number[];
   etaByJobId: Map<number, string>;
   droppedJobIds: number[];
+  avgMpg?: number | null;
 }
 
 const V2_POLL_MS = 1_500;
@@ -152,7 +154,9 @@ export async function runServeOptimizationV2(params: Omit<ServeRunSubmitParams, 
     }
     if (poll.status === 'error') return null;
     if (poll.status === 'complete' && poll.solution) {
-      return parseServeV2Solution(poll.solution);
+      const result = parseServeV2Solution(poll.solution);
+      if (result) result.avgMpg = poll.avg_mpg;
+      return result;
     }
   }
   return null;

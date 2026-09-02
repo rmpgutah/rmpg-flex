@@ -777,7 +777,7 @@ export default function NationalWarrantSearchPage() {
                         style={{
                           fontSize: 11,
                           fontWeight: 600,
-                          fontFamily: 'JetBrains Mono, monospace',
+                          fontFamily: 'Arial, sans-serif',
                           fill: isSelected ? 'var(--text-secondary)' : coverageTextColor(status),
                         }}
                       >

@@ -1,6 +1,6 @@
 import SwiftUI
-import CoreAPI
-import DesignSystem
+
+
 
 /// Mirrors `fleet_vehicles` (GET /api/fleet) — verified against
 /// migrations/0052_fleet_tables.sql. A prior version of this model invented

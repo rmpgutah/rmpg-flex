@@ -1,5 +1,5 @@
 import Foundation
-import CoreIDScan
+
 
 /// Persists scan history to disk so it survives app relaunch — a prior
 /// version kept `recentScans` as an in-memory `@Published` array only,

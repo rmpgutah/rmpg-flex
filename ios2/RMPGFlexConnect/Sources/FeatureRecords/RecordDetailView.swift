@@ -1,6 +1,6 @@
 import SwiftUI
-import CoreAPI
-import DesignSystem
+
+
 
 /// Full detail view for a record tapped from search results. Persons and
 /// businesses have real `GET /api/records/persons/:id` and

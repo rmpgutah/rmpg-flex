@@ -196,7 +196,7 @@ export function monitorMapTiles(
         right: 8px;
         background: rgba(212, 160, 23, 0.85);
         color: #0a0a0a;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Arial, sans-serif';
         font-size: 10px;
         font-weight: 600;
         padding: 3px 10px;
@@ -290,7 +290,7 @@ export function injectMapStyles(): void {
         left: 8px;
         background: rgba(136, 136, 136, 0.7);
         color: #a8d0ff;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Arial, sans-serif';
         font-size: 10px;
         padding: 2px 8px;
         border-radius: 2px;

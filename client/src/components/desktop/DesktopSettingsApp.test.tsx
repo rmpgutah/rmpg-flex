@@ -86,11 +86,11 @@ describe('DesktopSettingsApp', () => {
   });
 
   it('Reset to Default asks for confirmation before calling onResetToDefault', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const props = renderApp();
     fireEvent.click(screen.getByText('Desktop & Icons'));
     fireEvent.click(screen.getByText('Reset to Default'));
-    expect(window.confirm).toHaveBeenCalled();
+    expect(props.onResetToDefault).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(props.onResetToDefault).toHaveBeenCalled();
   });
 
@@ -278,8 +278,8 @@ describe('DesktopSettingsApp — per-category reset', () => {
   it('Personalization reset calls onWallpaperChange/onAccentChange with the defaults', () => {
     const props = renderApp();
     fireEvent.click(screen.getByText('Personalization'));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByText('Reset this category to default'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(props.onWallpaperChange).toHaveBeenCalledWith('blue-silver-default');
     expect(props.onAccentChange).toHaveBeenCalled();
   });
@@ -288,8 +288,8 @@ describe('DesktopSettingsApp — per-category reset', () => {
     localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
     renderApp();
     fireEvent.click(screen.getByText('Window Management'));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByText('Reset this category to default'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(localStorage.getItem('rmpg_desktop_snap_enabled')).toBe('1');
     expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('top');
   });
@@ -301,8 +301,8 @@ describe('DesktopSettingsApp — per-category reset', () => {
     localStorage.setItem('rmpg_desktop_pinned_apps', JSON.stringify(['/dispatch']));
     renderApp();
     fireEvent.click(screen.getByText('Taskbar'));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByText('Reset this category to default'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('bottom');
     expect(localStorage.getItem('rmpg_desktop_taskbar_size')).toBe('small');
     expect(localStorage.getItem('rmpg_desktop_taskbar_autohide')).toBe('0');

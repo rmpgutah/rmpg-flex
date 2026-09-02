@@ -47,6 +47,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
+import { requireOnDutyForServe, linkServeAttemptToShift } from '../utils/corporateWorkflows';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { broadcastAll } from './ws';
@@ -67,6 +68,7 @@ import {
 import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
 import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
 import serveAttemptFiles from './serveAttemptFiles';
+import { applyUrgencyTier } from '../utils/serveDiligencePlanner';
 import {
   intakePatchFromPreview,
   parseServeParsedData,
@@ -215,6 +217,7 @@ const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attem
 // serve_queue.priority CHECK enum — coerce unknown values to 'normal' (a bad
 // value 500s the INSERT/UPDATE on the constraint).
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
+const URGENCY_TIERS = new Set(['critical', 'tight', 'standard']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -1462,10 +1465,13 @@ sv.put('/:id', async (c) => {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
-    // Don't overwrite a computed urgency_tier with an empty string — the
-    // frontend sends urgency_tier: '' as the "Auto" default on every save,
-    // which silently erases the tier the planner computed.
-    if (k === 'urgency_tier' && body[k] === '') continue;
+    if (k === 'urgency_tier') {
+      if (body[k] && URGENCY_TIERS.has(body[k])) {
+        sets.push('urgency_tier = ?');
+        args.push(body[k]);
+      }
+      continue;
+    }
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
     if (ATTORNEY_CONTACT_COLS.has(k) && !hasAttorneyContactCol) continue;
@@ -1637,6 +1643,15 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     return c.json({ error: 'Not assigned to this job' }, 403);
   }
 
+  const actorId = user?.id ?? null;
+  if (user?.role === 'officer' && actorId) {
+    const duty = await requireOnDutyForServe(db, actorId);
+    if (!duty.on_duty) {
+      return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
+    }
+  }
+  const attemptOfficerId = user?.role === 'officer' ? user.id : (body.officer_id ?? user?.id ?? null);
+
   // Structured PS code (PS/15.05 etc.) is the new source of truth. When
   // supplied, it derives both the legacy `result` enum (for the existing
   // CHECK constraint) and the next queue status. When absent, fall back to
@@ -1676,7 +1691,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
            latitude, longitude, notes, attempt_type, photo_ids, signature_data,
            attempt_at
          ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+        id, nextNum, attemptOfficerId, result, psCode,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
@@ -1689,7 +1704,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
            latitude, longitude, notes, attempt_type, photo_ids, signature_data,
            attempt_at
          ) VALUES (?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+        id, nextNum, attemptOfficerId, result,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
@@ -1698,6 +1713,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
 
   const loggedAttemptId = Number(ins.meta.last_row_id) || 0;
   if (loggedAttemptId > 0) {
+    await linkServeAttemptToShift(db, loggedAttemptId, attemptOfficerId != null ? Number(attemptOfficerId) : null).catch(() => {});
     const catalogItems: CatalogFileInput[] = [];
     const photoIds = Array.isArray(body.photo_ids)
       ? body.photo_ids.filter((fid: unknown) => typeof fid === 'string' && fid.length > 0)
@@ -1996,13 +2012,23 @@ sv.post('/:id/substitute-service', async (c) => {
   body.attempt_type = body.attempt_type ?? 'substitute';
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-  const user = c.get('user') as { id: number } | undefined;
+  const user = c.get('user') as { id: number; role?: string } | undefined;
   const db = getDb(c.env);
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null }>(
-    db, 'SELECT attempt_count, max_attempts, call_id FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null; officer_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, call_id, officer_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+  if (user?.role === 'officer' && queue.officer_id != null && queue.officer_id !== user.id) {
+    return c.json({ error: 'Not assigned to this job' }, 403);
+  }
   const nextNum = (queue.attempt_count ?? 0) + 1;
+  const officerForAttempt = user?.id ?? body.officer_id ?? null;
+  if (user?.role === 'officer' && officerForAttempt) {
+    const duty = await requireOnDutyForServe(db, Number(officerForAttempt));
+    if (!duty.on_duty) {
+      return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
+    }
+  }
   // No `status` column on live serve_attempts (see logAttempt note above).
   const ins = await execute(
     db,
@@ -2011,11 +2037,12 @@ sv.post('/:id/substitute-service', async (c) => {
        latitude, longitude, notes, attempt_type, photo_ids, signature_data,
        attempt_at
      ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?, COALESCE(?, datetime('now')))`,
-    id, nextNum, body.officer_id ?? user?.id ?? null,
+    id, nextNum, officerForAttempt,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type, JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
     deviceAttemptAt(body.attempt_at),
   );
+  await linkServeAttemptToShift(db, Number(ins.meta.last_row_id) || 0, officerForAttempt != null ? Number(officerForAttempt) : null).catch(() => {});
   await execute(
     db,
     `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now'), closed_at = datetime('now') WHERE id = ?`,

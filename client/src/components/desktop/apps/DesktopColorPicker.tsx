@@ -116,7 +116,7 @@ export default function DesktopColorPicker({ onClose }: DesktopColorPickerProps)
 
   const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 };
   const labelStyle: React.CSSProperties = { fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.08em', textTransform: 'uppercase', width: 32, flexShrink: 0 };
-  const valueStyle: React.CSSProperties = { flex: 1, fontSize: 12, fontFamily: 'monospace', color: 'var(--text-primary)', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '3px 8px' };
+  const valueStyle: React.CSSProperties = { flex: 1, fontSize: 12, fontFamily: 'Arial, sans-serif', color: 'var(--text-primary)', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '3px 8px' };
 
   return (
     <div style={{
@@ -160,7 +160,7 @@ export default function DesktopColorPicker({ onClose }: DesktopColorPickerProps)
               value={manualHex}
               onChange={e => handleManualChange(e.target.value)}
               placeholder="#3b82f6"
-              style={{ flex: 1, fontSize: 12, fontFamily: 'monospace', padding: '5px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', borderRadius: 2, outline: 'none' }}
+              style={{ flex: 1, fontSize: 12, fontFamily: 'Arial, sans-serif', padding: '5px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', borderRadius: 2, outline: 'none' }}
             />
           </div>
         )}
@@ -180,7 +180,7 @@ export default function DesktopColorPicker({ onClose }: DesktopColorPickerProps)
               value={manualHex}
               onChange={e => handleManualChange(e.target.value)}
               placeholder="#3b82f6"
-              style={{ flex: 1, fontSize: 12, fontFamily: 'monospace', padding: '4px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', borderRadius: 2, outline: 'none' }}
+              style={{ flex: 1, fontSize: 12, fontFamily: 'Arial, sans-serif', padding: '4px 8px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', borderRadius: 2, outline: 'none' }}
             />
           </div>
         )}

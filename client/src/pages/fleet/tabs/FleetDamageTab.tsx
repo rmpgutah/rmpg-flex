@@ -3,6 +3,7 @@ import { AlertTriangle, Plus } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import { useToast } from '../../../components/ToastProvider';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
@@ -42,6 +43,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DamageReport | null>(null);
   const {
     form,
     setForm,
@@ -121,7 +123,6 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   };
 
   const handleDelete = async (r: DamageReport) => {
-    if (!window.confirm(`Delete this ${r.severity} ${r.damage_type} report?`)) return;
     try { await apiFetch(`/fleet/damage/${r.id}`, { method: 'DELETE' }); addToast('Damage report deleted', 'success'); load(); }
     catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete report', 'error'); }
   };
@@ -204,7 +205,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
             </div>
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>
-              <button type="button" onClick={() => handleDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
+              <button type="button" onClick={() => setPendingDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
               <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{toDisplayLabel(r.repair_status || '')}</span>
               {r.repair_status !== 'completed' && (
                 <select id="ff-fleetdamagetab-5" value={r.repair_status} onChange={e => updateRepairStatus(r.id, e.target.value)} className="input-field text-[9px] py-0.5 px-1">
@@ -217,6 +218,19 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
           </div>
         </div>
       ))}
+      <ConfirmDialog
+        isOpen={pendingDelete != null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const r = pendingDelete;
+          setPendingDelete(null);
+          if (r) void handleDelete(r);
+        }}
+        title="Delete damage report"
+        message={pendingDelete ? `Delete this ${pendingDelete.severity} ${pendingDelete.damage_type} report?` : ''}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

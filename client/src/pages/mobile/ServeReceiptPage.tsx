@@ -28,6 +28,7 @@ import {
 } from '../../utils/serveReceiptVariant';
 import { formatPhoneInput } from '../../utils/formatters';
 import { collectDeviceCapture, type DeviceCapture } from '../../utils/deviceCapture';
+import { openPdfDocument } from '../../utils/openPdfDocument';
 
 // Step components
 import WizardShell from './steps/WizardShell';
@@ -466,7 +467,7 @@ export default function ServeReceiptPage() {
 
   const downloadPdf = useCallback(async (receiptId: number) => {
     const doc = await generateReceiptOfService({ ...buildPdfData(receiptId), copy: 'subject' });
-    doc.save(`acknowledgement-of-service-${ctx?.job.case_number || receiptId}.pdf`);
+    openPdfDocument(doc, `acknowledgement-of-service-${ctx?.job.case_number || receiptId}.pdf`);
   }, [buildPdfData, ctx]);
 
   const printPdf = useCallback(async (receiptId: number) => {

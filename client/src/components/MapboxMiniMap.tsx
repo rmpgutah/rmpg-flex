@@ -63,7 +63,7 @@ export function buildCallMarkerEl(label: string, priority?: string): HTMLElement
   tag.style.cssText = `
     background:${color};color:${CALL_MARKER_INK};font-size:7px;font-weight:900;
     padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
-    white-space:nowrap;font-family:'JetBrains Mono',monospace;
+    white-space:nowrap;font-family:'Arial, sans-serif';
     letter-spacing:0.03em;border-radius:1px;
     box-shadow:0 0 8px ${withAlpha(color, '50')};
   `;
@@ -110,7 +110,7 @@ function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
   tag.style.cssText = `
     background:var(--surface-overlay);color:${color};font-size:8px;font-weight:900;
     padding:1px 5px;border:1.2px solid ${color};
-    white-space:nowrap;font-family:'JetBrains Mono',monospace;
+    white-space:nowrap;font-family:'Arial, sans-serif';
     border-radius:1px;
   `;
   tag.textContent = callSign;

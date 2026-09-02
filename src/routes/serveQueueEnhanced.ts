@@ -1039,14 +1039,21 @@ sqe.post('/optimize-route', async (c) => {
       departAt?: string;
       origin?: { lat: number; lng: number } | null;
       circular?: boolean;
+      officer_id?: number;
     }>();
     const departAt = body.departAt ?? new Date().toISOString();
     const mapboxToken = resolveMapboxDirectionsToken(c.env);
+
+    // Look up the officer's fleet vehicle MPG (falls back to fleet-wide average).
+    const { lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
+    const avgMpg = await lookupOfficerFleetMpg(db, body.officer_id);
+
     const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken, {
       origin: body.origin ?? null,
       circular: body.circular === true,
+      avgMpg,
     });
-    return c.json(result);
+    return c.json({ ...result, avg_mpg: avgMpg });
   } catch (err) {
     logger.error('[serve-queue] optimize-route error', {}, err as Error);
     logErrorToDb(c.env.DB, {
@@ -1126,8 +1133,9 @@ sqe.post('/route/traffic-check', async (c) => {
       currentOrder: number[];
       currentPosition: { lat: number; lng: number };
       originalEtas: string[];
+      officer_id?: number;
     }>();
-    const { remainingStops, currentOrder, currentPosition, originalEtas } = body;
+    const { remainingStops, currentOrder, currentPosition, originalEtas, officer_id } = body;
 
     if (!remainingStops?.length) {
       return c.json<import('../utils/serveRouteOptimizer').TrafficCheckResult>({
@@ -1140,8 +1148,11 @@ sqe.post('/route/traffic-check', async (c) => {
       });
     }
 
-    const { checkTrafficDegradation, resolveMapboxDirectionsToken } = await import('../utils/serveRouteOptimizer');
+    const { checkTrafficDegradation, resolveMapboxDirectionsToken, lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
     const db = getDb(c.env);
+
+    const avgMpg = await lookupOfficerFleetMpg(db, officer_id);
+
     const result = await checkTrafficDegradation(
       remainingStops,
       currentOrder,
@@ -1149,6 +1160,7 @@ sqe.post('/route/traffic-check', async (c) => {
       originalEtas,
       db,
       resolveMapboxDirectionsToken(c.env),
+      avgMpg ? { avgMpg } : undefined,
     );
     return c.json(result);
   } catch (err) {

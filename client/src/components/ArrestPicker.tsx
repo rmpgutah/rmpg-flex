@@ -184,7 +184,7 @@ export default function ArrestPicker({
                 {...optionProps(i, selected)}
                 className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-surface-deep' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid var(--field-label-color)' : '2px solid transparent' }}>
-                <Gavel className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--field-label-color)' : '#666' }} />
+                <Gavel className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--field-label-color)' : 'var(--text-muted)' }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono font-semibold text-[color:var(--field-label-color)]">{formatLabel(a)}</div>
                   {sub && <div className="text-[10px] text-rmpg-400 mt-0.5 truncate">{sub}</div>}

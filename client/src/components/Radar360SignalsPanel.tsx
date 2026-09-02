@@ -388,7 +388,7 @@ function SignalRingDisplay({ signals, radiusMi }: { signals: SignalDetection[]; 
           <g key={frac}>
             <circle cx={cx} cy={cy} r={r}
               fill="none" stroke="var(--surface-raised)" strokeWidth={frac === 1 ? 0.8 : 0.5} opacity={0.7} />
-            <text x={cx + 3} y={cy - r + 7} fontSize={5} fontFamily="monospace"
+            <text x={cx + 3} y={cy - r + 7} fontSize={5} fontFamily="Arial, sans-serif"
               fill="var(--text-muted)" opacity={0.6}>{label}</text>
           </g>
         );
@@ -431,10 +431,10 @@ function SignalRingDisplay({ signals, radiusMi }: { signals: SignalDetection[]; 
               <line x1={cx} y1={cy} x2={x} y2={y}
                 stroke={cfg.color} strokeWidth={0.3} opacity={0.2} strokeDasharray="2,3" />
               {/* Device name label */}
-              <text x={x} y={y - 7} textAnchor="middle" fontSize={4.5} fontFamily="monospace"
+              <text x={x} y={y - 7} textAnchor="middle" fontSize={4.5} fontFamily="Arial, sans-serif"
                 fill="var(--text-primary)" opacity={0.8}>{name}</text>
               {/* Distance label */}
-              <text x={x} y={y + 11} textAnchor="middle" fontSize={4.5} fontFamily="monospace"
+              <text x={x} y={y + 11} textAnchor="middle" fontSize={4.5} fontFamily="Arial, sans-serif"
                 fill={prox.color} fontWeight="bold">{fmtDist(sig.distance_estimate_m)}</text>
             </g>
           );

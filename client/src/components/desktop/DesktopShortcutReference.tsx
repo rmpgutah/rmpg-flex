@@ -179,7 +179,7 @@ function ShortcutRow({ shortcut, showCategory }: { shortcut: Shortcut; showCateg
       <kbd
         style={{
           fontSize: 9,
-          fontFamily: 'monospace',
+          fontFamily: 'Arial, sans-serif',
           color: 'var(--text-primary)',
           background: 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.6)',
           border: '1px solid var(--border-subtle)',

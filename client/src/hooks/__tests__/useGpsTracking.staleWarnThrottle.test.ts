@@ -94,7 +94,7 @@ describe('useGpsTracking — stale-warning throttle under intermittent GPS', () 
     unmount();
   });
 
-  it('still reports every staleness event — at debug level', async () => {
+  it('does not debug-spam between throttled warnings', async () => {
     const { unmount } = renderHook(() => useGpsTracking());
     await flushMicrotasks();
 
@@ -103,9 +103,10 @@ describe('useGpsTracking — stale-warning throttle under intermittent GPS', () 
       await act(async () => { vi.advanceTimersByTime(60 * 1000); });
     }
 
-    // Suppression must mean "quieter", never "invisible" — the diagnostic is
-    // still there for anyone reading debug output.
-    expect(staleWarns(warnSpy) + staleWarns(debugSpy)).toBeGreaterThan(staleWarns(warnSpy));
+    // Chrome surfaces console.debug in the default console filter on many
+    // officer tablets, so "throttled to debug" still flooded the log.
+    expect(staleWarns(debugSpy)).toBe(0);
+    expect(staleWarns(warnSpy)).toBeLessThanOrEqual(4);
     unmount();
   });
 

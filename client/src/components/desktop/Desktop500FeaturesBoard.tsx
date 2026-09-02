@@ -60,7 +60,7 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
       style={{
         position: 'fixed', inset: 0, zIndex: 100000,
         background: 'rgba(5, 10, 20, 0.92)', backdropFilter: 'blur(16px)',
-        display: 'flex', flexDirection: 'column', color: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif',
+        display: 'flex', flexDirection: 'column', color: '#f8fafc', fontFamily: 'Arial, sans-serif',
       }}
     >
       {/* Header */}
@@ -165,7 +165,7 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
                     <label style={{ fontSize: 9, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <input type="checkbox" defaultChecked style={{ accentColor: '#38bdf8' }} /> Enforce Policy
                     </label>
-                    <span style={{ fontSize: 9, color: '#cbd5e1', fontFamily: 'monospace' }}>5ms OK</span>
+                    <span style={{ fontSize: 9, color: '#cbd5e1', fontFamily: 'Arial, sans-serif' }}>5ms OK</span>
                   </div>
                 </div>
               );
@@ -174,7 +174,7 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
 
           {/* Execution Log */}
           {executionLog.length > 0 && (
-            <div style={{ marginTop: 24, padding: 16, background: '#000', border: '1px solid #1e293b', fontFamily: 'monospace', fontSize: 10, color: '#10b981' }}>
+            <div style={{ marginTop: 24, padding: 16, background: '#000', border: '1px solid #1e293b', fontFamily: 'Arial, sans-serif', fontSize: 10, color: '#10b981' }}>
               <div style={{ fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>DIAGNOSTIC EXECUTION SNAPSHOT</div>
               {executionLog.map((log, i) => (
                 <div key={i}>{log}</div>

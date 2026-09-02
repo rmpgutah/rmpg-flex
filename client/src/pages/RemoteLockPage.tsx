@@ -254,6 +254,7 @@ export default function RemoteLockPage() {
           <input
             type="text"
             placeholder="Search by officer, badge, unit…"
+            aria-label="Search by officer, badge, or unit"
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 24, paddingRight: 8, paddingTop: 5, paddingBottom: 5, fontSize: 10, background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', outline: 'none' }}

@@ -451,6 +451,7 @@ export default function AlarmTrackingPage() {
               <input
                 type="text"
                 placeholder="Search permits…"
+                aria-label="Search alarm permits"
                 value={permitSearch}
                 onChange={e => setPermitSearch(e.target.value)}
                 className="w-full pl-7 pr-2 py-1.5 text-[11px] bg-surface-raised border border-border-default text-gray-200 placeholder-gray-600 focus:border-accent-silver-600/50 focus:outline-none"

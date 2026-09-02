@@ -97,6 +97,12 @@ export default function FocusTimerPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [cycles, duration, phase]);
 
+  useEffect(() => {
+    const label = `${formatMmSs(remaining)} · ${PHASE_LABELS[phase]}`;
+    document.title = running ? `${label} — Focus Timer` : 'RMPG Flex';
+    return () => { document.title = 'RMPG Flex'; };
+  }, [remaining, running, phase]);
+
   const pct = progressPct(remaining, duration);
   const radius = 60;
   const circ = 2 * Math.PI * radius;

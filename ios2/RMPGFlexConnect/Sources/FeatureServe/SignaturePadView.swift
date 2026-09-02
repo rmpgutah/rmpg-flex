@@ -1,5 +1,5 @@
 import SwiftUI
-import DesignSystem
+
 
 /// Finger-drawn signature capture for proof-of-service. Renders to a PNG and
 /// returns raw base64 (no `data:image/png;base64,` prefix) — that's the shape

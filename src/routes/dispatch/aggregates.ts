@@ -65,6 +65,9 @@ aggregates.get('/', async (c) => {
     return c.json({
       calls: { ...totals, today: todayCalls?.count ?? 0 },
       units: unitStats,
+      clocked_in: (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM time_entries WHERE clock_out IS NULL`).catch(() => ({ n: 0 })))?.n ?? 0,
+      duty_miles_today: (await queryFirst<{ m: number | null }>(db, `SELECT COALESCE(SUM(total_miles), 0) AS m FROM time_entries WHERE date(clock_in) = ${denverNowDateExpr()} OR date(clock_in_local) = ${denverNowDateExpr()}`).catch(() => ({ m: 0 })))?.m ?? 0,
+      serve_attempts_today: (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM serve_attempts WHERE date(attempt_at) = ${denverNowDateExpr()}`).catch(() => ({ n: 0 })))?.n ?? 0,
     });
   } catch (err) {
     log.error('GET / failed', { src: 'src/routes/dispatch/aggregates.ts' }, err);

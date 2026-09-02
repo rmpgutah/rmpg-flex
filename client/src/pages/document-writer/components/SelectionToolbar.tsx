@@ -1,9 +1,11 @@
 import type { Editor } from '@tiptap/core';
+import { useState } from 'react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import {
   Bold, Italic, Underline as UnderlineIcon, Highlighter, Link2, MessageSquarePlus,
   CaseUpper, Eraser,
 } from 'lucide-react';
+import PromptDialog from '../../../components/PromptDialog';
 
 /** A floating "bubble" toolbar that appears directly above a non-empty text
  *  selection with the most common quick actions (bold / italic / underline /
@@ -16,17 +18,18 @@ export default function SelectionToolbar({
   /** Called when the user clicks the comment button (page wires the comment flow). */
   onComment: () => void;
 }) {
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkDefault, setLinkDefault] = useState('https://');
+
   const btn = (active: boolean) =>
     `p-1 rounded-[2px] transition-colors ${
       active ? 'bg-accent-silver-500/25 text-accent-silver-300' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
     }`;
 
   const setLink = () => {
-    const prev = editor.getAttributes('link')?.href as string | undefined;
-    const url = window.prompt('Link URL:', prev || 'https://');
-    if (url === null) return;
-    if (url.trim() === '') { editor.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
+    const prev = (editor.getAttributes('link')?.href as string | undefined) || '';
+    setLinkDefault(prev || 'https://');
+    setLinkOpen(true);
   };
 
   const uppercaseSel = () => {
@@ -37,6 +40,7 @@ export default function SelectionToolbar({
   };
 
   return (
+    <>
     <BubbleMenu
       editor={editor}
       options={{ placement: 'top', offset: 8 }}
@@ -62,5 +66,22 @@ export default function SelectionToolbar({
           onClick={() => editor.chain().focus().unsetAllMarks().run()}><Eraser className="w-3.5 h-3.5" /></button>
       </div>
     </BubbleMenu>
+      <PromptDialog
+        isOpen={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        onSubmit={(url) => {
+          if (url.trim() === '') editor.chain().focus().extendMarkRange('link').unsetLink().run();
+          else editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
+          setLinkOpen(false);
+        }}
+        title="Link URL"
+        message="Enter a URL, or leave blank to remove the link from this selection."
+        label="URL"
+        defaultValue={linkDefault}
+        allowEmpty
+        confirmLabel="Apply"
+        placeholder="https://"
+      />
+    </>
   );
 }

@@ -1,6 +1,6 @@
 import SwiftUI
-import CoreIDScan
-import DesignSystem
+
+
 
 /// Full-scale detail view for a single recent scan — every AAMVA/MRZ field
 /// the parser extracted, plus the "advanced data" (raw barcode/MRZ text and

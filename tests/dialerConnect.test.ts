@@ -16,6 +16,7 @@ import {
   DIALER_FUNCTIONS,
   VOICEMAIL_FUNCTIONS,
   CALL_HISTORY_FUNCTIONS,
+  isAllowedRecordingSourceUrl,
 } from '../src/utils/dialerConnect';
 
 describe('Dial Connect function catalogs', () => {
@@ -100,5 +101,16 @@ describe('formatDuration / tags / csv / hmac compare', () => {
     expect(timingSafeEqual('abc', 'abc')).toBe(true);
     expect(timingSafeEqual('abc', 'abd')).toBe(false);
     expect(timingSafeEqual('ab', 'abc')).toBe(false);
+  });
+});
+
+describe('isAllowedRecordingSourceUrl', () => {
+  it('allows Dial Connect and Twilio HTTPS hosts only', () => {
+    expect(isAllowedRecordingSourceUrl('https://dialer.rmpgutah.us/rec/3.mp3')).toBe(true);
+    expect(isAllowedRecordingSourceUrl('https://api.twilio.com/2010-04-01/Accounts/ACxx/Recordings/RE123')).toBe(true);
+    expect(isAllowedRecordingSourceUrl('https://recordings.twilio.com/x')).toBe(true);
+    expect(isAllowedRecordingSourceUrl('https://evil.example/steal')).toBe(false);
+    expect(isAllowedRecordingSourceUrl('http://dialer.rmpgutah.us/rec/3.mp3')).toBe(false);
+    expect(isAllowedRecordingSourceUrl('not-a-url')).toBe(false);
   });
 });

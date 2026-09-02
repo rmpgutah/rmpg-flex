@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../src/utils/warrantNationalSearch';
 
 describe('US_STATES', () => {
@@ -13,6 +13,7 @@ describe('US_STATES', () => {
 });
 
 describe('matchesDobOrAge', () => {
+  afterEach(() => vi.useRealTimers());
   it('returns true when no query dob was provided (name-only fallback)', () => {
     expect(matchesDobOrAge(null, { dob: null, age: null })).toBe(true);
     expect(matchesDobOrAge(null, { dob: '1990-01-01', age: null })).toBe(true);
@@ -27,15 +28,15 @@ describe('matchesDobOrAge', () => {
   });
 
   it('returns true when the record has only age and it falls within +/-1 year of the query dob\'s computed age', () => {
-    // Query dob of exactly 30 years before "now" — computeAge uses real Date.now(),
-    // so this test computes the expected age itself rather than hardcoding one.
-    const dob = new Date();
-    dob.setFullYear(dob.getFullYear() - 30);
-    const dobStr = dob.toISOString().slice(0, 10);
+    // Pin "now" to 2026-07-18T12:00:00Z so ageFromDob is deterministic.
+    vi.useFakeTimers({ now: new Date('2026-07-18T12:00:00Z').getTime() });
+    // Query dob of exactly 30 years before "now" (2026-07-18 → 1996-07-18).
+    const dobStr = '1996-07-18';
     expect(matchesDobOrAge(dobStr, { dob: null, age: 30 })).toBe(true);
     expect(matchesDobOrAge(dobStr, { dob: null, age: 29 })).toBe(true);
     expect(matchesDobOrAge(dobStr, { dob: null, age: 31 })).toBe(true);
     expect(matchesDobOrAge(dobStr, { dob: null, age: 25 })).toBe(false);
+    vi.useRealTimers();
   });
 
   it('returns false when the record has neither dob nor age but the query supplied a dob', () => {

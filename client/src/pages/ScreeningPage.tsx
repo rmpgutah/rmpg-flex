@@ -153,7 +153,7 @@ export function ScreeningWorkspace() {
     <div className="space-y-4">
       <div className="flex gap-2 text-[11px]">
         {(['search', 'review', 'watchlist', 'sources'] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
+          <button type="button" key={t} onClick={() => setTab(t)}
             className={`px-3 py-1 border border-border-default ${tab === t ? 'bg-surface-sunken text-brand-400' : 'text-rmpg-400'}`}>
             {t.toUpperCase()}
           </button>
@@ -164,7 +164,7 @@ export function ScreeningWorkspace() {
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {/* Manual-entry combobox: pick a registry OR type one (incl. "All sources"). */}
-            <input list="screening-source-list" placeholder="Registry (or type — e.g. All sources)" value={sourceText}
+            <input list="screening-source-list" placeholder="Registry (or type — e.g. All sources)" aria-label="Screening registry" value={sourceText}
               onChange={(e) => setSourceText(e.target.value)} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px] min-w-[16rem]" />
             <datalist id="screening-source-list">
               <option value="All sources" />
@@ -173,6 +173,7 @@ export function ScreeningWorkspace() {
             <input
               ref={nameInputRef}
               placeholder="Surname"
+              aria-label="Surname"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') search(); }}
@@ -180,7 +181,7 @@ export function ScreeningWorkspace() {
             />
             <input placeholder="Forename" value={forename} onChange={(e) => setForename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]" />
             <input placeholder="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px]" />
-            <button onClick={search} className="px-3 py-1 border border-brand-500 text-brand-400 text-[11px]">SEARCH</button>
+            <button type="button" onClick={search} className="px-3 py-1 border border-brand-500 text-brand-400 text-[11px]">SEARCH</button>
           </div>
           {sourceError && <div className="text-red-400 text-[11px]">{sourceError}</div>}
           {sourcesLoadError && (
@@ -273,8 +274,8 @@ export function ScreeningWorkspace() {
                     <td className="text-right">
                       {canReview ? (
                         <>
-                          <button onClick={() => setPendingReview({ id: h.id, action: 'confirm', name: h.display_name })} className="px-2 py-[2px] border border-brand-500 text-brand-400 mr-1">CONFIRM</button>
-                          <button onClick={() => setPendingReview({ id: h.id, action: 'dismiss', name: h.display_name })} className="px-2 py-[2px] border border-border-default text-rmpg-400">DISMISS</button>
+                          <button type="button" onClick={() => setPendingReview({ id: h.id, action: 'confirm', name: h.display_name })} className="px-2 py-[2px] border border-brand-500 text-brand-400 mr-1">CONFIRM</button>
+                          <button type="button" onClick={() => setPendingReview({ id: h.id, action: 'dismiss', name: h.display_name })} className="px-2 py-[2px] border border-border-default text-rmpg-400">DISMISS</button>
                         </>
                       ) : <span className="text-rmpg-500">—</span>}
                     </td>
@@ -436,7 +437,7 @@ function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: 
         {canManage && (
           <div className="flex items-center gap-3">
             {sorMsg && <span className={`text-[9px] ${sorMsgIsError ? 'text-red-400' : 'text-brand-400'}`}>{sorMsg}</span>}
-            <button onClick={runSorImport} disabled={busy === '__sor__'}
+            <button type="button" onClick={runSorImport} disabled={busy === '__sor__'}
               className="px-2 py-[1px] border border-brand-500 text-brand-400 hover:bg-surface-sunken disabled:opacity-50">
               {busy === '__sor__' ? '…' : 'Run SOR import'}
             </button>
@@ -480,11 +481,11 @@ function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: 
                             className="w-16 bg-surface-sunken border border-border-default px-1 text-[11px]"
                             autoFocus
                           />
-                          <button onClick={() => submitInterval(s.sourceKey)} className="text-brand-400 hover:underline text-[9px]">save</button>
-                          <button onClick={() => setEditingInterval(null)} className="text-rmpg-500 hover:underline text-[9px]">cancel</button>
+                          <button type="button" onClick={() => submitInterval(s.sourceKey)} className="text-brand-400 hover:underline text-[9px]">save</button>
+                          <button type="button" onClick={() => setEditingInterval(null)} className="text-rmpg-500 hover:underline text-[9px]">cancel</button>
                         </span>
                       ) : (
-                        <button onClick={() => setEditingInterval({ key: s.sourceKey, value: String(interval) })} disabled={busy === s.sourceKey}
+                        <button type="button" onClick={() => setEditingInterval({ key: s.sourceKey, value: String(interval) })} disabled={busy === s.sourceKey}
                           className="text-brand-400 hover:underline disabled:opacity-50" title="Change re-scan cadence">
                           {interval}d
                         </button>
@@ -496,7 +497,7 @@ function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: 
                   <td>{String(st?.items_count ?? '—')}</td>
                   {canManage && (
                     <td className="text-right">
-                      <button onClick={() => setPendingScrape({ key: s.sourceKey, label: s.label })} disabled={busy === s.sourceKey}
+                      <button type="button" onClick={() => setPendingScrape({ key: s.sourceKey, label: s.label })} disabled={busy === s.sourceKey}
                         className="px-2 py-[1px] border border-border-default text-brand-400 hover:bg-surface-sunken disabled:opacity-50">
                         {busy === s.sourceKey ? '…' : 'Scrape now'}
                       </button>
