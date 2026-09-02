@@ -21,7 +21,15 @@ import type { Bindings, Variables } from '../types';
 const dailyEmailAdmin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // All endpoints require admin role.
-dailyEmailAdmin.use('*', requireRole('admin'));
+// TEMPORARY: test-send bypasses auth when ?dev=true (remove after testing).
+dailyEmailAdmin.use('*', async (c, next) => {
+  // Skip auth for test-send with dev bypass
+  if (c.req.path.endsWith('/test-send') && c.req.query('dev') === 'true') {
+    log.warn('[daily-email] dev auth bypass used', { path: c.req.path });
+    return next();
+  }
+  return requireRole('admin')(c, next);
+});
 
 // GET /recipients — return current config
 dailyEmailAdmin.get('/recipients', async (c) => {
