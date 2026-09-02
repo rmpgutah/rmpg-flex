@@ -9,8 +9,51 @@
 
 import type { DailyReportData } from '../dailyReport/types';
 import type { ExtendedActivity } from './collectExtended';
+import { toDenverWallClock } from '../denverTime';
 
 // ── Helpers ───────────────────────────────────────────────
+
+/** Parse a D1 UTC timestamp to Mountain Time display. */
+function fmtTime(s: string | null | undefined): string {
+  if (!s) return '—';
+  // Date-only pass through
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Parse UTC
+  let raw: string;
+  if (/[Zz]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s.slice(-6))) {
+    raw = s;
+  } else if (/^\d{4}-\d{2}-\d{2} /.test(s)) {
+    raw = s.replace(' ', 'T') + 'Z';
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    raw = s + 'Z';
+  } else {
+    return s;
+  }
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return s;
+  const wall = toDenverWallClock(d);
+  return `${wall.slice(0, 10)} ${wall.slice(11, 16)}`;
+}
+
+/** Format unit_call_signs — treat empty/[]/null as '—'. */
+function fmtUnits(s: string | null | undefined): string {
+  if (!s) return '—';
+  const trimmed = s.trim();
+  if (trimmed === '' || trimmed === '[]' || trimmed === 'null' || trimmed === 'undefined') return '—';
+  // Clean up JSON array format: ["U1","U2"] → U1, U2
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.filter((v: unknown) => v != null && String(v).trim() !== '').join(', ') || '—';
+      }
+      return '—';
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -157,12 +200,12 @@ export function renderDailyEmailHtml(
         ${blotter.operations.calls.map((c) => `
         <tr>
           <td style="padding:3px 8px;font-size:12px;color:#374151;white-space:nowrap;vertical-align:top;">
-            ${esc(c.received_at ?? '—')}
+            ${esc(fmtTime(c.received_at))}
           </td>
           <td style="padding:3px 8px;font-size:12px;color:#111827;">
             ${esc(c.call_number ?? '—')} &mdash; ${esc(c.incident_type ?? '—')} (P${esc(String(c.priority ?? '—'))})<br/>
             <span style="color:#6b7280;font-size:11px;">
-              ${esc(c.location_address ?? '—')} | ${esc(c.unit_call_signs ?? '—')} | ${esc(c.responding_officer ?? '—')} | ${esc(c.disposition ?? c.status ?? '—')}
+              ${esc(c.location_address ?? '—')} | ${esc(fmtUnits(c.unit_call_signs))} | ${esc(c.responding_officer ?? '—')} | ${esc(c.disposition ?? c.status ?? '—')}
             </span>
           </td>
         </tr>`).join('')}
