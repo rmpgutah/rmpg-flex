@@ -2403,8 +2403,6 @@ export default function EmailPage() {
       }
       setFullMessage({ ...msg, bodyHtml: resolvedHtml });
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
-      try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
-      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 

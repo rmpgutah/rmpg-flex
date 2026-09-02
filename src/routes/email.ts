@@ -600,10 +600,21 @@ function rewriteCidImages(html: string, messageId: string, attachments: Array<{ 
 email.get('/folders', async (c) => {
   const userId = c.get('userId');
   try {
-    const res = await graphFetch(c.env, userId, '/me/mailFolders?$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount&$top=50');
-    if (!res.ok) return c.json([]);
-    const data = await res.json() as { value?: unknown[] };
-    return c.json(data.value || []);
+    const allFolders: unknown[] = [];
+    let url: string | null = '/me/mailFolders?$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount&$top=100';
+    // Paginate to collect ALL top-level folders (Graph caps at $top=100 per page)
+    while (url) {
+      const res = await graphFetch(c.env, userId, url);
+      if (!res.ok) break;
+      const data = await res.json() as { value?: unknown[]; '@odata.nextLink'?: string };
+      if (data.value) allFolders.push(...data.value);
+      url = data['@odata.nextLink'] ?? null;
+      // Safety: strip the full Graph base URL so graphFetch re-prefixes it
+      if (url && url.startsWith('https://')) {
+        try { url = new URL(url).pathname + new URL(url).search; } catch { url = null; }
+      }
+    }
+    return c.json(allFolders);
   } catch {
     return c.json([]);
   }
