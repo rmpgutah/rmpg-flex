@@ -82,19 +82,19 @@ export default function DesktopShiftPerfWidget() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>Calls Handled</span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}>
               {stats.total}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>Active Now</span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: stats.active > 0 ? 'var(--sev-warn)' : 'var(--text-primary)', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: stats.active > 0 ? 'var(--sev-warn)' : 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}>
               {stats.active}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>Avg Response</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}>
               {stats.avgResponseMin !== null ? `${stats.avgResponseMin}m` : '—'}
             </span>
           </div>

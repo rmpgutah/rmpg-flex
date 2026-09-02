@@ -20,7 +20,7 @@ const CHART_TOOLTIP_STYLE = {
     border: '1px solid var(--border-default)',
     color: 'var(--text-primary)',
     fontSize: 10,
-    fontFamily: 'Consolas, monospace',
+    fontFamily: 'Arial, sans-serif',
     borderRadius: 2,
   },
 };

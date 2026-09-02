@@ -119,7 +119,7 @@ function chartTooltipStyle() {
       borderRadius: '2px',
       color: 'var(--text-primary)',
       fontSize: '11px',
-      fontFamily: 'monospace',
+      fontFamily: 'Arial, sans-serif',
       boxShadow: '0 4px 12px rgb(0 0 0 / 0.4)',
     },
     cursor: { fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 12%, transparent)` },
@@ -1583,7 +1583,7 @@ export default function ReportsPage() {
                         <LabelList
                           dataKey="value"
                           position="right"
-                          style={{ fill: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}
+                          style={{ fill: 'var(--text-secondary)', fontSize: 10, fontFamily: 'Arial, sans-serif' }}
                         />
                       </Bar>
                     </BarChart>
@@ -1644,7 +1644,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'Arial, sans-serif' }} />
                   <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
@@ -1672,7 +1672,7 @@ export default function ReportsPage() {
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
                   <Tooltip {...chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'Arial, sans-serif' }} />
                   <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -1732,7 +1732,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'Arial, sans-serif' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
                       <Cell key={i} fill={chartPriorityColor(item.priority)} />

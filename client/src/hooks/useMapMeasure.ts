@@ -194,7 +194,7 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
         : res.distanceFormatted;
       popupRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'mapbox-popup-dark' })
         .setLngLat(pt)
-        .setHTML(`<div style="background:#141414;color:#3b82f6;padding:4px 8px;font-size:11px;font-family:ui-monospace,monospace;border:1px solid #222;border-radius:2px;">${label}</div>`)
+        .setHTML(`<div style="background:#141414;color:#3b82f6;padding:4px 8px;font-size:11px;font-family:'Arial, sans-serif';border:1px solid #222;border-radius:2px;">${label}</div>`)
         .addTo(map);
     };
 

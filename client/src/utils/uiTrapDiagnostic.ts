@@ -330,7 +330,7 @@ function showRecoveryToast(actions: string[], headline = 'UI diagnostic captured
       borderRadius: '2px',
       padding: '8px 16px',
       fontSize: '13px',
-      fontFamily: 'monospace',
+      fontFamily: 'Arial, sans-serif',
       pointerEvents: 'none',
       whiteSpace: 'nowrap',
       boxShadow: '0 2px 8px rgba(0 0 0 / 0.8)',

@@ -62,7 +62,7 @@ const DARK_THEME_STYLES = `
   .vis-timeline {
     background: #0a0a0a !important;
     border-color: #222 !important;
-    font-family: system-ui, -apple-system, sans-serif !important;
+    font-family: Arial, sans-serif !important;
   }
   .vis-item {
     background: #1a1a1a !important;

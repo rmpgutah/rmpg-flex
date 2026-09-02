@@ -30,7 +30,7 @@ const keycapStyle: CSSProperties = {
   display: 'inline-block', padding: '0 4px', minWidth: 8, borderRadius: 2,
   border: '1px solid var(--border-default)', borderBottomWidth: 2, background: 'var(--border-default)',
   color: 'var(--text-secondary)', fontSize: 8.5, fontWeight: 700, lineHeight: '13px',
-  fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap',
+  fontFamily: 'Arial, sans-serif', whiteSpace: 'nowrap',
 };
 
 export default function PttController() {
@@ -206,7 +206,7 @@ export default function PttController() {
         background: bg, border: `1px solid ${border}`,
         borderRadius: 2, userSelect: 'none',
         boxShadow: '0 2px 8px rgba(0 0 0 / 0.5)',
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: 'Arial, sans-serif',
         animation: voice.transmitting ? 'rmpg-ptt-pulse 1s ease-in-out infinite' : undefined,
       }}
     >

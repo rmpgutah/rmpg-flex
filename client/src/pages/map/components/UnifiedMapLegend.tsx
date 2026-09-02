@@ -153,7 +153,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   return (
     <div
       className="absolute z-40 backdrop-blur-md"
-      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid var(--border-subtle)', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid var(--border-subtle)', borderRadius: 2, fontFamily: "'Arial','sans-serif'" }}
     >
       <button
         type="button"

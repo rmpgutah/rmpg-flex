@@ -149,7 +149,7 @@ export function monitorTileLoading(
         right: 8px;
         background: rgba(212, 160, 23, 0.85);
         color: #0a0a0a;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Arial, sans-serif';
         font-size: 10px;
         font-weight: 600;
         padding: 3px 10px;

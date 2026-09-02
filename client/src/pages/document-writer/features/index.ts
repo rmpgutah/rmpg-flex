@@ -57,7 +57,7 @@ export function redactSelection(editor: EditorRef) {
   const text = editor.state.doc.textBetween(from, to);
   const block = `█`.repeat(Math.max(3, Math.min(60, text.length)));
   editor.chain().focus().deleteRange({ from, to }).insertContent(
-    `<span style="background:#000;color:#000;font-family:monospace;border-radius:2px;padding:0 2px;" title="[REDACTED]">${block}</span>`,
+    `<span style="background:#000;color:#000;font-family:'Arial, sans-serif';border-radius:2px;padding:0 2px;" title="[REDACTED]">${block}</span>`,
   ).run();
 }
 
@@ -79,7 +79,7 @@ export function insertBates(editor: EditorRef, prefix = 'RMPG') {
   const cur = Number(localStorage.getItem(BATES_KEY) || '1');
   localStorage.setItem(BATES_KEY, String(cur + 1));
   const stamp = `${prefix}-${String(cur).padStart(6, '0')}`;
-  insertHtml(editor, `<span style="font-family:monospace;font-size:9px;color:#888;border:1px solid #888;padding:1px 4px;">${stamp}</span>`);
+  insertHtml(editor, `<span style="font-family:'Arial, sans-serif';font-size:9px;color:#888;border:1px solid #888;padding:1px 4px;">${stamp}</span>`);
 }
 export function resetBates() { localStorage.setItem(BATES_KEY, '1'); }
 export function currentBates(): number { return Number(localStorage.getItem(BATES_KEY) || '1'); }

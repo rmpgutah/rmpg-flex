@@ -190,7 +190,7 @@ export default function DesktopEmergencyAccessModal({ isOpen, onClose, onEmergen
             <div style={{ fontSize: 9, color: '#64748b', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Terminal style={{ width: 10, height: 10 }} /> Audit Log Snapshot
             </div>
-            <div style={{ background: '#000', padding: 8, fontSize: 9, fontFamily: 'monospace', color: '#10b981', height: 48, overflowY: 'auto', border: '1px solid #1e293b' }}>
+            <div style={{ background: '#000', padding: 8, fontSize: 9, fontFamily: 'Arial, sans-serif', color: '#10b981', height: 48, overflowY: 'auto', border: '1px solid #1e293b' }}>
               {auditLog.map((log, i) => (
                 <div key={i}>{log}</div>
               ))}

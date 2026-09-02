@@ -81,7 +81,7 @@ export default function DesktopBodyCamWidget() {
         borderRadius: 2,
         padding: '6px 8px',
         minWidth: 160,
-        fontFamily: 'inherit',
+        fontFamily: 'Arial, sans-serif',
       }}
     >
       {/* Widget label */}

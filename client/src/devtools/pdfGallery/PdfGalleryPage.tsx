@@ -15,7 +15,7 @@ const styles = {
     height: '100vh',
     background: '#111318',
     color: '#e6e8ef',
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'Arial, sans-serif',
   },
   sidebar: {
     width: 280,
@@ -68,7 +68,7 @@ const styles = {
     padding: 16,
     borderRadius: 4,
     whiteSpace: 'pre-wrap' as const,
-    fontFamily: 'monospace',
+    fontFamily: 'Arial, sans-serif',
     fontSize: 12,
     marginBottom: 16,
   },

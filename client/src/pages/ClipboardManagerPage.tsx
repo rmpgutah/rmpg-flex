@@ -63,43 +63,19 @@ export default function ClipboardManagerPage() {
         <div className="text-[10px] font-semibold tracking-widest text-[color:var(--field-label-color)]">CLIPBOARD HISTORY</div>
         <span className="ml-auto text-[9px] text-fg-muted font-mono">{history.length} saved · {pins.length} pinned</span>
       </div>
-
-      <div className="flex gap-2 items-center">
-        <div className="relative flex-1">
-          <Search className="w-3 h-3 absolute left-2 top-2 text-fg-muted" />
-          <input
-            id="clip-search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search history…  (/ to focus)"
-            aria-label="Search clipboard history"
-            className="w-full pl-7 pr-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-[2px] text-[11px] text-rmpg-100"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => downloadTextFile('clipboard-history.csv', clipsToCsv(history, pins))}
-          className="toolbar-btn text-[9px] flex items-center gap-1"
-          title="Export CSV"
-        >
-          <Download className="w-3 h-3" /> CSV
-        </button>
-        <button
-          type="button"
-          onClick={() => { setHistory(saveClipHistory([])); }}
-          className="toolbar-btn text-[9px]"
-          title="Clear unpinned"
-        >
-          Clear
-        </button>
-      </div>
-
-      <div className="flex gap-1 flex-wrap">
-        <button type="button" onClick={() => setKindFilter('all')} className={`text-[8px] px-2 py-0.5 border rounded-[2px] ${kindFilter === 'all' ? 'border-brand-400 text-brand-400' : 'border-border-subtle text-fg-muted'}`}>ALL</button>
-        {kinds.map((k) => (
-          <button key={k} type="button" onClick={() => setKindFilter(k)} className={`text-[8px] px-2 py-0.5 border rounded-[2px] ${kindFilter === k ? 'border-brand-400 text-brand-400' : 'border-border-subtle text-fg-muted'}`}>
-            {clipKindLabel(k)}
-          </button>
+      {clipboardHistory.length === 0 && (
+        <div style={{ fontSize: 9, color: 'var(--text-secondary)' }}>No clipboard entries yet</div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {clipboardHistory.map((entry, i) => (
+          <div key={i} style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, wordBreak: 'break-all', fontFamily: 'Arial, sans-serif' }}>
+              {entry.slice(0, 200)}{entry.length > 200 ? '…' : ''}
+            </div>
+            <button type="button" onClick={() => copyEntry(entry)} title="Copy" style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+              <Copy className="w-3 h-3" style={{ color: 'var(--brand-400)' }} />
+            </button>
+          </div>
         ))}
       </div>
 

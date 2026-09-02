@@ -42,8 +42,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Calibri', 'Arial', 'Helvetica', 'sans-serif'],
-        mono: ['Consolas', 'Courier New', 'monospace'],
+        sans: ['Arial', 'Helvetica', 'sans-serif'],
+        mono: ['Arial', 'monospace'],
       },
       fontSize: {
         'micro':   ['9px',  { lineHeight: '12px', letterSpacing: '0.04em' }],

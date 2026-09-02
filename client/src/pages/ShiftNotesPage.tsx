@@ -304,7 +304,7 @@ export default function ShiftNotesPage() {
             padding: '8px 10px',
             resize: 'vertical',
             outline: 'none',
-            fontFamily: 'inherit',
+            fontFamily: 'Arial, sans-serif',
             lineHeight: 1.5,
           }}
         />

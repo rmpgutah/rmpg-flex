@@ -472,7 +472,7 @@ function escapeForHtml(s: string): string {
 
 function makeInfoHtml(item: PlanItem): string {
   const typeLabel = PLAN_TYPE_LABELS[item.type] || item.type;
-  let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
+  let html = `<div style="font-family:'Arial, sans-serif';color:#d4d4d4;font-size:11px;min-width:140px;">`;
   html += `<div style="font-weight:bold;font-size:12px;color:#fff;margin-bottom:4px;border-bottom:1px solid ${item.color};padding-bottom:3px;">${escapeForHtml(item.label)}</div>`;
   html += `<div style="color:${item.color};font-size:9px;text-transform:uppercase;margin-bottom:4px;">${typeLabel}</div>`;
   if (item.text) {

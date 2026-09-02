@@ -127,7 +127,7 @@ export default function DispatcherTranscript() {
                     padding: '3px 8px',
                     borderBottom: '1px solid var(--border-subtle)',
                     fontSize: 11,
-                    fontFamily: 'monospace',
+                    fontFamily: 'Arial, sans-serif',
                   }}
                 >
                   <span style={{ color: SEV_COLOR[e.severity], textShadow: `0 0 4px ${SEV_COLOR[e.severity]}` }}>●</span>

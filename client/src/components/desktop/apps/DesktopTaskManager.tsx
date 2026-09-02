@@ -165,7 +165,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                 }).map(w => (
                   <tr key={w.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
                     <td style={{ padding: '4px 8px', color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title}</td>
-                    <td style={{ padding: '4px 8px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 10 }}>{w.path}</td>
+                    <td style={{ padding: '4px 8px', color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{w.path}</td>
                     <td style={{ padding: '4px 8px', color: 'var(--text-muted)' }}>{elapsed(w.id)}</td>
                     <td style={{ padding: '4px 8px' }}>
                       <button
@@ -268,7 +268,7 @@ function SystemTab() {
             {rows.map(([k, v]) => (
               <tr key={k} style={{ borderBottom: '1px solid var(--border-default)' }}>
                 <td style={{ padding: '4px 8px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', width: 140, fontWeight: 700 }}>{k}</td>
-                <td style={{ padding: '4px 8px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: 10 }}>{v}</td>
+                <td style={{ padding: '4px 8px', color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{v}</td>
               </tr>
             ))}
           </tbody>

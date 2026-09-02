@@ -345,7 +345,7 @@ export function insertPullQuote(editor: Editor, body: string): void {
 export function insertCodeBlock(editor: Editor): void { editor.chain().focus().toggleCodeBlock().run(); }
 export function insertInlineCode(editor: Editor): void { editor.chain().focus().toggleCode().run(); }
 export function insertKeyboardShortcut(editor: Editor, keys: string): void {
-  editor.chain().focus().insertContent(`<kbd style="font-family:monospace;background:#222;border:1px solid #444;border-radius:3px;padding:1px 5px;">${esc(keys)}</kbd>`).run();
+  editor.chain().focus().insertContent(`<kbd style="font-family:'Arial, sans-serif';background:#222;border:1px solid #444;border-radius:3px;padding:1px 5px;">${esc(keys)}</kbd>`).run();
 }
 export function insertDropCap(editor: Editor): void {
   // Wraps the first character of the current paragraph in a drop-cap span.
@@ -578,7 +578,7 @@ export function insertLawEnforcementOnlyBanner(editor: Editor): void {
 }
 export function insertCaseNumberHeader(editor: Editor, caseNum: string): void {
   editor.chain().focus().insertContentAt(0,
-    `<p data-case-header="1" style="text-align:right;font-family:monospace;color:#d4a017">Case No. ${esc(caseNum)}</p>`,
+    `<p data-case-header="1" style="text-align:right;font-family:'Arial, sans-serif';color:#d4a017">Case No. ${esc(caseNum)}</p>`,
   ).run();
 }
 export function insertSuspectDescriptionTable(editor: Editor): void {
@@ -869,12 +869,12 @@ export function setMargins(top: number, right: number, bottom: number, left: num
 // ── Misc productivity ──
 export function insertCallsign(editor: Editor, callsign: string): void {
   editor.chain().focus().insertContent(
-    `<span data-callsign="${esc(callsign)}" style="font-family:monospace;background:#222;color:#d4a017;padding:1px 4px;border-radius:2px;">${esc(callsign)}</span>`,
+    `<span data-callsign="${esc(callsign)}" style="font-family:'Arial, sans-serif';background:#222;color:#d4a017;padding:1px 4px;border-radius:2px;">${esc(callsign)}</span>`,
   ).run();
 }
 export function insertTenCode(editor: Editor, code: string, label: string): void {
   editor.chain().focus().insertContent(
-    `<abbr title="${esc(label)}" style="text-decoration:none;color:#d4a017;font-family:monospace">${esc(code)}</abbr>`,
+    `<abbr title="${esc(label)}" style="text-decoration:none;color:#d4a017;font-family:'Arial, sans-serif'">${esc(code)}</abbr>`,
   ).run();
 }
 export function insertPhoneticAlphabet(editor: Editor, letters: string): void {
@@ -888,7 +888,7 @@ export function insertPhoneticAlphabet(editor: Editor, letters: string): void {
 }
 export function insertGpsCoordinates(editor: Editor, lat: number, lng: number): void {
   editor.chain().focus().insertContent(
-    `<span data-gps="${lat},${lng}" style="font-family:monospace">${lat.toFixed(6)}°, ${lng.toFixed(6)}°</span>`,
+    `<span data-gps="${lat},${lng}" style="font-family:'Arial, sans-serif'">${lat.toFixed(6)}°, ${lng.toFixed(6)}°</span>`,
   ).run();
 }
 export function insertMapLink(editor: Editor, lat: number, lng: number, label?: string): void {

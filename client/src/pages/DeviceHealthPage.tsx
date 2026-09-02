@@ -286,7 +286,7 @@ export default function DeviceHealthPage() {
         background: 'var(--surface-base)',
         color: 'var(--text-primary)',
         padding: 16,
-        fontFamily: 'inherit',
+        fontFamily: 'Arial, sans-serif',
         boxSizing: 'border-box',
       }}
     >
@@ -610,7 +610,7 @@ export default function DeviceHealthPage() {
                     {networks.map((n, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                         <td style={{ padding: '3px 4px 3px 0', color: 'var(--text-primary)', fontSize: 10 }}>{n.name}</td>
-                        <td style={{ padding: '3px 4px', color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}>{n.address}</td>
+                        <td style={{ padding: '3px 4px', color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{n.address}</td>
                         <td style={{ padding: '3px 0 3px 4px', color: 'var(--text-secondary)', fontSize: 10 }}>{n.type}</td>
                       </tr>
                     ))}

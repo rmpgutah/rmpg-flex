@@ -218,14 +218,7 @@ export default function DesktopWarrantSearch({ onClose: _onClose }: Props) {
                     <td style={{ ...td, color: 'var(--text-secondary)' }}>
                       {expanded === w.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
-                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 10 }}>
-                      {w.warrant_number ?? `#${w.id}`}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); void copyToClipboard(w.warrant_number ?? String(w.id)); }}
-                        style={{ marginLeft: 6, fontSize: 9, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-                      >Copy</button>
-                    </td>
+                    <td style={{ ...td, fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{w.warrant_number ?? `#${w.id}`}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{warrantName(w)}</td>
                     <td style={td}>{w.date_of_birth ?? '—'}</td>
                     <td style={{ ...td, textTransform: 'capitalize' }}>{warrantType(w)}</td>

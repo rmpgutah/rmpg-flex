@@ -176,7 +176,7 @@ function buildServeClusterMarkerElement(cluster: { count: number; dominantPriori
     width:28px;height:28px;border-radius:50%;
     background:${color};border:2px solid rgba(255,255,255,0.85);
     display:flex;align-items:center;justify-content:center;
-    font-family:monospace;font-weight:700;font-size:11px;color:#fff;
+    font-family:'Arial, sans-serif';font-weight:700;font-size:11px;color:#fff;
     cursor:pointer;
   `;
   el.textContent = String(cluster.count);
@@ -1951,8 +1951,8 @@ export default function ServePage() {
                 <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
                 <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(toDisplayLabel(job.status))} &middot; ${escapeHtml(toDisplayLabel(job.document_type || ''))}</div>
                 <div style="margin-top:8px;display:flex;gap:6px;">
-                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
-                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>
+                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">History</button>
+                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">Preview drive time</button>
                 </div>
               </div>
             `).addTo(mapRef.current!);

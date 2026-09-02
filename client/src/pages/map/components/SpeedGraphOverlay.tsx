@@ -144,7 +144,7 @@ export default function SpeedGraphOverlay({ unitId, callSign, hours, onClose }: 
           {gridLines.map((v) => (
             <g key={v}>
               <line x1={PAD_LEFT} y1={toY(v)} x2={PAD_LEFT + PLOT_W} y2={toY(v)} stroke="var(--border-default)" strokeWidth={0.5} strokeDasharray="3,3" />
-              <text x={PAD_LEFT + PLOT_W + 3} y={toY(v) + 3} fill="var(--text-muted)" fontSize={8} fontFamily="monospace">{v}</text>
+              <text x={PAD_LEFT + PLOT_W + 3} y={toY(v) + 3} fill="var(--text-muted)" fontSize={8} fontFamily="Arial, sans-serif">{v}</text>
             </g>
           ))}
 
@@ -152,9 +152,9 @@ export default function SpeedGraphOverlay({ unitId, callSign, hours, onClose }: 
 
           <circle cx={toX(points.length - 1)} cy={toY(currentSpeed)} r={3} fill={currentColor} stroke="var(--text-primary)" strokeWidth={1} />
 
-          <text x={PAD_LEFT} y={SVG_HEIGHT - 1} fill="var(--text-muted)" fontSize={8} fontFamily="monospace" textAnchor="start">{startTime}</text>
-          <text x={PAD_LEFT + PLOT_W} y={SVG_HEIGHT - 1} fill="var(--text-muted)" fontSize={8} fontFamily="monospace" textAnchor="end">{endTime}</text>
-          <text x={SVG_WIDTH - 2} y={PAD_TOP + 8} fill="var(--text-muted)" fontSize={8} fontFamily="monospace" textAnchor="end">max {Math.round(maxSpeed)}</text>
+          <text x={PAD_LEFT} y={SVG_HEIGHT - 1} fill="var(--text-muted)" fontSize={8} fontFamily="Arial, sans-serif" textAnchor="start">{startTime}</text>
+          <text x={PAD_LEFT + PLOT_W} y={SVG_HEIGHT - 1} fill="var(--text-muted)" fontSize={8} fontFamily="Arial, sans-serif" textAnchor="end">{endTime}</text>
+          <text x={SVG_WIDTH - 2} y={PAD_TOP + 8} fill="var(--text-muted)" fontSize={8} fontFamily="Arial, sans-serif" textAnchor="end">max {Math.round(maxSpeed)}</text>
         </svg>
       </div>
     </div>

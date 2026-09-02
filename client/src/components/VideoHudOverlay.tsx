@@ -58,7 +58,7 @@ function formatCoord(value: number, posDir: string, negDir: string): string {
 // ── Shared Styles ───────────────────────────────────────────
 
 const LINE_BASE: React.CSSProperties = {
-  fontFamily: 'Consolas, "Courier New", monospace',
+  fontFamily: 'Arial, sans-serif',
   background: 'rgba(0 0 0 / 0.65)',
   padding: '3px 8px',
   whiteSpace: 'nowrap',

@@ -119,7 +119,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
               textAlign: 'center',
               fontSize: 22,
               fontWeight: 700,
-              fontFamily: 'monospace',
+              fontFamily: 'Arial, sans-serif',
               background: 'var(--surface-overlay)',
               border: `2px solid ${error ? 'var(--sev-critical)' : digits[i]?.trim() ? 'var(--text-secondary)' : 'var(--border-subtle)'}`,
               borderRadius: 2,
@@ -159,7 +159,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
         </div>
         <span style={{
           fontSize: 10,
-          fontFamily: 'monospace',
+          fontFamily: 'Arial, sans-serif',
           fontWeight: 700,
           color: timerUrgent ? 'var(--sev-critical)' : 'var(--text-muted)',
           minWidth: 24,
