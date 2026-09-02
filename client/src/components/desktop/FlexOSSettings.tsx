@@ -93,22 +93,22 @@ export default function FlexOSSettings() {
   }
 
   const Section = ({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-        <Icon style={{ width: 14, height: 14, color: 'var(--accent-silver-400)' }} />
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400)' }}>{title}</span>
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Icon className="w-3.5 h-3.5 text-accent-silver-400" />
+          <span className="text-xs font-semibold uppercase tracking-widest text-accent-silver-400">{title}</span>
+        </div>
+        {children}
       </div>
-      {children}
-    </div>
   );
 
   const SelectRow = ({ label, value, options, onChange }: { label: string; value: number; options: { label: string; secs: number }[]; onChange: (s: number) => void }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))' }}>
-      <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</span>
+    <div className="flex items-center justify-between py-1 border-b border-border-subtle/10">
+      <span className="text-xs text-text-secondary">{label}</span>
       <select
         value={value}
         onChange={e => onChange(parseInt(e.target.value, 10))}
-        style={{ fontSize: 11, background: 'var(--surface-sunken)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', padding: '3px 8px' }}
+        className="text-xs bg-surface-sunken border border-border-subtle px-2 py-1 text-text-primary"
       >
         {options.map(o => <option key={o.secs} value={o.secs}>{o.label}</option>)}
       </select>
@@ -141,22 +141,13 @@ export default function FlexOSSettings() {
           {wsLabels.map((label, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Workspace {i + 1} (Ctrl+{i + 1})</span>
-              <input
-                type="text"
-                value={label}
-                maxLength={12}
-                onChange={e => handleLabelChange(i, e.target.value)}
-                style={{
-                  fontSize: 11,
-                  background: 'var(--surface-sunken)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-subtle)',
-                  padding: '4px 8px',
-                  fontWeight: 600,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                }}
-              />
+                <input
+                  type="text"
+                  value={label}
+                  maxLength={12}
+                  onChange={e => handleLabelChange(i, e.target.value)}
+                  className="text-sm bg-surface-sunken border border-border-subtle px-2 py-1 font-semibold tracking-widest uppercase"
+                />
             </div>
           ))}
         </div>
@@ -170,21 +161,10 @@ export default function FlexOSSettings() {
         <button
           type="button"
           onClick={() => setSubPage('about')}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            fontSize: 11,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'var(--surface-sunken)',
-            border: '1px solid var(--border-subtle)',
-            color: 'var(--text-primary)',
-            cursor: 'pointer',
-          }}
+          className="w-full p-2 text-sm flex items-center justify-between bg-surface-sunken border border-border-subtle text-text-primary cursor-pointer"
         >
           <span>About FlexOS</span>
-          <span style={{ color: 'var(--text-muted)' }}>→</span>
+          <span className="text-text-muted">→</span>
         </button>
       </Section>
     </div>

@@ -1527,8 +1527,8 @@ export default function ServeIntakePage() {
                 </div>
               ))}
             </div>
-            {/* Process type + Priority row */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            {/* Process type + Priority + Urgency Tier row */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
                 <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
                   Process Type
@@ -1563,6 +1563,20 @@ export default function ServeIntakePage() {
                   <option value="normal">Normal</option>
                   <option value="rush">Rush</option>
                   <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Urgency Tier</label>
+                <select
+                  id="ff-intake-override-urgency_tier"
+                  value={editOverrides['urgency_tier'] ?? ''}
+                  onChange={e => overrideField('urgency_tier', e.target.value)}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">Auto</option>
+                  <option value="standard">Standard</option>
+                  <option value="tight">Tight</option>
+                  <option value="critical">Critical</option>
                 </select>
               </div>
             </div>

@@ -68,6 +68,7 @@ import {
 import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
 import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
 import serveAttemptFiles from './serveAttemptFiles';
+import { applyUrgencyTier } from '../utils/serveDiligencePlanner';
 import {
   intakePatchFromPreview,
   parseServeParsedData,
@@ -216,6 +217,7 @@ const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attem
 // serve_queue.priority CHECK enum — coerce unknown values to 'normal' (a bad
 // value 500s the INSERT/UPDATE on the constraint).
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
+const URGENCY_TIERS = new Set(['critical', 'tight', 'standard']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -1463,10 +1465,13 @@ sv.put('/:id', async (c) => {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
-    // Don't overwrite a computed urgency_tier with an empty string — the
-    // frontend sends urgency_tier: '' as the "Auto" default on every save,
-    // which silently erases the tier the planner computed.
-    if (k === 'urgency_tier' && body[k] === '') continue;
+    if (k === 'urgency_tier') {
+      if (body[k] && URGENCY_TIERS.has(body[k])) {
+        sets.push('urgency_tier = ?');
+        args.push(body[k]);
+      }
+      continue;
+    }
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
     if (ATTORNEY_CONTACT_COLS.has(k) && !hasAttorneyContactCol) continue;

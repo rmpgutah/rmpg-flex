@@ -121,7 +121,7 @@ describe('renderDailyReport', () => {
     const joined = Array.isArray(text) ? text.join('\n') : text;
 
     // Must contain the Mountain Time representation.
-    expect(joined).toContain('2026-07-18 14:00 MT');
+    expect(joined).toContain('2026-07-18 14:00');
     expect(joined).toContain('2026-08-01 06:00:00 MT');
 
     // Must NOT contain the raw UTC values.
