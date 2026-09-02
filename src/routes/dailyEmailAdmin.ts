@@ -30,7 +30,7 @@ async function requireAdmin(c: any, next: any) {
 
 // GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
 // Sends the FULL daily report (HTML + PDF) bypassing the enabled check.
-// Query params: ?to=email (override recipient)
+// Query params: ?date=YYYY-MM-DD  ?to=email (override recipient)
 dailyEmailAdmin.get('/test-open', async (c) => {
   const resendApiKey = c.env.RESEND_API_KEY;
   if (!resendApiKey) {
@@ -40,7 +40,7 @@ dailyEmailAdmin.get('/test-open', async (c) => {
   try {
     const db = getDb(c.env);
     const toOverride = c.req.query('to');
-    const date = new Date().toISOString().slice(0, 10);
+    const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
     const { sendDailyEmails } = await import('../utils/dailyEmail/sendDailyEmails');
     const result = await sendDailyEmails(db, resendApiKey, date, {
       force: true,
