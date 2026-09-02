@@ -48,6 +48,25 @@ function fmtMtFull(iso: string): string {
   return `${wall.slice(0, 10)} ${wall.slice(11, 19)} MT`;
 }
 
+const ACRONYMS = new Set(['pspso','psos','cfs','utah','slc','id','pp','gp']);
+
+/** Convert snake_case to Title Case. */
+function toDisplayLabel(s: string | null | undefined): string {
+  if (!s) return '—';
+  return s
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(w => {
+      const lower = w.toLowerCase();
+      if (ACRONYMS.has(lower)) {
+        if (lower === 'pspso' || lower === 'psos') return 'PSO';
+        return lower.toUpperCase();
+      }
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
 /** Format unit_call_signs — treat empty/[]/null as '—'. */
 function fmtUnits(s: string | null | undefined): string {
   if (!s) return '—';
@@ -304,7 +323,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
       tableRow(cur, [
         fmtMt(c.received_at),
         c.call_number ?? '—',
-        c.incident_type ?? '—',
+        toDisplayLabel(c.incident_type),
         `P${c.priority ?? '—'}`,
         c.location_address ?? '—',
         fmtUnits(c.unit_call_signs),

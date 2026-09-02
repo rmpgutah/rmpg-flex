@@ -13,34 +13,48 @@ import { toDenverWallClock } from '../denverTime';
 
 // ── Helpers ───────────────────────────────────────────────
 
-/** Parse a D1 UTC timestamp to Mountain Time display. */
+const ACRONYMS = new Set(['pspso','psos','cfs','utah','slc','id','pp','gp','dna','dob','dl','atv','psp']);
+
+/** Convert snake_case to Title Case. e.g. "pso_client_request" → "PSO Client Request" */
+function toDisplayLabel(s: string | null | undefined): string {
+  if (!s) return '—';
+  return s
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(w => {
+      const lower = w.toLowerCase();
+      if (ACRONYMS.has(lower)) return lower.replace(/pspso/i,'PSO').replace(/psos/i,'PSO').replace(/cfs/i,'CFS').replace(/utah/i,'Utah').replace(/slc/i,'SLC').replace(/pp/i,'PP').replace(/gp/i,'GP');
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+/** Parse a D1 UTC timestamp to Mountain Time "HH:MM MT". */
 function fmtTime(s: string | null | undefined): string {
   if (!s) return '—';
-  // Date-only pass through
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // Parse UTC
   let raw: string;
-  if (/[Zz]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s.slice(-6))) {
+  if (/[Zz]$/.test(s)) {
     raw = s;
   } else if (/^\d{4}-\d{2}-\d{2} /.test(s)) {
     raw = s.replace(' ', 'T') + 'Z';
-  } else if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(s) && !/[+-]\d{2}:?\d{2}$/.test(s.slice(-6))) {
     raw = s + 'Z';
   } else {
-    return s;
+    raw = s;
   }
   const d = new Date(raw);
-  if (isNaN(d.getTime())) return s;
+  if (isNaN(d.getTime())) return '—';
   const wall = toDenverWallClock(d);
-  return `${wall.slice(0, 10)} ${wall.slice(11, 16)}`;
+  if (!wall) return '—';
+  return wall.slice(11, 16) + ' MT';
 }
 
-/** Format unit_call_signs — treat empty/[]/null as '—'. */
+/** Format unit_call_signs — clean empty/[]/null → '—'. */
 function fmtUnits(s: string | null | undefined): string {
   if (!s) return '—';
   const trimmed = s.trim();
-  if (trimmed === '' || trimmed === '[]' || trimmed === 'null' || trimmed === 'undefined') return '—';
-  // Clean up JSON array format: ["U1","U2"] → U1, U2
+  if (!trimmed || trimmed === '[]' || trimmed === 'null' || trimmed === 'undefined') return '—';
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
     try {
       const arr = JSON.parse(trimmed);
@@ -48,9 +62,7 @@ function fmtUnits(s: string | null | undefined): string {
         return arr.filter((v: unknown) => v != null && String(v).trim() !== '').join(', ') || '—';
       }
       return '—';
-    } catch {
-      return trimmed;
-    }
+    } catch { return trimmed; }
   }
   return trimmed;
 }
@@ -203,7 +215,7 @@ export function renderDailyEmailHtml(
             ${esc(fmtTime(c.received_at))}
           </td>
           <td style="padding:3px 8px;font-size:12px;color:#111827;">
-            ${esc(c.call_number ?? '—')} &mdash; ${esc(c.incident_type ?? '—')} (P${esc(String(c.priority ?? '—'))})<br/>
+            ${esc(c.call_number ?? '—')} &mdash; ${esc(toDisplayLabel(c.incident_type))} (P${esc(String(c.priority ?? '—'))})<br/>
             <span style="color:#6b7280;font-size:11px;">
               ${esc(c.location_address ?? '—')} | ${esc(fmtUnits(c.unit_call_signs))} | ${esc(c.responding_officer ?? '—')} | ${esc(c.disposition ?? c.status ?? '—')}
             </span>
