@@ -234,7 +234,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     x: MARGIN_L, y: cur.y, size: 18,
     font: bold, color: rgb(0.08, 0.08, 0.08),
   });
-  cur.y -= 22;
+  cur.y -= 24;
 
   // Subtitle
   cur.page.drawText('DAILY ACTIVITY BLOTTER', {
@@ -252,7 +252,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     x: PAGE_W - MARGIN_R - 200, y: cur.y, size: 9,
     font, color: rgb(0.3, 0.3, 0.3),
   });
-  cur.y -= 10;
+  cur.y -= 12;
 
   // Thick separator
   cur.page.drawLine({
@@ -261,7 +261,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
     thickness: 1.5,
     color: rgb(0.15, 0.15, 0.15),
   });
-  cur.y -= 6;
+  cur.y -= 14;
 
   // ── Summary counters ─────────────────────────────────────
   const totalCalls = data.operations.calls.length;
