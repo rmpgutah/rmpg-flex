@@ -78,6 +78,55 @@ dailyEmailAdmin.put('/recipients', async (c) => {
   }
 });
 
+// GET /test-send — send a test email (browser-friendly, bypasses WAF POST challenge)
+// Query params: ?date=YYYY-MM-DD (send real report for that date)
+//               ?to=email (override recipient)
+//               ?dev=true (bypass auth — TEMPORARY)
+dailyEmailAdmin.get('/test-send', async (c) => {
+  const resendApiKey = c.env.RESEND_API_KEY;
+  if (!resendApiKey) {
+    return c.json({ ok: false, error: 'RESEND_API_KEY not configured' }, 503);
+  }
+
+  try {
+    const db = getDb(c.env);
+    const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
+    const toOverride = c.req.query('to');
+
+    // If date is provided, send the actual daily report
+    if (c.req.query('date')) {
+      const { sendDailyEmails } = await import('../utils/dailyEmail/sendDailyEmails');
+      const result = await sendDailyEmails(db, resendApiKey, date);
+      return c.json({ ok: !result.skipped, ...result });
+    }
+
+    // Otherwise send a simple test email
+    const config = await getConfig(db);
+    const recipients = toOverride ? [toOverride] : config.recipients;
+    if (recipients.length === 0) {
+      return c.json({ ok: false, error: 'No recipients configured' }, 400);
+    }
+    const result = await sendViaResend(resendApiKey, {
+      from: 'RMPG Flex <noreply@rmpgutah.us>',
+      to: recipients[0],
+      subject: `[TEST] RMPG Daily Activity Report — ${date}`,
+      html: `<html><body>
+        <h2>Test Email</h2>
+        <p>This is a test of the daily email report system.</p>
+        <p>If you received this, Resend is configured correctly.</p>
+        <p style="color:#6b7280;font-size:12px;">Sent at ${new Date().toISOString()}</p>
+      </body></html>`,
+    });
+
+    return c.json({ ok: true, status: result.status, id: result.id });
+  } catch (err) {
+    log.error('GET /admin/daily-email/test-send failed', {
+      src: 'routes/dailyEmailAdmin.ts',
+    }, err instanceof Error ? err.message : String(err));
+    return c.json({ ok: false, error: 'Send failed' }, 500);
+  }
+});
+
 // POST /test-send — send a test email
 // Query params: ?date=YYYY-MM-DD (send real report for that date)
 //               ?to=email (override recipient)
