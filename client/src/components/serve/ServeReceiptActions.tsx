@@ -745,25 +745,22 @@ export default function ServeReceiptActions({
                   Print {VARIANT_LABEL[variant]} form
                 </button>
 
-                <details className="mt-2">
-                  <summary className="text-[10px] text-fg-muted cursor-pointer">Print a different variation</summary>
-                  <div className="mt-1.5 space-y-1.5">
-                    {(['individual', 'co_habitant', 'business', 'substitute'] as ReceiptVariant[])
-                      .filter((v) => v !== variant)
-                      .map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => printDoc(buildBlank(v), `acknowledgement-${v}-${job.case_number || job.id}.pdf`, v)}
-                          disabled={printing !== null}
-                          className="w-full flex items-center gap-2 p-2 rounded-[2px] border border-rmpg-700 bg-surface-sunken text-[11px] text-rmpg-200 disabled:opacity-50"
-                        >
-                          {printing === v ? <Loader2 className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />}
-                          {VARIANT_LABEL[v]}
-                        </button>
-                      ))}
-                  </div>
-                </details>
+                <div className="mt-2 space-y-1.5">
+                  {(['individual', 'co_habitant', 'business', 'substitute'] as ReceiptVariant[])
+                    .filter((v) => v !== variant)
+                    .map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => printDoc(buildBlank(v), `acknowledgement-${v}-${job.case_number || job.id}.pdf`, v)}
+                        disabled={printing !== null}
+                        className="w-full flex items-center gap-2 p-2 rounded-[2px] border border-rmpg-700 bg-surface-sunken text-[11px] text-rmpg-200 disabled:opacity-50"
+                      >
+                        {printing === v ? <Loader2 className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />}
+                        {VARIANT_LABEL[v]}
+                      </button>
+                    ))}
+                </div>
               </section>
 
               {/* ── Paper form completed by hand ──

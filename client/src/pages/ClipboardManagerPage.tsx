@@ -63,11 +63,11 @@ export default function ClipboardManagerPage() {
         <div className="text-[10px] font-semibold tracking-widest text-[color:var(--field-label-color)]">CLIPBOARD HISTORY</div>
         <span className="ml-auto text-[9px] text-fg-muted font-mono">{history.length} saved · {pins.length} pinned</span>
       </div>
-      {clipboardHistory.length === 0 && (
+      {history.length === 0 && (
         <div style={{ fontSize: 9, color: 'var(--text-secondary)' }}>No clipboard entries yet</div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {clipboardHistory.map((entry, i) => (
+        {history.map((entry: string, i: number) => (
           <div key={i} style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <div style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, wordBreak: 'break-all', fontFamily: 'Arial, sans-serif' }}>
               {entry.slice(0, 200)}{entry.length > 200 ? '…' : ''}

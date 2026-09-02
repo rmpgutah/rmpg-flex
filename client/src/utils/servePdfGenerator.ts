@@ -2397,7 +2397,7 @@ function drawDeclaration(
   }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return ly + (blank ? 0.2 : SPACING.SM);
+  return ly + (blank ? 1.2 : SPACING.SM);
 }
 
 /** Barcode form key, so a scanned instrument reports its variation. */
@@ -2465,7 +2465,7 @@ function measureDeclarations(
   const lineH = FONT.SIZE_FIELD_VALUE * 0.42;
   return attestations.reduce((n, a) => {
     const lines = doc.splitTextToSize(sanitizePdfText(a.text), width - (blank ? 10 : 6)) as string[];
-    return n + lines.length * lineH + (blank ? 0.2 : SPACING.SM)
+    return n + lines.length * lineH + (blank ? 1.2 : SPACING.SM)
       + (blank || a.accepted ? 0 : lineH);
   }, 0);
 }
@@ -2867,14 +2867,14 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // clearance measured from that point.
   const declH = (a: ReceiptAttestationLine) =>
     (doc.splitTextToSize(sanitizePdfText(a.text), ffw - (blank ? 10 : 6)) as string[]).length * declLineH
-    + (blank ? 0.2 : SPACING.SM) + (blank || a.accepted ? 0 : declLineH);
+    + (blank ? 1.2 : SPACING.SM) + (blank || a.accepted ? 0 : declLineH);
 
   let declBlockH = SPACING.SECTION_HEADER_H + proseLeadIn() + declLineH + SPACING.LG;
   for (const a of data.attestations) {
     const lines = doc.splitTextToSize(sanitizePdfText(a.text), ffw - 6) as string[];
     // `blank` forces every statement to render un-annotated, so the
     // declined line must NOT be budgeted for — see drawDeclaration.
-    declBlockH += lines.length * declLineH + (blank ? 0.2 : SPACING.SM)
+    declBlockH += lines.length * declLineH + (blank ? 1.2 : SPACING.SM)
       + (blank || a.accepted ? 0 : declLineH);
   }
   const footnoteH = isIndividual ? 0 : 3 * (FONT.SIZE_SMALL_META * 0.42) + SPACING.LG;

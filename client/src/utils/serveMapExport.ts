@@ -6,6 +6,7 @@ import {
 import { LAYOUT, COLOR, FONT } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { localToday } from './dateUtils';
+import { openPdfDocument } from './openPdfDocument';
 
 export interface QueueMapItemForExport {
   id: number;
@@ -206,7 +207,7 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     doc.setTextColor(130, 140, 150);
     doc.text('No jobs match the current filter.', lx, y + 8);
     drawFooter(1);
-    doc.save(`serve-route-sheet-${dateStr}.pdf`);
+    openPdfDocument(doc, `serve-route-sheet-${dateStr}.pdf`);
     return;
   }
 
@@ -241,5 +242,5 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
   }
 
   drawFooter(estimatedPages);
-  doc.save(`serve-route-sheet-${dateStr}.pdf`);
+  openPdfDocument(doc, `serve-route-sheet-${dateStr}.pdf`);
 }

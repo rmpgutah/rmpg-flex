@@ -3511,85 +3511,20 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Signatures — full-width stacked (one on top of the other)
   y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
 
-  // PSO Client Request: QR code for mobile quick-login.
-  // Renders into the COMPANY SEAL slot on the last content page (the
-  // signature block's right cell) so it doesn't push to a new sheet.
-  // Sized at 12mm so it tucks into the bottom-right corner of the
-  // seal slot with the "SCAN FOR MOBILE PSO" caption fitting alongside
-  // — pre-fix the 18mm QR was overflowing the slot and visually
-  // crowding the date/time row (caught 2026-05-04).
-  // Mobile-PSO QR badge is gated OFF until the mobile-PSO backend subsystem
-  // (POST /api/cfs/:id/qr-token + the /api/mobile/cfs/* challenge/auth/status/
-  // narrative/pso routes from legacy mobileCfs.ts) is LIVE in the Worker
-  // (src/routes/mobileCfs.ts). The Worker can't rasterize a QR, so the endpoint
-  // returns { token, url } and we render the PNG here with the bundled qrcode lib.
-  const MOBILE_PSO_QR_ENABLED: boolean = true;
-  // Also fires for any serve-queue-linked call (isProcessServiceCall +
-  // serve_queue_id), not just pso_client_request — the CallPdfData
-  // interface's own comment on `serve_queue_id` ("enables QR code on
-  // printout for mobile status update") documents this as intended, but
-  // the field was never actually read anywhere in this generator
-  // (2026-07-13 fix). Caption reflects which flow the QR leads to.
-  const showMobileQr = data.incident_type === 'pso_client_request' || (isProcessServiceCall && !!data.serve_queue_id);
-  if (MOBILE_PSO_QR_ENABLED && showMobileQr && data.id) {
-    try {
-      const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('rmpg_token') || ''}`,
-        },
-      });
-      if (resp.ok) {
-        const { url } = await resp.json();
-        const qr_png_base64 = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
-        // Last page, for the same reason as the recipient badge below:
-        // a multi-page call report would otherwise strand this badge on
-        // whatever page happened to be current.
-        doc.setPage(doc.getNumberOfPages());
-        const pageW = doc.internal.pageSize.getWidth();
-        const pageH = doc.internal.pageSize.getHeight();
-        const qrSize = 12; // mm — compact corner badge
-        // Anchored to the absolute bottom-right corner of the page,
-        // NOT the signature block's seal slot (which it was previously
-        // sharing and visually overlapping — caught 2026-05-04). Sits
-        // in the empty band between the signature block and the
-        // bottom-strip PDF417 barcode + footer text. The seal slot
-        // stays clean for an agency seal stamp; the QR gets a
-        // stationary, predictable corner location regardless of what
-        // content sits above it.
-        //
-        // Vertical: bottom of QR sits at pageH-23 — 3mm above the top
-        // of the bottom-strip PDF417 barcode (which lives at y∈
-        // [pageH-20, pageH-12]). Horizontal: 1mm in from the page
-        // right margin so it visually mirrors the barcode at left.
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1;
-        const qrY = pageH - 23 - qrSize;
-        doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(4.5);
-        doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        const qrCaption = data.incident_type === 'pso_client_request' ? 'SCAN FOR MOBILE PSO' : 'SCAN FOR SERVICE STATUS';
-        doc.text(qrCaption, qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
-      }
-    } catch { /* non-fatal — PDF still prints without QR */ }
-  }
-
   // ── Recipient Receipt of Service QR ────────────────────────
-  // A SECOND, different-audience badge. The QR above is the OFFICER's
-  // (multi-scan, opens the mobile PSO status surface); this one is the
-  // RECIPIENT's — the officer shows it at the door and the person being
-  // served scans it on their own phone to sign the Receipt of Service
-  // and, for substitute service, the Court Document Release.
+  // The QR the officer shows at the door. The person being served scans
+  // it on their own phone to sign the Acknowledgement of Service and,
+  // for substitute service, the Court Document Release.
   //
   // Its token is single-use and burned on signature, which is why it
   // cannot share the /api/cfs/:id/qr-token credential above: an officer
   // scanning the status QR would otherwise consume the recipient's.
   //
-  // Placed to the LEFT of the officer QR with its own caption so the two
-  // are never confused at a doorstep. Non-fatal on failure — a run sheet
-  // that prints without this badge is still a valid run sheet, and the
-  // officer can fall back to the in-app attempt modal.
+  // Placed in the bottom-right corner of the last page so it's the
+  // first thing the recipient sees when the officer flips to the back.
+  // Non-fatal on failure — a run sheet that prints without this badge
+  // is still a valid run sheet, and the officer can fall back to the
+  // in-app attempt modal.
   if (isProcessServiceCall && data.serve_queue_id) {
     try {
       const resp = await fetch(`/api/serve-receipts/${data.serve_queue_id}/token`, {
@@ -3602,7 +3537,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       });
       if (resp.ok) {
         const { url } = await resp.json();
-        const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
+        const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'H', margin: 1, scale: 8 });
         // Pin to the LAST page explicitly. jsPDF draws on whatever page
         // is current, and by this point the report may have spilled —
         // the badge would then sit mid-document where nobody looks for
@@ -3611,15 +3546,19 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setPage(doc.getNumberOfPages());
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
-        const qrSize = 12;
-        // 4mm gap left of the officer QR, same baseline.
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1 - qrSize - 4;
+        const qrSize = 28; // Large, scannable — same size as mobile "HAVE THEM SCAN"
+        // Anchored to the absolute bottom-right corner of the page.
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1;
         const qrY = pageH - 23 - qrSize;
         doc.addImage(png, 'PNG', qrX, qrY, qrSize, qrSize);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(4.5);
+        doc.setFontSize(5);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        doc.text('HAVE THEM SCAN', qrX + qrSize / 2, qrY - 3, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(4);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text('RECIPIENT: SCAN TO SIGN', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
+        doc.text('Scan to sign on their phone.', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
       }
     } catch { /* non-fatal — PDF still prints without the receipt QR */ }
   }

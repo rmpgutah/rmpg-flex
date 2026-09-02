@@ -144,8 +144,8 @@ export default function DesktopNotepad({ onClose }: DesktopNotepadProps) {
 
       {/* Text area */}
       <textarea
-        value={text}
-        onChange={e => setText(e.target.value)}
+        value={active.body}
+        onChange={e => patchActive({ body: e.target.value })}
         placeholder="Start typing your note…"
         style={{
           flex: 1,
