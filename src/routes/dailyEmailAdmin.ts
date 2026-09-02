@@ -20,20 +20,61 @@ import type { Bindings, Variables } from '../types';
 
 const dailyEmailAdmin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Auth: all endpoints require admin role EXCEPT test-send with ?dev=true (temp bypass for testing).
+// Auth: all endpoints require admin role EXCEPT /test-open (temp bypass for testing).
 dailyEmailAdmin.use('*', async (c, next) => {
-  // TEMPORARY dev bypass for test-send only
-  if (c.req.path.endsWith('/test-send') && c.req.query('dev') === 'true') {
+  // TEMPORARY: /test-open is fully public (no auth at all)
+  if (c.req.path === '/test-open') {
     log.warn('[daily-email] dev auth bypass used', { path: c.req.path });
     return next();
   }
-  // Standard auth: verify JWT then check admin role
+  // Standard auth for all other requests
   await authMiddleware(c, async () => {});
-  const user = c.get('user') as { role: string } | undefined;
-  if (!user || user.role !== 'admin') {
-    return c.json({ error: 'Admin role required' }, 403);
+  return requireRole('admin')(c, next);
+});
+
+// GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
+// Query params: ?date=YYYY-MM-DD (send real report)  ?to=email (override recipient)
+dailyEmailAdmin.get('/test-open', async (c) => {
+  const resendApiKey = c.env.RESEND_API_KEY;
+  if (!resendApiKey) {
+    return c.json({ ok: false, error: 'RESEND_API_KEY not configured' }, 503);
   }
-  return next();
+
+  try {
+    const db = getDb(c.env);
+    const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
+    const toOverride = c.req.query('to');
+
+    if (c.req.query('date')) {
+      const { sendDailyEmails } = await import('../utils/dailyEmail/sendDailyEmails');
+      const result = await sendDailyEmails(db, resendApiKey, date);
+      return c.json({ ok: !result.skipped, ...result });
+    }
+
+    const config = await getConfig(db);
+    const recipients = toOverride ? [toOverride] : config.recipients;
+    if (recipients.length === 0) {
+      return c.json({ ok: false, error: 'No recipients configured' }, 400);
+    }
+    const result = await sendViaResend(resendApiKey, {
+      from: 'RMPG Flex <noreply@rmpgutah.us>',
+      to: recipients[0],
+      subject: `[TEST] RMPG Daily Activity Report — ${date}`,
+      html: `<html><body>
+        <h2>Test Email</h2>
+        <p>This is a test of the daily email report system.</p>
+        <p>If you received this, Resend is configured correctly.</p>
+        <p style="color:#6b7280;font-size:12px;">Sent at ${new Date().toISOString()}</p>
+      </body></html>`,
+    });
+
+    return c.json({ ok: true, status: result.status, id: result.id });
+  } catch (err) {
+    log.error('GET /admin/daily-email/test-open failed', {
+      src: 'routes/dailyEmailAdmin.ts',
+    }, err instanceof Error ? err.message : String(err));
+    return c.json({ ok: false, error: 'Send failed' }, 500);
+  }
 });
 
 // GET /recipients — return current config
