@@ -1374,7 +1374,7 @@ export default function ServePage() {
 
   const handleFormChange = useCallback((field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-  }, []);
+  }, [setFormData]);
 
   useEffect(() => {
     if (!createJobOpen) { setOpsPreview(null); return; }
