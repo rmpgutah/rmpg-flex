@@ -134,6 +134,9 @@ import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
 import deepResearch from './routes/deepResearch';
+import deepsearch from './routes/deepsearch';
+import gofps from './routes/gofps';
+import gosearch from './routes/gosearch';
 import crisisResponse from './routes/crisisResponse';
 import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
@@ -497,6 +500,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/crm', router: crm, auth: 'required',
     note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
   { prefix: '/api/deep-research', router: deepResearch, auth: 'required' },
+  { prefix: '/api/deepsearch', router: deepsearch, auth: 'required',
+    note: 'DeepSearch OSINT search powered by Gemini 2.5 Flash with osint_cache backing' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
@@ -523,6 +528,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
   { prefix: '/api/geofences', router: geofences, auth: 'required',
     note: 'Geofence zone CRUD — writes to geofence_zones. All authenticated roles.' },
+  { prefix: '/api/gofps', router: gofps, auth: 'required',
+    note: 'GoFPS FastPeopleSearch people search with osint_cache backing' },
+  { prefix: '/api/gosearch', router: gosearch, auth: 'required',
+    note: 'GoSearch username OSINT (300+ platforms) + breach DB checks with osint_cache backing' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',

@@ -97,6 +97,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/colorado-doc': () => import('../pages/ColoradoDocPage'),
   '/iped': () => import('../pages/IpedPage'),
   '/recon-connect': () => import('../pages/ReconConnectPage'),
+  '/osint': () => import('../pages/osint/OsintPortalPage'),
   '/jail': () => import('../pages/JailPage'),
   '/affairs': () => import('../pages/AffairsPage'),
   '/assets': () => import('../pages/AssetsPage'),

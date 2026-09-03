@@ -625,6 +625,7 @@ export default function MenuBar({
           { type: 'action', path: '/reports/custom', label: 'Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
           { type: 'action', path: '/connections', label: 'Connections', icon: Network, action: () => navigate('/connections') },
           { type: 'action', path: '/forensic-lab', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
+          { type: 'action', path: '/osint', label: 'OSINT Portal', icon: Search, action: () => navigate('/osint') },
           { type: 'separator' },
           { type: 'action', path: '/crm', label: 'Overwatch (CRM)', icon: Briefcase, action: () => navigate('/crm') },
           { type: 'action', path: '/security-dashboard', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },

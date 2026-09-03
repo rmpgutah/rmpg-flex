@@ -153,6 +153,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
       { path: '/colorado-doc', label: 'Colorado DOC Search', icon: User, description: 'Colorado Department of Corrections inmate search' },
       { path: '/iped', label: 'IPED Forensics', icon: Microscope, description: 'IPED digital forensics and device analysis' },
       { path: '/recon-connect', label: 'Recon Connect', icon: Network, description: 'Recon intelligence platform integration' },
+      { path: '/osint', label: 'OSINT Portal', icon: Search, description: 'Unified open source intelligence search (DeepSearch, GoFPS, GoSearch)' },
     ],
   },
   {

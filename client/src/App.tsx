@@ -220,6 +220,7 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 // route now redirects to /login?forgot=1 (the working username + security-
 // question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
+const OsintPortalPage = lazyRetry(() => import('./pages/osint/OsintPortalPage'));
 const DeviceScannerPage = lazyRetry(() => import('./pages/DeviceScannerPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const OidcCallbackPage = lazyRetry(() => import('./pages/OidcCallbackPage'));
@@ -730,6 +731,7 @@ function AppRoutes() {
             <Route path="/text-editor" element={<RouteErrorBoundary><TextEditorPage /></RouteErrorBoundary>} />
             <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
+            <Route path="/osint" element={<RouteErrorBoundary><OsintPortalPage /></RouteErrorBoundary>} />
             <Route path="/device-scanner" element={<ProtectedRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
