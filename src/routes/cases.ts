@@ -120,7 +120,9 @@ async function logCaseActivity(
     // single seam to notify other devices on the 'records' channel. Best-effort
     // and same-isolate only (matches the existing useLiveSync('records')).
     try { broadcastAll('data_changed', { module: 'records', entity: 'cases', case_id: caseId }); } catch { /* ignore */ }
-  } catch { /* non-fatal — never block the mutation on an audit write */ }
+  } catch (auditErr) {
+    log.warn('[cases] logCaseActivity failed (non-fatal)', { caseId, action, err: auditErr instanceof Error ? auditErr.message : String(auditErr) });
+  }
 }
 
 // ── GET /stats — must come before GET /:id ─────────────────
@@ -279,7 +281,7 @@ cases.post('/', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<{
       title?: string; case_type?: string; priority?: string;
       summary?: string; lead_investigator_id?: number;

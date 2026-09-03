@@ -49,13 +49,13 @@ async function generateCitationNumber(db: ReturnType<typeof getDb>): Promise<str
     db,
     `SELECT citation_number FROM citations
      WHERE citation_number LIKE ?
-     ORDER BY id DESC LIMIT 1`,
+     ORDER BY citation_number DESC LIMIT 1`,
     `${prefix}%`,
   );
   let seq = 1;
   if (row?.citation_number) {
     const parts = row.citation_number.split('-');
-    const parsed = parseInt(parts[2], 10);
+    const parsed = parseInt(parts[parts.length - 1], 10);
     seq = isNaN(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -133,6 +133,10 @@ citations.get('/search', async (c) => {
 
 // ── GET /person/:personId — citations issued to one person ──
 citations.get('/person/:personId', async (c) => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || actor.role === 'client_viewer') {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
   try {
     const db = getDb(c.env);
     const personId = parseInt(c.req.param('personId'), 10);
@@ -215,7 +219,7 @@ citations.get('/', async (c) => {
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     const pageNum = Math.max(1, parseInt(q('page') || '1', 10) || 1);
-    const perPage = Math.min(10000, Math.max(1, parseInt(q('per_page') || '100', 10) || 100));
+    const perPage = Math.min(500, Math.max(1, parseInt(q('per_page') || '100', 10) || 100));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = await queryFirst<{ total: number }>(

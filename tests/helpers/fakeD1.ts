@@ -34,7 +34,7 @@ export function makeFakeDb(canned: { match: RegExp; rows: CannedRow[] }[]) {
         bind: (..._args: unknown[]) => stmt,
         all: async <T = unknown>() => ({ results: resultsFor(stored) as T[] }),
         first: async <T = unknown>() => (resultsFor(stored)[0] as T) ?? null,
-        run: async () => ({ meta: { changes: 0, last_row_id: 0 } }),
+        run: async () => ({ meta: { changes: 1, last_row_id: 1 } }),
       };
       return stmt;
     },

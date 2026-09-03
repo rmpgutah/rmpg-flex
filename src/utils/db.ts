@@ -53,7 +53,7 @@ export async function query<T = unknown>(
   } catch (err) {
     const turso = getTursoClient();
     if (!turso) throw err;
-    log.warn('D1 read failed — falling back to Turso', { sql });
+    log.warn('D1 read failed — falling back to Turso', { sql, d1Err: err instanceof Error ? err.message : String(err) });
     const result = await turso.execute({ sql, args: bindings as InValue[] });
     return (result.rows ?? []) as T[];
   }
@@ -73,7 +73,7 @@ export async function queryFirst<T = unknown>(
   } catch (err) {
     const turso = getTursoClient();
     if (!turso) throw err;
-    log.warn('D1 queryFirst failed — falling back to Turso', { sql });
+    log.warn('D1 queryFirst failed — falling back to Turso', { sql, d1Err: err instanceof Error ? err.message : String(err) });
     const result = await turso.execute({ sql, args: bindings as InValue[] });
     return (result.rows?.[0] as T) ?? null;
   }
