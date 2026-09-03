@@ -36,10 +36,12 @@ export default function IntelSearchPage() {
   useEffect(() => {
     clearTimeout(debounceRef.current);
     if (q.trim().length < 2) { setResults([]); return; }
+    let cancelled = false;
     debounceRef.current = setTimeout(() => {
       setLoading(true);
       apiFetch<{ results: IntelHit[] }>(`/intel/search?q=${encodeURIComponent(q)}`)
         .then((r) => {
+          if (cancelled) return;
           setResults(r.results || []);
           setRecent((prev) => {
             const next = [q.trim(), ...prev.filter((x) => x !== q.trim())].slice(0, 8);
@@ -48,9 +50,9 @@ export default function IntelSearchPage() {
           });
         })
         .catch(console.error)
-        .finally(() => setLoading(false));
+        .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
-    return () => clearTimeout(debounceRef.current);
+    return () => { cancelled = true; clearTimeout(debounceRef.current); };
   }, [q]);
 
   useEffect(() => {

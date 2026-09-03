@@ -1143,7 +1143,11 @@ export default function DispatchPage() {
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
   // Map engine detection (ensure minimap knows whether to use Mapbox or MapLibre)
   const [mapEngine, setMapEngine] = useState<MapEngine | null>(getResolvedEngine);
-  useEffect(() => { detectMapEngine().then(setMapEngine); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    detectMapEngine().then((e) => { if (!cancelled) setMapEngine(e); });
+    return () => { cancelled = true; };
+  }, []);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -1288,13 +1292,15 @@ export default function DispatchPage() {
   }, [addToast]);
 
   useEffect(() => {
+    let cancelled = false;
     fetchData();
     // Fetch quick dispatch templates
     apiFetch<any[]>('/admin/call-templates')
-      .then((data) => setTemplates((data || []).filter((t: any) => t.is_active !== 0)))
+      .then((data) => { if (!cancelled) setTemplates((data || []).filter((t: any) => t.is_active !== 0)); })
       .catch(() => { /* silent — template dropdown just stays empty */ });
     // Fetch disposition codes from admin config
     apiFetch('/admin/config').then((cfg: any) => {
+      if (cancelled) return;
       const disps = (cfg.dispositions || [])
         .filter((d: any) => d.is_active)
         .map((d: any) => {
@@ -1305,12 +1311,13 @@ export default function DispatchPage() {
     }).catch((err) => { console.warn('[DispatchPage] fetch disposition codes failed:', err); });
     // Fetch clients list for client selector
     apiFetch<any[]>('/admin/clients')
-      .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name, contact_name: c.contact_name || '', contact_phone: c.contact_phone || '', address: c.address || '' }))))
+      .then((data) => { if (!cancelled) setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name, contact_name: c.contact_name || '', contact_phone: c.contact_phone || '', address: c.address || '' }))); })
       .catch((err) => { console.warn('[DispatchPage] fetch clients list failed:', err); });
     // Fetch properties list (non-archived) for property selector
     apiFetch<any[]>('/records/properties')
-      .then((data) => setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))))
+      .then((data) => { if (!cancelled) setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))); })
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
+    return () => { cancelled = true; };
   }, [fetchData]);
 
   // ── Deep-link auto-select: /dispatch?call_id=<id> ──

@@ -693,11 +693,12 @@ export default function WarrantsPage() {
   // Auto-refresh dashboard stats every 30s
   useEffect(() => {
     if (activeTab !== 'dashboard') return;
+    let cancelled = false;
     fetchDashStats();
     fetchPriority();
-    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => { if (r) setExpiringCount(r.count); }).catch(() => {});
+    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => { if (!cancelled && r) setExpiringCount(r.count); }).catch(() => {});
     const interval = setInterval(fetchDashStats, 30_000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [activeTab, fetchDashStats, fetchPriority]);
 
   // Fetch feed when range changes
