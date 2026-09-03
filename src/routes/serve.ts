@@ -1416,8 +1416,8 @@ sv.get('/:id/audit', async (c) => {
 sv.put('/:id', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
-  const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const allowed = [
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
@@ -1479,6 +1479,8 @@ sv.put('/:id', async (c) => {
     args.push(body[k]);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM serve_queue WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Not found' }, 404);
 
   // Re-geocode when recipient_address is updated but coords are not explicitly set.
   // Clear stale pins when geocode fails so the map does not keep the old location.

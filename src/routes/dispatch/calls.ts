@@ -1158,6 +1158,8 @@ calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   }
   try {
     const db = getDb(c.env);
+    const callRow = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!callRow) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
 
     // ── Detach dependents BEFORE the parent delete ──
     // D1 runs with PRAGMA foreign_keys=1. Only three child tables declare
