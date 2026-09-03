@@ -1,8 +1,12 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-
+import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
+
+const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'] as const;
+const DELETE_ROLES = ['admin', 'manager', 'supervisor'] as const;
+
 const specialOps = new Hono<Env>();
 
 specialOps.get('/callouts', async (c) => {
@@ -14,7 +18,7 @@ specialOps.get('/callouts', async (c) => {
     log.error('GET /callouts failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-specialOps.post('/callouts', async (c) => {
+specialOps.post('/callouts', requireRole(...WRITE_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
@@ -28,10 +32,11 @@ specialOps.post('/callouts', async (c) => {
     log.error('POST /callouts failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-specialOps.put('/callouts/:id', async (c) => {
+specialOps.put('/callouts/:id', requireRole(...WRITE_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
@@ -43,11 +48,13 @@ specialOps.put('/callouts/:id', async (c) => {
     log.error('PUT /callouts/:id failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-specialOps.delete('/callouts/:id', async (c) => {
+specialOps.delete('/callouts/:id', requireRole(...DELETE_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
-  await execute(db, 'DELETE FROM special_ops_callouts WHERE id=?', id);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const result = await execute(db, 'DELETE FROM special_ops_callouts WHERE id=?', id);
+  if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /callouts/:id failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
@@ -62,7 +69,7 @@ specialOps.get('/equipment', async (c) => {
     log.error('GET /equipment failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-specialOps.post('/equipment', async (c) => {
+specialOps.post('/equipment', requireRole(...WRITE_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
@@ -76,10 +83,11 @@ specialOps.post('/equipment', async (c) => {
     log.error('POST /equipment failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-specialOps.put('/equipment/:id', async (c) => {
+specialOps.put('/equipment/:id', requireRole(...WRITE_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
@@ -91,11 +99,13 @@ specialOps.put('/equipment/:id', async (c) => {
     log.error('PUT /equipment/:id failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-specialOps.delete('/equipment/:id', async (c) => {
+specialOps.delete('/equipment/:id', requireRole(...DELETE_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
-  await execute(db, 'DELETE FROM special_ops_equipment WHERE id=?', id);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const result = await execute(db, 'DELETE FROM special_ops_equipment WHERE id=?', id);
+  if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /equipment/:id failed', { src: 'src/routes/specialOps.ts' }, err); return c.json({ error: 'Failed' }, 500); }

@@ -1,6 +1,16 @@
 // tests/footage/flexcamRoute.test.ts
 import { describe, it, expect, vi } from 'vitest';
+import { Hono } from 'hono';
 import flexcam from '../../src/routes/flexcam';
+
+// Wrap the router with a fake auth middleware so requireRole() checks pass.
+function makeAuthedApp(role = 'officer') {
+  const app = new Hono<any>();
+  app.use('*', async (c, next) => { c.set('user', { id: 1, role, username: 'test' }); await next(); });
+  app.route('/', flexcam);
+  return app;
+}
+const authedFlexcam = makeAuthedApp('officer');
 
 // vitest attributes first-import transform cost to whichever test triggers it,
 // and `src/routes/flexcam` pulls in a heavy module graph — so under a full-suite
@@ -13,7 +23,7 @@ vi.setConfig({ testTimeout: 30_000 });
 
 describe('flexcam route', () => {
   it('rejects a request with an invalid window', async () => {
-    const res = await flexcam.request('/request', {
+    const res = await authedFlexcam.request('/request', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ asset_id: 136022, from: 100, to: 100 }),
     }, { DB: makeStubDb(), UPLOADS: {} } as any);
@@ -164,7 +174,7 @@ describe('POST /api/flexcam/render/:id (MP4 enqueue path)', () => {
       },
     } as any;
 
-    const res = await flexcam.request('/render/5', {
+    const res = await authedFlexcam.request('/render/5', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: 'mp4' }),
@@ -189,7 +199,7 @@ describe('POST /api/flexcam/render/:id (MP4 enqueue path)', () => {
       FLEXCAM_REMUX: undefined,  // not used on ts path
     } as any;
 
-    const res = await flexcam.request('/render/5', {
+    const res = await authedFlexcam.request('/render/5', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: 'ts' }),
@@ -220,7 +230,7 @@ describe('POST /api/flexcam/footage/:id/court-package (additive enrichment)', ()
       JWT_SECRET: 'test-secret-32-bytes-long-enough-for-derive',
     } as any;
 
-    const res = await flexcam.request('/footage/8/court-package', { method: 'POST' }, env);
+    const res = await authedFlexcam.request('/footage/8/court-package', { method: 'POST' }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as any;
     expect(body.manifest.merged_sha256).toBe('deadbeefcafebabe');
@@ -244,7 +254,7 @@ describe('POST /api/flexcam/footage/:id/court-package (additive enrichment)', ()
       JWT_SECRET: 'test-secret-32-bytes-long-enough-for-derive',
     } as any;
 
-    const res = await flexcam.request('/footage/9/court-package', { method: 'POST' }, env);
+    const res = await authedFlexcam.request('/footage/9/court-package', { method: 'POST' }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as any;
     expect(body.manifest.merged_sha256).toBeUndefined();
