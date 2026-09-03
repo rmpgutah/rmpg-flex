@@ -2,7 +2,7 @@
 // Cross-reference capture & verification tab for the Person Intel dossier.
 // Integrates CourtListener/juriscraper, FBI Wanted, criminal-DB, skip-trace,
 // and centralia opinion cross-refs with officer verification.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, AlertTriangle, CheckCircle2, XCircle, HelpCircle, RefreshCw,
   Gavel, ShieldAlert, Search, FileDown, ExternalLink, Scale,
@@ -76,18 +76,22 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
   const [refreshing, setRefreshing] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ method: string; evidence: string }>({ method: 'dob', evidence: '' });
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const load = useCallback(async () => {
     setLoadError(false);
     try {
       const data = await apiFetch<CrossRef[]>(`/person-intel/${dossierId}/cross-refs`);
-      setXrefs(data);
+      if (!mountedRef.current) return;
+      setXrefs(Array.isArray(data) ? data : []);
     } catch (e: unknown) {
+      if (!mountedRef.current) return;
       setXrefs([]);
       const msg = e instanceof Error ? e.message : '';
       if (!/404|not found/i.test(msg)) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [dossierId]);
 
@@ -212,7 +216,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
               {xr.isCriminal && (
                 <span className="text-[10px] text-red-400 border border-red-600/40 rounded px-1">CRIMINAL</span>
               )}
-              {xr.riskFlags.map(f => (
+              {(xr.riskFlags ?? []).map(f => (
                 <span key={f} className="text-[10px] bg-red-600/15 text-red-400 border border-red-600/30 rounded px-1">
                   {toDisplayLabel(f).toUpperCase()}
                 </span>
@@ -233,7 +237,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
                 </a>
               )}
               {' · matched: '}
-              {xr.matchedFields.map(m => `${m.field}=${m.value}`).join(', ') || 'name'}
+              {(xr.matchedFields ?? []).map(m => `${m.field}=${m.value}`).join(', ') || 'name'}
             </div>
 
             {/* Skip-trace profile summary (structured meta) */}
