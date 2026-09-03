@@ -20,12 +20,6 @@
      Blue & Silver (--titlebar-gradient) and the active nav tile render black
      (--toolbar-nav-active). See the 2026-07-24 UI color repair spec. */
 
-  /* Window chrome traffic-light triad — intentionally theme-invariant.
-     These are control affordances (close/minimize/maximize), not brand chrome. */
-  --window-chrome-close: #ef4444;
-  --window-chrome-minimize: #d4a017;
-  --window-chrome-maximize: #22c55e;
-
   /* Typography — centralized font tokens */
   --font-mono: Arial, monospace;
   --font-sans: Arial, Helvetica, sans-serif;

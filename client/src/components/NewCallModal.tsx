@@ -1055,7 +1055,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <p className="text-[9px] text-rmpg-500 italic">No persons added yet.</p>
             )}
             {formData.involvedPersons.map((p, i) => (
-              <div key={i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
+              <div key={p.name ?? i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
                   <span className="font-medium truncate">{p.name}</span>
@@ -1138,7 +1138,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <p className="text-[9px] text-rmpg-500 italic">No vehicles added yet.</p>
             )}
             {formData.involvedVehicles.map((v, i) => (
-              <div key={i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
+              <div key={v.plate ?? `${v.make}-${v.model}-${i}`} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
                   <span className="font-medium truncate">{[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}</span>

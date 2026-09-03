@@ -114,18 +114,18 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 // Do not collapse these onto --text-muted — that renders them identical to pending.
 const MARKER_COLORS: Record<string, string> = {
   pending: 'var(--text-muted)',
-  in_progress: '#eab308',
-  served: '#22c55e',
-  failed: '#ef4444',
+  in_progress: 'var(--sev-warn)',
+  served: 'var(--sev-ok)',
+  failed: 'var(--sev-critical)',
   skipped: 'var(--border-strong)',
   archived: 'var(--border-strong)',
 };
 
 const CLUSTER_PRIORITY_COLORS: Record<string, string> = {
-  urgent: '#ef4444',
-  rush: '#f97316',
-  normal: '#3b82f6',
-  routine: '#6b7280',
+  urgent: 'var(--sev-critical)',
+  rush: 'var(--sev-high)',
+  normal: 'var(--sev-info)',
+  routine: 'var(--text-muted)',
 };
 
 // One-time stylesheet injection for the deadline-urgency pulse-ring animation
@@ -146,15 +146,15 @@ function buildServeJobMarkerElement(job: ServeJob, selected: boolean): HTMLEleme
   const risk = isRiskFlagged(job);
 
   const el = document.createElement('div');
-  const border = selected ? '3px solid #22c55e' : '2px solid #fff';
+  const border = selected ? '3px solid var(--sev-ok)' : '2px solid var(--text-primary)';
   const boxShadow = risk
-    ? '0 1px 4px rgba(0 0 0 / 0.4), 0 0 0 3px rgba(239,68,68,0.6)'
+    ? '0 1px 4px rgba(0 0 0 / 0.4), 0 0 0 3px rgb(var(--sev-critical-rgb) / 0.6)'
     : '0 1px 4px rgba(0 0 0 / 0.4)';
   el.style.cssText = `position:relative;width:12px;height:12px;border-radius:50%;background:${color};border:${border};box-shadow:${boxShadow};cursor:pointer;`;
 
   if (tier === 'critical' || tier === 'warning') {
     const ring = document.createElement('div');
-    const ringColor = tier === 'critical' ? '#ef4444' : '#f59e0b';
+    const ringColor = tier === 'critical' ? 'var(--sev-critical)' : 'var(--sev-warn)';
     ring.style.cssText = `position:absolute;inset:-6px;border-radius:50%;border:2px solid ${ringColor};animation:srv-map-pulse-${tier} 1.6s ease-out infinite;`;
     el.appendChild(ring);
   }
@@ -177,7 +177,7 @@ function buildServeClusterMarkerElement(cluster: { count: number; dominantPriori
     width:28px;height:28px;border-radius:50%;
     background:${color};border:2px solid rgba(255,255,255,0.85);
     display:flex;align-items:center;justify-content:center;
-    font-family:'Arial, sans-serif';font-weight:700;font-size:11px;color:#fff;
+    font-family:'Arial, sans-serif';font-weight:700;font-size:11px;color:var(--text-primary);
     cursor:pointer;
   `;
   el.textContent = String(cluster.count);
@@ -1993,8 +1993,8 @@ export default function ServePage() {
                 <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
                 <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(toDisplayLabel(job.status))} &middot; ${escapeHtml(toDisplayLabel(job.document_type || ''))}</div>
                 <div style="margin-top:8px;display:flex;gap:6px;">
-                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">History</button>
-                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">Preview drive time</button>
+                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgb(var(--accent-silver-400-rgb) / 0.15);border:1px solid rgb(var(--accent-silver-400-rgb) / 0.4);border-radius:2px;color:var(--text-secondary);font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">History</button>
+                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgb(var(--sev-ok-rgb) / 0.15);border:1px solid rgb(var(--sev-ok-rgb) / 0.4);border-radius:2px;color:var(--sev-ok-soft);font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">Preview drive time</button>
                 </div>
               </div>
             `).addTo(mapRef.current!);

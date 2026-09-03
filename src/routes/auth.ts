@@ -584,13 +584,13 @@ auth.post('/login/verify-2fa', async (c) => {
     const { code, deviceFingerprint, trustDevice } = body;
 
     if (!user.totp_secret_enc) {
-      return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
+      return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_CONFIG_MISSING' }, 400);
     }
     const secretB32 = await decryptTotpSecret(user.totp_secret_enc, c.env.JWT_SECRET);
     if (!secretB32) {
       // VPS-era blob encrypted with the lost key — surfaced distinctly so an
       // admin knows to re-enroll rather than retry codes.
-      return c.json({ error: 'Authentication configuration error. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
+      return c.json({ error: 'Please contact an administrator to re-enroll your authenticator app.', code: 'TOTP_REENROLL_REQUIRED' }, 401);
     }
     if (!(await verifyTotpCode(secretB32, code || ''))) {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
@@ -931,7 +931,10 @@ auth.post('/forgot-password', async (c) => {
       db, `SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?`, user.id);
     if (!sq) return c.json({ hasQuestions: false });
 
-    return c.json({ hasQuestions: true, questions: [sq.question_1, sq.question_2, sq.question_3] });
+    // Return only the count, never the question text — exposing question wording
+    // to unauthenticated callers aids social-engineering attacks.
+    const questionCount = [sq.question_1, sq.question_2, sq.question_3].filter(Boolean).length;
+    return c.json({ hasQuestions: true, questionCount });
   } catch (err) {
     console.error('forgot-password failed:', err);
     return c.json({ hasQuestions: false });

@@ -564,12 +564,24 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       if (filterArchivedChip) params.set('include_archived', '1');
       if (filterWatchedOnly) params.set('watched_only', '1');
 
-      // Try unified endpoint first, fall back to standard
+      // Try unified endpoint first, fall back to standard.
+      // Both API shapes are normalised to UnifiedWarrant[] before calling
+      // setWarrants so the rest of the component always works with one
+      // consistent interface regardless of which endpoint responded.
+      const normaliseItems = (items: Warrant[]): UnifiedWarrant[] =>
+        items.map((w) => ({
+          ...w,
+          // Ensure the optional UnifiedWarrant-specific field is always
+          // present so downstream code never sees an undefined shape.
+          source: w.source ?? null,
+        }));
+
       try {
-        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
+        const res = await apiFetch<{ warrants: Warrant[]; total: number }>(
           `/warrants/unified?${params.toString()}`
         );
-        setWarrants(res.warrants || []);
+        const items = normaliseItems(res.warrants || []);
+        setWarrants(items);
         setTotalCount(res.total || 0);
         setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
       } catch {
@@ -577,7 +589,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
           `/warrants?${params.toString()}`
         );
-        setWarrants(res.data || []);
+        const items = normaliseItems(res.data || []);
+        setWarrants(items);
         setTotalPages(res.pagination?.totalPages || 1);
         setTotalCount(res.pagination?.total || 0);
       }

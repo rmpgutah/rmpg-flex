@@ -201,6 +201,7 @@ export default function FleetDashboardPage() {
         apiFetch<{ nodes: WoFlowNode[] }>(`/fleet-viz/work-order-flow${q}`),
         apiFetch<{ data: FuelAnomalyRow[] }>(`/fleet-viz/fuel-anomalies${q}`),
       ]);
+      if (!mountedRef.current) return;
       setKpi(kpiRes);
       setReadiness(readinessRes.data || []);
       setMapRows(mapRes.data || []);
@@ -211,11 +212,12 @@ export default function FleetDashboardPage() {
       setWoFlow(woRes.nodes || []);
       setFuelAnomalies((anomRes.data || []).filter((r) => r.flagged));
     } catch (err) {
+      if (!mountedRef.current) return;
       const msg = err instanceof Error ? `Failed to load fleet dashboard: ${err.message}` : 'Failed to load fleet dashboard';
       setLoadError(msg);
       addToast(msg, 'error');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [addToast]);
 
@@ -226,9 +228,9 @@ export default function FleetDashboardPage() {
     setDossier(null);
     setDossierLoading(true);
     apiFetch<Dossier>(`/fleet-viz/dossier/${id}`)
-      .then(setDossier)
-      .catch((err) => addToast(err instanceof Error ? err.message : 'Failed to load vehicle dossier', 'error'))
-      .finally(() => setDossierLoading(false));
+      .then((data) => { if (mountedRef.current) setDossier(data); })
+      .catch((err) => { if (mountedRef.current) addToast(err instanceof Error ? err.message : 'Failed to load vehicle dossier', 'error'); })
+      .finally(() => { if (mountedRef.current) setDossierLoading(false); });
   }, [addToast]);
 
   // PM timeline buckets (V2) — derived client-side from pmUpcoming's own
@@ -248,6 +250,12 @@ export default function FleetDashboardPage() {
   }, [pmUpcoming]);
 
   // ---- Fleet map (V1) ----
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);

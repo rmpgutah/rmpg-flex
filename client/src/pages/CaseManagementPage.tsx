@@ -625,9 +625,23 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any>('/personnel')
-      .then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); })
-      .catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); })
+    type PersonnelRecord = { id: number | string; full_name: string; [key: string]: unknown };
+    apiFetch<{ data: PersonnelRecord[] } | PersonnelRecord[]>('/personnel')
+      .then(r => {
+        if (!cancelled) {
+          let resolved: PersonnelRecord[];
+          if (Array.isArray(r)) {
+            resolved = r;
+          } else if (r && Array.isArray((r as { data: PersonnelRecord[] }).data)) {
+            resolved = (r as { data: PersonnelRecord[] }).data;
+          } else {
+            console.error('[CaseManagementPage] /personnel response has unexpected shape; assignment dropdowns will be empty.', r);
+            resolved = [];
+          }
+          setUsers(resolved);
+        }
+      })
+      .catch((err) => { console.error('[CaseManagementPage] fetch personnel failed:', err); })
       .finally(() => { if (!cancelled) setPersonnelLoading(false); });
     return () => { cancelled = true; };
   }, []);

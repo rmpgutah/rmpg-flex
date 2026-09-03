@@ -6,6 +6,7 @@
 // ============================================================
 
 import { parseTimestamp } from './dateUtils';
+import { displayTimeZone } from './timeZoneMode';
 
 /**
  * Normalize a snake_case / lowercase enum value for display.
@@ -214,7 +215,7 @@ export function formatDOBWithAge(dob: string | null | undefined): string {
   if (!dob) return '';
   const d = parseTimestamp(dob);
   if (isNaN(d.getTime())) return dob;
-  const formatted = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  const formatted = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone: displayTimeZone() });
   const today = new Date();
   let age = today.getFullYear() - d.getFullYear();
   const mDiff = today.getMonth() - d.getMonth();

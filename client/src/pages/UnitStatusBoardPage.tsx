@@ -246,7 +246,7 @@ function UnitCard({ unit, canChangeStatus, onClick }: UnitCardProps) {
           {(unit.queued_call_ids?.length ?? 0) > 0 && (
             <span
               className="text-[9px] font-semibold px-1 rounded-[2px]"
-              style={{ background: 'var(--sev-warn)', color: '#000', lineHeight: '14px' }}
+              style={{ background: 'var(--sev-warn)', color: 'var(--text-on-warn)', lineHeight: '14px' }}
               title={`${unit.queued_call_ids!.length} call${unit.queued_call_ids!.length > 1 ? 's' : ''} queued`}
             >
               +{unit.queued_call_ids!.length} queued
@@ -400,7 +400,7 @@ export default function UnitStatusBoardPage() {
       className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-[2px] transition-colors"
       style={{
         background: filter === mode ? 'var(--brand-600)' : 'var(--surface-sunken)',
-        color: filter === mode ? '#fff' : 'var(--text-secondary)',
+        color: filter === mode ? 'var(--text-on-brand)' : 'var(--text-secondary)',
         border: filter === mode ? '1px solid var(--brand-500)' : '1px solid var(--border-subtle)',
       }}
     >

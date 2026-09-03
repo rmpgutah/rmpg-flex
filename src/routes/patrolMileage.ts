@@ -40,6 +40,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log, logErrorToDb } from '../utils/logger';
 import {
   getSuggestedMileage,
   deriveEndMileage,
@@ -104,7 +105,8 @@ pm.get('/mileage/suggest', async (c) => {
       message: 'No prior mileage entry for this scope. Enter a starting mileage manually.',
     });
   } catch (err) {
-    console.error('GET /patrol/mileage/suggest failed:', err);
+    log.error('[patrolMileage] GET /mileage/suggest failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'GET /patrol/mileage/suggest' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed to suggest mileage');
   }
 });
@@ -301,7 +303,8 @@ pm.get('/mileage/chain', async (c) => {
       rows: annotated,
     });
   } catch (err) {
-    console.error('GET /patrol/mileage/chain failed:', err);
+    log.error('[patrolMileage] GET /mileage/chain failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'GET /patrol/mileage/chain' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed to load chain');
   }
 });
@@ -342,7 +345,8 @@ pm.get('/mileage/audit', async (c) => {
     const rows = await query<Record<string, unknown>>(db, sql, ...params, limit);
     return c.json({ rows });
   } catch (err) {
-    console.error('GET /patrol/mileage/audit failed:', err);
+    log.error('[patrolMileage] GET /mileage/audit failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'GET /patrol/mileage/audit' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed to load audit');
   }
 });
@@ -507,7 +511,8 @@ pm.get('/mileage/fix-suggestions', async (c) => {
       candidates,
     });
   } catch (err) {
-    console.error('GET /patrol/mileage/fix-suggestions failed:', err);
+    log.error('[patrolMileage] GET /mileage/fix-suggestions failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'GET /patrol/mileage/fix-suggestions' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed to compute suggestions');
   }
 });
@@ -753,40 +758,6 @@ pm.post('/mileage/fix', async (c) => {
       }
     }
 
-    // ── Fleet odometer write-through ────────────────────────
-    // When the corrected/backfilled field is the call's ending_mileage AND
-    // the call was assigned to a specific fleet vehicle, push the new value
-    // through to fleet_vehicles.current_mileage. MAX() semantics — never
-    // lower the odometer (a corrected past trip can't outrank a more recent
-    // reading on the same vehicle). Audited separately so the fleet history
-    // shows the source. Best-effort: any vehicle resolution miss is a no-op,
-    // not a failure — the call-level fix already succeeded.
-    if (body.field === 'ending_mileage') {
-      const veh = await queryFirst<{ vehicle_id: number | null }>(
-        db,
-        'SELECT responding_vehicle_id AS vehicle_id FROM calls_for_service WHERE id = ?',
-        body.entry_id,
-      );
-      const vehicleId = veh?.vehicle_id;
-      if (vehicleId != null && Number.isFinite(vehicleId)) {
-        batch.push({
-          sql: `UPDATE fleet_vehicles
-                   SET current_mileage = MAX(COALESCE(current_mileage, 0), ?)
-                 WHERE id = ?`,
-          bindings: [after, vehicleId],
-        });
-        batch.push({
-          sql: `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-                VALUES (?, 'FLEET_ODOMETER_SYNC', 'fleet_vehicle', ?, ?, datetime('now'))`,
-          bindings: [
-            user.id, vehicleId,
-            `Odometer write-through from mileage fix on call ${existing.call_number || body.entry_id}: ` +
-            `proposed ${after} mi (current MAX-merged) — ${reason}`,
-          ],
-        });
-      }
-    }
-
     await db.batch(batch.map(s => {
       const stmt = db.prepare(s.sql);
       return s.bindings?.length ? stmt.bind(...s.bindings) : stmt;
@@ -818,7 +789,8 @@ pm.post('/mileage/fix', async (c) => {
       fixed_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('POST /patrol/mileage/fix failed:', err);
+    log.error('[patrolMileage] POST /mileage/fix failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'POST /patrol/mileage/fix' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed to apply fix');
   }
 });
@@ -1177,7 +1149,8 @@ pm.get('/trip-log/generate', async (c) => {
       totals,
     });
   } catch (err) {
-    console.error('GET /patrol/trip-log/generate failed:', err);
+    log.error('[patrolMileage] GET /trip-log/generate failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'GET /patrol/trip-log/generate' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed to generate trip log');
   }
 });
@@ -1215,7 +1188,7 @@ async function auditTripChange(
       opts.reason, opts.userId,
     ).run();
   } catch (e) {
-    console.warn('trip audit write failed (continuing):', (e as Error)?.message);
+    log.warn('[patrolMileage] trip audit write failed (continuing)', { message: (e as Error)?.message });
   }
 }
 
@@ -1257,7 +1230,8 @@ pm.get('/trips', async (c) => {
       .sort((a, b) => (String(a.start_time) < String(b.start_time) ? 1 : -1));
     return c.json({ trips });
   } catch (err) {
-    console.error('GET /patrol/trips failed:', err);
+    log.error('[patrolMileage] GET /trips failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'GET /patrol/trips' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1294,7 +1268,8 @@ pm.post('/trips', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM unit_trips WHERE id = ?', id);
     return c.json({ success: true, trip: created }, 201);
   } catch (err) {
-    console.error('POST /patrol/trips failed:', err);
+    log.error('[patrolMileage] POST /trips failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'POST /patrol/trips' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1349,7 +1324,8 @@ pm.put('/trips/:source/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${table} WHERE id = ?`, id);
     return c.json({ success: true, trip: updated });
   } catch (err) {
-    console.error('PUT /patrol/trips failed:', err);
+    log.error('[patrolMileage] PUT /trips/:source/:id failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'PUT /patrol/trips/:source/:id' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1376,7 +1352,8 @@ pm.delete('/trips/:source/:id', async (c) => {
     });
     return c.json({ success: true });
   } catch (err) {
-    console.error('DELETE /patrol/trips failed:', err);
+    log.error('[patrolMileage] DELETE /trips/:source/:id failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'DELETE /patrol/trips/:source/:id' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1600,7 +1577,8 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
       errors: errors.slice(0, 20),
     });
   } catch (err) {
-    console.error('POST /patrol/mileage/backfill-patrol-trips failed:', err);
+    log.error('[patrolMileage] POST /mileage/backfill-patrol-trips failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'POST /patrol/mileage/backfill-patrol-trips' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1874,7 +1852,8 @@ pm.post('/mileage/auto-fix-gaps', async (c) => {
       errors: errors.slice(0, 20),
     });
   } catch (err) {
-    console.error('POST /patrol/mileage/auto-fix-gaps failed:', err);
+    log.error('[patrolMileage] POST /mileage/auto-fix-gaps failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'POST /patrol/mileage/auto-fix-gaps' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1942,7 +1921,8 @@ pm.post('/trips/discard-zero-mile', async (c) => {
 
     return c.json({ success: true, examined: candidates.length, deleted, threshold_mi: 0.5, errors: errors.slice(0, 20) });
   } catch (err) {
-    console.error('POST /patrol/trips/discard-zero-mile failed:', err);
+    log.error('[patrolMileage] POST /trips/discard-zero-mile failed', {}, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error)?.message ?? String(err), details: { route: 'POST /patrol/trips/discard-zero-mile' }, source: 'patrolMileage', statusCode: 500 }, c.executionCtx);
     return dbErrorResponse(c, err, 'Failed');
   }
 });

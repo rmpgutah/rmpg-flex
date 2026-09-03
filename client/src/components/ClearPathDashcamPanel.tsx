@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import { Video, Settings, Camera } from 'lucide-react';
+import { Video, Settings, Camera, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 
@@ -21,10 +21,11 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
   const navigate = useNavigate();
   const [status, setStatus] = useState<CpgStatus | null>(null);
   const [media, setMedia] = useState<MediaStatus | null>(null);
+  const [fetchError, setFetchError] = useState<boolean>(false);
 
   useEffect(() => {
-    apiFetch<CpgStatus>('/clearpathgps/status').then(setStatus).catch(() => setStatus(null));
-    apiFetch<MediaStatus>('/clearpathgps/media-status').then(setMedia).catch(() => setMedia(null));
+    apiFetch<CpgStatus>('/clearpathgps/status').then(setStatus).catch(() => { setStatus(null); setFetchError(true); });
+    apiFetch<MediaStatus>('/clearpathgps/media-status').then(setMedia).catch(() => { setMedia(null); setFetchError(true); });
   }, []);
 
   const configured = !!status?.configured;
@@ -55,7 +56,12 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
         <Stat value={media?.total_dashcam_reads ?? dashcamCount} label="reads" />
       </div>
       {lastSync && <div className="px-2 py-1 text-[9px] text-fg-muted border-t border-border-default">Last sync: {String(lastSync).replace('T', ' ').slice(0, 16)}</div>}
-      {!configured && (
+      {fetchError && status === null && (
+        <div className="px-2 py-1.5 text-[10px] border-t border-border-default flex items-center gap-1.5 text-amber-400">
+          <AlertTriangle className="w-3 h-3 shrink-0" /> ClearPath status unavailable — check integration or reload.
+        </div>
+      )}
+      {!fetchError && !configured && (
         <div className="px-2 py-1.5 text-[10px] text-fg-muted border-t border-border-default">
           Connect your ClearPath cameras to read plates passively from dashcam footage. Tap <span className="text-purple-300">Configure</span>.
         </div>

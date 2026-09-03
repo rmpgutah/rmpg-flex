@@ -166,6 +166,7 @@ function LiveCaptureTab({ callId }: { callId: number | null }) {
         <span className="text-xs text-slate-400">CFS #{callId} — {subjects.length} subject(s)</span>
         <button
           onClick={() => setAdding(v => !v)}
+          aria-label={adding ? 'Cancel adding subject' : 'Add subject to call'}
           className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-surface-raised hover:bg-surface-hover text-brand-300 border border-brand-700/30"
         >
           <Plus className="w-3 h-3" /> Add Subject
@@ -408,6 +409,7 @@ function SkipTraceTab({ callId }: { callId: number | null }) {
           <button
             onClick={runQuery}
             disabled={loading}
+            aria-label={loading ? 'Searching records…' : 'Run query across all record sources'}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white"
           >
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
@@ -435,6 +437,8 @@ function SkipTraceTab({ callId }: { callId: number | null }) {
               <div key={section} className="rounded border border-brand-800/40 bg-surface-raised overflow-hidden">
                 <button
                   onClick={() => setActiveSection(isOpen ? null : section)}
+                  aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${SECTION_LABELS[section] ?? section} results`}
+                  aria-expanded={isOpen}
                   className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-300 hover:bg-surface-hover"
                 >
                   <span className="font-semibold text-[color:var(--panel-header-color)]">{SECTION_LABELS[section] ?? section}</span>
@@ -645,6 +649,7 @@ function DossierTab({ callId }: { callId: number | null }) {
         <button
           onClick={launch}
           disabled={submitting}
+          aria-label={submitting ? 'Launching OSINT dossier…' : 'Launch OSINT dossier for this person'}
           className="w-full flex items-center justify-center gap-2 py-1.5 text-xs rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white"
         >
           {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
@@ -681,6 +686,7 @@ export default function DataCapturePage() {
         />
         <button
           onClick={() => callIdInput && setActiveCallId(Number(callIdInput))}
+          aria-label="Load call for service by ID"
           className="px-2 py-1 text-xs rounded bg-surface-raised hover:bg-surface-hover text-slate-300 border border-brand-700/30"
         >
           Load

@@ -1426,7 +1426,10 @@ warrants.put('/batch-update', async (c) => {
     }
     return c.json({ success: true, updated });
   } catch (err) {
-    console.error('[warrants] batch-update error', err);
+    const traceId = c.get('traceId') as string | undefined;
+    const userId = (c.get('user') as { id: number } | undefined)?.id;
+    log.error('Warrant batch-update failed', { route: 'PUT /warrants/batch-update', userId, traceId }, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error).message, details: { route: 'PUT /warrants/batch-update', userId }, traceId, source: 'warrants', statusCode: 500 }, c.executionCtx);
     return c.json({ error: 'Batch update failed' }, 500);
   }
 });
@@ -1818,7 +1821,10 @@ warrants.post('/bulk-archive', async (c) => {
     }
     return c.json({ archived: toArchive.length, skipped });
   } catch (err) {
-    console.error('[warrants] bulk-archive error', err);
+    const traceId = c.get('traceId') as string | undefined;
+    const userId = (c.get('user') as { id: number } | undefined)?.id;
+    log.error('Warrant bulk-archive failed', { route: 'POST /warrants/bulk-archive', userId, traceId }, err as Error);
+    logErrorToDb(c.env.DB, { severity: 'error', category: 'route', message: (err as Error).message, details: { route: 'POST /warrants/bulk-archive', userId }, traceId, source: 'warrants', statusCode: 500 }, c.executionCtx);
     return c.json({ error: 'Bulk archive failed' }, 500);
   }
 });

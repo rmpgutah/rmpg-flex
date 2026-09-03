@@ -79,11 +79,11 @@ export default function WelfareCheckModal() {
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="welfare-title"
-      className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+      className="fixed inset-0 z-welfare-check flex items-center justify-center p-4"
       style={{ background: 'rgba(0 0 0 / 0.92)' }}
     >
       <div
-        className={`w-full max-w-xl border-4 p-6 space-y-5 ${urgent ? 'animate-pulse' : ''}`}
+        className={`w-full max-w-xl border-4 flex flex-col max-h-[90dvh] overflow-hidden ${urgent ? 'animate-pulse' : ''}`}
         style={{
           background: 'var(--surface-overlay)',
           borderColor: urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)',
@@ -91,69 +91,76 @@ export default function WelfareCheckModal() {
           boxShadow: `0 0 50px ${urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)'}`,
         }}
       >
-        <div className="flex items-center gap-3 border-b pb-4" style={{ borderColor: urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)' }}>
-          <Activity className={`w-9 h-9 ${urgent ? 'text-red-500' : 'text-brand-gold-500'}`} />
-          <div className="flex-1">
-            <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-rmpg-100">
-              Welfare Check
+        {/* ── Scrollable body (header + message + urgent banner) ── */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div className="flex items-center gap-3 border-b pb-4" style={{ borderColor: urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)' }}>
+            {/* Fix: icons use silver per design-system — gold is reserved for field-labels/panel-headers only */}
+            <Activity className={`w-9 h-9 ${urgent ? 'text-red-500' : 'text-accent-silver-400'}`} />
+            <div className="flex-1">
+              <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-rmpg-100">
+                Welfare Check
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-rmpg-300 font-bold">
+                {active.callSign ? `${active.callSign} · ` : ''}
+                {active.callNumber ? `Call ${active.callNumber}` : 'Status check'}
+              </div>
             </div>
-            <div className="text-[10px] uppercase tracking-wider text-rmpg-300 font-bold">
-              {active.callSign ? `${active.callSign} · ` : ''}
-              {active.callNumber ? `Call ${active.callNumber}` : 'Status check'}
+            <div className="flex items-center gap-1 text-[10px] font-mono text-rmpg-400">
+              <Clock className="w-3 h-3" />
+              <span>{Math.floor(secondsOpen / 60).toString().padStart(2, '0')}:{(secondsOpen % 60).toString().padStart(2, '0')}</span>
             </div>
           </div>
-          <div className="flex items-center gap-1 text-[10px] font-mono text-rmpg-400">
-            <Clock className="w-3 h-3" />
-            <span>{Math.floor(secondsOpen / 60).toString().padStart(2, '0')}:{(secondsOpen % 60).toString().padStart(2, '0')}</span>
+
+          <div className="text-sm text-rmpg-100 leading-relaxed">
+            {active.message || 'Dispatch requesting status check. Please confirm.'}
           </div>
+
+          {urgent && (
+            <div className="flex items-center gap-2 px-3 py-2 border" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'var(--sev-critical)', borderRadius: 2 }}>
+              <ShieldAlert className="w-4 h-4 text-red-500" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-red-300">
+                No response after 60 s — supervisor alerted.
+              </span>
+            </div>
+          )}
         </div>
 
-        <div className="text-sm text-rmpg-100 leading-relaxed">
-          {active.message || 'Dispatch requesting status check. Please confirm.'}
-        </div>
-
-        {urgent && (
-          <div className="flex items-center gap-2 px-3 py-2 border" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'var(--sev-critical)', borderRadius: 2 }}>
-            <ShieldAlert className="w-4 h-4 text-red-500" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-red-300">
-              No response after 60 s — supervisor alerted.
-            </span>
+        {/* ── Sticky response buttons — always visible at the bottom ── */}
+        <div className="px-6 pb-6 pt-2 space-y-2" style={{ background: 'var(--surface-overlay)' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => handle('ack')}
+              disabled={submitting !== null}
+              autoFocus
+              className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
+              style={{ background: 'var(--sev-ok)', color: 'black', borderRadius: 2 }}
+            >
+              {submitting === 'ack' ? 'SENDING…' : 'CODE 4'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handle('help')}
+              disabled={submitting !== null}
+              className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
+              style={{ background: 'var(--sev-critical)', color: 'black', borderRadius: 2 }}
+            >
+              {submitting === 'help' ? 'BROADCASTING…' : 'NEED HELP'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handle('snooze')}
+              disabled={submitting !== null}
+              className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
+              style={{ background: 'var(--surface-raised)', color: 'var(--text-primary)', borderRadius: 2 }}
+            >
+              {submitting === 'snooze' ? '…' : 'SNOOZE 5'}
+            </button>
           </div>
-        )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => handle('ack')}
-            disabled={submitting !== null}
-            autoFocus
-            className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: 'var(--sev-ok)', color: 'black', borderRadius: 2 }}
-          >
-            {submitting === 'ack' ? 'SENDING…' : 'CODE 4'}
-          </button>
-          <button
-            type="button"
-            onClick={() => handle('help')}
-            disabled={submitting !== null}
-            className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: 'var(--sev-critical)', color: 'black', borderRadius: 2 }}
-          >
-            {submitting === 'help' ? 'BROADCASTING…' : 'NEED HELP'}
-          </button>
-          <button
-            type="button"
-            onClick={() => handle('snooze')}
-            disabled={submitting !== null}
-            className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: 'var(--surface-raised)', color: 'var(--text-primary)', borderRadius: 2 }}
-          >
-            {submitting === 'snooze' ? '…' : 'SNOOZE 5'}
-          </button>
-        </div>
-
-        <div className="text-[9px] text-fg-muted text-center uppercase tracking-wider">
-          CODE 4 = on-scene safe · NEED HELP = emergency broadcast · SNOOZE = reset timer
+          <div className="text-[9px] text-fg-muted text-center uppercase tracking-wider">
+            CODE 4 = on-scene safe · NEED HELP = emergency broadcast · SNOOZE = reset timer
+          </div>
         </div>
       </div>
     </div>

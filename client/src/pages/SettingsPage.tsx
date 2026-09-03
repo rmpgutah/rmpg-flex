@@ -343,18 +343,25 @@ export default function SettingsPage() {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const [orgSaveOk, setOrgSaveOk] = useState<null | boolean>(null);
   const [orgSaveMsg, setOrgSaveMsg] = useState('');
+  const [orgSaving, setOrgSaving] = useState(false);
 
   // ConfirmDialog state for destructive resets
   const [confirmResetTones, setConfirmResetTones] = useState(false);
   const [confirmResetMap, setConfirmResetMap] = useState(false);
 
   async function publishOrgDefaults() {
+    if (orgSaving) return;
+    setOrgSaving(true);
     setOrgSaveOk(null);
     setOrgSaveMsg('Saving…');
-    const ok = await saveAsOrgDefault();
-    setOrgSaveOk(ok);
-    setOrgSaveMsg(ok ? 'Published to all users' : 'Save failed');
-    setTimeout(() => { setOrgSaveMsg(''); setOrgSaveOk(null); }, 4000);
+    try {
+      const ok = await saveAsOrgDefault();
+      setOrgSaveOk(ok);
+      setOrgSaveMsg(ok ? 'Published to all users' : 'Save failed');
+      setTimeout(() => { setOrgSaveMsg(''); setOrgSaveOk(null); }, 4000);
+    } finally {
+      setOrgSaving(false);
+    }
   }
 
   // Voice — alerts master + engine + severity
@@ -479,11 +486,13 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
     setPttChannelsLoading(true);
     apiFetch<RadioChannel[]>('/radio/channels')
-      .then((data) => setPttChannels(asArray<RadioChannel>(data)))
+      .then((data) => { if (!cancelled) setPttChannels(asArray<RadioChannel>(data)); })
       .catch(() => { /* offline */ })
-      .finally(() => setPttChannelsLoading(false));
+      .finally(() => { if (!cancelled) setPttChannelsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   // Capture the next key press to rebind the PTT key.
@@ -604,8 +613,9 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={publishOrgDefaults}
+              disabled={orgSaving}
               title="Publish your current voice / tone / map / PTT settings as the default for all users (they can still override). Shortcut: N"
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 borderColor: 'var(--brand-gold)',
                 color: 'var(--brand-gold)',
