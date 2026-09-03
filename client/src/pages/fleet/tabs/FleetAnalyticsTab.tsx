@@ -339,34 +339,42 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   }, [dailyGpsMileage]);
 
   useEffect(() => {
-    apiFetch<any>('/fleet/fleet-cost-analytics').then((d: any) => d && setCostAnalytics(d)).catch(() => {});
-    apiFetch<any>('/fleet/inspection-stats').then((d: any) => d && setInspectionStats(d)).catch(() => {});
-    apiFetch<any>('/fleet/notifications').then((d: any) => d?.notifications && setNotifications(d.notifications)).catch(() => {});
-    apiFetch<any>('/fleet/overdue-inspections').then((d: any) => d?.alerts && setOverdueInspections(d.alerts)).catch(() => {});
-    apiFetch<any>('/fleetio/analytics').then((d: any) => d && !d.error && setFleetioAnalytics(d)).catch(() => {});
+    let cancelled = false;
+    apiFetch<any>('/fleet/fleet-cost-analytics').then((d: any) => { if (!cancelled && d) setCostAnalytics(d); }).catch(() => {});
+    apiFetch<any>('/fleet/inspection-stats').then((d: any) => { if (!cancelled && d) setInspectionStats(d); }).catch(() => {});
+    apiFetch<any>('/fleet/notifications').then((d: any) => { if (!cancelled && d?.notifications) setNotifications(d.notifications); }).catch(() => {});
+    apiFetch<any>('/fleet/overdue-inspections').then((d: any) => { if (!cancelled && d?.alerts) setOverdueInspections(d.alerts); }).catch(() => {});
+    apiFetch<any>('/fleetio/analytics').then((d: any) => { if (!cancelled && d && !d.error) setFleetioAnalytics(d); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch combined cost trend (12 months)
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ combined_cost_trend: any[] }>('/fleet/combined-cost-trend')
-      .then((d) => d?.combined_cost_trend && setCombinedCostTrend(d.combined_cost_trend))
+      .then((d) => { if (!cancelled && d?.combined_cost_trend) setCombinedCostTrend(d.combined_cost_trend); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch monthly spend (8 months)
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ monthly_spend: any[] }>('/fleet/monthly-spend?months=8')
-      .then((d) => d?.monthly_spend && setMonthlySpend(d.monthly_spend))
+      .then((d) => { if (!cancelled && d?.monthly_spend) setMonthlySpend(d.monthly_spend); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch daily GPS mileage (30 days)
   useEffect(() => {
+    let cancelled = false;
     setDailyGpsLoading(true);
     apiFetch<{ daily_mileage: any[] }>('/fleet/daily-gps-mileage?days=30')
-      .then((d) => d?.daily_mileage && setDailyGpsMileage(d.daily_mileage))
+      .then((d) => { if (!cancelled && d?.daily_mileage) setDailyGpsMileage(d.daily_mileage); })
       .catch(() => {})
-      .finally(() => setDailyGpsLoading(false));
+      .finally(() => { if (!cancelled) setDailyGpsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
 
