@@ -242,7 +242,7 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark', maxWidth: '340px',
       })
         .setLngLat([lng, lat])
-        .setHTML(`<div style="background:#141414;color:#d4a017;padding:8px;font-size:10px;font-family:'Arial, sans-serif';">Checking premise alerts…</div>`)
+        .setHTML(`<div style="background:#141414;color:#d9bd72;padding:8px;font-size:10px;font-family:'Arial, sans-serif';">Checking premise alerts…</div>`)
         .addTo(map);
       popupRef.current = loadingPopup;
 
