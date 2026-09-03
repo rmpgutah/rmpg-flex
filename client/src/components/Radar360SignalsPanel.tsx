@@ -497,10 +497,12 @@ export default function Radar360SignalsPanel({ lat, lng, radiusMi = 1, callId, e
     abortRef.current = ctrl;
     setLoading(true);
     try {
-      const typeParam = activeTypes.size === TYPES.length ? '' : `&type=${[...activeTypes][0]}`;
+      // Always fetch all types from the API; client-side `activeTypes` filter handles display.
+      // Sending only one type param (as a "shortcut") silently drops other selected types
+      // because the server only accepts a single type value.
       const sessionParam = lastScanSession ? `&since_session=${encodeURIComponent(lastScanSession)}` : '';
       const data = await apiFetch<{ signals: SignalDetection[]; count: number }>(
-        `/api/radar360/signals?lat=${lat}&lng=${lng}&radius_mi=${radiusMi}${typeParam}${sessionParam}`,
+        `/api/radar360/signals?lat=${lat}&lng=${lng}&radius_mi=${radiusMi}${sessionParam}`,
       );
       if (!ctrl.signal.aborted) {
         setSignals(data.signals ?? []);
@@ -674,11 +676,13 @@ export default function Radar360SignalsPanel({ lat, lng, radiusMi = 1, callId, e
           <div className="flex flex-col items-center justify-center py-6 gap-2 text-center">
             <Radio size={20} style={{ color: 'var(--text-muted)' }} />
             <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-              {isElectron
-                ? 'No signals in range. Press Live Scan to detect nearby WiFi and Bluetooth devices.'
-                : 'No signals stored near this location in the last 24 h.'}
+              {lat == null
+                ? 'No scan center — right-click the map to set a position'
+                : isElectron
+                  ? 'No signals in range. Press Live Scan to detect nearby WiFi and Bluetooth devices.'
+                  : 'No signals stored near this location in the last 24 h.'}
             </span>
-            {!isElectron && (
+            {lat != null && !isElectron && (
               <div className="flex items-start gap-1 mt-1 text-[9px] max-w-[220px]" style={{ color: 'var(--text-muted)' }}>
                 <Info size={9} style={{ flexShrink: 0, marginTop: 1 }} />
                 Live scanning is available in the Electron desktop app. Mobile clients can submit signal data via the field camera.

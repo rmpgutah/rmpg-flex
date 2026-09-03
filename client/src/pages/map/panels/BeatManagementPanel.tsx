@@ -30,7 +30,7 @@ export default function BeatManagementPanel({ onClose, onSolutionReady }: BeatMa
   const optimization = useOptimizationV2();
 
   useEffect(() => {
-    apiFetch<{ results: Beat[] }>('/dispatch/beats')
+    apiFetch<{ results: Beat[] }>('/dispatch/geography/beats')
       .then((r) => setBeats(r.results ?? []))
       .catch(() => {});
     apiFetch<Unit[]>('/dispatch/units')

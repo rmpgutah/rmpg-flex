@@ -68,9 +68,13 @@ const ZONE_TYPE_COLORS: Record<string, string> = {
 };
 
 function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): string {
+  // Tactical-dark surface colors — fixed values by design (map surfaces stay
+  // dark always; don't use CSS vars here since this is inline HTML in a Mapbox popup).
+  const BG = '#0d1722';    // --surface-base equivalent
+  const BORDER = '#22405f'; // --surface-raised equivalent
   if (alerts.length === 0) {
     return `
-      <div style="background:#141414;color:#22c55e;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:'Arial, sans-serif';font-size:11px;">
+      <div style="background:${BG};color:#22c55e;padding:8px 12px;border:1px solid ${BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;">
         ✓ No premise alerts at this location
       </div>`;
   }
@@ -80,8 +84,8 @@ function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): strin
     return `
       <div style="margin-bottom:6px;padding:6px;background:${withAlpha(color, '11')};border-left:3px solid ${color};border-radius:2px;">
         <div style="font-weight:700;color:${color};font-size:10px;text-transform:uppercase;">${escapeHtml(a.alert_level)} — ${escapeHtml(a.alert_type)}</div>
-        <div style="font-weight:600;color:#e0e0e0;margin-top:2px;">${escapeHtml(a.title)}</div>
-        ${a.description ? `<div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(a.description)}</div>` : ''}
+        <div style="font-weight:600;color:#f0f4f9;margin-top:2px;">${escapeHtml(a.title)}</div>
+        ${a.description ? `<div style="color:#a0adbd;font-size:10px;margin-top:2px;">${escapeHtml(a.description)}</div>` : ''}
         ${a.flags ? `<div style="margin-top:3px;">${a.flags.split(',').map(f =>
           `<span style="background:${withAlpha(color, '22')};color:${color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${escapeHtml(f.trim())}</span>`
         ).join('')}</div>` : ''}
@@ -89,9 +93,9 @@ function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): strin
   }).join('');
 
   return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:220px;max-width:320px;">
+    <div style="background:${BG};color:#c3ccd6;padding:8px 12px;border:1px solid ${BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:220px;max-width:320px;">
       <div style="font-weight:700;color:#c3ccd6;margin-bottom:4px;font-size:10px;text-transform:uppercase;">⚠ PREMISE ALERTS (${alerts.length})</div>
-      <div style="color:#888;font-size:10px;margin-bottom:6px;">${escapeHtml(address)}</div>
+      <div style="color:#7c8b9e;font-size:10px;margin-bottom:6px;">${escapeHtml(address)}</div>
       ${alertsHtml}
     </div>`;
 }
@@ -137,24 +141,30 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
     }
   }, []);
 
-  // Load geofences on enable
+  // Load geofences on enable; reset stale alerts when disabling.
   useEffect(() => {
-    if (enabled) refreshGeofences();
+    if (enabled) {
+      refreshGeofences();
+    } else {
+      setActiveAlerts([]);
+    }
   }, [enabled, refreshGeofences]);
 
   // Render geofence zones on map
   useEffect(() => {
     if (!map || !mapLoaded) return;
 
-    if (!enabled || geofences.length === 0) {
-      [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => {
-        safeRemoveLayer(map, id);
-      });
+    const removeGeofenceLayers = () => {
+      [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => safeRemoveLayer(map, id));
       safeRemoveSource(map, GEOFENCE_SOURCE);
+    };
+
+    if (!enabled || geofences.length === 0) {
+      removeGeofenceLayers();
       return;
     }
 
-    const fc: GeoJSON.FeatureCollection = {
+    const buildFeatureCollection = (): GeoJSON.FeatureCollection => ({
       type: 'FeatureCollection',
       features: geofences
         .filter(g => g.active && g.coordinates.length >= 3)
@@ -171,12 +181,15 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
             coordinates: [[...g.coordinates, g.coordinates[0]]],
           },
         })),
-    };
+    });
 
-    const existingSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, GEOFENCE_SOURCE);
-    if (existingSource) {
-      existingSource.setData(fc);
-    } else {
+    const applyLayers = () => {
+      const fc = buildFeatureCollection();
+      const existingSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, GEOFENCE_SOURCE);
+      if (existingSource) {
+        existingSource.setData(fc);
+        return;
+      }
       map.addSource(GEOFENCE_SOURCE, { type: 'geojson', data: fc });
 
       map.addLayer({
@@ -201,10 +214,12 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         },
       });
 
+      // minzoom prevents zone labels from cluttering city-level overviews.
       map.addLayer({
         id: GEOFENCE_LABEL,
         type: 'symbol',
         source: GEOFENCE_SOURCE,
+        minzoom: 9,
         layout: {
           'text-field': ['get', 'name'],
           'text-size': 10,
@@ -212,37 +227,54 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         },
         paint: {
           'text-color': ['get', 'color'],
-          'text-halo-color': '#000',
+          'text-halo-color': '#0a1525',
           'text-halo-width': 1,
           'text-opacity': 0.8,
         },
       });
 
       devLog('[GeofenceAlerts] Geofence zones rendered:', geofences.length);
-    }
+    };
+
+    applyLayers();
+
+    // Re-apply after basemap style swaps wipe all sources/layers.
+    map.on('style.load', applyLayers);
 
     return () => {
-      [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => {
-        safeRemoveLayer(map, id);
-      });
-      safeRemoveSource(map, GEOFENCE_SOURCE);
+      map.off('style.load', applyLayers);
+      removeGeofenceLayers();
     };
   }, [map, mapLoaded, enabled, geofences]);
 
-  // Click handler — query premise alerts via reverse geocode
+  // Click handler — query premise alerts via reverse geocode.
+  // Guards against clicks on RMPG-managed features (unit/call markers rendered
+  // as DOM Markers don't appear in queryRenderedFeatures, but GeoJSON overlays do
+  // — bail if any RMPG source layer was hit so we don't double-popup over a beat).
   useEffect(() => {
-    if (!map || !mapLoaded || !enabled) return;
+    if (!map || !mapLoaded || !enabled) {
+      // Clean up any orphaned popup when toggled off while a fetch was in flight.
+      popupRef.current?.remove();
+      popupRef.current = null;
+      return;
+    }
+
+    const RMPG_LAYER_PREFIX_RE = /^(geojson-|rmpg-|geofence-)/;
 
     const onClick = async (e: mapboxgl.MapMouseEvent) => {
+      // Skip if the click landed on a managed GeoJSON or district-hierarchy layer —
+      // those have their own popup handlers and a second popup here would crowd them.
+      const hit = map.queryRenderedFeatures(e.point);
+      if (hit.some(f => RMPG_LAYER_PREFIX_RE.test(f.layer?.id ?? ''))) return;
+
       const { lng, lat } = e.lngLat;
       popupRef.current?.remove();
 
-      // Show loading popup
       const loadingPopup = new mapboxgl.Popup({
         closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark', maxWidth: '340px',
       })
         .setLngLat([lng, lat])
-        .setHTML(`<div style="background:#141414;color:#d9bd72;padding:8px;font-size:10px;font-family:'Arial, sans-serif';">Checking premise alerts…</div>`)
+        .setHTML(`<div style="background:#0d1722;color:#d9bd72;padding:8px;font-size:10px;font-family:system-ui,sans-serif;">Checking premise alerts…</div>`)
         .addTo(map);
       popupRef.current = loadingPopup;
 
@@ -259,13 +291,17 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         }
       } catch (err) {
         if (popupRef.current === loadingPopup) {
-          loadingPopup.setHTML(`<div style="background:#141414;color:#ef4444;padding:8px;font-size:10px;font-family:'Arial, sans-serif';">Failed to check premise alerts</div>`);
+          loadingPopup.setHTML(`<div style="background:#0d1722;color:#ef4444;padding:8px;font-size:10px;font-family:system-ui,sans-serif;">Failed to check premise alerts</div>`);
         }
       }
     };
 
     map.on('click', onClick);
-    return () => { map.off('click', onClick); };
+    return () => {
+      map.off('click', onClick);
+      popupRef.current?.remove();
+      popupRef.current = null;
+    };
   }, [map, mapLoaded, enabled]);
 
   const toggle = useCallback(() => setEnabled(v => !v), []);
