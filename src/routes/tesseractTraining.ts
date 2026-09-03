@@ -647,7 +647,9 @@ tesseractTraining.get('/documents/:id/notes', async (c) => {
     `SELECT strokes_json FROM tesseract_review_annotations WHERE serve_intake_document_id = ?`,
     id,
   );
-  return c.json({ strokes: row ? JSON.parse(row.strokes_json) : null });
+  let strokes: unknown = null;
+  if (row) { try { strokes = JSON.parse(row.strokes_json); } catch { strokes = null; } }
+  return c.json({ strokes });
 });
 
 // PUT /api/tesseract-training/documents/:id/notes
