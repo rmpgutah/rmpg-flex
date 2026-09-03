@@ -72,7 +72,7 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ templates: 0, batches: 0, sent_batches: 0 });
   const [editingRecord, setEditingRecord] = useState<NotificationTemplate | null>(null);
-  const [formData, setFormData] = useState<Record<string, string | number>>({});
+  const [formData, setFormData] = useState<Record<string, string | number | null | undefined>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<NotificationTemplate | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
