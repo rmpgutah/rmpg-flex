@@ -445,7 +445,7 @@ export async function autoCompileShiftDar(
     activitiesNarrative,
   );
 
-  return { id: r.meta.last_row_id, dar_number: number };
+  return { id: Number(r.meta.last_row_id), dar_number: number };
 }
 
 export async function linkServeAttemptToShift(
@@ -579,7 +579,7 @@ export async function runMileageReconcile(
            flag = excluded.flag,
            vehicle_id = excluded.vehicle_id,
            unit_id = excluded.unit_id`,
-        officerId, day, primary?.id ?? 0, primary?.vehicle_id ?? null, primary?.unit_id ?? null,
+        officerId, day, primary?.id ?? null, primary?.vehicle_id ?? null, primary?.unit_id ?? null,
         rec.duty_miles, rec.gps_trip_miles, rec.serve_billed_miles, rec.cfs_miles, rec.variance_miles, rec.flag,
       );
       await addItem(db, runId, 'officer_day', primary?.id ?? null, officerId, rec);
