@@ -101,7 +101,7 @@ export async function mutationAuditMiddleware(c: Context<Env>, next: Next): Prom
   // Skip unauthenticated requests and callers that opt out
   const userId = c.get('userId') as number | undefined;
   if (!userId) return;
-  if (c.get('skipAutoAudit' as never)) return;
+  if (c.get('skipAutoAudit')) return;
 
   // Only log successful mutations (4xx/5xx are failed attempts, not state changes)
   const status = c.res.status;
