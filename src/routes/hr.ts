@@ -21,7 +21,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, executeInChunks, ensureHrTables } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks, queryInChunks, ensureHrTables } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { populatePayrollFromClocks, denverToday } from '../utils/corporateWorkflows';
 
@@ -388,16 +388,18 @@ hr.get('/leave/balances', requireRole(...ALL_ROLES), async (c) => {
 
     // Sum approved hours per (officer, type) for the requested year.
     // start_date is TEXT ISO so substr-based year extraction is fine.
-    const idList = officers.map(o => o.id).join(',');
-    const usage = await query<{ officer_id: number; type: string; used: number }>(
+    // queryInChunks with year as a leadingBinding keeps all params bound
+    // (no integer interpolation) and handles org sizes > 100 officers.
+    const usage = await queryInChunks<{ officer_id: number; type: string; used: number }>(
       db,
-      `SELECT officer_id, type, COALESCE(SUM(hours_requested), 0) AS used
+      officers.map(o => o.id),
+      (ph) => `SELECT officer_id, type, COALESCE(SUM(hours_requested), 0) AS used
        FROM leave_requests
-       WHERE status = 'approved'
-         AND officer_id IN (${idList})
-         AND substr(start_date, 1, 4) = ?
+       WHERE substr(start_date, 1, 4) = ?
+         AND status = 'approved'
+         AND officer_id IN (${ph})
        GROUP BY officer_id, type`,
-      String(year)
+      [String(year)],
     );
 
     const usageByOfficer = new Map<number, Record<string, number>>();
