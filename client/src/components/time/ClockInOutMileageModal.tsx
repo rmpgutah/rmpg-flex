@@ -108,7 +108,7 @@ export default function ClockInOutMileageModal({
         const res = await apiFetch('/personnel/time/clock-out', {
           method: 'POST',
           body: JSON.stringify({
-            officer_id: officerId,
+            officer_id: officerId != null ? Number(officerId) : undefined,
             ending_mileage: num,
           }),
         });
@@ -117,7 +117,7 @@ export default function ClockInOutMileageModal({
         const res = await apiFetch('/personnel/time/clock-in', {
           method: 'POST',
           body: JSON.stringify({
-            officer_id: officerId,
+            officer_id: officerId != null ? Number(officerId) : undefined,
             vehicle_id: selectedVehicleId ? Number(selectedVehicleId) : undefined,
             starting_mileage: num,
           }),
@@ -166,6 +166,7 @@ export default function ClockInOutMileageModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="p-1 text-fg-muted hover:text-fg-primary transition-colors"
           >
             <X className="w-4 h-4" />
