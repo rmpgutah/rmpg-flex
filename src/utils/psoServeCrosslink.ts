@@ -17,7 +17,7 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { queryFirst, query, execute, columnExists } from './db';
+import { queryFirst, query, queryInChunks, execute, columnExists } from './db';
 import {
   dispositionToCode,
   codeToLegacyResult,
@@ -75,11 +75,10 @@ export async function collectCallChainIds(
 
   let frontier = [...seen];
   for (let guard = 0; guard < MAX_CHAIN_WALK && frontier.length; guard++) {
-    const ph = frontier.map(() => '?').join(',');
-    const children = await query<{ id: number }>(
+    const children = await queryInChunks<{ id: number }>(
       db,
-      `SELECT id FROM calls_for_service_ext WHERE parent_call_id IN (${ph})`,
-      ...frontier,
+      frontier,
+      (ph) => `SELECT id FROM calls_for_service_ext WHERE parent_call_id IN (${ph})`,
     ).catch(() => [] as { id: number }[]);
     const next: number[] = [];
     for (const row of children) {
@@ -113,11 +112,10 @@ export async function findServeJobForCall(
 
   const ids = await collectCallChainIds(db, numId);
   if (ids.length === 0) return null;
-  const ph = ids.map(() => '?').join(',');
-  const jobs = await query<Record<string, any>>(
+  const jobs = await queryInChunks<Record<string, any>>(
     db,
-    `SELECT * FROM serve_queue WHERE call_id IN (${ph}) ORDER BY id ASC`,
-    ...ids,
+    ids,
+    (ph) => `SELECT * FROM serve_queue WHERE call_id IN (${ph}) ORDER BY id ASC`,
   ).catch(() => [] as Record<string, any>[]);
   if (!jobs.length) return null;
   return jobs.find((j) => asPositiveId(j.call_id) === numId) || jobs[0];

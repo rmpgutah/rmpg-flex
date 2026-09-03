@@ -111,6 +111,9 @@ fieldPhotos.post('/', async (c) => {
 
 // GET / — list (filterable)
 fieldPhotos.get('/', async (c) => {
+  const u = c.get('user') as { role: string } | undefined;
+  if (!u || ['contract_manager', 'client_viewer'].includes(u.role))
+    return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   await ensureTable(db);
   const { officer_id, call_id, incident_id, from, to, limit } = c.req.query();

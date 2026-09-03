@@ -57,6 +57,10 @@ const ANALYSIS_STATUSES = new Set([
   'pending', 'in_progress', 'completed', 'inconclusive', 'cancelled',
 ]);
 
+// Roles excluded from forensic case data — chain-of-custody records are
+// law-enforcement-internal; commercial and viewer accounts have no standing.
+const FORENSICS_EXCLUDED = ['contract_manager', 'client_viewer'];
+
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
   const u = c.get('user');
   if (!u || !roles.includes(u.role)) return 'Insufficient role';
@@ -115,6 +119,14 @@ async function logActivity(
     console.error('[forensics] activity log insert failed:', err);
   }
 }
+
+// ── Router-wide role gate — forensic records are chain-of-custody material ──
+forensics.use('*', async (c, next) => {
+  const u = c.get('user') as { role: string } | undefined;
+  if (!u || FORENSICS_EXCLUDED.includes(u.role))
+    return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
+  return next();
+});
 
 // ═══════════════════════════════════════════════════════════════
 // CASES
