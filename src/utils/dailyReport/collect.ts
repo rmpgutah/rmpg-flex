@@ -34,8 +34,16 @@ const dayNormalized = (expr: string): string =>
   `CASE WHEN length(${expr}) = 10 THEN ${expr} || ' 12:00:00' ELSE ${expr} END`;
 
 async function all<T>(db: D1Database, sql: string, ...binds: unknown[]): Promise<T[]> {
-  const rs = await db.prepare(sql).bind(...binds).all<T>();
-  return rs.results ?? [];
+  try {
+    const rs = await db.prepare(sql).bind(...binds).all<T>();
+    return rs.results ?? [];
+  } catch (e: unknown) {
+    // Degrade gracefully when a table doesn't exist yet (e.g. missing migration
+    // or test-worker DB lacking the schema for this query's tables).
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/no such (table|column)/i.test(msg)) return [];
+    throw e;
+  }
 }
 
 export async function collectDailyReport(

@@ -2760,6 +2760,35 @@ export default function DispatchPage() {
       });
       return;
     }
+
+    if (newStatus === 'onscene') {
+      const call = calls.find((c) => c.id === callId) ?? selectedCall;
+      const startMi = call?.starting_mileage ? Number(call.starting_mileage) : null;
+      // Auto-calculate ending mileage from GPS → call location (no popup — "without interference")
+      if (startMi != null && startMi > 0 && call?.latitude && call?.longitude) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000, maximumAge: 30000 }),
+          );
+          const toRad = (d: number) => (d * Math.PI) / 180;
+          const R = 3958.8; // Earth radius in miles
+          const dLat = toRad(Number(call.latitude) - pos.coords.latitude);
+          const dLon = toRad(Number(call.longitude) - pos.coords.longitude);
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(pos.coords.latitude)) *
+              Math.cos(toRad(Number(call.latitude))) *
+              Math.sin(dLon / 2) ** 2;
+          const distMiles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const endingMileage = Math.round((startMi + distMiles) * 10) / 10;
+          await handleStatusChange(callId, newStatus, { ...extraBody, ending_mileage: endingMileage });
+          return;
+        } catch {
+          // GPS unavailable — proceed without ending mileage
+        }
+      }
+    }
+
     await handleStatusChange(callId, newStatus, extraBody);
   }, [calls, selectedCall, handleStatusChange]);
 
@@ -3008,7 +3037,7 @@ export default function DispatchPage() {
                 )}
                 {selectedCall.status === 'enroute' && (
                   <button type="button"
-                    onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
+                    onClick={() => triggerStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
@@ -4885,7 +4914,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'enroute' && (
-                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => triggerStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
                         <Eye style={{ width: 10, height: 10 }} /> On Scene
                       </button>
                     )}
@@ -6295,17 +6324,41 @@ export default function DispatchPage() {
 
                 {/* ── NARRATIVE / INCIDENT SUMMARY ─── */}
                 {(detailTab === 'info' || detailTab === 'persons') && (
-                  <div className="mt-3 border border-[var(--spm-border)] rounded-md p-3 shadow-xs" style={{ background: 'var(--surface-raised)' }}>
-                    <div className="flex items-center justify-between mb-2">
+                  <div
+                    className="mt-3 rounded-sm shadow-sm"
+                    style={{
+                      border: selectedCall?.status === 'cleared'
+                        ? '1px solid rgba(34,197,94,0.45)'
+                        : '1px solid var(--spm-border)',
+                      background: selectedCall?.status === 'cleared'
+                        ? 'color-mix(in srgb, var(--surface-raised) 92%, rgba(34,197,94,0.12))'
+                        : 'var(--surface-raised)',
+                    }}
+                  >
+                    {/* Header bar */}
+                    <div
+                      className="flex items-center justify-between px-3 py-2 border-b"
+                      style={{
+                        borderColor: selectedCall?.status === 'cleared'
+                          ? 'rgba(34,197,94,0.3)'
+                          : 'var(--spm-border)',
+                        background: 'var(--surface-deep)',
+                      }}
+                    >
                       <div className="flex items-center gap-2">
-                        <FileText className="w-3.5 h-3.5 text-brand-400" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">
-                          Narrative / Incident Summary
-                        </span>
-                        {narrativeSaving && <span className="text-[9px] text-brand-400 animate-pulse italic">Saving…</span>}
+                        <FileText className="w-3.5 h-3.5" style={{ color: 'var(--field-label-color)' }} />
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                            Narrative / Incident Summary
+                          </span>
+                          <span className="ml-2 text-[8px] font-normal uppercase tracking-widest text-rmpg-500">
+                            Official Report
+                          </span>
+                        </div>
+                        {narrativeSaving && <span className="text-[9px] text-brand-400 animate-pulse italic ml-1">Saving…</span>}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-fg-muted font-mono">
+                        <span className="text-[9px] text-fg-muted font-mono tabular-nums">
                           {callNarrative.trim() ? `${callNarrative.trim().split(/\s+/).length} words` : '0 words'}
                         </span>
                         {selectedCall?.status === 'cleared' && (
@@ -6313,7 +6366,12 @@ export default function DispatchPage() {
                             type="button"
                             onClick={() => setSubmitNarrativeConfirmOpen(true)}
                             disabled={!callNarrative.trim() || submittingNarrative}
-                            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-fg-primary bg-green-600 hover:bg-green-500 rounded-sm disabled:opacity-40 transition-colors shadow-xs"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-sm transition-colors shadow-xs"
+                            style={{
+                              background: callNarrative.trim() ? 'rgb(22 163 74)' : 'rgba(22,163,74,0.3)',
+                              color: '#fff',
+                              opacity: submittingNarrative ? 0.5 : 1,
+                            }}
                             title="Submit narrative and close this CFS"
                           >
                             <CheckCircle style={{ width: 12, height: 12 }} />
@@ -6322,40 +6380,58 @@ export default function DispatchPage() {
                         )}
                       </div>
                     </div>
-                    <textarea
-                      className="textarea-dark text-xs w-full font-sans leading-relaxed"
-                      rows={5}
-                      placeholder="Enter detailed narrative / incident summary report here (takes the place of legacy Action Taken)..."
-                      value={callNarrative}
-                      onChange={e => {
-                        setCallNarrative(e.target.value);
-                        updateEditField('action_taken', e.target.value);
-                      }}
-                      onBlur={async () => {
-                        if (!selectedCall?.id) return;
-                        setNarrativeSaving(true);
-                        try {
-                          await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
-                            method: 'PATCH',
-                            body: JSON.stringify({ narrative: callNarrative }),
-                          });
-                          // Also update local selectedCall action_taken
-                          setSelectedCall(prev => prev ? { ...prev, action_taken: callNarrative } : prev);
-                        } catch { addToast('Failed to save narrative', 'error'); }
-                        finally { setNarrativeSaving(false); }
-                      }}
-                    />
-                    <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1">
-                      <span>Auto-saves on blur. Serves as official Incident Summary & Action Taken.</span>
-                      {selectedCall?.status === 'cleared' && (
-                        <span className="text-green-400/80 font-medium">Ready for submission to Close CFS</span>
-                      )}
+
+                    {/* Cleared-state call-to-action strip */}
+                    {selectedCall?.status === 'cleared' && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-medium text-green-300" style={{ background: 'rgba(34,197,94,0.07)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}>
+                        <CheckCircle style={{ width: 10, height: 10 }} />
+                        CFS Cleared — complete the narrative below and click Submit Narrative to close this call and queue it for archiving.
+                      </div>
+                    )}
+
+                    {/* Textarea body */}
+                    <div className="p-3">
+                      <textarea
+                        className="textarea-dark text-xs w-full font-sans leading-relaxed"
+                        rows={selectedCall?.status === 'cleared' ? 7 : 5}
+                        placeholder={
+                          selectedCall?.status === 'cleared'
+                            ? 'Document what occurred, actions taken, persons involved, and outcome. This becomes the official incident summary on file.'
+                            : 'Narrative / incident summary (replaces Action Taken — auto-saves on blur)…'
+                        }
+                        value={callNarrative}
+                        onChange={e => {
+                          setCallNarrative(e.target.value);
+                          updateEditField('action_taken', e.target.value);
+                        }}
+                        onBlur={async () => {
+                          if (!selectedCall?.id) return;
+                          setNarrativeSaving(true);
+                          try {
+                            await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ narrative: callNarrative }),
+                            });
+                            setSelectedCall(prev => prev ? { ...prev, action_taken: callNarrative } : prev);
+                          } catch { addToast('Failed to save narrative', 'error'); }
+                          finally { setNarrativeSaving(false); }
+                        }}
+                      />
+                      <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1.5">
+                        <span>Auto-saves on blur · Official Incident Summary & Action Taken of record</span>
+                        {selectedCall?.status === 'cleared' && callNarrative.trim() && (
+                          <span className="text-green-400 font-semibold">Ready to Submit</span>
+                        )}
+                        {selectedCall?.status === 'cleared' && !callNarrative.trim() && (
+                          <span className="text-amber-400/80 font-medium">Narrative required before closing</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.weather_snapshot || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
+                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.weather_snapshot || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
@@ -6445,7 +6521,7 @@ export default function DispatchPage() {
                         {selectedCall.le_notified && <span className="text-brand-400">LE Notified{selectedCall.le_agency ? ` (${selectedCall.le_agency})` : ''}{selectedCall.le_case_number ? ` #${selectedCall.le_case_number}` : ''}</span>}
                         {selectedCall.damage_estimate && <span className="text-rmpg-200"><span className="text-rmpg-400">Damage:</span> ${selectedCall.damage_estimate}</span>}
                         {selectedCall.damage_description && <span className="text-rmpg-200 basis-full">{selectedCall.damage_description}</span>}
-                        {selectedCall.action_taken && <span className="text-rmpg-200 basis-full"><span className="text-rmpg-400">Action:</span> {selectedCall.action_taken}</span>}
+                        {/* action_taken is now the Narrative / Incident Summary field above — not shown here */}
                         {selectedCall.responding_officer && <span className="text-rmpg-200"><span className="text-rmpg-400">Resp. Officer:</span> {selectedCall.responding_officer}</span>}
                       </div>
                     )}

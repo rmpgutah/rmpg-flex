@@ -27,9 +27,8 @@ export default function PatrolBeatPlannerModal({ onClose, onSolutionReady }: Pat
   const optimization = useOptimizationV2();
 
   useEffect(() => {
-    let cancelled = false;
-    apiFetch<{ results: Beat[] }>('/dispatch/beats')
-      .then((r) => { if (!cancelled) setBeats(r.results ?? []); })
+    apiFetch<{ results: Beat[] }>('/dispatch/geography/beats')
+      .then((r) => setBeats(r.results ?? []))
       .catch(() => {});
     apiFetch<Unit[]>('/dispatch/units')
       .then((r) => { if (!cancelled) setUnits(Array.isArray(r) ? r : []); })

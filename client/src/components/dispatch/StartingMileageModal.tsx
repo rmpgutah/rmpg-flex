@@ -37,7 +37,7 @@ export default function StartingMileageModal({
     (async () => {
       try {
         if (unitId) {
-          const res = await apiFetch<{ current_mileage?: number | null; odometer?: number | null }>(
+          const res = await apiFetch<Array<{ current_mileage?: number | null; odometer?: number | null }>>(
             `/fleet/vehicles?assigned_unit_id=${unitId}`
           ).catch(() => null);
           const veh = Array.isArray(res) ? res[0] : res;
@@ -111,6 +111,7 @@ export default function StartingMileageModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="p-1 text-fg-muted hover:text-fg-primary transition-colors"
           >
             <X className="w-4 h-4" />

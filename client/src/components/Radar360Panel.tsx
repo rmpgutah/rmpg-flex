@@ -451,8 +451,10 @@ export default function Radar360Panel({ radar, centerLabel, onClose }: Props) {
       )}
 
       {filtered.length === 0 && !loading && (
-        <div className="text-center text-[10px] text-muted pb-3">
-          No contacts within {radiusMi} mi
+        <div className="text-center text-[10px] text-muted pb-3 px-3">
+          {lat == null
+            ? 'No scan center — right-click the map to set a position'
+            : `No contacts within ${radiusMi} mi`}
         </div>
       )}
 

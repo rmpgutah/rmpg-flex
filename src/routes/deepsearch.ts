@@ -68,7 +68,7 @@ deepsearch.post('/search', async (c) => {
     let res: Response;
     try {
       res = await fetch(
-        `${GEMINI_API}/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `${GEMINI_API}/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
