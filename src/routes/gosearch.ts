@@ -21,22 +21,26 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // Sites to check — subset of GoSearch's 300+ targets, prioritized for
 // security/law enforcement relevance. The full GoSearch list is in
 // github.com/ibnaleem/gosearch.
-const SITES = [
+//
+// `check`: string to look for in a 200 response body.
+// `positive`: when true, presence of `check` means the profile EXISTS.
+//             when false/absent, presence of `check` means the profile does NOT exist.
+const SITES: Array<{ name: string; url: string; check: string; positive?: boolean }> = [
   { name: 'GitHub', url: 'https://github.com/{username}', check: 'login' },
   { name: 'Twitter/X', url: 'https://x.com/{username}', check: 'not_found' },
   { name: 'Instagram', url: 'https://www.instagram.com/{username}/', check: 'login' },
   { name: 'Reddit', url: 'https://www.reddit.com/user/{username}', check: 'sorry' },
   { name: 'LinkedIn', url: 'https://www.linkedin.com/in/{username}', check: 'login' },
   { name: 'Facebook', url: 'https://www.facebook.com/{username}', check: 'login' },
-  { name: 'YouTube', url: 'https://www.youtube.com/@{username}', check: 'playability' },
+  { name: 'YouTube', url: 'https://www.youtube.com/@{username}', check: 'playability', positive: true },
   { name: 'TikTok', url: 'https://www.tiktok.com/@{username}', check: 'login' },
   { name: 'Pinterest', url: 'https://www.pinterest.com/{username}/', check: 'login' },
   { name: 'Tumblr', url: 'https://{username}.tumblr.com', check: 'not_found' },
   { name: 'Medium', url: 'https://medium.com/@{username}', check: 'is-404' },
   { name: 'Dev.to', url: 'https://dev.to/{username}', check: 'not_found' },
   { name: 'Keybase', url: 'https://keybase.io/{username}', check: 'not_found' },
-  { name: 'Gravatar', url: 'https://en.gravatar.com/{username}', check: 'profile' },
-  { name: 'Telegram', url: 'https://t.me/{username}', check: 'tgme_page' },
+  { name: 'Gravatar', url: 'https://en.gravatar.com/{username}', check: 'profile', positive: true },
+  { name: 'Telegram', url: 'https://t.me/{username}', check: 'tgme_page', positive: true },
   { name: 'Mastodon', url: 'https://mastodon.social/@{username}', check: 'not_found' },
   { name: 'Twitch', url: 'https://www.twitch.tv/{username}', check: 'login' },
   { name: 'Steam', url: 'https://steamcommunity.com/id/{username}', check: 'login' },
@@ -56,7 +60,7 @@ async function sha256Hex(input: string): Promise<string> {
 
 async function checkSite(
   username: string,
-  site: { name: string; url: string; check: string },
+  site: { name: string; url: string; check: string; positive?: boolean },
   signal: AbortSignal,
 ): Promise<{ site: string; url: string; found: boolean; status: number }> {
   const url = site.url.replace(/\{username\}/g, username);
@@ -68,14 +72,16 @@ async function checkSite(
     });
     const status = res.status;
 
-    // Basic heuristic: 200 = likely found, 404 = not found, 302 to login = uncertain
     let found = false;
     if (status === 200) {
       const text = await res.text().catch(() => '');
-      // Some sites return 200 with "not found" messages
-      found = !text.includes('not_found') && !text.includes('is-404');
+      // positive=true: check string present → profile exists
+      // positive=false/undefined: check string present → profile NOT found
+      found = site.positive
+        ? text.includes(site.check)
+        : !text.includes(site.check);
     } else if (status === 302 || status === 301) {
-      found = false; // redirect likely to login
+      found = false; // redirect to login = not found
     }
 
     return { site: site.name, url, found, status };
