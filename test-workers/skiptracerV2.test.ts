@@ -63,6 +63,18 @@ describe('skiptracer-v2 routes', () => {
       full_name TEXT
     )`);
     await execute(db, `INSERT OR IGNORE INTO users (id, full_name) VALUES (1, 'Test Officer')`);
+    // Disable all external enrichment sources so the search test never fires real HTTP calls.
+    for (const key of [
+      'nsopw', 'sl_assessor', 'open_sanctions', 'fbi_wanted', 'bop_inmates',
+      'census_geocoder', 'ofac_sdn', 'usps', 'open_corporates', 'numverify',
+      'usa_people_search', 'hunter', 'pdl', 'apollo', 'hibp', 'courtlistener',
+    ]) {
+      await execute(db,
+        `INSERT OR IGNORE INTO system_config (config_key, config_value, category)
+         VALUES (?, '0', 'skiptracer')`,
+        `skiptracer_v2_source_${key}_enabled`,
+      );
+    }
   });
 
   it('GET /sources returns registered adapters', async () => {
