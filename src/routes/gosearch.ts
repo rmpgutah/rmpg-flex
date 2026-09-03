@@ -188,7 +188,11 @@ gosearch.post('/search', async (c) => {
     queryKey,
   );
   if (cached) {
-    return c.json({ ...JSON.parse(cached.results_json), cached: true });
+    try {
+      return c.json({ ...JSON.parse(cached.results_json), cached: true });
+    } catch {
+      // Malformed cache entry — fall through to a fresh lookup
+    }
   }
 
   const ctrl = new AbortController();
