@@ -38,6 +38,7 @@ import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { openAuditLogPdf, type AuditLogEntryForPdf } from '../utils/auditLogPdf';
 import { toDisplayLabel } from '../utils/formatters';
 import { auditLogsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { log } from '../utils/logger';
 
 // Roles that may access the audit log. AdminRoute at the router level already
 // gates to admin+manager, but we add a belt-and-suspenders in-page gate so

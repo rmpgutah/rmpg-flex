@@ -99,6 +99,11 @@ interface PersonResult {
   dob?: string;
 }
 
+interface JailRosterStats {
+  per_county: CountyStat[];
+  population_summary: PopulationSummary;
+}
+
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
@@ -772,7 +777,7 @@ export default function ArrestRecordsPage() {
               <Plus className="w-3 h-3" /> New Booking
             </button>
           )}
-          <ExportButton exportUrl="/api/arrests/export/csv" exportFilename="arrests.csv" />
+          <ExportButton exportUrl="/arrests/export/csv" exportFilename="arrests.csv" />
           <button type="button" onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
             <Download className="w-3 h-3" /> CSV
           </button>

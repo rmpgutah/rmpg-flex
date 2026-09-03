@@ -15,6 +15,7 @@ import {
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
+import { WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -308,7 +309,7 @@ export default function DashCamDetailPage() {
     });
   };
 
-  const apiBase = window.location.origin + '/api';
+  const apiBase = WORKER_HTTP_ORIGIN + '/api';
   const token = localStorage.getItem('rmpg_token') || '';
   const streamUrl = video ? `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}` : '';
 
@@ -474,7 +475,7 @@ export default function DashCamDetailPage() {
     map.on('load', () => {
       // Marker
       const marker = new mapboxgl.Marker({
-        color: 'var(--text-muted)',
+        color: '#8a9bb8',
       })
         .setLngLat([centerLng, centerLat])
         .addTo(map);

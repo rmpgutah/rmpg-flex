@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router';
+import { Routes, Route, Navigate, Outlet, useLocation, Link } from 'react-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -342,7 +342,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
         </div>
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--sev-critical-soft)] mb-1.5">Access Denied</h3>
         <p className="text-[10px] text-fg-muted max-w-xs mb-4">You do not have permission to view this page.</p>
-        <a href="/" className="btn-gold">Return to Dashboard</a>
+        <Link to="/" className="btn-gold">Return to Dashboard</Link>
       </div>
     );
   }
@@ -441,8 +441,8 @@ function NotFoundPage() {
         </p>
 
         {/* Action */}
-        <a
-          href="/"
+        <Link
+          to="/"
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
           style={{
             background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
@@ -451,18 +451,14 @@ function NotFoundPage() {
             borderRadius: 2,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
-            e.currentTarget.style.borderColor = 'var(--accent-gold-300)';
-            e.currentTarget.style.opacity = '0.85';
+            (e.currentTarget as HTMLElement).style.opacity = '0.85';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
-            e.currentTarget.style.borderColor = 'var(--accent-gold-300)';
-            e.currentTarget.style.opacity = '1';
+            (e.currentTarget as HTMLElement).style.opacity = '1';
           }}
         >
           Return to Dashboard
-        </a>
+        </Link>
       </div>
     </div>
   );
@@ -717,7 +713,7 @@ function AppRoutes() {
             <Route path="/geo-data-viewer" element={<RouteErrorBoundary><GeoDataViewerPage /></RouteErrorBoundary>} />
             <Route path="/invoices" element={<RouteErrorBoundary><InvoicesPage /></RouteErrorBoundary>} />
             <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
-            <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
+            <Route path="/national-warrant-search" element={<Navigate to="/national-warrants" replace />} />
             <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
             <Route path="/court-records" element={<RouteErrorBoundary><CourtRecordsPage /></RouteErrorBoundary>} />
             <Route path="/crash-reports" element={<RouteErrorBoundary><CrashReportsPage /></RouteErrorBoundary>} />

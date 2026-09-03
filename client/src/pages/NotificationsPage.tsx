@@ -118,7 +118,7 @@ export default function NotificationsPage() {
       if (filterType) params.set('type', filterType);
       if (filterRead) params.set('is_read', filterRead);
 
-      const res = await apiFetch<{ data: Notification[]; pagination: any }>(`/notifications?${params}`);
+      const res = await apiFetch<{ data: Notification[]; pagination: { page: number; totalPages: number; total: number } }>(`/notifications?${params}`);
       setNotifications(res?.data || []);
       setPagination(res?.pagination || { page: 1, total: 0, totalPages: 0 });
     } catch {
@@ -555,8 +555,8 @@ export default function NotificationsPage() {
               <h2 className="text-sm font-bold text-rmpg-100 mb-4">Notification Preferences</h2>
               <div className="space-y-3">
                 {Object.entries(prefs).filter(([k]) => typeof (prefs as any)[k] === 'boolean').map(([key, value]) => (
-                  <label key={key} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
-                    <input id="ff-notificationspage-0"
+                  <label key={key} htmlFor={`pref-${key}`} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
+                    <input id={`pref-${key}`}
                       type="checkbox"
                       checked={value as boolean}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, [key]: e.target.checked } : prev)}

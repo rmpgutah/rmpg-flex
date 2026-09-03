@@ -117,7 +117,7 @@ export function ScreeningWorkspace() {
     if (!pendingReview) return;
     setReviewBusy(true);
     try {
-      await apiFetch(`/screening/hits/${pendingReview.id}/${pendingReview.action}`, { method: 'POST' }).catch(() => {});
+      await apiFetch(`/screening/hits/${pendingReview.id}/${pendingReview.action}`, { method: 'POST' });
       loadHits();
     } finally {
       setReviewBusy(false);

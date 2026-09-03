@@ -327,7 +327,8 @@ export default function PersonIntelPage() {
       ) : (
         <div className="space-y-1">
           {filtered.map(d => {
-            const flags: string[] = d.risk_flags ? JSON.parse(d.risk_flags) : [];
+            let flags: string[] = [];
+            try { flags = d.risk_flags ? JSON.parse(d.risk_flags) : []; } catch { /* bad row — skip flags */ }
             return (
               <div key={d.id} className="relative group">
                 <button

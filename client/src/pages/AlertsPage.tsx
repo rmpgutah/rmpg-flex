@@ -34,7 +34,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import {
   Megaphone, FileText, Send, CheckCircle, Plus, Pencil, Trash2, Eye,
-  Filter as FilterIcon, X,
+  Filter as FilterIcon, X, Loader2,
 } from 'lucide-react';
 import { formatEnumValue } from '../utils/formatters';
 import { alertTemplatesToCsv, downloadTextFile } from '../utils/rmsListExport';
@@ -72,7 +72,7 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ templates: 0, batches: 0, sent_batches: 0 });
   const [editingRecord, setEditingRecord] = useState<NotificationTemplate | null>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, string | number | boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<NotificationTemplate | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -90,9 +90,11 @@ export default function AlertsPage() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const r = await apiFetch<{ data: NotificationTemplate[] }>('/alerts/templates');
+      const [r, s] = await Promise.all([
+        apiFetch<{ data: NotificationTemplate[] }>('/alerts/templates'),
+        apiFetch<{ templates: number; batches: number; sent_batches: number }>('/alerts/stats'),
+      ]);
       setTemplates(r.data || []);
-      const s = await apiFetch<{ templates: number; batches: number; sent_batches: number }>('/alerts/stats');
       setStats(s);
     } catch { setError('Failed to load data'); }
   }, []);
