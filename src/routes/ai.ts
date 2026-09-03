@@ -226,8 +226,11 @@ ai.post('/presets', requireRole('admin', 'manager'), async (c) => {
 });
 ai.delete('/presets/:id', requireRole('admin', 'manager'), async (c) => {
   try {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
-    await execute(db, 'DELETE FROM ai_model_presets WHERE id = ?', c.req.param('id'));
+    const r = await execute(db, 'DELETE FROM ai_model_presets WHERE id = ?', id);
+    if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /presets/:id failed', { src: 'src/routes/ai.ts' }, err);
@@ -260,6 +263,8 @@ ai.post('/templates', requireRole('admin', 'manager'), async (c) => {
 });
 ai.put('/templates/:id', requireRole('admin', 'manager'), async (c) => {
   try {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
     const body = await c.req.json<{ name?: string; category?: string }>().catch(() => ({} as Record<string, never>));
     const sets: string[] = []; const vals: unknown[] = [];
@@ -267,8 +272,9 @@ ai.put('/templates/:id', requireRole('admin', 'manager'), async (c) => {
     if (body.category !== undefined) { sets.push('category = ?'); vals.push(body.category); }
     if (!sets.length) return c.json({ success: true });
     sets.push("updated_at = datetime('now')");
-    vals.push(c.req.param('id'));
-    await execute(db, `UPDATE ai_prompt_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    vals.push(id);
+    const r = await execute(db, `UPDATE ai_prompt_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('PUT /templates/:id failed', { src: 'src/routes/ai.ts' }, err);
@@ -277,8 +283,11 @@ ai.put('/templates/:id', requireRole('admin', 'manager'), async (c) => {
 });
 ai.delete('/templates/:id', requireRole('admin', 'manager'), async (c) => {
   try {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
-    await execute(db, 'DELETE FROM ai_prompt_templates WHERE id = ?', c.req.param('id'));
+    const r = await execute(db, 'DELETE FROM ai_prompt_templates WHERE id = ?', id);
+    if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /templates/:id failed', { src: 'src/routes/ai.ts' }, err);

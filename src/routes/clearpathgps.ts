@@ -258,8 +258,11 @@ cpg.post('/mappings', adminOnly, async (c) => {
 });
 
 cpg.delete('/mappings/:id', adminOnly, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
-  await execute(db, 'DELETE FROM cpg_device_mappings WHERE id = ?', c.req.param('id'));
+  const r = await execute(db, 'DELETE FROM cpg_device_mappings WHERE id = ?', id);
+  if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
 });
 
