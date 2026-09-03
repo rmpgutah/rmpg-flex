@@ -216,7 +216,6 @@ export function applyRmpgBasemap(
   try {
     if (variant === 'satellite') applySatellite(map);
     else if (variant === 'print') { /* leave stock light style for print output */ }
-    else if (variant === 'light') { /* leave stock light style; dark restyle would invert legibility */ }
-    else applyDark(map);
+    else applyDark(map); // 'light' routes through the dark restyle (prevents the bright tan mini-map)
   } catch { /* never throw from a cosmetic restyle */ }
 }
