@@ -627,6 +627,8 @@ export default function WarrantsPage() {
   const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
   const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   // Utah warrant detail modal (shared for unified search results)
   const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);
@@ -667,9 +669,10 @@ export default function WarrantsPage() {
     setDashStatsLoading(true);
     try {
       const res = await apiFetch<DashboardStats>('/warrants/dashboard/stats');
+      if (!mountedRef.current) return;
       setDashStats(res);
     } catch { /* silent */ }
-    finally { setDashStatsLoading(false); }
+    finally { if (mountedRef.current) setDashStatsLoading(false); }
   }, []);
 
   const fetchFeed = useCallback(async () => {
@@ -685,9 +688,10 @@ export default function WarrantsPage() {
     setPriorityLoading(true);
     try {
       const res = await apiFetch<{ data: PriorityWarrant[] }>('/warrants/dashboard/priority');
+      if (!mountedRef.current) return;
       setPriorityWarrants(res.data || (Array.isArray(res) ? res : []));
-    } catch { setPriorityWarrants([]); }
-    finally { setPriorityLoading(false); }
+    } catch { if (mountedRef.current) setPriorityWarrants([]); }
+    finally { if (mountedRef.current) setPriorityLoading(false); }
   }, []);
 
   // Auto-refresh dashboard stats every 30s
@@ -786,7 +790,7 @@ export default function WarrantsPage() {
       setUniResults(res);
       if (first.trim() && last.trim()) {
         setUniSearchHistory(prev => [
-          { first: first.trim(), last: last.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
+          { first: first.trim(), last: last.trim(), hits: res.meta?.totalHits ?? 0, at: new Date().toISOString() },
           ...prev.filter(h => !(h.first === first.trim() && h.last === last.trim())),
         ].slice(0, 10));
       }
