@@ -407,7 +407,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
 units.get('/my-assignment', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const unit = await queryFirst<{ call_sign: string; status: string; vehicle_id: string | null }>(
       db, 'SELECT call_sign, status, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId,
     );

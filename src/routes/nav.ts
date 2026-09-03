@@ -78,7 +78,7 @@ const STALE_ACTIVE_MIN = 10;
 // Reaps both 'active' and 'paused' trips — a paused trip whose resume event
 // never fires (missed websocket message, app closed at the station) is
 // treated the same as a stale active one: closed out, not left orphaned.
-async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
+async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number | null): Promise<void> {
   await execute(db,
     `UPDATE nav_trip_log
      SET status = 'completed',
@@ -95,7 +95,7 @@ async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: numbe
 nav.get('/trip/current', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     // Reap any abandoned active trip first so the client stops seeing it as the
     // current trip (which would skip detection + block new trips via /start's 409).
     await closeStaleActiveTrips(db, userId);
@@ -126,7 +126,7 @@ nav.get('/trip/current', async (c) => {
 nav.post('/trip/start', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const body = await c.req.json<TripStartBody>();
 
     if (!body.start_lat || !body.start_lng) {
@@ -210,7 +210,7 @@ nav.post('/trip/start', async (c) => {
 nav.put('/trip/:id/confirm', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -235,7 +235,7 @@ nav.put('/trip/:id/confirm', async (c) => {
 nav.put('/trip/:id/pause', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -260,7 +260,7 @@ nav.put('/trip/:id/pause', async (c) => {
 nav.put('/trip/:id/resume', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -285,7 +285,7 @@ nav.put('/trip/:id/resume', async (c) => {
 nav.put('/trip/:id/update', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -331,7 +331,7 @@ nav.put('/trip/:id/update', async (c) => {
 nav.put('/trip/:id/end', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -400,7 +400,7 @@ nav.put('/trip/:id/end', async (c) => {
 nav.put('/trip/:id/cancel', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -430,7 +430,7 @@ const NAV_TRIP_DELETE_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispat
 nav.delete('/trip/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const user = c.get('user') as { id: number; role: string } | undefined;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
@@ -470,7 +470,7 @@ nav.delete('/trip/:id', async (c) => {
 nav.get('/trip/history', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const limit = clampIntParam(c.req.query('limit'), 50, 1, 200);
     const offset = clampIntParam(c.req.query('offset'), 0, 0, 1000000);
     const status = c.req.query('status'); // optional filter
@@ -512,7 +512,7 @@ nav.get('/trip/history', async (c) => {
 nav.get('/trip/check-take-home', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
 
     const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
       db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
@@ -530,7 +530,7 @@ nav.get('/trip/check-take-home', async (c) => {
 nav.get('/trip/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
     if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
@@ -564,7 +564,7 @@ nav.get('/trip/:id', async (c) => {
 nav.get('/vehicle-take-home', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
 
     const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
       db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);

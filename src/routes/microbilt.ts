@@ -376,7 +376,7 @@ microbilt.post('/dl/search', async (c) => {
 
     // 4. Persist the search (best-effort audit trail).
     let searchId = 0;
-    const userId = (c.get('userId') as number) ?? null;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     try {
       const result = await execute(
         db,

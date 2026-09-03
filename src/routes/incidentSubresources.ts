@@ -23,6 +23,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { log } from '../utils/logger';
 
 const incidentSub = new Hono<Env>();
 
@@ -51,7 +52,7 @@ incidentSub.get('/:id{\\d+}/offenses', requireRole(...READ_ROLES), async (c) => 
       'SELECT * FROM incident_offenses WHERE incident_id = ? ORDER BY id ASC', inc.id);
     return c.json(rows);
   } catch (err) {
-    console.error('[incidentSub] offenses list', err);
+    log.error('[incidentSub] offenses list', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list offenses', code: 'OFFENSE_LIST_ERR' }, 500);
   }
 });
@@ -60,7 +61,7 @@ incidentSub.post('/:id{\\d+}/offenses', requireRole(...WRITE_ROLES), async (c) =
   try {
     const inc = await requireIncident(c);
     if ('err' in inc) return inc.err;
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const body = await c.req.json<Record<string, any>>().catch(() => ({} as Record<string, any>));
     const offense_code = String(body.offense_code ?? '').trim();
     const description = String(body.description ?? '').trim();
@@ -80,7 +81,7 @@ incidentSub.post('/:id{\\d+}/offenses', requireRole(...WRITE_ROLES), async (c) =
     const created = await queryFirst(getDb(c.env), 'SELECT * FROM incident_offenses WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
-    console.error('[incidentSub] offense create', err);
+    log.error('[incidentSub] offense create', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to add offense', code: 'OFFENSE_CREATE_ERR' }, 500);
   }
 });
@@ -94,7 +95,7 @@ incidentSub.delete('/:id{\\d+}/offenses/:oid{\\d+}', requireRole(...DELETE_ROLES
     await execute(getDb(c.env), 'DELETE FROM incident_offenses WHERE id = ?', oid);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[incidentSub] offense delete', err);
+    log.error('[incidentSub] offense delete', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete offense', code: 'OFFENSE_DELETE_ERR' }, 500);
   }
 });
@@ -116,7 +117,7 @@ incidentSub.get('/:id{\\d+}/officers', requireRole(...READ_ROLES), async (c) => 
       WHERE io.incident_id = ? ORDER BY io.id ASC`, inc.id);
     return c.json(rows);
   } catch (err) {
-    console.error('[incidentSub] officers list', err);
+    log.error('[incidentSub] officers list', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list officers', code: 'OFFICER_LIST_ERR' }, 500);
   }
 });
@@ -149,7 +150,7 @@ incidentSub.post('/:id{\\d+}/officers', requireRole(...WRITE_ROLES), async (c) =
     const created = await queryFirst(db, 'SELECT * FROM incident_officers WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
-    console.error('[incidentSub] officer upsert', err);
+    log.error('[incidentSub] officer upsert', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to add officer', code: 'OFFICER_CREATE_ERR' }, 500);
   }
 });
@@ -163,7 +164,7 @@ incidentSub.delete('/:id{\\d+}/officers/:oid{\\d+}', requireRole(...DELETE_ROLES
     await execute(getDb(c.env), 'DELETE FROM incident_officers WHERE id = ?', oid);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[incidentSub] officer delete', err);
+    log.error('[incidentSub] officer delete', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete officer', code: 'OFFICER_DELETE_ERR' }, 500);
   }
 });
@@ -209,7 +210,7 @@ incidentSub.get('/:id{\\d+}/links', requireRole(...READ_ROLES), async (c) => {
     })));
     return c.json(enriched);
   } catch (err) {
-    console.error('[incidentSub] links list', err);
+    log.error('[incidentSub] links list', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list links', code: 'LINK_LIST_ERR' }, 500);
   }
 });
@@ -218,7 +219,7 @@ incidentSub.post('/:id{\\d+}/links', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const inc = await requireIncident(c);
     if ('err' in inc) return inc.err;
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const body = await c.req.json<Record<string, any>>().catch(() => ({} as Record<string, any>));
     const linkedType = String(body.linked_type ?? '').trim();
     const linkedId = parseInt(String(body.linked_id ?? ''), 10);
@@ -240,7 +241,7 @@ incidentSub.post('/:id{\\d+}/links', requireRole(...WRITE_ROLES), async (c) => {
     const created = await queryFirst(db, 'SELECT * FROM incident_links WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
-    console.error('[incidentSub] link create', err);
+    log.error('[incidentSub] link create', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to link record', code: 'LINK_CREATE_ERR' }, 500);
   }
 });
@@ -254,7 +255,7 @@ incidentSub.delete('/:id{\\d+}/links/:lid{\\d+}', requireRole(...DELETE_ROLES), 
     await execute(getDb(c.env), 'DELETE FROM incident_links WHERE id = ?', lid);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[incidentSub] link delete', err);
+    log.error('[incidentSub] link delete', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete link', code: 'LINK_DELETE_ERR' }, 500);
   }
 });
@@ -283,7 +284,7 @@ incidentSub.get('/:id{\\d+}/supplements', requireRole(...READ_ROLES), async (c) 
       WHERE sr.incident_id = ? ORDER BY sr.created_at DESC, sr.id DESC`, inc.id);
     return c.json(rows.map(mapSupplement));
   } catch (err) {
-    console.error('[incidentSub] supplements list', err);
+    log.error('[incidentSub] supplements list', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list supplements', code: 'SUPPLEMENT_LIST_ERR' }, 500);
   }
 });
@@ -292,7 +293,7 @@ incidentSub.post('/:id{\\d+}/supplements', requireRole(...WRITE_ROLES), async (c
   try {
     const inc = await requireIncident(c);
     if ('err' in inc) return inc.err;
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const body = await c.req.json<Record<string, any>>().catch(() => ({} as Record<string, any>));
     const narrative = String(body.narrative ?? body.content ?? '').trim();
     if (!narrative) return c.json({ error: 'narrative is required', code: 'SUPPLEMENT_NARRATIVE_REQUIRED' }, 400);
@@ -311,7 +312,7 @@ incidentSub.post('/:id{\\d+}/supplements', requireRole(...WRITE_ROLES), async (c
       LEFT JOIN users u ON u.id = sr.author_id WHERE sr.id = ?`, newId);
     return c.json(mapSupplement(created), 201);
   } catch (err) {
-    console.error('[incidentSub] supplement create', err);
+    log.error('[incidentSub] supplement create', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create supplement', code: 'SUPPLEMENT_CREATE_ERR' }, 500);
   }
 });
@@ -326,7 +327,7 @@ incidentSub.get('/:id{\\d+}/supplements/:sid{\\d+}', requireRole(...READ_ROLES),
     if (!row) return c.json({ error: 'Supplement not found', code: 'SUPPLEMENT_NOT_FOUND' }, 404);
     return c.json(mapSupplement(row));
   } catch (err) {
-    console.error('[incidentSub] supplement get', err);
+    log.error('[incidentSub] supplement get', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to fetch supplement', code: 'SUPPLEMENT_FETCH_ERR' }, 500);
   }
 });
@@ -369,7 +370,7 @@ incidentSub.put('/:id{\\d+}/supplements/:sid{\\d+}', requireRole(...WRITE_ROLES)
       LEFT JOIN users u ON u.id = sr.author_id WHERE sr.id = ?`, sid);
     return c.json(mapSupplement(updated));
   } catch (err) {
-    console.error('[incidentSub] supplement update', err);
+    log.error('[incidentSub] supplement update', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to update supplement', code: 'SUPPLEMENT_UPDATE_ERR' }, 500);
   }
 });
@@ -383,7 +384,7 @@ incidentSub.delete('/:id{\\d+}/supplements/:sid{\\d+}', requireRole(...DELETE_RO
     await execute(getDb(c.env), 'DELETE FROM supplemental_reports WHERE id = ?', sid);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[incidentSub] supplement delete', err);
+    log.error('[incidentSub] supplement delete', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete supplement', code: 'SUPPLEMENT_DELETE_ERR' }, 500);
   }
 });
