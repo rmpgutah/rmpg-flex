@@ -27,16 +27,17 @@ interface State {
   error: Error | null;
   componentStack: string | null;
   showDetails: boolean;
+  isOffline: boolean;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, componentStack: null, showDetails: false };
+    this.state = { hasError: false, error: null, componentStack: null, showDetails: false, isOffline: false };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    return { hasError: true, error, isOffline: typeof navigator !== 'undefined' && navigator.onLine === false };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -145,8 +146,35 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
 
-      const { error, showDetails } = this.state;
+      const { error, showDetails, isOffline } = this.state;
       const DetailIcon = showDetails ? ChevronUp : ChevronDown;
+
+      // When a lazy chunk fails to load and the device is offline, "Reload Page"
+      // would only fail again. Show a connectivity-specific recovery screen instead.
+      const isOfflineChunkFailure = isOffline && isChunkLoadError(error ?? new Error());
+      if (isOfflineChunkFailure) {
+        return (
+          <div className="flex items-center justify-center min-h-[400px] p-8">
+            <div className="w-full max-w-md bg-surface-base border border-rmpg-700 shadow-md animate-scale-in text-center p-8">
+              <p className="text-sm font-bold text-rmpg-100 uppercase tracking-wider mb-3">
+                Connection Lost
+              </p>
+              <p className="text-xs text-fg-muted leading-relaxed mb-6">
+                This page couldn't load because your device is offline.<br />
+                It will reload automatically when your connection returns.
+              </p>
+              <button type="button"
+                onClick={this.handleReload}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide
+                           bg-surface-raised hover:bg-surface-hover border border-rmpg-600 text-rmpg-200 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Retry Now
+              </button>
+            </div>
+          </div>
+        );
+      }
 
       return (
         <div className="flex items-center justify-center min-h-[400px] p-8">
