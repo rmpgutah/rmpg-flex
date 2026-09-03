@@ -123,7 +123,7 @@ export default function IntelSearchPage() {
               className="w-full text-left px-2 py-[2px] text-[11px] text-rmpg-200 hover:bg-surface-raised flex items-center gap-2 border-b border-border-default last:border-b-0">
               <span className="flex-1">{h.label}</span>
               {h.snippet && <span className="text-fg-muted truncate max-w-[300px]">{h.snippet}</span>}
-              {h.flags.map((f) => (
+              {(h.flags ?? []).map((f) => (
                 <span key={f} className="text-[9px] font-semibold text-red-500">{f}</span>
               ))}
               {h.cluster && h.cluster.pending_suggestions > 0 && (

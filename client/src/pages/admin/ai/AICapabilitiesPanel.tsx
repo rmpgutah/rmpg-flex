@@ -17,9 +17,11 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
   const [routingRules, setRoutingRules] = useState<Record<string, { provider: string }>>({});
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<any>('/ai/master-config').then(mc => {
-      if (mc.routingRules) setRoutingRules(mc.routingRules);
+      if (!cancelled && mc.routingRules) setRoutingRules(mc.routingRules);
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const toggleFeature = (key: string) => {
