@@ -132,7 +132,9 @@ const ROAD_RE = /road|street|bridge|tunnel|motorway|trunk|primary|secondary|tert
 const MID_ROAD_RE = /secondary|tertiary/i;
 const LAND_RE = /land|landcover|landuse|national-park|park/i;
 const WATER_RE = /water|ocean|river|bathymetry/i;
-const NOISE_LABEL_RE = /poi|transit|airport|natural-point/i;
+// airport excluded: airports are key CAD/dispatch response locations and their
+// labels must remain visible on the tactical map.
+const NOISE_LABEL_RE = /poi|transit|natural-point/i;
 
 export function isArterialLayer(id: string): boolean {
   return ARTERIAL_RE.test(id);
@@ -214,6 +216,7 @@ export function applyRmpgBasemap(
   try {
     if (variant === 'satellite') applySatellite(map);
     else if (variant === 'print') { /* leave stock light style for print output */ }
+    else if (variant === 'light') { /* leave stock light style; dark restyle would invert legibility */ }
     else applyDark(map);
   } catch { /* never throw from a cosmetic restyle */ }
 }

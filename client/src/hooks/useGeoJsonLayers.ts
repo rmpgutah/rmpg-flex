@@ -546,7 +546,6 @@ export function useGeoJsonLayers({
           popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
         });
       }
-      }); // end whenStyleReady
 
       // REGRESSION-GUARD: in-flight flag cleared INSIDE whenStyleReady (not
       // in a finally block outside it). whenStyleReady may defer via
@@ -555,11 +554,11 @@ export function useGeoJsonLayers({
       // callback's addSource/addLayer mutations complete, causing a
       // "Layer with id '...' already exists" duplicate-layer error.
       inFlightLayersRef.current.delete(cfg.id);
-
       setLayerStates((prev) => ({
         ...prev,
         [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
-    }));
+      }));
+      }); // end whenStyleReady
   }, [map, popup]);
 
   // Beat colors are set per-beat-code from the GeoJSON at load time and are

@@ -310,17 +310,6 @@ const MULTI_SOURCE_ID = 'rmpg-multi-route-source';
 const MULTI_CASING_LAYER_ID = 'rmpg-multi-route-casing';
 const MULTI_LAYER_ID = 'rmpg-multi-route-layer';
 
-function parseDuration(seconds: number): string {
-  if (seconds < 60) return '<1 min';
-  const mins = Math.round(seconds / 60);
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-const SOURCE_ID = 'route-source';
-const LAYER_ID = 'route-line';
 
 // ─── Coordinate validation guardrail ────────────────────────
 function validateCoordinate(lat: number, lng: number): { valid: boolean; reason?: string } {
@@ -506,38 +495,6 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         const leg = route.legs?.[0] || {};
         const durationSec = leg.duration || 0;
         const distanceMeters = leg.distance || 0;
-
-        const ensureRouteLayer = () => {
-          if (!map) return;
-          if (!hasSource(map, SOURCE_ID)) {
-            try {
-              map.addSource(SOURCE_ID, {
-                type: 'geojson',
-                data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } },
-              });
-            } catch { /* ignore */ }
-          }
-          if (!hasLayer(map, LAYER_ID)) {
-            try {
-              map.addLayer({
-                id: LAYER_ID,
-                type: 'line',
-                source: SOURCE_ID,
-                paint: { 'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.7 },
-              });
-            } catch { /* ignore */ }
-          }
-        };
-        ensureRouteLayer();
-
-        const geojsonSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
-        if (geojsonSource) {
-          geojsonSource.setData({
-            type: 'Feature',
-            geometry: route.geometry,
-            properties: {},
-          });
-        }
 
         const info: RouteInfo = {
           unitCallSign: metaRef.current.unitCallSign,
@@ -795,11 +752,13 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   /** Build a gold numbered "stop" marker (1, 2, 3 …) for the patrol route. */
   const makeStopMarker = useCallback((order: number): HTMLElement => {
     const el = document.createElement('div');
+    // #b8912f = MAP_PALETTE.arterial (graphical gold — passes 3:1 on navy for border/glow)
+    // #d9bd72 = MAP_PALETTE.labelMajor (text gold — passes 4.5:1 on navy for the numeral)
     el.style.cssText =
       'width:24px;height:24px;border-radius:2px;display:flex;align-items:center;justify-content:center;' +
-      'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #d4a017;' +
-      "color:#d4a017;font-family:'Arial, sans-serif';font-size:12px;font-weight:900;line-height:1;" +
-      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0 0 0 / 0.6);' +
+      'background:linear-gradient(180deg,#1a2535,#0d1722);border:1.5px solid #b8912f;' +
+      'color:#d9bd72;font-family:system-ui,sans-serif;font-size:12px;font-weight:900;line-height:1;' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #b8912f66, 0 1px 4px rgba(0,0,0,0.6);' +
       'cursor:default;';
     el.textContent = String(order);
     return el;

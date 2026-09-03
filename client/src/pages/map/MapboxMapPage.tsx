@@ -378,7 +378,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [speedAnalyticsPanelOpen, setSpeedAnalyticsPanelOpen] = useState(false);
   const [speedGraphUnit, setSpeedGraphUnit] = useState<{ unitId: number; callSign: string } | null>(null);
   const speedZoneStats = useSpeedZoneStats(8, speedAnalyticsPanelOpen);
-  speedViolationsLayer.setOnSelectUnit((unitId, callSign) => setSpeedGraphUnit({ unitId, callSign }));
+  // Wrapped in useEffect to avoid registering a new callback on every render.
+  useEffect(() => {
+    speedViolationsLayer.setOnSelectUnit((unitId, callSign) => setSpeedGraphUnit({ unitId, callSign }));
+  }, [speedViolationsLayer]); // eslint-disable-line react-hooks/exhaustive-deps
   const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
   const responseTime = useMapboxResponseTime(mapLoaded ? mapRef.current : null);
   const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
@@ -394,6 +397,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const osmPopupRef = useRef<mapboxgl.Popup | null>(null);
   if (osmPopupRef.current === null && typeof window !== 'undefined') {
     osmPopupRef.current = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: true,
+      className: 'mapbox-popup-dark',
+      maxWidth: '280px',
+    });
+  }
+  // Persistent popup for GeoJSON layer clicks (county, municipality, beat, etc.)
+  // Must be a real instance — the click handlers gate on `if (!popup) return`.
+  const geoJsonPopupRef = useRef<mapboxgl.Popup | null>(null);
+  if (geoJsonPopupRef.current === null && typeof window !== 'undefined') {
+    geoJsonPopupRef.current = new mapboxgl.Popup({
       closeButton: true,
       closeOnClick: true,
       className: 'mapbox-popup-dark',
@@ -634,8 +648,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   });
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
-  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
-  const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
+  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: geoJsonPopupRef.current });
+  const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: geoJsonPopupRef.current });
   // ── OSM override layer ──
   // Overrides are fetched only for the groups actually switched on; there is no
   // point pulling corrections for layers that are not drawn.
@@ -1807,8 +1821,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         </div>
       )}
 
-      {/* Measurement Result Banner */}
-      {measure.result && measure.mode === 'none' && (
+      {/* Measurement Result Banner — visible while measuring and after measurement
+          is complete (mode back to 'none' with a result still set). */}
+      {measure.result && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
           <Ruler className="w-3.5 h-3.5 text-brand-gold-500" />
           <span className="text-rmpg-200 text-xs font-mono">
