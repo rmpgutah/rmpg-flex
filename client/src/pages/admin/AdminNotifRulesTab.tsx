@@ -101,7 +101,15 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     }
   }, [setError]);
 
-  useEffect(() => { fetchRules(); }, [fetchRules]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetch<NotificationRule[]>('/admin/notification-rules')
+      .then(data => { if (!cancelled) setRules(asArray<NotificationRule>(data)); })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load notification rules'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [setError]);
 
   const openNew = () => {
     setEditing(null);
