@@ -957,6 +957,11 @@ links.patch('/calls/:id/narrative', requireRole('dispatcher', 'officer', 'superv
        ON CONFLICT(id) DO UPDATE SET narrative = excluded.narrative`,
       id, narrative ?? null,
     );
+    // Keep calls_for_service.action_taken synchronized with the narrative
+    await execute(db,
+      `UPDATE calls_for_service SET action_taken = ?, updated_at = datetime('now') WHERE id = ?`,
+      narrative ?? null, id,
+    );
     return c.json({ success: true, narrative: narrative ?? null });
   } catch (err) {
     log.error('PATCH narrative failed', { callId: id }, err as Error);

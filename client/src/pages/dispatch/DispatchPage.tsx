@@ -116,6 +116,7 @@ import ShiftStatsBar from '../../components/dispatch/ShiftStatsBar';
 import ActivityFeed from '../../components/dispatch/ActivityFeed';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import StartingMileageModal from '../../components/dispatch/StartingMileageModal';
 import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
 import PlateScanModal from '../../components/PlateScanModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -798,6 +799,9 @@ export default function DispatchPage() {
   const [involvedVehicles, setInvolvedVehicles] = useState<any[]>([]);
   const [callNarrative, setCallNarrative] = useState<string>('');
   const [narrativeSaving, setNarrativeSaving] = useState(false);
+  const [startingMileagePrompt, setStartingMileagePrompt] = useState<{ callId: string; callNumber: string; unitId?: string | number | null } | null>(null);
+  const [submitNarrativeConfirmOpen, setSubmitNarrativeConfirmOpen] = useState(false);
+  const [submittingNarrative, setSubmittingNarrative] = useState(false);
   const [showAddInvPerson, setShowAddInvPerson] = useState(false);
   const [showAddInvVehicle, setShowAddInvVehicle] = useState(false);
   const [newInvPerson, setNewInvPerson] = useState({ name: '', dob: '', id_number: '', role: 'witness' });
@@ -2734,8 +2738,26 @@ export default function DispatchPage() {
   // update every render guarantees the shortcut always invokes the latest
   // closure with fresh selectedCall in scope. Same pattern as
   // handleArchiveRef above.
-  const handleStatusChangeRef = useRef(handleStatusChange);
-  useEffect(() => { handleStatusChangeRef.current = handleStatusChange; }, [handleStatusChange]);
+  const triggerStatusChange = useCallback(async (
+    callId: string,
+    newStatus: CallStatus,
+    extraBody?: Record<string, any>,
+  ) => {
+    if (newStatus === 'enroute') {
+      const call = calls.find((c) => c.id === callId);
+      const firstUnitId = call?.assigned_units?.[0] ?? selectedCall?.assigned_units?.[0];
+      setStartingMileagePrompt({
+        callId,
+        callNumber: call?.call_number ?? selectedCall?.call_number ?? callId,
+        unitId: firstUnitId,
+      });
+      return;
+    }
+    await handleStatusChange(callId, newStatus, extraBody);
+  }, [calls, selectedCall, handleStatusChange]);
+
+  const handleStatusChangeRef = useRef(triggerStatusChange);
+  useEffect(() => { handleStatusChangeRef.current = triggerStatusChange; }, [triggerStatusChange]);
   const handleClearWithDispositionRef = useRef(handleClearWithDisposition);
   useEffect(() => { handleClearWithDispositionRef.current = handleClearWithDisposition; }, [handleClearWithDisposition]);
   const handleHoldCallRef = useRef(handleHoldCall);
@@ -2970,7 +2992,7 @@ export default function DispatchPage() {
                 )}
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
-                    onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
+                    onClick={() => triggerStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
@@ -4851,7 +4873,7 @@ export default function DispatchPage() {
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'dispatched' && (
-                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => triggerStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
                         <Navigation style={{ width: 10, height: 10 }} /> En Route
                       </button>
                     )}
@@ -6266,17 +6288,42 @@ export default function DispatchPage() {
 
                 {/* ── NARRATIVE / INCIDENT SUMMARY ─── */}
                 {(detailTab === 'info' || detailTab === 'persons') && (
-                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">Narrative / Incident Summary</span>
-                      {narrativeSaving && <span className="text-[8px] text-rmpg-500 italic">Saving…</span>}
+                  <div className="mt-3 border border-[var(--spm-border)] rounded-md p-3 shadow-xs" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-brand-400" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">
+                          Narrative / Incident Summary
+                        </span>
+                        {narrativeSaving && <span className="text-[9px] text-brand-400 animate-pulse italic">Saving…</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] text-fg-muted font-mono">
+                          {callNarrative.trim() ? `${callNarrative.trim().split(/\s+/).length} words` : '0 words'}
+                        </span>
+                        {selectedCall?.status === 'cleared' && (
+                          <button
+                            type="button"
+                            onClick={() => setSubmitNarrativeConfirmOpen(true)}
+                            disabled={!callNarrative.trim() || submittingNarrative}
+                            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-fg-primary bg-green-600 hover:bg-green-500 rounded-sm disabled:opacity-40 transition-colors shadow-xs"
+                            title="Submit narrative and close this CFS"
+                          >
+                            <CheckCircle style={{ width: 12, height: 12 }} />
+                            Submit Narrative
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <textarea
-                      className="textarea-dark text-xs w-full"
-                      rows={4}
-                      placeholder="Enter structured narrative or incident summary…"
+                      className="textarea-dark text-xs w-full font-sans leading-relaxed"
+                      rows={5}
+                      placeholder="Enter detailed narrative / incident summary report here (takes the place of legacy Action Taken)..."
                       value={callNarrative}
-                      onChange={e => setCallNarrative(e.target.value)}
+                      onChange={e => {
+                        setCallNarrative(e.target.value);
+                        updateEditField('action_taken', e.target.value);
+                      }}
                       onBlur={async () => {
                         if (!selectedCall?.id) return;
                         setNarrativeSaving(true);
@@ -6285,11 +6332,18 @@ export default function DispatchPage() {
                             method: 'PATCH',
                             body: JSON.stringify({ narrative: callNarrative }),
                           });
+                          // Also update local selectedCall action_taken
+                          setSelectedCall(prev => prev ? { ...prev, action_taken: callNarrative } : prev);
                         } catch { addToast('Failed to save narrative', 'error'); }
                         finally { setNarrativeSaving(false); }
                       }}
                     />
-                    <p className="text-[8px] text-rmpg-500 mt-0.5">Auto-saves on blur. Separate from call description / notes log.</p>
+                    <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1">
+                      <span>Auto-saves on blur. Serves as official Incident Summary & Action Taken.</span>
+                      {selectedCall?.status === 'cleared' && (
+                        <span className="text-green-400/80 font-medium">Ready for submission to Close CFS</span>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -6354,7 +6408,6 @@ export default function DispatchPage() {
                           <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
                           <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-[color:var(--field-label-color)]">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
                           <label className="text-[9px] text-[color:var(--field-label-color)]">Responding Officer</label>
                           <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
@@ -8245,6 +8298,84 @@ export default function DispatchPage() {
           onClose={() => { dispatchOpt.closeModal(); dispatchOpt.reset(); }}
           applying={dispatchOpt.applying}
         />
+      )}
+
+      {/* Starting Mileage Prompt Modal for En Route transition */}
+      {startingMileagePrompt && (
+        <StartingMileageModal
+          isOpen={!!startingMileagePrompt}
+          onClose={() => setStartingMileagePrompt(null)}
+          callId={startingMileagePrompt.callId}
+          callNumber={startingMileagePrompt.callNumber}
+          unitId={startingMileagePrompt.unitId}
+          onConfirm={async (mileage) => {
+            await handleStatusChange(startingMileagePrompt.callId, 'enroute', { starting_mileage: mileage });
+            setStartingMileagePrompt(null);
+            addToast(`CFS ${startingMileagePrompt.callNumber} is En Route (Starting Mileage: ${mileage})`, 'success');
+          }}
+        />
+      )}
+
+      {/* Submit Narrative Confirmation Modal */}
+      {submitNarrativeConfirmOpen && selectedCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div
+            className="w-full max-w-sm rounded-lg border border-[var(--spm-border)] p-4 shadow-2xl space-y-3 max-h-[90vh] overflow-y-auto"
+            style={{ background: 'var(--surface-base)' }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center gap-2 border-b border-[var(--spm-border)] pb-2">
+              <div className="p-1.5 rounded-sm bg-green-500/20 text-green-400">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-fg-primary uppercase tracking-wider">
+                  Submit Narrative & Close CFS
+                </h3>
+                <p className="text-[10px] text-fg-muted">CFS {selectedCall.call_number}</p>
+              </div>
+            </div>
+            <p className="text-xs text-fg-secondary leading-relaxed">
+              Are you sure you want to submit this narrative report? Submitting will save the report as the official incident summary, mark CFS {selectedCall.call_number} as <strong>Closed</strong>, and queue it for automated archiving on the next 5-minute interval.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--spm-border)]">
+              <button
+                type="button"
+                onClick={() => setSubmitNarrativeConfirmOpen(false)}
+                disabled={submittingNarrative}
+                className="px-3 py-1.5 text-xs text-fg-secondary hover:text-fg-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submittingNarrative}
+                onClick={async () => {
+                  setSubmittingNarrative(true);
+                  try {
+                    // Save latest narrative
+                    await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ narrative: callNarrative }),
+                    });
+                    // Advance status to closed
+                    await handleStatusChange(selectedCall.id, 'closed');
+                    setSubmitNarrativeConfirmOpen(false);
+                    addToast(`Narrative submitted. CFS ${selectedCall.call_number} closed and scheduled for archiving.`, 'success');
+                  } catch (err: any) {
+                    addToast(err?.message || 'Failed to submit narrative', 'error');
+                  } finally {
+                    setSubmittingNarrative(false);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-fg-primary bg-green-600 hover:bg-green-500 rounded-sm disabled:opacity-50 transition-colors"
+              >
+                {submittingNarrative ? 'Submitting...' : 'Confirm & Close CFS'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

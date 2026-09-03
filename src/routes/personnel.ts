@@ -872,6 +872,8 @@ personnel.post('/time/clock-in', async (c) => {
 
     const lat = body.latitude ?? body.clock_in_latitude;
     const lng = body.longitude ?? body.clock_in_longitude;
+    const vehicleId = body.vehicle_id != null ? Number(body.vehicle_id) : null;
+    const startingMileage = body.starting_mileage != null ? Number(body.starting_mileage) : null;
     const stamp = nowDualStamp();
     const result = await execute(db,
       `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now'))`,
@@ -881,6 +883,8 @@ personnel.post('/time/clock-in', async (c) => {
       clockSource: 'personnel',
       lat: lat != null ? Number(lat) : null,
       lng: lng != null ? Number(lng) : null,
+      vehicle_id: vehicleId,
+      starting_mileage: startingMileage,
     });
     await recordTardyIfLate(db, officerId, stamp.utc, selfId ?? null);
     const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entryId);

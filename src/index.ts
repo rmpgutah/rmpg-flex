@@ -663,6 +663,24 @@ export default {
       // `denverHour === 0` gate below would silently never fire, forever.
       const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10) % 24;
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
+
+      // Auto-archive closed CFS on every 5th minute of the hour (:00, :05, :10, :15, ... :55)
+      if (denverMinute >= 0 && denverMinute % 5 === 0) {
+        ctx.waitUntil(
+          (async () => {
+            const res = await env.DB.prepare(`
+              UPDATE calls_for_service
+              SET status = 'archived', archived_at = datetime('now')
+              WHERE status = 'closed'
+                AND (closed_at IS NULL OR closed_at <= datetime('now', '-5 minutes'))
+            `).run();
+            if (res.meta.changes > 0) {
+              log.info(`[cfs-auto-archive] auto-archived ${res.meta.changes} closed call(s) on 5th-minute sweep`);
+            }
+          })().catch((err) => log.error('[cfs-auto-archive] 5th-minute archive failed:', {}, err)),
+        );
+      }
+
       if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(
           import('./utils/corporateWorkflows').then((m) =>

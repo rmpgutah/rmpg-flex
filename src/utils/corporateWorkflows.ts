@@ -217,6 +217,8 @@ export async function enrichTimeEntryOnClockIn(
     clockSource: string;
     lat?: number | null;
     lng?: number | null;
+    vehicle_id?: number | null;
+    starting_mileage?: number | null;
   },
 ): Promise<{
   unit_id: number | null;
@@ -232,17 +234,24 @@ export async function enrichTimeEntryOnClockIn(
     `SELECT id FROM units WHERE officer_id = ? ORDER BY last_status_change DESC, id DESC LIMIT 1`,
     officerId,
   ).catch(() => null);
-  const veh = unit
+  const veh = opts.vehicle_id != null
     ? await queryFirst<{ id: number; current_mileage: number | null; next_service_mileage: number | null }>(
       db,
-      `SELECT id, current_mileage, next_service_mileage FROM fleet_vehicles WHERE assigned_unit_id = ? LIMIT 1`,
-      unit.id,
+      `SELECT id, current_mileage, next_service_mileage FROM fleet_vehicles WHERE id = ? LIMIT 1`,
+      opts.vehicle_id,
     ).catch(() => null)
-    : null;
+    : (unit
+      ? await queryFirst<{ id: number; current_mileage: number | null; next_service_mileage: number | null }>(
+        db,
+        `SELECT id, current_mileage, next_service_mileage FROM fleet_vehicles WHERE assigned_unit_id = ? LIMIT 1`,
+        unit.id,
+      ).catch(() => null)
+      : null);
   const scheduleId = await lookupTodayScheduleId(db, officerId);
-  const startMi = veh?.current_mileage != null && Number(veh.current_mileage) > 0
+  const explicitStart = opts.starting_mileage != null && Number(opts.starting_mileage) > 0 ? Math.round(Number(opts.starting_mileage) * 10) / 10 : null;
+  const startMi = explicitStart ?? (veh?.current_mileage != null && Number(veh.current_mileage) > 0
     ? Math.round(Number(veh.current_mileage) * 10) / 10
-    : null;
+    : null);
   const parts: string[] = ['clock_source = ?'];
   const vals: unknown[] = [opts.clockSource];
   if (unit?.id) { parts.push('unit_id = COALESCE(unit_id, ?)'); vals.push(unit.id); }

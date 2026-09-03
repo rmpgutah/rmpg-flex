@@ -775,8 +775,8 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // merged list-page slash-focus work. Scan of this tree is 10605; keep the
   // ratchet taut rather than leaving a stale pin from origin/main.
   // 10605 -> 10632: font standardization and process server module repair.
-  // Scan of this tree is 10632; update pin so pre-push gate passes.
-  const PIN = 10632;
+  // 10632 -> 10630: dispatch narrative & mileage modals migrated to design tokens.
+  const PIN = 10630;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

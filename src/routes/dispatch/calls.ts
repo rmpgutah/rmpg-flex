@@ -1212,7 +1212,12 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
-    const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
+    const { status, disposition, starting_mileage, ending_mileage } = await c.req.json<{
+      status: string;
+      disposition?: string;
+      starting_mileage?: number | string;
+      ending_mileage?: number | string;
+    }>();
     const callCheck = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
     if (!callCheck) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     // NOTE: 'on_hold' is intentionally NOT in this list. Hold is stored as
@@ -1244,11 +1249,26 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'archived_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
+    let mileageSql = '';
+    const extraParams: unknown[] = [];
+
+    const parsedStartMi = starting_mileage != null && Number(starting_mileage) > 0 ? Math.round(Number(starting_mileage) * 10) / 10 : null;
+    const parsedEndMi = ending_mileage != null && Number(ending_mileage) > 0 ? Math.round(Number(ending_mileage) * 10) / 10 : null;
+
+    if (parsedStartMi != null) {
+      mileageSql += ', starting_mileage = ?';
+      extraParams.push(parsedStartMi);
+    }
+    if (parsedEndMi != null) {
+      mileageSql += ', ending_mileage = ?';
+      extraParams.push(parsedEndMi);
+    }
 
     const params: unknown[] = [status];
     if (dispSql) params.push(disposition);
+    params.push(...extraParams);
     params.push(id);
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
+    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql}${mileageSql} WHERE id = ?`, ...params);
     if (status === 'cleared' || status === 'closed' || status === 'cancelled') {
       try {
         await execute(db,
@@ -1772,8 +1792,8 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     const rawBody = await c.req.json<{ unit_id: number; confirm?: number | string }>();
     const { unit_id } = rawBody;
     const confirmOverride = rawBody.confirm == 1 || c.req.query('confirm') === '1';
-    const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; latitude: number | null; longitude: number | null }>(
-      db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
+    const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; status: string; latitude: number | null; longitude: number | null }>(
+      db, 'SELECT assigned_unit_ids, call_number, status, latitude, longitude FROM calls_for_service WHERE id = ?', id
     );
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
@@ -1797,8 +1817,8 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     // If the unit is already working a DIFFERENT open call, queue this
     // assignment rather than rejecting it outright. The queued call will be
     // promoted automatically when the unit clears its active call.
-    const unitRow = await queryFirst<{ current_call_id: number | null; queued_call_ids: string }>(
-      db, 'SELECT current_call_id, queued_call_ids FROM units WHERE id = ?', unit_id,
+    const unitRow = await queryFirst<{ current_call_id: number | null; queued_call_ids: string; call_sign: string | null }>(
+      db, 'SELECT current_call_id, queued_call_ids, call_sign FROM units WHERE id = ?', unit_id,
     );
     const activeCallId = unitRow?.current_call_id;
     if (activeCallId != null && String(activeCallId) !== String(id)) {
@@ -1829,10 +1849,40 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       }
     } catch { /* best-effort — at minimum keep the ids */ }
 
+    // Auto-advance call stage: if call was pending/created, promote to dispatched, stamp dispatched_at, and audit log.
+    const shouldPromoteCall = call.status === 'pending' || !call.status || call.status === 'created';
+    const nextCallStatus = shouldPromoteCall ? 'dispatched' : call.status;
+
     await executeBatch(db, [
-      { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ? WHERE id = ?', bindings: [JSON.stringify(assigned), JSON.stringify(callSigns), id] },
+      {
+        sql: `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?,
+                     status = ?, dispatched_at = CASE WHEN ? = 'dispatched' THEN COALESCE(dispatched_at, datetime('now')) ELSE dispatched_at END,
+                     updated_at = datetime('now')
+              WHERE id = ?`,
+        bindings: [JSON.stringify(assigned), JSON.stringify(callSigns), nextCallStatus, nextCallStatus, id],
+      },
       { sql: "UPDATE units SET status = 'dispatched', current_call_id = ?, queued_call_ids = '[]' WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
     ]);
+
+    if (shouldPromoteCall) {
+      try {
+        const unitCs = unitRow?.call_sign ?? `Unit ${unit_id}`;
+        await recordAudit(c, {
+          action: 'call_dispatched',
+          entityType: 'call',
+          entityId: id,
+          details: {
+            description: `Unit ${unitCs} dispatched to CFS ${call.call_number} (auto-transitioned to Dispatched)`,
+            call_id: id,
+            call_number: call.call_number,
+            unit_id,
+            unit_call_sign: unitCs,
+          },
+        });
+      } catch (auditErr) {
+        log.warn('Failed to record dispatch audit log (non-fatal)', { err: auditErr });
+      }
+    }
 
     // ── Stack sync: add unit to sibling calls ──
     try {
@@ -1893,7 +1943,8 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       }
     } catch (err) { log.error('[dispatch] premise auto-push failed', { callId: id, unit_id }, err as Error); }
 
-    return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
+    const updatedCall = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    return c.json({ ...(updatedCall ?? {}), message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
   } catch (err) {
     log.error('POST /:id/assign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Assign failed' }, 500); }
 });

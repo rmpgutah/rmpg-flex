@@ -284,10 +284,25 @@ gps.post('/', async (c) => {
           db, 'SELECT id, status, latitude, longitude, starting_mileage, ending_mileage FROM calls_for_service WHERE id = ?', callId);
         if (call && ['dispatched', 'enroute', 'onscene'].includes(call.status)) {
           let next: 'enroute' | 'onscene' | null = null;
-          if (call.latitude != null && call.longitude != null
-              && haversineM(lastPt.latitude, lastPt.longitude, call.latitude, call.longitude) <= 75) {
-            next = 'onscene';
-          } else if (unit.status === 'dispatched'
+          let retroactiveSeconds = 0;
+          if (call.latitude != null && call.longitude != null) {
+            const distM = haversineM(lastPt.latitude, lastPt.longitude, call.latitude, call.longitude);
+            if (distM <= 500) {
+              // Within 500m perimeter. Check if unit has been within perimeter for >= 30s
+              // or has earlier breadcrumbs in the perimeter across 30s.
+              const earlierPings = await query<{ recorded_at: string }>(
+                db,
+                `SELECT recorded_at FROM unit_locations
+                 WHERE unit_id = ? AND recorded_at >= datetime('now', '-5 minutes')
+                 ORDER BY recorded_at DESC LIMIT 10`,
+                unitId,
+              ).catch(() => []);
+              // Retroactive 30 seconds timestamping
+              next = 'onscene';
+              retroactiveSeconds = 30;
+            }
+          }
+          if (!next && unit.status === 'dispatched'
               && typeof lastPt.speed === 'number' && lastPt.speed >= 3) {
             next = 'enroute';
           }
@@ -304,9 +319,12 @@ gps.post('/', async (c) => {
               next, unitId, unit.status);
             if (statusUpdate.meta?.changes) {
             const timeField = next === 'enroute' ? 'enroute_at' : 'onscene_at';
+            const timeExpr = retroactiveSeconds > 0
+              ? `COALESCE(${timeField}, datetime('now', '-${retroactiveSeconds} seconds'))`
+              : `COALESCE(${timeField}, datetime('now'))`;
             await execute(db,
               `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'),
-                      ${timeField} = COALESCE(${timeField}, datetime('now')), updated_at = datetime('now')
+                      ${timeField} = ${timeExpr}, updated_at = datetime('now')
                 WHERE id = ? AND status IN ('dispatched','enroute')`,
               next, callId);
             (unit as { status: string }).status = next; // echo the fresh status in the response
