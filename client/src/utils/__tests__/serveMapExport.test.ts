@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { exportServeMapSheet } from '../serveMapExport';
 
-const openPdfDocumentMock = vi.fn();
+const { openPdfDocumentMock } = vi.hoisted(() => ({
+  openPdfDocumentMock: vi.fn(),
+}));
 
 vi.mock('../openPdfDocument', () => ({
   openPdfDocument: openPdfDocumentMock,
