@@ -238,7 +238,9 @@ app.get('/:jobId', async (c) => {
 
   // Cached terminal states — no Mapbox token needed
   if (row.status === 'complete') {
-    return c.json({ job_id: jobId, status: 'complete', solution: JSON.parse(row.solution_json as string) });
+    let solution: unknown = null;
+    try { solution = JSON.parse(row.solution_json as string); } catch { solution = null; }
+    return c.json({ job_id: jobId, status: 'complete', solution });
   }
   if (row.status === 'error') {
     return c.json({ job_id: jobId, status: 'error', error: row.error_message });

@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks, columnExists } from '../utils/db';
 import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
 import { containsAnyClause } from '../utils/searchText';
@@ -530,13 +530,11 @@ dialerConnect.post('/voicemails/bulk-heard', async (c) => {
   const db = getDb(c.env);
   await ensureSchema(db);
   const body = await c.req.json<{ ids?: number[] }>();
-  const ids = (body.ids || []).map(Number).filter((n) => Number.isFinite(n)).slice(0, 100);
+  const ids = (body.ids || []).map(Number).filter((n) => Number.isFinite(n));
   if (ids.length === 0) return c.json({ updated: 0 });
-  const placeholders = ids.map(() => '?').join(',');
-  await execute(db,
-    `UPDATE dialer_voicemails SET is_read=1, heard_at=datetime('now'), updated_at=datetime('now')
-     WHERE id IN (${placeholders})`, ...ids);
-  return c.json({ updated: ids.length });
+  const updated = await executeInChunks(db, ids,
+    (ph) => `UPDATE dialer_voicemails SET is_read=1, heard_at=datetime('now'), updated_at=datetime('now') WHERE id IN (${ph})`);
+  return c.json({ updated });
 });
 
 dialerConnect.get('/speed-dials', async (c) => {

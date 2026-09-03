@@ -135,20 +135,19 @@ intel.get('/search', operational, async (c) => {
   const personIds = results.filter((r) => r.type === 'person').map((r) => r.id);
   if (personIds.length) {
     const flags = await personFlags(db, personIds);
-    const ph = personIds.map(() => '?').join(',');
     const canon = new Map<number, number>();
     const pending = new Map<number, number>();
     try {
-      for (const r of await query<any>(db,
-        `SELECT person_id, canonical_person_id FROM person_canonical WHERE person_id IN (${ph})`, ...personIds))
+      for (const r of await queryInChunks<any>(db, personIds,
+        (ph) => `SELECT person_id, canonical_person_id FROM person_canonical WHERE person_id IN (${ph})`))
         canon.set(r.person_id, r.canonical_person_id);
-      for (const r of await query<any>(db,
-        `SELECT person_a AS pid, COUNT(*) AS n FROM entity_resolution_suggestions
-         WHERE status = 'pending' AND person_a IN (${ph}) GROUP BY person_a`, ...personIds))
-        pending.set(r.pid, r.n);
-      for (const r of await query<any>(db,
-        `SELECT person_b AS pid, COUNT(*) AS n FROM entity_resolution_suggestions
-         WHERE status = 'pending' AND person_b IN (${ph}) GROUP BY person_b`, ...personIds))
+      for (const r of await queryInChunks<any>(db, personIds,
+        (ph) => `SELECT person_a AS pid, COUNT(*) AS n FROM entity_resolution_suggestions
+                 WHERE status = 'pending' AND person_a IN (${ph}) GROUP BY person_a`))
+        pending.set(r.pid, (pending.get(r.pid) || 0) + r.n);
+      for (const r of await queryInChunks<any>(db, personIds,
+        (ph) => `SELECT person_b AS pid, COUNT(*) AS n FROM entity_resolution_suggestions
+                 WHERE status = 'pending' AND person_b IN (${ph}) GROUP BY person_b`))
         pending.set(r.pid, (pending.get(r.pid) || 0) + r.n);
     } catch (err: any) { console.error('[intel] cluster enrich failed:', err?.message); }
     for (const r of results) {
@@ -882,13 +881,12 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     for (const r of rows) { clusterIds.add(r.person_id); clusterIds.add(r.canonical_person_id); }
     if (clusterIds.size > 1) {
       const others = [...clusterIds].filter((p) => p !== id);
-      const ph = others.map(() => '?').join(',');
-      for (const p of await query<any>(db, `SELECT id, first_name, last_name FROM persons WHERE id IN (${ph})`, ...others))
+      for (const p of await queryInChunks<any>(db, others,
+        (ph) => `SELECT id, first_name, last_name FROM persons WHERE id IN (${ph})`))
         cluster.push({ person_id: p.id, name: `${p.first_name} ${p.last_name}` });
     }
   } catch (err: any) { console.error('[dossier] cluster failed:', err?.message); }
   const ids = [...clusterIds];
-  const ph = ids.map(() => '?').join(',');
 
   // Flags: Phase-1 enrichment + persons columns.
   const flags: string[] = [];
@@ -900,9 +898,9 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   if (isRealValue(person.probation_parole)) flags.push('PROBATION/PAROLE');
   if (isRealValue(person.caution_flags)) flags.push('CAUTION');
   try {
-    const t = await queryFirst<any>(db,
-      `SELECT COUNT(*) AS n FROM trespass_orders WHERE person_id IN (${ph}) AND status = 'active'`, ...ids);
-    if (t?.n) flags.push('ACTIVE TRESPASS');
+    const trespassCounts = await queryInChunks<{ n: number }>(db, ids,
+      (ph) => `SELECT COUNT(*) AS n FROM trespass_orders WHERE person_id IN (${ph}) AND status = 'active'`);
+    if (trespassCounts.some((r) => r.n > 0)) flags.push('ACTIVE TRESPASS');
   } catch (err: any) { console.error('[dossier] trespass flag failed:', err?.message); }
 
   // Timeline sections — each guarded.
@@ -912,43 +910,47 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     catch (err: any) { console.error(`[dossier] ${label} failed:`, err?.message); }
   };
   await section('calls', async () =>
-    (await query<any>(db,
-      `SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address, cp.person_id AS spid
-       FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id
-       WHERE cp.person_id IN (${ph}) ORDER BY c.created_at DESC LIMIT 100`, ...ids))
+    (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address, cp.person_id AS spid
+               FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id
+               WHERE cp.person_id IN (${ph}) ORDER BY c.created_at DESC`))
+      .slice(0, 100)
       .map((r) => ({ kind: 'call', id: r.id, date: r.created_at, title: r.call_number || `CFS-${r.id}`,
         subtitle: [r.incident_type, r.location_address].filter(isRealValue).join(' — '), status: r.status || '', source_person_id: r.spid })));
   await section('incidents', async () =>
-    (await query<any>(db,
-      `SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address, ip.person_id AS spid
-       FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id
-       WHERE ip.person_id IN (${ph}) ORDER BY i.created_at DESC LIMIT 100`, ...ids))
+    (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address, ip.person_id AS spid
+               FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id
+               WHERE ip.person_id IN (${ph}) ORDER BY i.created_at DESC`))
+      .slice(0, 100)
       .map((r) => ({ kind: 'incident', id: r.id, date: r.created_at, title: r.incident_number || `INC-${r.id}`,
         subtitle: [r.incident_type, r.location_address].filter(isRealValue).join(' — '), status: r.status || '', source_person_id: r.spid })));
   await section('citations', async () =>
-    (await query<any>(db,
-      `SELECT id, citation_number, violation_description, status, violation_date, person_id AS spid
-       FROM citations WHERE person_id IN (${ph}) ORDER BY violation_date DESC LIMIT 100`, ...ids))
+    (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT id, citation_number, violation_description, status, violation_date, person_id AS spid
+               FROM citations WHERE person_id IN (${ph}) ORDER BY violation_date DESC`))
+      .slice(0, 100)
       .map((r) => ({ kind: 'citation', id: r.id, date: r.violation_date, title: r.citation_number || `CIT-${r.id}`,
         subtitle: isRealValue(r.violation_description) ? String(r.violation_description) : '', status: r.status || '', source_person_id: r.spid })));
   await section('field_interviews', async () =>
-    (await query<any>(db,
-      `SELECT id, fi_number, location, contact_reason, status, created_at, person_id AS spid
-       FROM field_interviews WHERE person_id IN (${ph}) ORDER BY created_at DESC LIMIT 100`, ...ids))
+    (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT id, fi_number, location, contact_reason, status, created_at, person_id AS spid
+               FROM field_interviews WHERE person_id IN (${ph}) ORDER BY created_at DESC`))
+      .slice(0, 100)
       .map((r) => ({ kind: 'field_interview', id: r.id, date: r.created_at, title: r.fi_number || `FI-${r.id}`,
         subtitle: [r.contact_reason, r.location].filter(isRealValue).join(' — '), status: r.status || '', source_person_id: r.spid })));
   await section('trespass_orders', async () =>
-    (await query<any>(db,
-      `SELECT id, order_number, location, status, effective_date, person_id AS spid
-       FROM trespass_orders WHERE person_id IN (${ph}) ORDER BY effective_date DESC LIMIT 100`, ...ids))
+    (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT id, order_number, location, status, effective_date, person_id AS spid
+               FROM trespass_orders WHERE person_id IN (${ph}) ORDER BY effective_date DESC`))
+      .slice(0, 100)
       .map((r) => ({ kind: 'trespass_order', id: r.id, date: r.effective_date, title: r.order_number || `TO-${r.id}`,
         subtitle: isRealValue(r.location) ? String(r.location) : '', status: r.status || '', source_person_id: r.spid })));
   await section('warrants', async () =>
-    (await query<any>(db,
-      `SELECT id, warrant_number, charge_description, status, issued_date,
-              subject_person_id AS spid
-       FROM warrants WHERE subject_person_id IN (${ph})
-       ORDER BY issued_date DESC LIMIT 100`, ...ids))
+    (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT id, warrant_number, charge_description, status, issued_date, subject_person_id AS spid
+               FROM warrants WHERE subject_person_id IN (${ph}) ORDER BY issued_date DESC`))
+      .slice(0, 100)
       .map((r) => ({ kind: 'warrant', id: r.id, date: r.issued_date, title: r.warrant_number || `W-${r.id}`,
         subtitle: isRealValue(r.charge_description) ? String(r.charge_description) : '', status: r.status || '', source_person_id: r.spid })));
   // arrest_records has NO person FK — best-effort name+DOB match.
@@ -979,15 +981,15 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   let associates: ReturnType<typeof rankAssociates> = [];
   try {
     const co: CoOccurrence[] = [];
-    for (const r of await query<any>(db,
-      `SELECT p.id AS person_id, p.first_name || ' ' || p.last_name AS name
-       FROM call_persons cp1 JOIN call_persons cp2 ON cp1.call_id = cp2.call_id AND cp1.person_id != cp2.person_id
-       JOIN persons p ON p.id = cp2.person_id WHERE cp1.person_id IN (${ph}) LIMIT 500`, ...ids))
+    for (const r of (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT p.id AS person_id, p.first_name || ' ' || p.last_name AS name
+               FROM call_persons cp1 JOIN call_persons cp2 ON cp1.call_id = cp2.call_id AND cp1.person_id != cp2.person_id
+               JOIN persons p ON p.id = cp2.person_id WHERE cp1.person_id IN (${ph})`)).slice(0, 500))
       co.push({ person_id: r.person_id, name: r.name, kind: 'call' });
-    for (const r of await query<any>(db,
-      `SELECT p.id AS person_id, p.first_name || ' ' || p.last_name AS name
-       FROM incident_persons ip1 JOIN incident_persons ip2 ON ip1.incident_id = ip2.incident_id AND ip1.person_id != ip2.person_id
-       JOIN persons p ON p.id = ip2.person_id WHERE ip1.person_id IN (${ph}) LIMIT 500`, ...ids))
+    for (const r of (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT p.id AS person_id, p.first_name || ' ' || p.last_name AS name
+               FROM incident_persons ip1 JOIN incident_persons ip2 ON ip1.incident_id = ip2.incident_id AND ip1.person_id != ip2.person_id
+               JOIN persons p ON p.id = ip2.person_id WHERE ip1.person_id IN (${ph})`)).slice(0, 500))
       co.push({ person_id: r.person_id, name: r.name, kind: 'incident' });
     associates = rankAssociates(co, clusterIds, 15);
   } catch (err: any) { console.error('[dossier] associates failed:', err?.message); }
@@ -995,9 +997,9 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   // Vehicles owned by any cluster member.
   let vehicles: any[] = [];
   try {
-    vehicles = await query<any>(db,
-      `SELECT id, plate_number, vin, make, model, year, color FROM vehicles_records
-       WHERE owner_person_id IN (${ph}) LIMIT 25`, ...ids);
+    vehicles = (await queryInChunks<any>(db, ids,
+      (ph) => `SELECT id, plate_number, vin, make, model, year, color FROM vehicles_records
+               WHERE owner_person_id IN (${ph})`)).slice(0, 25);
   } catch (err: any) { console.error('[dossier] vehicles failed:', err?.message); }
 
   // Addresses: person rows + recent event locations, deduped.
@@ -1012,7 +1014,8 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   };
   pushAddr([person.address, person.city].filter(isRealValue).join(', '), 'record');
   try {
-    for (const p of await query<any>(db, `SELECT address, city FROM persons WHERE id IN (${ph})`, ...ids))
+    for (const p of await queryInChunks<any>(db, ids,
+      (ph) => `SELECT address, city FROM persons WHERE id IN (${ph})`))
       pushAddr([p.address, p.city].filter(isRealValue).join(', '), 'linked identity');
   } catch (err: any) { console.error('[dossier] cluster addresses failed:', err?.message); }
   for (const e of timeline) {

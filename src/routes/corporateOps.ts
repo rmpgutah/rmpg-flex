@@ -120,7 +120,7 @@ corporateOps.get('/runs', requireRole(...READ_ROLES), async (c) => {
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
 const HR_PAYROLL_KINDS = new Set(['payroll_clock_sync', 'attendance_tardy', 'nightly_bundle']);
 
-corporateOps.post('/runs', requireRole(...READ_ROLES), async (c) => {
+corporateOps.post('/runs', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as { id?: number; role?: string } | undefined;

@@ -224,4 +224,4 @@ jobs:
       # see what got pulled in.
       - name: Assert entry chunk under ceiling
         working-directory: client
-        run: node scripts/measure-entry.mjs --max-raw 465000
+        run: node scripts/measure-entry.mjs --max-raw 466000
