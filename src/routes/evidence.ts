@@ -379,7 +379,7 @@ evidence.get('/digital/:id/file', async (c): Promise<Response> => {
   const user = c.get('user') as { id?: number } | undefined;
   if (!user) return c.json({ error: 'Authentication required' }, 401);
   const id = parseInt(c.req.param('id'), 10);
-  if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   await ensureDigitalEvidenceTables(db);
   const row = await queryFirst<{ r2_key: string | null; mime_type: string | null; filename: string | null; original_filename: string | null }>(
@@ -394,6 +394,7 @@ evidence.get('/digital/:id/file', async (c): Promise<Response> => {
 // GET /digital/:id/custody — get chain of custody log entries
 evidence.get('/digital/:id/custody', async (c): Promise<Response> => {
   const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   await ensureDigitalEvidenceTables(db);
   const rows = await query<Record<string, unknown>>(
@@ -410,6 +411,7 @@ evidence.get('/digital/:id/custody', async (c): Promise<Response> => {
 // POST /digital/:id/seal — seal evidence item
 evidence.post('/digital/:id/seal', async (c): Promise<Response> => {
   const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
   const userId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
   const userName = user?.full_name ?? user?.username ?? 'Officer';
@@ -417,11 +419,15 @@ evidence.post('/digital/:id/seal', async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureDigitalEvidenceTables(db);
 
-  await execute(
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM digital_evidence WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+
+  const r = await execute(
     db,
     `UPDATE digital_evidence SET status = 'sealed', updated_at = datetime('now') WHERE id = ?`,
     id,
   );
+  if (!r.meta.changes) return c.json({ error: 'Evidence not found' }, 404);
 
   await execute(
     db,
@@ -438,6 +444,7 @@ evidence.post('/digital/:id/seal', async (c): Promise<Response> => {
 // POST /digital/:id/release — release sealed evidence item
 evidence.post('/digital/:id/release', async (c): Promise<Response> => {
   const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
   const userId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
   const userName = user?.full_name ?? user?.username ?? 'Officer';
@@ -445,11 +452,15 @@ evidence.post('/digital/:id/release', async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureDigitalEvidenceTables(db);
 
-  await execute(
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM digital_evidence WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+
+  const r = await execute(
     db,
     `UPDATE digital_evidence SET status = 'released', updated_at = datetime('now') WHERE id = ?`,
     id,
   );
+  if (!r.meta.changes) return c.json({ error: 'Evidence not found' }, 404);
 
   await execute(
     db,
