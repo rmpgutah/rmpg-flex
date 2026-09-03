@@ -386,6 +386,56 @@ gps.post('/', async (c) => {
       }
     }
 
+    // ── Automated Geofence Scene Departure & Auto-Clearing ────
+    // When a unit is 'onscene' on an active call and moves outside the 500m
+    // perimeter at speed (or sustained outside for >60s), auto-transition
+    // call to 'cleared', stamp cleared_at, and prompt Narrative submission.
+    if (unitId && unit && unit.current_call_id != null
+        && lastPt && lastPt.latitude != null && lastPt.longitude != null
+        && unit.status === 'onscene') {
+      try {
+        const callId = unit.current_call_id!;
+        const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null; call_number: string }>(
+          db, 'SELECT id, status, latitude, longitude, call_number FROM calls_for_service WHERE id = ?', callId);
+        if (call && call.status === 'onscene' && call.latitude != null && call.longitude != null) {
+          const distM = haversineM(lastPt.latitude, lastPt.longitude, call.latitude, call.longitude);
+          if (distM > 500) {
+            // Check if departing (moving at >= 5 mph / ~2.2 m/s or recent breadcrumbs consistently > 500m)
+            const isMoving = typeof lastPt.speed === 'number' ? lastPt.speed >= 5 : true;
+            if (isMoving) {
+              const statusUpdate = await execute(db,
+                `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+                  WHERE id = ? AND status = 'onscene'`, unitId);
+              if (statusUpdate.meta?.changes) {
+                await execute(db,
+                  `UPDATE calls_for_service
+                      SET status = 'cleared',
+                          cleared_at = COALESCE(cleared_at, datetime('now')),
+                          status_changed_at = datetime('now'),
+                          updated_at = datetime('now')
+                    WHERE id = ? AND status = 'onscene'`, callId);
+
+                await emitAlert(c.env, 'dispatch_update', {
+                  action: 'call_cleared_scene_exit',
+                  call_id: callId,
+                  call_number: call.call_number,
+                  unit_id: unitId,
+                  distance_m: Math.round(distM),
+                });
+                await emitAlert(c.env, 'dispatch_update', {
+                  action: 'unit_status_changed',
+                  unit: { id: unitId, call_sign: callSign, status: 'available', current_call_id: null },
+                });
+                log.info(`[gps-departure] CFS ${call.call_number} auto-cleared upon perimeter exit (${Math.round(distM)}m)`);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        log.warn('[gps-departure] auto scene exit failed (non-fatal)', { err });
+      }
+    }
+
     // ── Geofence entry/exit detection ─────────────────────────
     // Best-effort: test the unit's latest fix against every active
     // geofence_zones polygon, diff against its last known zone

@@ -10,6 +10,7 @@ export interface AutoPopulate {
   incidents: unknown[];
   citations: unknown[];
   patrols: unknown[];
+  total_miles?: number | null;
 }
 
 /** DAR number — YY-DAR-NNNNN. */
@@ -37,11 +38,14 @@ export function parseArr(s: unknown): unknown[] {
 export function summarizeDar(a: AutoPopulate): string {
   const parts: string[] = [];
   const add = (arr: unknown[], one: string, many: string) => {
-    if (arr.length) parts.push(`${arr.length} ${arr.length === 1 ? one : many}`);
+    if (arr && Array.isArray(arr) && arr.length) parts.push(`${arr.length} ${arr.length === 1 ? one : many}`);
   };
   add(a.calls, 'call', 'calls');
   add(a.incidents, 'incident', 'incidents');
   add(a.citations, 'citation', 'citations');
   add(a.patrols, 'patrol scan', 'patrol scans');
+  if (a.total_miles != null && a.total_miles > 0) {
+    parts.push(`${a.total_miles.toFixed(1)} shift miles`);
+  }
   return parts.length ? parts.join(' · ') : 'No logged activity';
 }

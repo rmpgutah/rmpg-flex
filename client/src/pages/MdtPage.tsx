@@ -39,6 +39,7 @@ import { toastClockLinkWarnings, type ClockLinkFlags } from '../utils/corporateO
 import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
 import { openShiftReportPdf } from '../utils/shiftReportPdf';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import ClockInOutMileageModal from '../components/time/ClockInOutMileageModal';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -347,6 +348,7 @@ export default function MdtPage() {
   // ConfirmDialog state — off-duty (ends shift/releases vehicle) + clear call
   const [confirmOffDuty, setConfirmOffDuty] = useState(false);
   const [confirmClearCallId, setConfirmClearCallId] = useState<string | null>(null);
+  const [clockMileagePrompt, setClockMileagePrompt] = useState<{ mode: 'in' | 'out' } | null>(null);
 
   // Ref for FI subject name input — used by N shortcut
   const fiSubjectRef = useRef<HTMLInputElement | null>(null);
@@ -630,7 +632,8 @@ export default function MdtPage() {
       if (err?.code === 'NEEDS_VEHICLE') {
         addToast('No take-home vehicle set — pick one on the Shift card to go on duty', 'warning');
       } else if (err?.code === 'NEEDS_MILEAGE') {
-        addToast('No odometer history for this vehicle — start your shift from the Shift card once to seed it', 'warning');
+        setClockMileagePrompt({ mode: 'in' });
+        addToast('No odometer history for this vehicle — enter starting mileage to begin', 'warning');
       } else if (err?.code === 'NO_UNIT') {
         addToast('No unit assigned — ask dispatch to assign you a unit', 'error');
       } else {
@@ -649,8 +652,12 @@ export default function MdtPage() {
       addToast('Shift ended — clocked out, vehicle released', 'success');
       fetchData();
     } catch (err: any) {
-      console.error('End duty failed:', err);
-      addToast('Failed to end shift', 'error');
+      if (err?.code === 'NEEDS_MILEAGE' || err?.code === 'MILEAGE_LOWER') {
+        setClockMileagePrompt({ mode: 'out' });
+      } else {
+        console.error('End duty failed:', err);
+        addToast('Failed to end shift', 'error');
+      }
     }
   };
 
@@ -1718,6 +1725,37 @@ export default function MdtPage() {
           50% { border-color: var(--sev-warn); background: rgb(var(--sev-warn-rgb) / 0.12); }
         }
       `}</style>
+
+      {/* Clock In / Clock Out Mileage Modal */}
+      {clockMileagePrompt && user?.id && (
+        <ClockInOutMileageModal
+          isOpen={!!clockMileagePrompt}
+          isClockingOut={clockMileagePrompt.mode === 'out'}
+          officerId={user.id}
+          onClose={() => setClockMileagePrompt(null)}
+          onSuccess={async (data) => {
+            setClockMileagePrompt(null);
+            if (clockMileagePrompt.mode === 'in') {
+              if (myUnit?.id) {
+                await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
+                  method: 'PUT',
+                  body: JSON.stringify({ status: 'available' }),
+                }).catch(() => {});
+              }
+              addToast('On duty — clocked in, vehicle assigned & starting mileage recorded', 'success');
+            } else {
+              if (myUnit?.id) {
+                await apiFetch('/dispatch/duty/end', {
+                  method: 'POST',
+                  body: JSON.stringify({ unit_id: myUnit.id }),
+                }).catch(() => {});
+              }
+              addToast('Shift ended — clocked out, ending mileage saved & DAR generated', 'success');
+            }
+            fetchData();
+          }}
+        />
+      )}
     </div>
   );
 }

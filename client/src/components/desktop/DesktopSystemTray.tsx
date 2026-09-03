@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../ToastProvider';
 import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
 import WifiSelector from './WifiSelector';
+import ClockInOutMileageModal from '../time/ClockInOutMileageModal';
 
 interface BatteryStatus {
   charging: boolean;
@@ -261,25 +262,13 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
   const { addToast } = useToast();
   const [connPanelOpen, setConnPanelOpen]   = useState(false);
   const [wifiSelectorOpen, setWifiSelectorOpen] = useState(false);
+  const [clockMileageModalOpen, setClockMileageModalOpen] = useState(false);
   const dutyBusyRef = useRef(false);
 
-  const toggleDuty = useCallback(async () => {
+  const toggleDuty = useCallback(() => {
     if (!user?.id || dutyBusyRef.current) return;
-    dutyBusyRef.current = true;
-    const wasOnDuty = onDuty;
-    try {
-      const punch = await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
-        method: 'POST',
-        body: JSON.stringify({ officer_id: user.id }),
-      });
-      setOnDuty(v => !v);
-      if (!wasOnDuty) toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
-    } catch (err: any) {
-      addToast(err?.message || (wasOnDuty ? 'Failed to clock out' : 'Failed to clock in'), 'error');
-    } finally {
-      dutyBusyRef.current = false;
-    }
-  }, [onDuty, setOnDuty, user, addToast]);
+    setClockMileageModalOpen(true);
+  }, [user]);
 
   return (
     <div
@@ -422,6 +411,27 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
             {onDuty ? 'ON DUTY' : 'OFF DUTY'}
           </span>
         </button>
+      )}
+
+      {/* Clock In / Clock Out Mileage Modal */}
+      {clockMileageModalOpen && user?.id && (
+        <ClockInOutMileageModal
+          isOpen={clockMileageModalOpen}
+          isClockingOut={!!onDuty}
+          officerId={user.id}
+          onClose={() => setClockMileageModalOpen(false)}
+          onSuccess={(punch) => {
+            const wasOnDuty = onDuty;
+            setOnDuty(v => !v);
+            setClockMileageModalOpen(false);
+            if (!wasOnDuty) {
+              addToast('Clocked in — starting mileage recorded & vehicle assigned', 'success');
+              toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
+            } else {
+              addToast('Clocked out — ending mileage recorded & DAR generated', 'success');
+            }
+          }}
+        />
       )}
     </div>
   );

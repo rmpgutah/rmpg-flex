@@ -28,7 +28,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
 import { log } from '../../utils/logger';
 import { nowDualStamp } from '../../utils/denverTime';
-import { lookupTodayScheduleId, officerOnApprovedLeave, ensureCorporateOpsSchema, enrichTimeEntryOnClockIn } from '../../utils/corporateWorkflows';
+import { lookupTodayScheduleId, officerOnApprovedLeave, ensureCorporateOpsSchema, enrichTimeEntryOnClockIn, autoCompileShiftDar } from '../../utils/corporateWorkflows';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const duty = new Hono<Env>();
@@ -462,6 +462,13 @@ duty.post('/end', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
       if (endingMileage != null) {
         await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
       }
+      await autoCompileShiftDar(db, Number(officerId), {
+        shift_start: String(entry.clock_in),
+        shift_end: stamp.utc,
+        total_miles: totalMiles,
+      }).catch((err) => {
+        log.warn('[dar] autoCompileShiftDar on duty/end failed (non-fatal)', { err });
+      });
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.

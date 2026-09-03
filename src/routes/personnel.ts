@@ -908,14 +908,14 @@ personnel.post('/time/clock-out', async (c) => {
     const officerId = who.officerId;
 
     const entry = await queryFirst<{
-      id: number; clock_in: string; break_minutes: number | null; break_start: string | null;
+      id: number; officer_id: number; clock_in: string; break_minutes: number | null; break_start: string | null;
       starting_mileage: number | null; vehicle_id: number | null; status: string;
     }>(db,
-      `SELECT id, clock_in, break_minutes, break_start, starting_mileage, vehicle_id, status
+      `SELECT id, officer_id, clock_in, break_minutes, break_start, starting_mileage, vehicle_id, status
          FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
     if (!entry) return c.json({ error: 'No active clock-in found', code: 'NO_ACTIVE_CLOCK' }, 404);
 
-    await finalizeTimeEntryOnClockOut(db, entry, body.ending_mileage);
+    await finalizeTimeEntryOnClockOut(db, { ...entry, officer_id: officerId }, body.ending_mileage);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {

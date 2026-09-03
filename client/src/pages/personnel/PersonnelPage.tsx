@@ -65,6 +65,7 @@ import type { OfficerFormData } from './modals/OfficerFormModal';
 import TimeEntryEditModal from './modals/TimeEntryEditModal';
 import type { TimeEntryEditData } from './modals/TimeEntryEditModal';
 import ExportButton from '../../components/ExportButton';
+import ClockInOutMileageModal from '../../components/time/ClockInOutMileageModal';
 
 // ============================================================
 // Activity entry type (matches backend activity_log)
@@ -237,6 +238,9 @@ export default function PersonnelPage() {
 
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
+
+  // Clock In / Clock Out Mileage Modal prompt state
+  const [clockMileagePrompt, setClockMileagePrompt] = useState<{ mode: 'in' | 'out'; officerId: string } | null>(null);
 
   // Centralized destructive-action ConfirmDialog state — replaces the six
   // window.confirm() prompts that scattered through the delete handlers.
@@ -1079,26 +1083,11 @@ export default function PersonnelPage() {
   };
 
   const handleClockIn = async (officerId: string) => {
-    try {
-      const punch = await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
-      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
-      addToast('Clocked in', 'success');
-      toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to clock in', 'error');
-    }
+    setClockMileagePrompt({ mode: 'in', officerId });
   };
 
   const handleClockOut = async (officerId: string) => {
-    try {
-      await apiFetch('/personnel/time/clock-out', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
-      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
-      addToast('Clocked out', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to clock out', 'error');
-    }
+    setClockMileagePrompt({ mode: 'out', officerId });
   };
 
   const handleStartBreak = async (officerId: string) => {
@@ -1835,6 +1824,27 @@ export default function PersonnelPage() {
         confirmVariant="danger"
         isLoading={deleteConfirmLoading}
       />
+
+      {/* Clock In / Clock Out Mileage Modal */}
+      {clockMileagePrompt && (
+        <ClockInOutMileageModal
+          isOpen={!!clockMileagePrompt}
+          isClockingOut={clockMileagePrompt.mode === 'out'}
+          officerId={clockMileagePrompt.officerId}
+          onClose={() => setClockMileagePrompt(null)}
+          onSuccess={async (punch) => {
+            setClockMileagePrompt(null);
+            const raw = await apiFetch<any[]>('/personnel/time');
+            setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+            if (clockMileagePrompt.mode === 'in') {
+              addToast('Clocked in — starting mileage recorded & vehicle assigned', 'success');
+              toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
+            } else {
+              addToast('Clocked out — ending mileage recorded & DAR generated', 'success');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

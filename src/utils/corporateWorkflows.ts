@@ -25,6 +25,7 @@ import {
   IRS_MILEAGE_RATE,
   STALE_SHIFT_HOURS,
 } from './corporateOps';
+import { darNumber, nextDarSeq, summarizeDar, type AutoPopulate } from './dar';
 
 let _schemaEnsured = false;
 
@@ -307,9 +308,9 @@ export async function enrichTimeEntryOnClockIn(
 
 export async function finalizeTimeEntryOnClockOut(
   db: D1Database,
-  entry: { id: number; clock_in: string; break_minutes?: number | null; break_start?: string | null; starting_mileage?: number | null; vehicle_id?: number | null; status?: string },
+  entry: { id: number; officer_id?: number | null; clock_in: string; break_minutes?: number | null; break_start?: string | null; starting_mileage?: number | null; vehicle_id?: number | null; status?: string },
   endingMileageRaw: unknown,
-): Promise<{ hours: number; ending_mileage: number | null; total_miles: number | null }> {
+): Promise<{ hours: number; ending_mileage: number | null; total_miles: number | null; dar_id?: number | null }> {
   let breakMin = Number(entry.break_minutes) || 0;
   if (entry.break_start) {
     const added = Math.round((Date.now() - Date.parse(entry.break_start)) / 60_000);
@@ -336,7 +337,115 @@ export async function finalizeTimeEntryOnClockOut(
     stamp.utc, stamp.local, hrs, endMi, totalMiles, breakMin, entry.id,
   );
   if (endMi != null) await setFleetOdometer(db, entry.vehicle_id ?? null, endMi);
-  return { hours: hrs, ending_mileage: endMi, total_miles: totalMiles };
+  const darResult = await autoCompileShiftDar(db, entry.officer_id, {
+    shift_start: entry.clock_in,
+    shift_end: stamp.utc,
+    total_miles: totalMiles,
+  }).catch((err) => {
+    log.warn('[dar] autoCompileShiftDar failed on clock out (non-fatal)', { err });
+    return null;
+  });
+  return { hours: hrs, ending_mileage: endMi, total_miles: totalMiles, dar_id: darResult?.id };
+}
+
+/**
+ * Automatically compiles a Daily Activity Report (DAR) at shift completion
+ * aggregating CFS calls worked, submitted narratives, incidents, citations, and patrols.
+ */
+export async function autoCompileShiftDar(
+  db: D1Database,
+  officerId: number | null | undefined,
+  shiftInfo: {
+    shift_start: string;
+    shift_end: string;
+    total_miles?: number | null;
+  },
+): Promise<{ id: number; dar_number: string } | null> {
+  if (!officerId) return null;
+  const shiftDate = shiftInfo.shift_start.slice(0, 10);
+  const safe = async <T>(p: Promise<T[]>): Promise<T[]> => { try { return await p; } catch { return []; } };
+
+  // Fetch calls officer attended during shift window
+  const calls = await safe(query<Record<string, unknown>>(
+    db,
+    `SELECT cf.id, cf.call_number, cf.incident_type, cf.location_address, cf.status,
+            cf.action_taken, ext.narrative, cf.created_at, cf.cleared_at
+       FROM calls_for_service cf
+       LEFT JOIN calls_for_service_ext ext ON ext.call_id = cf.id
+      WHERE (cf.assigned_units LIKE ? OR cf.assigned_units LIKE ?)
+        AND (cf.created_at >= ? OR cf.dispatched_at >= ? OR cf.enroute_at >= ?)
+        AND cf.created_at <= ?
+      ORDER BY cf.created_at ASC`,
+    `%"${officerId}"%`, `%,${officerId},%`,
+    shiftInfo.shift_start, shiftInfo.shift_start, shiftInfo.shift_start, shiftInfo.shift_end,
+  ));
+
+  const incidents = await safe(query<Record<string, unknown>>(
+    db,
+    `SELECT incident_number, incident_type, location_address, created_at
+       FROM incidents WHERE officer_id = ? AND created_at >= ? AND created_at <= ?
+      ORDER BY created_at ASC`,
+    officerId, shiftInfo.shift_start, shiftInfo.shift_end,
+  ));
+
+  const citations = await safe(query<Record<string, unknown>>(
+    db,
+    `SELECT citation_number, violation_description, violation_date, location
+       FROM citations WHERE issuing_officer_id = ? AND created_at >= ? AND created_at <= ?
+      ORDER BY id ASC`,
+    officerId, shiftInfo.shift_start, shiftInfo.shift_end,
+  ));
+
+  const patrols = await safe(query<Record<string, unknown>>(
+    db,
+    `SELECT s.id, cp.name AS checkpoint, s.status, s.scanned_at
+       FROM patrol_scans s LEFT JOIN patrol_checkpoints cp ON cp.id = s.checkpoint_id
+      WHERE s.officer_id = ? AND s.scanned_at >= ? AND s.scanned_at <= ?
+      ORDER BY s.scanned_at ASC`,
+    officerId, shiftInfo.shift_start, shiftInfo.shift_end,
+  ));
+
+  const ap: AutoPopulate = {
+    calls,
+    incidents,
+    citations,
+    patrols,
+    total_miles: shiftInfo.total_miles,
+  };
+
+  const summary = summarizeDar(ap);
+  const narrativeParts: string[] = [summary];
+  if (calls.length > 0) {
+    narrativeParts.push('\nCalls Attended:');
+    for (const c of calls) {
+      const cNarrative = c.narrative || c.action_taken ? ` - Summary: ${c.narrative || c.action_taken}` : '';
+      narrativeParts.push(`• CFS ${c.call_number} (${c.incident_type || 'General'} at ${c.location_address || 'Unspecified'})${cNarrative}`);
+    }
+  }
+
+  const activitiesNarrative = narrativeParts.join('\n');
+  const year = new Date().getFullYear().toString().slice(-2);
+  const maxRow = await queryFirst<{ m: string | null }>(
+    db,
+    `SELECT MAX(dar_number) AS m FROM daily_activity_reports WHERE dar_number LIKE ?`,
+    `${year}-DAR-%`,
+  );
+  const number = darNumber(year, nextDarSeq(maxRow?.m));
+
+  // Insert DAR row
+  const r = await execute(
+    db,
+    `INSERT INTO daily_activity_reports
+      (dar_number, officer_id, shift_date, shift_start, shift_end, status,
+       calls_handled, incidents_created, citations_issued, patrols_completed,
+       activities_narrative, created_at)
+     VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, datetime('now'))`,
+    number, officerId, shiftDate, shiftInfo.shift_start, shiftInfo.shift_end,
+    JSON.stringify(calls), JSON.stringify(incidents), JSON.stringify(citations), JSON.stringify(patrols),
+    activitiesNarrative,
+  );
+
+  return { id: r.meta.last_row_id, dar_number: number };
 }
 
 export async function linkServeAttemptToShift(
