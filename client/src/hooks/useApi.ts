@@ -178,7 +178,7 @@ function headerFingerprint(headers: HeadersInit | undefined): string {
   return entries
     .map(([k, v]) => `${k.toLowerCase()}:${v}`)
     .sort()
-    .join(' ');
+    .join('');
 }
 
 // ─── Retry config for 500/502/503/504 (server restart recovery) ────
@@ -446,14 +446,6 @@ export function resolveUploadsUrl(opts: { isDev: boolean; hostname?: string }): 
   const host = (opts.hostname || '').toLowerCase();
   if (isAppHostname(host)) return '/api/uploads';
   return `${CF_WORKER_DIRECT_BASE}/api/uploads`;
-}
-
-/** URL for POST /api/uploads — relative on the app origin, Worker host otherwise. */
-export function uploadsUrl(): string {
-  return resolveUploadsUrl({
-    isDev: import.meta.env.DEV,
-    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
-  });
 }
 
 // Cloudflare Pages does NOT support 200-rewrites to another origin in
