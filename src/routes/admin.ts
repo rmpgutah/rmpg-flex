@@ -43,6 +43,7 @@ const SECRET_KEY_PATTERN = /_(api_key|access_key|access_key_id|secret|secret_acc
 // purges and session revocation open to any logged-in account.
 //
 // Usage: `const denied = forbidUnlessRole(c, 'admin', 'manager'); if (denied) return denied;`
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function forbidUnlessRole(c: any, ...roles: string[]): Response | null {
   const actor = c.get('user') as { role?: string } | undefined;
   if (!actor?.role || !roles.includes(actor.role)) {
@@ -274,6 +275,8 @@ admin.delete('/config/:id', async (c) => {
 // GET /admin/call-templates — AdminSystemTab's Quick Templates panel reads
 // `description_template`, which maps to this table's `notes` column.
 admin.get('/call-templates', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const templates = await query<Record<string, unknown>>(db,

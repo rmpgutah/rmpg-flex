@@ -164,6 +164,10 @@ evidence.post('/', async (c): Promise<Response> => {
 
 // GET / — list newest first.
 evidence.get('/', async (c): Promise<Response> => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || actor.role === 'client_viewer') {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
   const db = getDb(c.env);
   await ensureTable(db);
   const limit = Math.min(parseInt(c.req.query('limit') || '100', 10) || 100, 500);
@@ -212,6 +216,10 @@ async function ensureDigitalEvidenceTables(db: ReturnType<typeof getDb>): Promis
 
 // GET /pending — items requiring action/review (for Desktop widget & dashboard)
 evidence.get('/pending', async (c): Promise<Response> => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || actor.role === 'client_viewer') {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
   const db = getDb(c.env);
   await ensureDigitalEvidenceTables(db);
   const rows = await query<Record<string, unknown>>(
