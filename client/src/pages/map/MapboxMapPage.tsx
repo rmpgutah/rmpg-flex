@@ -21,7 +21,7 @@ import {
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
-  Navigation, Globe, Zap, Hash, BarChart3, X,
+  Navigation, Globe, Zap, Hash, BarChart3, X, Pencil,
 } from 'lucide-react';
 
 import {
@@ -45,6 +45,7 @@ import {
   UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex,
   MAP_STYLE_LABELS,
   type MapStyleId,
+  isLightMapStyle,
 } from './utils/mapConstants';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { formatEnumValue } from '../../utils/formatters';
@@ -56,6 +57,8 @@ import { devLog, devWarn } from '../../utils/devLog';
 import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
 import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
+import { useIncidentHeatmap } from '../../hooks/useIncidentHeatmap';
+import { useBeatCoverage } from '../../hooks/useBeatCoverage';
 import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
 import { useMapboxSpeedHeatmap } from '../../hooks/useMapboxSpeedHeatmap';
 import { useMapboxSpeedViolations } from '../../hooks/useMapboxSpeedViolations';
@@ -72,6 +75,7 @@ import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
 import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
 import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapboxServeJobs } from '../../hooks/useMapboxServeJobs';
+import { useMapboxOptimizationRoutes } from '../../hooks/useMapboxOptimizationRoutes';
 import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import StreetViewLightbox from './components/StreetViewLightbox';
@@ -79,6 +83,8 @@ import type { StreetViewTarget } from './components/StreetViewLightbox';
 import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
 import MinimapControl from './components/MinimapControl';
 import WeatherRadarControl from './components/WeatherRadarControl';
+import Radar360Panel from '../../components/Radar360Panel';
+import { useRadar360 } from '../../hooks/useRadar360';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
@@ -111,11 +117,13 @@ import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './ho
 import { useEnRouteEta } from './hooks/useEnRouteEta';
 import { useMapWelfare } from './hooks/useMapWelfare';
 import { useMapBeatOverlay } from './hooks/useMapBeatOverlay';
+import { useLayerFavorites } from './hooks/useLayerFavorites';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import { MapContext } from './MapContext';
 import MapLayout from './MapLayout';
 import MapTopToolbar from './components/MapTopToolbar';
+import CorporateLinkageStrip from '../../components/CorporateLinkageStrip';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import UnifiedMapLegend from './components/UnifiedMapLegend';
 import OsmFeatureEditor from '../../components/OsmFeatureEditor';
@@ -225,7 +233,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, []);
 
   const {
-    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token: mapboxToken,
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback,
+    isContextLost, needsManualReload,
+    changeStyle, token: mapboxToken,
     daylight, projection, atmosphere, cameraAnimation, snapshot,
   } = useMapCore({
     preferredEngine,
@@ -328,6 +338,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const clustering = useMapClustering(mapRef.current, mapLoaded);
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
   const [heatmapMode, setHeatmapMode] = useState<'live' | 'historical'>('live');
+  const incidentHeatmap = useIncidentHeatmap(mapRef.current, mapLoaded);
+  const beatCoverage = useBeatCoverage(mapRef.current, mapLoaded);
 
   const refreshHeatmapPoints = useCallback(async (mode: 'live' | 'historical') => {
     if (mode === 'historical') {
@@ -366,7 +378,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [speedAnalyticsPanelOpen, setSpeedAnalyticsPanelOpen] = useState(false);
   const [speedGraphUnit, setSpeedGraphUnit] = useState<{ unitId: number; callSign: string } | null>(null);
   const speedZoneStats = useSpeedZoneStats(8, speedAnalyticsPanelOpen);
-  speedViolationsLayer.setOnSelectUnit((unitId, callSign) => setSpeedGraphUnit({ unitId, callSign }));
+  // Wrapped in useEffect to avoid registering a new callback on every render.
+  useEffect(() => {
+    speedViolationsLayer.setOnSelectUnit((unitId, callSign) => setSpeedGraphUnit({ unitId, callSign }));
+  }, [speedViolationsLayer]); // eslint-disable-line react-hooks/exhaustive-deps
   const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
   const responseTime = useMapboxResponseTime(mapLoaded ? mapRef.current : null);
   const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
@@ -388,8 +403,21 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       maxWidth: '280px',
     });
   }
+  // Persistent popup for GeoJSON layer clicks (county, municipality, beat, etc.)
+  // Must be a real instance — the click handlers gate on `if (!popup) return`.
+  const geoJsonPopupRef = useRef<mapboxgl.Popup | null>(null);
+  if (geoJsonPopupRef.current === null && typeof window !== 'undefined') {
+    geoJsonPopupRef.current = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: true,
+      className: 'mapbox-popup-dark',
+      maxWidth: '280px',
+    });
+  }
   // Buffer Ring — built, tested (BufferRingTool.test.tsx).
-  const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
+  const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | 'radar-360' | null>(null);
+  // Radar 360 — scan center (defaults to GPS; user can right-click map to reposition)
+  const [radar360Center, setRadar360Center] = useState<{ lat: number; lng: number; label?: string } | null>(null);
   const [multiStopQueue, setMultiStopQueue] = useState<QueuedStop[]>([]);
   const [multiStopUnit, setMultiStopUnit] = useState<string | null>(null);
   const [multiStopPanelOpen, setMultiStopPanelOpen] = useState(false);
@@ -405,6 +433,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const serveJobs = useMapboxServeJobs(mapLoaded ? mapRef.current : null);
   const [serveJobsEnabled, setServeJobsEnabled] = useState(false);
+  const optimRoutes = useMapboxOptimizationRoutes(
+    mapLoaded ? mapRef.current : null,
+    calls.map((c) => ({ ...c, id: Number(c.id) })),
+  );
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
   const [coverageGapsEnabled, setCoverageGapsEnabled] = useState(false);
   const [responseTimeEnabled, setResponseTimeEnabled] = useState(false);
@@ -548,6 +580,18 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     };
   }, [identifyEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Right-click → set Radar 360 scan center when the panel is open.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    const onContextMenu = (e: mapboxgl.MapMouseEvent) => {
+      if (activeFloatingTool !== 'radar-360') return;
+      setRadar360Center({ lat: e.lngLat.lat, lng: e.lngLat.lng, label: `${e.lngLat.lat.toFixed(4)}, ${e.lngLat.lng.toFixed(4)}` });
+    };
+    map.on('contextmenu', onContextMenu);
+    return () => { map.off('contextmenu', onContextMenu); };
+  }, [mapLoaded, activeFloatingTool]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const traffic = useMapTraffic(mapRef.current, mapLoaded);
   const measure = useMapMeasure(mapRef.current, mapLoaded);
   const [streetViewTarget, setStreetViewTarget] = useState<StreetViewTarget | null>(null);
@@ -594,10 +638,18 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
   const weatherRadar = useMapWeatherRadar(mapRef.current, mapLoaded);
   const weatherAlerts = useMapWeatherAlerts(mapRef.current, mapLoaded);
+  // Radar 360 — only active while the panel is open; center falls back to GPS.
+  const radar360ScanLat = radar360Center?.lat ?? gps.latitude;
+  const radar360ScanLng = radar360Center?.lng ?? gps.longitude;
+  const radar360 = useRadar360({
+    lat: activeFloatingTool === 'radar-360' ? (radar360ScanLat ?? null) : null,
+    lng: activeFloatingTool === 'radar-360' ? (radar360ScanLng ?? null) : null,
+    refreshMs: activeFloatingTool === 'radar-360' ? 30_000 : 0,
+  });
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
-  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
-  const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
+  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: geoJsonPopupRef.current });
+  const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: geoJsonPopupRef.current });
   // ── OSM override layer ──
   // Overrides are fetched only for the groups actually switched on; there is no
   // point pulling corrections for layers that are not drawn.
@@ -607,6 +659,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   } | null>(null);
   const [visibleOsmGroups, setVisibleOsmGroups] = useState<string[]>([]);
   const osmOverrides = useOsmOverrides(visibleOsmGroups);
+  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded, { units, calls });
 
   const vectorTiles = useVectorTileLayers({
     map: mapRef.current,
@@ -621,6 +674,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     osmOverrides: osmOverrides.byOsmId,
     osmHiddenIds: osmOverrides.hiddenIds,
     onEditOsmFeature: setOsmEditTarget,
+    suppressPopup: featureInspect.enabled || identifyEnabled,
   });
 
   // Derive the visible OSM groups from the layer states. Sorted+joined into a
@@ -644,7 +698,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       : districtHierarchy.hierarchyStates['zone']?.visible ? 'zone'
       : null,
   });
-  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const [hoveredFeature, setHoveredFeature] = useState<InspectedFeature | null>(null);
   const inspectMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
@@ -734,6 +787,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
   const [showWeatherMenu, setShowWeatherMenu] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [editingBookmarkId, setEditingBookmarkId] = useState<string | null>(null);
+  const [editingBookmarkName, setEditingBookmarkName] = useState('');
   const [legendOpen, setLegendOpen] = useState(false);
   const [gpsHudOpen, setGpsHudOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -938,51 +993,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const psoMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
 
   const refreshPsoJobs = useCallback(async () => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded) return;
-    try {
-      const jobs = await apiFetch<any[]>('/process-server?status=pending,attempted,in_progress&limit=100');
-      if (!Array.isArray(jobs)) return;
-
-      const current = new Set<number>();
-      for (const job of jobs) {
-        const lat = job.recipient_lat ?? job.latitude;
-        const lng = job.recipient_lng ?? job.longitude;
-        if (lat == null || lng == null) continue;
-        current.add(job.id);
-
-        const color = job.priority === 'urgent' ? 'var(--sev-critical)'
-          : job.priority === 'rush' ? 'var(--sev-warn)'
-          : job.status === 'attempted' ? 'var(--sev-info)'
-          : 'var(--text-muted)';
-
-        const existing = psoMarkersRef.current.get(job.id);
-        if (existing) {
-          existing.setLngLat([lng, lat]);
-          (existing.getElement().querySelector('.pso-dot') as HTMLElement | null)?.style.setProperty('background', color);
-        } else {
-          const el = document.createElement('div');
-          el.style.cssText = 'cursor:pointer;';
-          const dot = document.createElement('div');
-          dot.className = 'pso-dot';
-          dot.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 6px ${withAlpha(color, '55')};`;
-          el.appendChild(dot);
-          const popupBody = `<div style="font-size:11px;padding:4px 6px;"><strong>${escapeHtml(job.recipient_name ?? 'Unknown')}</strong><br/>${escapeHtml(job.status)} · ${escapeHtml(job.priority)}</div>`;
-          const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })
-            .setHTML(popupBody);
-          const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
-            .setLngLat([lng, lat])
-            .setPopup(popup)
-            .addTo(map);
-          psoMarkersRef.current.set(job.id, marker);
-        }
-      }
-      // Remove stale markers
-      psoMarkersRef.current.forEach((marker, id) => {
-        if (!current.has(id)) { marker.remove(); psoMarkersRef.current.delete(id); }
-      });
-    } catch { /* non-critical */ }
-  }, [mapLoaded]);
+    // Duplicate HTML pins raced the GeoJSON serve-jobs overlay. The dock toggle
+    // owns the canonical layer via useMapboxServeJobs.
+    psoMarkersRef.current.forEach((m) => m.remove());
+    psoMarkersRef.current.clear();
+  }, []);
 
   useEffect(() => { refreshPsoJobs(); }, [refreshPsoJobs]);
   useLiveSync('process-server', refreshPsoJobs);
@@ -1073,6 +1088,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
+    if (clustering.enabled) {
+      callMarkersRef.current.forEach((marker) => marker.remove());
+      callMarkersRef.current.clear();
+      return;
+    }
+
     const currentIds = new Set<string>();
 
     // Resolves the CURRENT call data at click time (via callsRef, which the
@@ -1135,7 +1156,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         callMarkersRef.current.delete(id);
       }
     });
-  }, [calls, units, mapLoaded, multiStopQueue, addCallToRoute, enRouteEtas]);
+  }, [calls, units, mapLoaded, multiStopQueue, addCallToRoute, enRouteEtas, clustering.enabled]);
 
   // ── Self-Position (GPS Marker with heading + accuracy) ──────────────────
   // Logic extracted to useMapGps hook (see hooks/useMapGps.ts)
@@ -1267,13 +1288,34 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
     // ── Units & Calls ──
     breadcrumbs: { active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle },
-    clustering: { active: clustering.enabled, onToggle: clustering.toggle },
+    clustering: {
+      active: clustering.enabled,
+      onToggle: () => {
+        if (!clustering.enabled) {
+          const clPts = calls
+            .filter((c) => c.latitude != null && c.longitude != null)
+            .map((c) => ({
+              id: c.id, longitude: c.longitude!, latitude: c.latitude!,
+              priority: c.priority, label: c.call_number, color: priorityHex(c.priority),
+            }));
+          clustering.updatePoints(clPts);
+        }
+        clustering.toggle();
+      },
+    },
     incidents: { active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), loading: incidentsLayer.loading, error: incidentsLayer.error },
     'repeat-addresses': { active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), loading: repeatAddresses.loading, error: repeatAddresses.error },
     selfpos: { active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v) },
     'serve-jobs': { active: serveJobsEnabled, onToggle: () => setServeJobsEnabled((v) => !v), loading: serveJobs.loading, error: serveJobs.error },
+    'optim-routes': { active: optimRoutes.visible, onToggle: optimRoutes.toggle, loading: optimRoutes.loading, error: optimRoutes.error },
 
     // ── Historical Analysis ──
+    'incident-heatmap': {
+      active: incidentHeatmap.enabled,
+      onToggle: incidentHeatmap.toggle,
+      loading: incidentHeatmap.loading,
+      error: incidentHeatmap.error ?? undefined,
+    },
     heatmap: {
       active: heatmap.enabled,
       onToggle: () => { void populateAndToggleHeatmap(); },
@@ -1312,6 +1354,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     ])),
 
     // ── Risk & Coverage ──
+    'beat-coverage': {
+      active: beatCoverage.enabled,
+      onToggle: beatCoverage.toggle,
+      loading: beatCoverage.loading,
+      error: beatCoverage.error ?? undefined,
+    },
     'coverage-gaps': { active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), loading: coverageGaps.loading, error: coverageGaps.error },
     'safety-zones': { active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), loading: safetyZones.loading, error: safetyZones.error },
     isochrone: { active: isochroneEnabled, onToggle: toggleIsochrone },
@@ -1328,8 +1376,28 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Dispatch Tools ──
     directions: { active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin') },
     'nav-overlay': { active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay') },
-    identify: { active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), loading: tilequery.loading },
-    places: { active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant') },
+    identify: {
+      active: identifyEnabled,
+      onToggle: () => {
+        setIdentifyEnabled((v) => {
+          const next = !v;
+          if (next && featureInspect.enabled) featureInspect.toggle();
+          return next;
+        });
+      },
+      loading: tilequery.loading,
+    },
+    places: {
+      active: showPlacesMenu || placesSearch.results.length > 0,
+      onToggle: () => {
+        if (placesSearch.results.length > 0) {
+          placesSearch.clearResults();
+          setShowPlacesMenu(false);
+          return;
+        }
+        setShowPlacesMenu((v) => !v);
+      },
+    },
     bookmarks: { active: mapBookmarks.dropMode, onToggle: () => mapBookmarks.setDropMode(!mapBookmarks.dropMode) },
     'gps-hud': { active: gpsHudOpen, onToggle: () => setGpsHudOpen((v) => !v) },
     optimize: { active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v) },
@@ -1338,6 +1406,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     measure: { active: measure.mode !== 'none', onToggle: () => setShowMeasureMenu((v) => !v) },
     'buffer-ring': { active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring') },
     annotation: { active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation') },
+    'radar-360': { active: activeFloatingTool === 'radar-360', onToggle: () => { setActiveFloatingTool((v) => v === 'radar-360' ? null : 'radar-360'); setRadar360Center(null); } },
 
     // ── Drawing & Tracking ──
     draw: { active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu((v) => !v) },
@@ -1347,7 +1416,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     'speed-analytics': { active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), loading: speedZoneStats.loading },
 
     // ── Diagnostics ──
-    inspect: { active: featureInspect.enabled, onToggle: featureInspect.toggle },
+    inspect: {
+      active: featureInspect.enabled,
+      onToggle: () => {
+        if (!featureInspect.enabled && identifyEnabled) setIdentifyEnabled(false);
+        featureInspect.toggle();
+      },
+    },
     mapmatch: { active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting() },
     deck: {
       active: deckEnabled,
@@ -1366,6 +1441,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     geofenceAlerts, breadcrumbs, clustering, incidentsEnabled, incidentsLayer.loading,
     incidentsLayer.error, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error,
     selfPosVisible, setSelfPosVisible, serveJobsEnabled, serveJobs.loading, serveJobs.error,
+    optimRoutes.visible, optimRoutes.toggle, optimRoutes.loading, optimRoutes.error,
+    incidentHeatmap, beatCoverage,
     heatmap, populateAndToggleHeatmap, heatmapMode,
     historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
@@ -1375,11 +1452,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     safetyZonesEnabled, safetyZones.loading, safetyZones.error, isochroneEnabled, toggleIsochrone,
     terrainEnabled, setTerrainEnabled, buildings3dEnabled, setBuildings3dEnabled, daylight,
     projection, atmosphere, coordGrid, cameraAnimation, directionsPanel, activeFloatingTool,
-    setActiveFloatingTool, identifyEnabled, tilequery.loading, placesSearch, mapBookmarks,
+    setActiveFloatingTool, identifyEnabled, tilequery.loading, placesSearch, showPlacesMenu, mapBookmarks,
     gpsHudOpen, setGpsHudOpen, multiStopPanelOpen, measure.mode, setShowMeasureMenu, drawing.mode,
     setShowDrawMenu, glDraw, speedAnalyticsPanelOpen, speedZoneStats.loading, featureInspect,
     mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, diagnosticsOpen,
-    setDiagnosticsOpen, dispatchConnectionsOpen, setDispatchConnectionsOpen,
+    setDiagnosticsOpen, dispatchConnectionsOpen, setDispatchConnectionsOpen, calls,
   ]);
 
   // Dev-only wiring guard. buildDockSections SILENTLY drops any registry layer
@@ -1397,13 +1474,20 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     }
   }, [layerBindings]);
 
+  const layerFavorites = useLayerFavorites();
   const mapLeftDockSections = useMemo(
-    () => buildDockSections(LEFT_DOCK_GROUPS, layerBindings),
-    [layerBindings],
+    () => buildDockSections(LEFT_DOCK_GROUPS, layerBindings, {
+      ids: layerFavorites.set,
+      onToggle: layerFavorites.toggle,
+    }),
+    [layerBindings, layerFavorites.set, layerFavorites.toggle],
   );
   const mapRightDockSections = useMemo(
-    () => buildDockSections(RIGHT_DOCK_GROUPS, layerBindings),
-    [layerBindings],
+    () => buildDockSections(RIGHT_DOCK_GROUPS, layerBindings, {
+      ids: layerFavorites.set,
+      onToggle: layerFavorites.toggle,
+    }),
+    [layerBindings, layerFavorites.set, layerFavorites.toggle],
   );
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
@@ -1482,6 +1566,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       setSnapshotGalleryOpen(true);
     },
     onExportImage: () => { void printExport.exportImage(); },
+    onCopyImage: () => { void printExport.copyToClipboard(); },
   };
 
   // Mapbox GL does not auto-detect a container resize that isn't driven by a window
@@ -1556,6 +1641,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     <div className="tactical-dark relative w-full overflow-hidden bg-surface-base flex flex-col" style={{ height: '100%', minHeight: '100%' }}>
       {/* ── Region 1: Top toolbar (desktop/tablet only) ── */}
       {!isDockNarrow && <MapTopToolbar {...mapTopToolbarProps} />}
+      {!isDockNarrow && <CorporateLinkageStrip />}
       {/* Beat Planner — supervisor+ toolbar button */}
       {!isDockNarrow && isSupervisorPlusMap && (
         <div className="absolute top-9 right-2 z-30 flex items-center gap-1">
@@ -1593,6 +1679,33 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         </div>
       )}
 
+      {/* WebGL context-lost: brief overlay while recovery rebuild is pending */}
+      {isContextLost && !loading && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <span className="text-rmpg-300 text-xs font-mono">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+
+      {/* WebGL loop-guard tripped — GPU too unstable for auto-recovery */}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-3 px-6 text-center">
+            <span className="text-rmpg-100 text-sm font-mono">MAP GPU CRASH</span>
+            <span className="text-rmpg-400 text-xs">The map GPU context crashed repeatedly. Reload the page to restore the map.</span>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-1 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-mono"
+              style={{ borderRadius: 2 }}
+            >
+              RELOAD PAGE
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Map Container — explicit w/h ensures Mapbox GL gets a sized element */}
       <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
       {/* Role-adaptive overlay shell — renders controls appropriate for the user's role */}
@@ -1601,6 +1714,37 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Search Box v6 — React component overlay replacing the imperative geocoder plugin */}
       {mapboxToken && !mapLibreFallback && <MapSearchBox accessToken={mapboxToken} />}
+
+      {/* Places Search categories — dock toggle opens this menu. Must use
+          PLACE_CATEGORIES ids (hospital, police, …). There is no 'restaurant'. */}
+      {showPlacesMenu && (
+        <div className="absolute top-16 right-3 z-30 bg-surface-raised border border-border-default w-44 overflow-hidden" style={{ borderRadius: 2 }}>
+          {PLACE_CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => {
+                void placesSearch.searchCategory(cat.id);
+                setShowPlacesMenu(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                placesSearch.activeCategory === cat.id ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+              }`}
+            >
+              {cat.icon} {cat.label}
+            </button>
+          ))}
+          {placesSearch.results.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { placesSearch.clearResults(); setShowPlacesMenu(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
+            >
+              ✕ Clear places
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Measure / Draw dropdown bodies — their launcher buttons now live in the
           Right Dock's Analysis section (measure / draw items). The bodies mount here
@@ -1677,8 +1821,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         </div>
       )}
 
-      {/* Measurement Result Banner */}
-      {measure.result && measure.mode === 'none' && (
+      {/* Measurement Result Banner — visible while measuring and after measurement
+          is complete (mode back to 'none' with a result still set). */}
+      {measure.result && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
           <Ruler className="w-3.5 h-3.5 text-brand-gold-500" />
           <span className="text-rmpg-200 text-xs font-mono">
@@ -1795,8 +1940,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           result={featureInspect.result}
           selectedIndex={featureInspect.selectedIndex}
           onSelect={featureInspect.select}
-          onClose={featureInspect.clear}
+          onClose={() => { if (featureInspect.enabled) featureInspect.toggle(); else featureInspect.clear(); }}
           onHoverFeature={setHoveredFeature}
+          osmOverrides={osmOverrides.byOsmId}
+          onEditOsmFeature={setOsmEditTarget}
         />
       )}
 
@@ -1857,6 +2004,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           The layer toggle itself stays in the Live Conditions dock section. */}
       {weatherRadar.enabled && <WeatherRadarControl radar={weatherRadar} />}
 
+      {/* Radar 360 — situational awareness panel. Right-click map to reposition scan center. */}
+      {activeFloatingTool === 'radar-360' && (
+        <div className="absolute top-16 left-3 z-30">
+          <Radar360Panel
+            radar={radar360}
+            centerLabel={radar360Center?.label ?? (gps.latitude != null ? 'GPS' : undefined)}
+            onClose={() => { setActiveFloatingTool(null); setRadar360Center(null); }}
+          />
+        </div>
+      )}
+
       {snapshotGalleryOpen && (
         <div
           className="absolute top-11 right-3 z-30 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono overflow-hidden"
@@ -1899,6 +2057,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     className="w-full h-auto border border-border-subtle"
                     style={{ borderRadius: 2 }}
                   />
+                  <a
+                    href={s.url}
+                    download={`rmpg-snapshot-${s.timestamp}.png`}
+                    aria-label={`Download snapshot ${snapshotTime}`}
+                    className="absolute bottom-0.5 left-0.5 bg-surface-base/90 text-[8px] text-rmpg-300 px-1 opacity-0 group-hover:opacity-100"
+                    style={{ borderRadius: 2 }}
+                  >
+                    Save
+                  </a>
                   <button
                     onClick={() => snapshot.removeSnapshot(s.timestamp)}
                     aria-label="Remove snapshot"
@@ -1962,10 +2129,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             county: geoJsonLayers.layerStates['county']?.visible ?? false,
             municipality: geoJsonLayers.layerStates['municipality']?.visible ?? false,
           }}
-          statewide={{ roads: false, addresses: false }}
+          statewide={{
+            roads: vectorTiles.vectorLayerStates['utah_roads']?.visible ?? false,
+            addresses: vectorTiles.vectorLayerStates['utah_addresses']?.visible ?? false,
+          }}
           choro={activityChoropleth.choroLegend}
           categorical={[]}
-          isLight={false}
+          isLight={isLightMapStyle(mapStyle)}
           visibleOsmConfigs={vectorTiles.vectorConfigs.filter(
             (cfg) => cfg.source === 'osm' && vectorTiles.vectorLayerStates[cfg.id]?.visible,
           )}
@@ -1985,6 +2155,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             <span className="text-[8px] font-black text-surface-base bg-brand-gold-500 px-1.5 py-px" style={{ borderRadius: 2 }}>
               {mapBookmarks.bookmarks.length}
             </span>
+            {mapBookmarks.bookmarks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => mapBookmarks.clearAll()}
+                aria-label="Clear all bookmarks"
+                className="text-[8px] text-rmpg-500 hover:text-red-400 uppercase tracking-wider"
+              >
+                Clear
+              </button>
+            )}
           </div>
           <div className="scrollbar-dark overflow-y-auto" style={{ maxHeight: 260 }}>
             {mapBookmarks.bookmarks.length === 0 ? (
@@ -2005,9 +2185,65 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     style={{ borderRadius: '50%', background: bm.color, boxShadow: `0 0 4px ${withAlpha(bm.color, '80')}` }}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
+                    {editingBookmarkId === bm.id ? (
+                      <input
+                        aria-label={`Rename ${bm.name}`}
+                        value={editingBookmarkName}
+                        autoFocus
+                        className="w-full bg-surface-sunken border border-border-subtle px-1 text-[10px] text-rmpg-200"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingBookmarkName(e.target.value)}
+                        onBlur={() => {
+                          const name = editingBookmarkName.trim();
+                          if (name) mapBookmarks.updateBookmark(bm.id, { name });
+                          setEditingBookmarkId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') setEditingBookmarkId(null);
+                        }}
+                      />
+                    ) : (
+                      <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
+                    )}
                     <div className="text-[8px] text-rmpg-500">{bmDate}</div>
+                    <input
+                      aria-label={`Notes for ${bm.name}`}
+                      defaultValue={bm.notes}
+                      placeholder="Notes"
+                      className="mt-0.5 w-full bg-transparent border-0 border-b border-border-subtle px-0 text-[9px] text-rmpg-400"
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => mapBookmarks.updateBookmark(bm.id, { notes: e.target.value })}
+                    />
+                    <div className="flex gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                      {mapBookmarks.colors.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-label={`Color ${c}`}
+                          className="w-2.5 h-2.5 shrink-0"
+                          style={{
+                            background: c,
+                            borderRadius: 2,
+                            outline: bm.color === c ? '1px solid #fff' : 'none',
+                          }}
+                          onClick={() => mapBookmarks.updateBookmark(bm.id, { color: c })}
+                        />
+                      ))}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingBookmarkId(bm.id);
+                      setEditingBookmarkName(bm.name);
+                    }}
+                    aria-label={`Rename bookmark ${bm.name}`}
+                    className="text-rmpg-500 hover:text-rmpg-200 shrink-0 p-0.5"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); mapBookmarks.removeBookmark(bm.id); }}
                     aria-label={`Remove bookmark ${bm.name}`}

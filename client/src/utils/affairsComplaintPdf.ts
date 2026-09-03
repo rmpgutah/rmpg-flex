@@ -27,12 +27,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -179,23 +180,12 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
   const labelOrId = c.complaint_number || `IA-${c.id ?? '?'}`;
 
   // ── Banner ────────────────────────────────────────────────
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`INTERNAL AFFAIRS COMPLAINT — ${labelOrId}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtTimestamp(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // ── Agency strap ──
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Office of Professional Standards', M, y);
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `INTERNAL AFFAIRS COMPLAINT — ${labelOrId}`,
+    subtitle: 'Office of Professional Standards',
+    rightLine1: fmtTimestamp(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // ── Confidentiality banner ── (always present — IA records are
   // presumptively protected under UT GRAMA + POST 51-9-301).
@@ -543,8 +533,8 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
 /** Open the generated PDF in a new browser tab. */
 export function openAffairsComplaintPdf(input: IaComplaintPdfInput): void {
   const doc = generateAffairsComplaintPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Affairs Complaint');
 }
 // Mark the ROW_ALT constant as used (reserved for future investigation
 // alt-row striping; keeps it in the same visual contract as the

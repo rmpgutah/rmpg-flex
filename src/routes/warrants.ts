@@ -20,6 +20,8 @@ import { stateFromSourceKey } from '../utils/warrantSourceState';
 // the isolate's memory bounded as scraped_warrants grows.
 const UNIFIED_SCAN_CAP = 5000;
 import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant, MANUAL_RUN_WALL_BUDGET_MS } from '../utils/utahWarrantPoller';
+import { runWarrantPersonIntel } from '../utils/personIntel/warrantPersonSearch';
+import { confirmIdentity } from '../utils/identityConfirm';
 import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
@@ -450,6 +452,30 @@ for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scra
   });
 }
 
+// POST /warrants/person-intel — PersonIntelPanel live search.
+// Identity-gated: when DOB/age is supplied, only the matching namesake is returned.
+warrants.post('/person-intel', async (c) => {
+  try {
+    const body = await c.req.json<{
+      firstName?: string; lastName?: string; dob?: string; age?: number | string; city?: string; state?: string;
+    }>();
+    const firstName = String(body.firstName ?? '').trim();
+    const lastName = String(body.lastName ?? '').trim();
+    if (!firstName || !lastName) return c.json({ error: 'firstName and lastName are required' }, 400);
+    const age = body.age != null && body.age !== '' ? Number(body.age) : undefined;
+    const result = await runWarrantPersonIntel(getDb(c.env), {
+      firstName, lastName, dob: body.dob?.trim() || undefined,
+      age: Number.isFinite(age) ? age : undefined,
+      city: body.city?.trim() || undefined,
+      state: body.state?.trim() || undefined,
+    });
+    return c.json(result);
+  } catch (err) {
+    log.error('warrants person-intel failed', {}, err instanceof Error ? err : undefined);
+    return c.json({ error: 'Person intel search failed' }, 500);
+  }
+});
+
 // POST /warrants/search-all — unified cross-source warrant search.
 // Queries local warrants, Utah warrants, and scraped warrants tables
 // with the supplied filters. Only scraped warrants are queried when a
@@ -799,7 +825,7 @@ warrants.post('/national-search', async (c) => {
   // than return unrelated records.
   const local = localWhere.length
     ? (await query<Record<string, unknown>>(
-        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')}`, ...localParams,
+        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')} LIMIT 500`, ...localParams,
       ))
         .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
         .map(mapLocalWarrantRow)
@@ -1041,7 +1067,7 @@ warrants.get('/dashboard/stats', async (c) => {
 warrants.get('/dashboard/priority', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, any>>(db, `SELECT * FROM warrants WHERE status = 'active'`);
+    const rows = await query<Record<string, any>>(db, `SELECT * FROM warrants WHERE status = 'active' LIMIT 500`);
     const ranked = rows
       .map((row) => ({ ...row, priority_score: computePriorityScore(row) }))
       .sort((a, b) => b.priority_score - a.priority_score)
@@ -1391,12 +1417,12 @@ warrants.put('/batch-update', async (c) => {
     let updated = 0;
     for (const chunk of chunkIds(ids)) {
       const placeholders = chunk.map(() => '?').join(',');
-      await execute(
+      const r = await execute(
         db,
         `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
         status, ...chunk,
       );
-      updated += chunk.length;
+      updated += r.meta.changes;
     }
     return c.json({ success: true, updated });
   } catch (err) {
@@ -1829,16 +1855,17 @@ warrants.post('/bulk-review', async (c) => {
 warrants.post('/ingest-utah', async (c) => {
   try {
     const db = getDb(c.env);
-    const body = await c.req.json<{ warrants?: any[] }>();
-    const rows = Array.isArray(body.warrants) ? body.warrants : [];
+    const body = await c.req.json<any>();
+    const rows: any[] = Array.isArray(body.warrants)
+      ? body.warrants
+      : (body.utah_warrant_id || body.warrant_number || body.case_id ? [body] : []);
     if (!rows.length) return c.json({ error: 'warrants required' }, 400);
     let inserted = 0;
     for (const w of rows) {
-      const warrantNumber = w.utah_warrant_id || w.case_id || null;
-      const subjectName = [w.first_name, w.last_name].filter(Boolean).join(' ').trim() || null;
-      // SQLite's UNIQUE constraint permits multiple NULLs, so a warrant_number
-      // lookup alone would let every re-click of a row with no identifier
-      // insert a fresh duplicate. Fall back to subject_name + issue_date.
+      const warrantNumber = w.utah_warrant_id || w.warrant_number || w.case_id || null;
+      const first = w.first_name ?? null;
+      const last = w.last_name ?? null;
+      const subjectName = [first, last].filter(Boolean).join(' ').trim() || w.subject_name || null;
       const existing = warrantNumber
         ? await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE warrant_number = ?', warrantNumber)
         : subjectName
@@ -1847,13 +1874,39 @@ warrants.post('/ingest-utah', async (c) => {
             subjectName, w.issue_date ?? null,
           )
         : null;
-      if (existing) continue; // already ingested — idempotent no-op
+      if (existing) continue;
+
+      let subjectPersonId: number | null = null;
+      const requestedId = w.subject_person_id != null ? Number(w.subject_person_id) : NaN;
+      if (Number.isFinite(requestedId) && requestedId > 0) {
+        const person = await queryFirst<{ id: number; first_name: string; last_name: string; dob: string | null; city: string | null; state: string | null }>(
+          db, 'SELECT id, first_name, last_name, dob, city, state FROM persons WHERE id = ?', requestedId);
+        if (person && confirmIdentity(
+          { first: person.first_name, last: person.last_name, dob: person.dob, city: person.city, state: person.state },
+          { first, last, dob: w.subject_dob ?? w.dob, age: w.age, city: w.city },
+        ).matched) {
+          subjectPersonId = person.id;
+        }
+      }
+
+      const charges = Array.isArray(w.charges)
+        ? w.charges.filter(Boolean).join('; ')
+        : (() => {
+            if (typeof w.charges !== 'string' || !w.charges) return null;
+            try {
+              const v = JSON.parse(w.charges);
+              if (Array.isArray(v)) return v.filter(Boolean).join('; ');
+            } catch { /* already plain text */ }
+            return w.charges;
+          })();
       await execute(
         db,
-        `INSERT INTO warrants (warrant_number, type, status, subject_name, charge_description, issuing_court, bail_amount, issued_date)
-         VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?)`,
-        warrantNumber, subjectName,
-        Array.isArray(w.charges) ? w.charges.filter(Boolean).join('; ') : (w.charges || null),
+        `INSERT INTO warrants (
+            warrant_number, type, status, subject_name, subject_first_name, subject_last_name,
+            subject_dob, subject_person_id, charge_description, issuing_court, bail_amount, issued_date
+         ) VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        warrantNumber, subjectName, first, last,
+        w.subject_dob ?? w.dob ?? null, subjectPersonId, charges,
         w.court_name ?? null, w.bail_amount ?? null, w.issue_date ?? null,
       );
       inserted++;

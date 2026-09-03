@@ -28,7 +28,7 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
   return (
     <div>
       <span className="block text-[11px] uppercase tracking-wider text-gray-400">{label}</span>
-      <span className="block text-[14px] text-gray-800 leading-snug mt-0.5">{value || '—'}</span>
+      <span className="block text-[14px] text-white leading-snug mt-0.5 whitespace-pre-line">{value || '—'}</span>
     </div>
   );
 }
@@ -38,7 +38,7 @@ function YesNoButtons({
 }: { label: string; value: boolean | null; onChange: (v: boolean) => void }) {
   return (
     <div>
-      <p className="text-[15px] text-gray-700 mb-3 leading-relaxed font-medium">{label}</p>
+      <p className="text-[15px] text-gray-200 mb-3 leading-relaxed font-medium">{label}</p>
       <div className="flex gap-3">
         {([['Yes', true], ['No', false]] as const).map(([txt, val]) => (
           <button
@@ -47,8 +47,8 @@ function YesNoButtons({
             onClick={() => onChange(val)}
             className={`flex-1 py-3.5 rounded-sm border-2 text-[15px] font-semibold transition-colors ${
               value === val
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-gray-200 bg-white text-gray-600'
+                ? 'border-blue-500 bg-blue-900 text-blue-300'
+                : 'border-gray-600 bg-transparent text-gray-300'
             }`}
           >
             {txt}
@@ -68,8 +68,8 @@ function PremisesButton({
       onClick={onClick}
       className={`flex-1 py-3 rounded-sm border-2 text-[13px] font-medium capitalize transition-colors ${
         selected
-          ? 'border-blue-600 bg-blue-50 text-blue-700'
-          : 'border-gray-200 bg-white text-gray-600'
+          ? 'border-blue-500 bg-blue-900 text-blue-300'
+          : 'border-gray-600 bg-transparent text-gray-300'
       }`}
     >
       {label}
@@ -85,17 +85,17 @@ function CheckRow({
       type="button"
       onClick={() => onChange(!checked)}
       aria-pressed={checked}
-      className="w-full flex items-start gap-3 text-left p-3 rounded-sm bg-gray-50 border border-gray-200 active:opacity-80"
+      className="w-full flex items-start gap-3 text-left p-3 rounded-sm bg-gray-50 border border-gray-700 active:opacity-80"
     >
       <span
         className={`mt-0.5 shrink-0 w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-colors ${
-          checked ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+          checked ? 'bg-blue-600 border-blue-600' : 'border-gray-500 bg-transparent'
         }`}
         aria-hidden
       >
         {checked && <Check size={13} className="text-white" />}
       </span>
-      <span className="text-[14px] leading-relaxed text-gray-700">{children}</span>
+      <span className="text-[14px] leading-relaxed text-gray-200">{children}</span>
     </button>
   );
 }
@@ -109,9 +109,9 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 const inputCls =
-  'w-full bg-white border border-gray-300 rounded-sm px-3 py-2.5 ' +
-  'text-[15px] text-gray-800 placeholder:text-gray-400 focus:outline-none ' +
-  'focus:border-blue-500';
+  'w-full bg-white border border-gray-600 rounded-sm px-3 py-2.5 ' +
+  'text-[15px] text-white placeholder:text-gray-500 focus:outline-none ' +
+  'focus:border-blue-400';
 
 // ── Props ─────────────────────────────────────────────────────────────
 
@@ -165,8 +165,8 @@ export default function Step1WhoIsSigning({
       <p className="text-[11px] uppercase tracking-widest text-gray-400 text-center">{agency}</p>
 
       {/* ── "Signing does not mean you agree" notice ────────── */}
-      <div className="p-4 rounded-sm border-2 border-blue-200 bg-blue-50">
-        <p className="text-[15px] text-gray-800 leading-relaxed">
+      <div className="p-4 rounded-sm border-2 border-blue-800 bg-blue-900">
+        <p className="text-[15px] text-gray-100 leading-relaxed">
           <strong>Signing below only confirms that you received these papers.</strong>{' '}
           It is not an admission, not an agreement with anything in the documents, and
           does not give up any of your rights or deadlines to respond.
@@ -174,7 +174,7 @@ export default function Step1WhoIsSigning({
       </div>
 
       {/* ── Case context panel ──────────────────────────────── */}
-      <div className="bg-gray-50 rounded-sm border border-gray-200 p-4 space-y-3">
+      <div className="bg-gray-50 rounded-sm border border-gray-700 p-4 space-y-3">
         <SectionTitle>Case information</SectionTitle>
         <div className="grid grid-cols-2 gap-3">
           <InfoRow label="Plaintiff / Petitioner" value={plaintiffName} />
@@ -195,9 +195,9 @@ export default function Step1WhoIsSigning({
           // The named party is a company — the "Are you…?" question would
           // invite the exact error we are guarding against: a registered
           // agent answering Yes and being recorded as the company itself.
-          <div className="p-3 rounded-sm bg-amber-50 border border-amber-200">
-            <p className="text-[13px] font-semibold text-amber-800 mb-0.5">Signing for a business</p>
-            <p className="text-[13px] text-amber-700 leading-snug">
+          <div className="p-3 rounded-sm bg-amber-900 border border-amber-700">
+            <p className="text-[13px] font-semibold text-amber-300 mb-0.5">Signing for a business</p>
+            <p className="text-[13px] text-amber-400 leading-snug">
               The papers are directed at <strong>{namedParty}</strong> — a business or organization.
               You are accepting on its behalf. Please tell us your role below.
             </p>

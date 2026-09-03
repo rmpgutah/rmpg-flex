@@ -29,9 +29,9 @@ export interface Step5Props {
 }
 
 const inputCls =
-  'w-full bg-white border border-gray-300 rounded-sm px-3 py-2.5 ' +
-  'text-[15px] text-gray-800 placeholder:text-gray-400 focus:outline-none ' +
-  'focus:border-blue-500';
+  'w-full bg-white border border-gray-600 rounded-sm px-3 py-2.5 ' +
+  'text-[15px] text-white placeholder:text-gray-500 focus:outline-none ' +
+  'focus:border-blue-400';
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
@@ -69,11 +69,11 @@ export default function Step5SignSubmit({
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="max-w-sm w-full text-center space-y-4">
-          <div className="mx-auto w-14 h-14 rounded-sm bg-amber-50 border border-amber-200 flex items-center justify-center">
-            <MapPin size={26} className="text-amber-500" />
+          <div className="mx-auto w-14 h-14 rounded-sm bg-amber-900 border border-amber-700 flex items-center justify-center">
+            <MapPin size={26} className="text-amber-400" />
           </div>
-          <h3 className="text-lg font-bold text-gray-800">Location access required</h3>
-          <p className="text-[15px] text-gray-600 leading-relaxed">
+          <h3 className="text-lg font-bold text-white">Location access required</h3>
+          <p className="text-[15px] text-gray-300 leading-relaxed">
             Location access is required to complete this form online. Please allow
             location access in your browser settings, or ask the process server for
             the paper form.
@@ -91,7 +91,7 @@ export default function Step5SignSubmit({
                 { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
               );
             }}
-            className="w-full py-3 rounded-sm border border-gray-300 text-[14px] text-gray-600 font-medium active:bg-gray-50"
+            className="w-full py-3 rounded-sm border border-gray-500 text-[14px] text-gray-300 font-medium active:opacity-60"
           >
             Try again
           </button>
@@ -105,9 +105,9 @@ export default function Step5SignSubmit({
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="text-center space-y-3">
-          <MapPin size={28} className="mx-auto text-blue-500 animate-pulse" />
-          <p className="text-[15px] text-gray-500">Requesting location…</p>
-          <p className="text-[13px] text-gray-400">
+          <MapPin size={28} className="mx-auto text-blue-400 animate-pulse" />
+          <p className="text-[15px] text-gray-400">Requesting location…</p>
+          <p className="text-[13px] text-gray-500">
             Please allow location access when your browser asks.
           </p>
         </div>
@@ -119,21 +119,24 @@ export default function Step5SignSubmit({
   return (
     <div className="p-4 pb-6 max-w-lg mx-auto space-y-5">
       <div className="flex items-center gap-2">
-        <MapPin size={15} className="text-green-600 shrink-0" />
-        <p className="text-[13px] text-green-600">Location recorded</p>
+        <MapPin size={15} className="text-green-400 shrink-0" />
+        <p className="text-[13px] text-green-400">Location recorded</p>
       </div>
 
       <div>
-        <h2 className="text-xl font-bold text-gray-800 mb-1">Sign &amp; Submit</h2>
-        <p className="text-[14px] text-gray-500 leading-relaxed">
+        <h2 className="text-xl font-bold text-white mb-1">Sign &amp; Submit</h2>
+        <p className="text-[14px] text-gray-400 leading-relaxed">
           Draw your signature below, then fill in your contact details.
         </p>
       </div>
 
-      {/* Signature pad */}
+      {/* Signature pad — explicit white background so ink is visible */}
       <div>
         <FieldLabel required>Sign here</FieldLabel>
-        <div className="border-2 border-gray-300 rounded-sm overflow-hidden bg-white">
+        <div
+          className="border-2 border-gray-500 rounded-sm overflow-hidden"
+          style={{ backgroundColor: '#ffffff' }}
+        >
           <SignaturePad
             value={signature}
             onChange={setSignature}
@@ -186,9 +189,9 @@ export default function Step5SignSubmit({
 
       {/* Submit error */}
       {submitError && (
-        <div className="p-3 rounded-sm border border-red-200 bg-red-50 flex gap-2">
-          <AlertTriangle size={15} className="text-red-500 shrink-0 mt-0.5" />
-          <p className="text-[13px] text-red-700 leading-snug">{submitError}</p>
+        <div className="p-3 rounded-sm border border-red-800 bg-red-900 flex gap-2">
+          <AlertTriangle size={15} className="text-red-400 shrink-0 mt-0.5" />
+          <p className="text-[13px] text-red-300 leading-snug">{submitError}</p>
         </div>
       )}
 

@@ -9,12 +9,14 @@ import type { RadioStats } from '../types';
 export default function StatsTab() {
   const [stats, setStats] = useState<RadioStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const load = () => {
     setLoading(true);
+    setError(false);
     apiFetch<RadioStats>('/radio/stats')
-      .then(setStats)
-      .catch((err) => console.error('[radio] stats', err))
+      .then((d) => { setStats(d); })
+      .catch(() => { setError(true); })
       .finally(() => setLoading(false));
   };
 
@@ -41,6 +43,8 @@ export default function StatsTab() {
       <div className="flex-1 min-h-0 overflow-auto p-3 flex flex-col gap-3">
         {loading && !stats ? (
           <div className="text-[10px] font-mono" style={{ color: 'var(--rt-muted)' }}>Loading…</div>
+        ) : error ? (
+          <div className="text-[10px] font-mono text-red-400">Failed to load stats — check connection and reload.</div>
         ) : stats ? (
           <>
             {/* Totals row */}

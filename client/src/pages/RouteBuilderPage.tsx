@@ -30,6 +30,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useNavTrip } from '../context/NavTripContext';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -37,6 +38,7 @@ import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { escapeHtml } from '../utils/sanitize';
 import { withAlpha } from '../utils/withAlpha';
 import { isValidLngLat } from './map/utils/mapMarkers';
+import { downloadTextFile, routeStopsToCsv } from '../utils/rmsListExport';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -132,6 +134,9 @@ export default function RouteBuilderPage() {
   const [directionsDistance, setDirectionsDistance] = useState<string | null>(null);
   const [directionsDuration, setDirectionsDuration] = useState<string | null>(null);
 
+  const { rebuildNonce, attach: attachWebglRecovery, onMapLoaded } = useWebglMapRecovery();
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
   // Refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -171,8 +176,9 @@ export default function RouteBuilderPage() {
 
         const map = createMapboxMap(mapContainerRef.current!, token);
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attachWebglRecovery(map, 'RouteBuilderPage');
         map.on('load', () => {
-          if (!cancelled) setMapReady(true);
+          if (!cancelled) { onMapLoaded(map); setMapReady(true); }
         });
       } catch (err) {
         console.error('Failed to load Mapbox:', err);
@@ -182,12 +188,15 @@ export default function RouteBuilderPage() {
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildNonce]);
 
   // ─── WebSocket: live call updates ───────────────────────
 
@@ -552,7 +561,18 @@ export default function RouteBuilderPage() {
     <div className="flex h-full" style={{ minHeight: 0 }}>
       {/* ── Left Panel: Controls + Stop List ── */}
       <div className="w-[420px] flex-shrink-0 bg-surface-deep border-r border-[#222222] flex flex-col overflow-hidden">
-        <PanelTitleBar title="CFS ROUTE BUILDER" icon={Route} />
+        <PanelTitleBar title="CFS ROUTE BUILDER" icon={Route}>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={waypoints.length === 0}
+            onClick={() => downloadTextFile('route-stops.csv', routeStopsToCsv(waypoints.map((w) => ({
+              sequence: w.stop_number,
+              label: w.location_address || w.call_number,
+              status: w.completed ? 'completed' : w.status,
+            }))))}
+          >CSV</button>
+        </PanelTitleBar>
 
         {/* Unit Selector */}
         <div className="p-3 border-b border-[#222222] space-y-2">
@@ -676,9 +696,9 @@ export default function RouteBuilderPage() {
 
         {/* Error */}
         {error && (
-          <div className="px-3 py-2 bg-red-900/20 border-b border-red-800/30 text-red-400 text-[11px] flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-            {error}
+          <div className="px-3 py-2 bg-red-900/20 border-b border-red-800/30 text-red-400 text-[11px] flex items-center justify-between">
+            <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{error}</span>
+            <button type="button" className="toolbar-btn" onClick={() => setError(null)}>Retry</button>
           </div>
         )}
 

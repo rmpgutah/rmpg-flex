@@ -13,11 +13,17 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { getDecrypted } from '../utils/encryptedR2';
 import { clampIntParam } from '../utils/paginationParams';
 import { zipSync, strToU8 } from 'fflate';
 import { log, logErrorToDb } from '../utils/logger';
+import {
+  corpusObjectExt,
+  isTesstrainRasterKey,
+  pageNumberFromRasterKey,
+  rasterExtFromKey,
+} from '../utils/tesseractTrainingCorpus';
 
 const tesseractTraining = new Hono<Env>();
 
@@ -38,6 +44,21 @@ function safeExecutionCtx(c: any): any {
   } catch {
     return undefined;
   }
+}
+
+let boxPageColumnEnsured = false;
+async function ensureBoxPageNumberColumn(db: ReturnType<typeof getDb>): Promise<void> {
+  if (boxPageColumnEnsured) return;
+  if (!(await columnExists(db, 'tesseract_box_annotations', 'page_number'))) {
+    try {
+      await db.prepare(
+        `ALTER TABLE tesseract_box_annotations ADD COLUMN page_number INTEGER NOT NULL DEFAULT 1`,
+      ).run();
+    } catch {
+      // Duplicate column on a racing second isolate — the column is there.
+    }
+  }
+  boxPageColumnEnsured = true;
 }
 
 interface DocRow {
@@ -257,7 +278,7 @@ tesseractTraining.get('/documents/:id/image', async (c) => {
     id,
   );
   if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {
@@ -310,7 +331,7 @@ async function submitDocumentToCorpus(
     return { success: false, error: 'Not found', code: 'NOT_FOUND', status: 404 };
   }
 
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
   let imageBytes: Uint8Array | ArrayBuffer;
   if (decrypted) {
     imageBytes = decrypted.bytes;
@@ -322,9 +343,7 @@ async function submitDocumentToCorpus(
     imageBytes = await legacy.arrayBuffer();
   }
 
-  const ext = (doc.file_type || '').includes('png') ? '.png'
-    : (doc.file_type || '').includes('jpeg') ? '.jpg'
-    : '.bin';
+  const ext = corpusObjectExt(doc.file_type);
 
   const traceId = c.get('traceId');
   try {
@@ -519,6 +538,7 @@ interface BoxRow {
   x1: number;
   y1: number;
   corrected_text: string;
+  page_number: number;
   created_at: string;
 }
 
@@ -530,9 +550,11 @@ tesseractTraining.get('/documents/:id/boxes', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
+  await ensureBoxPageNumberColumn(db);
   const boxes = await query<BoxRow>(
     db,
-    `SELECT id, serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_at
+    `SELECT id, serve_intake_document_id, x0, y0, x1, y1, corrected_text,
+            COALESCE(page_number, 1) AS page_number, created_at
        FROM tesseract_box_annotations WHERE serve_intake_document_id = ? ORDER BY created_at ASC`,
     id,
   );
@@ -540,7 +562,7 @@ tesseractTraining.get('/documents/:id/boxes', async (c) => {
 });
 
 // POST /api/tesseract-training/documents/:id/boxes
-// Body: { x0, y0, x1, y1, corrected_text }
+// Body: { x0, y0, x1, y1, corrected_text, page_number? }
 tesseractTraining.post('/documents/:id/boxes', async (c) => {
   if (!requireAdminManager(c)) {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
@@ -549,7 +571,7 @@ tesseractTraining.post('/documents/:id/boxes', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
 
-  let body: { x0?: number; y0?: number; x1?: number; y1?: number; corrected_text?: string };
+  let body: { x0?: number; y0?: number; x1?: number; y1?: number; corrected_text?: string; page_number?: number };
   try {
     body = await c.req.json();
   } catch {
@@ -557,6 +579,7 @@ tesseractTraining.post('/documents/:id/boxes', async (c) => {
   }
   const { x0, y0, x1, y1 } = body;
   const correctedText = (body.corrected_text ?? '').trim();
+  const pageNumber = Number.isFinite(body.page_number) ? Math.max(1, Math.floor(body.page_number as number)) : 1;
   if (
     typeof x0 !== 'number' || typeof y0 !== 'number' ||
     typeof x1 !== 'number' || typeof y1 !== 'number' ||
@@ -566,12 +589,13 @@ tesseractTraining.post('/documents/:id/boxes', async (c) => {
   }
 
   const db = getDb(c.env);
+  await ensureBoxPageNumberColumn(db);
   try {
     const result = await execute(
       db,
-      `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      id, x0, y0, x1, y1, correctedText, user.id,
+      `INSERT INTO tesseract_box_annotations (serve_intake_document_id, x0, y0, x1, y1, corrected_text, created_by, page_number)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, x0, y0, x1, y1, correctedText, user.id, pageNumber,
     );
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
@@ -623,7 +647,9 @@ tesseractTraining.get('/documents/:id/notes', async (c) => {
     `SELECT strokes_json FROM tesseract_review_annotations WHERE serve_intake_document_id = ?`,
     id,
   );
-  return c.json({ strokes: row ? JSON.parse(row.strokes_json) : null });
+  let strokes: unknown = null;
+  if (row) { try { strokes = JSON.parse(row.strokes_json); } catch { strokes = null; } }
+  return c.json({ strokes });
 });
 
 // PUT /api/tesseract-training/documents/:id/notes
@@ -679,6 +705,80 @@ tesseractTraining.put('/documents/:id/notes', async (c) => {
   return c.json({ success: true });
 });
 
+// POST /api/tesseract-training/documents/:id/raster-pages
+// Multipart: one or more `page` files (JPEG/PNG) + matching `page_number` fields.
+// Tesstrain cannot train on a PDF binary; the portal rasterizes pages in the
+// browser after submit and mirrors them next to ground-truth.txt.
+tesseractTraining.post('/documents/:id/raster-pages', async (c) => {
+  if (!requireAdminManager(c)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  const db = getDb(c.env);
+  const inCorpus = await queryFirst<{ id: number }>(
+    db,
+    `SELECT id FROM tesseract_training_corpus WHERE serve_intake_document_id = ?`,
+    id,
+  );
+  if (!inCorpus) {
+    return c.json({ error: 'Document is not in the training corpus', code: 'NOT_SUBMITTED' }, 404);
+  }
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Expected multipart form data' }, 400);
+  }
+
+  const files: File[] = [];
+  for (const v of form.getAll('page')) {
+    if (typeof v === 'string' || v == null) continue;
+    files.push(v as File);
+  }
+  const numbers = form.getAll('page_number').map((v) => parseInt(String(v), 10));
+  if (files.length === 0) {
+    return c.json({ error: 'At least one page file is required', code: 'MISSING_PAGES' }, 400);
+  }
+  if (files.length > 20) {
+    return c.json({ error: 'Too many pages in one upload', code: 'TOO_MANY_PAGES' }, 400);
+  }
+
+  const written: number[] = [];
+  const traceId = c.get('traceId');
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const pageNum = Number.isFinite(numbers[i]) && numbers[i] >= 1 ? numbers[i] : i + 1;
+      const type = (file.type || '').toLowerCase();
+      const ext = type.includes('png') ? 'png' : 'jpg';
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const key = `training-corpus/${id}/page-${String(pageNum).padStart(3, '0')}.${ext}`;
+      await c.env.TESSERACT_TRAINING.put(key, bytes, {
+        httpMetadata: { contentType: file.type || 'image/jpeg' },
+      });
+      written.push(pageNum);
+    }
+  } catch (err) {
+    log.error('[tesseract-training] raster page write failed', {
+      route: 'POST /tesseract-training/documents/:id/raster-pages', documentId: id, traceId,
+    }, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: err instanceof Error ? err.message : String(err),
+      details: { route: 'POST /tesseract-training/documents/:id/raster-pages', documentId: id },
+      traceId,
+      source: 'POST /tesseract-training/documents/:id/raster-pages',
+      statusCode: 500,
+    }, safeExecutionCtx(c));
+    return c.json({ error: 'Failed to write raster pages to R2', code: 'R2_WRITE_FAILED' }, 500);
+  }
+  return c.json({ success: true, pages: written });
+});
+
 // POST /api/tesseract-training/documents/runs
 // Bundles every approved tesseract_training_corpus document into a
 // tesstrain-ready zip (image + ground-truth pairs, exactly the shape
@@ -700,24 +800,37 @@ tesseractTraining.post('/documents/runs', async (c) => {
   }
 
   const zipEntries: Record<string, Uint8Array> = {};
+  const includedIds: number[] = [];
   for (const { serve_intake_document_id: docId } of approved) {
     const listed = await c.env.TESSERACT_TRAINING.list({ prefix: `training-corpus/${docId}/` });
-    const imageKey = listed.objects.find((o: { key: string }) => /\/image\.[^/]+$/.test(o.key))?.key;
     const gtKey = listed.objects.find((o: { key: string }) => o.key.endsWith('/ground-truth.txt'))?.key;
-    if (!imageKey || !gtKey) continue; // source objects missing — skip rather than fail the whole run
-
-    const imageObj = await c.env.TESSERACT_TRAINING.get(imageKey);
+    if (!gtKey) continue;
     const gtObj = await c.env.TESSERACT_TRAINING.get(gtKey);
-    if (!imageObj || !gtObj) continue;
+    if (!gtObj) continue;
+    const gtBytes = new Uint8Array(await gtObj.arrayBuffer());
 
-    const ext = imageKey.split('.').pop() || 'png';
-    zipEntries[`rmpg-ground-truth/${docId}.${ext}`] = new Uint8Array(await imageObj.arrayBuffer());
-    zipEntries[`rmpg-ground-truth/${docId}.gt.txt`] = new Uint8Array(await gtObj.arrayBuffer());
+    const rasterKeys = listed.objects
+      .map((o: { key: string }) => o.key)
+      .filter((key: string) => isTesstrainRasterKey(key));
+    const pageKeys = rasterKeys.filter((key: string) => pageNumberFromRasterKey(key) != null);
+    const imageKey = rasterKeys.find((key: string) => /\/image\.(png|jpe?g|tif|tiff)$/i.test(key));
+
+    const keysToPack = pageKeys.length > 0 ? pageKeys : (imageKey ? [imageKey] : []);
+    if (keysToPack.length === 0) continue;
+
+    let packed = 0;
+    for (const key of keysToPack) {
+      const imgObj = await c.env.TESSERACT_TRAINING.get(key);
+      if (!imgObj) continue;
+      const ext = rasterExtFromKey(key);
+      const pageNum = pageNumberFromRasterKey(key);
+      const stem = pageNum != null ? `${docId}_p${pageNum}` : String(docId);
+      zipEntries[`rmpg-ground-truth/${stem}.${ext}`] = new Uint8Array(await imgObj.arrayBuffer());
+      zipEntries[`rmpg-ground-truth/${stem}.gt.txt`] = gtBytes;
+      packed += 1;
+    }
+    if (packed > 0) includedIds.push(docId);
   }
-
-  const includedIds = approved
-    .map((r) => r.serve_intake_document_id)
-    .filter((docId) => `rmpg-ground-truth/${docId}.gt.txt` in zipEntries);
   if (includedIds.length === 0) {
     return c.json({ error: 'No approved documents to package', code: 'NOTHING_TO_TRAIN' }, 400);
   }

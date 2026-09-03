@@ -8,7 +8,7 @@
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
 import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor, isEmailOrUrlPdfValue } from './pdfGenerator';
-import { getCachedSealBase64 } from './pdfAssets';
+import { getCachedSealBase64, getCachedLogoLight } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 import {
@@ -509,7 +509,9 @@ export function drawFormSection(
   // Check if section fits on current page
   let curY = config.y;
   if (curY + totalH > pageH - bottomMargin) {
-    if (config.onPageBreak) {
+    if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) {
+      // Door notices must never add a continuation page — stay on sheet one.
+    } else if (config.onPageBreak) {
       curY = config.onPageBreak(doc, totalH);
     } else {
       doc.addPage();
@@ -783,6 +785,19 @@ export function drawNibrsHeader(
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2;
   const textX = resolvedSeal ? sealX + sealSize + 4 : margin + 4;
+
+  // Horizontal logo — white silhouette placed at the right edge of the
+  // navy header bar. Provides a branded anchor opposite the text stack.
+  const lightLogo = getCachedLogoLight();
+  if (lightLogo) {
+    const logoW = 42;
+    const logoH = 12;
+    const logoX = margin + contentW - logoW - 2;
+    const logoY = y + (headerH - logoH) / 2;
+    try { doc.addImage(lightLogo, 'PNG', logoX, logoY, logoW, logoH); }
+    catch { /* skip if asset fails */ }
+  }
+
 
   if (config.stateIdentifier) {
     doc.setFont(FONT_FAMILY, 'normal');
@@ -1703,11 +1718,11 @@ function drawSignatureSlot(
       const props = doc.getImageProperties(img);
       const rect = computeSignatureRect(
         { width: props.width, height: props.height },
-        { x: x + 3, y: y + 3, w: w - 6, h: sigY - (y + 3) },
+        { x: x + 1, y: y + 3, w: w - 2, h: sigY - (y + 3) },
         {
           anchor: 'bottom',
           align: 'left',
-          hardLimits: { x: x + 1.5, y: y + 3, w: w - 3, h: sigY + 3 - (y + 3) },
+          hardLimits: { x: x, y: y + 2.5, w: w, h: sigY + 4 - (y + 2.5) },
         },
       );
       if (rect.w > 0 && rect.h > 0) {

@@ -35,12 +35,16 @@ export function getSearchHistory(context: string): string[] {
 
 /** Clear search history for a context */
 export function clearSearchHistory(context: string): void {
-  localStorage.removeItem(`${HISTORY_PREFIX}${context}`);
+  try {
+    localStorage.removeItem(`${HISTORY_PREFIX}${context}`);
+  } catch { /* silent fallback */ }
 }
 
 /** Clear all search history */
 export function clearAllSearchHistory(): void {
-  Object.keys(localStorage)
-    .filter((k) => k.startsWith(HISTORY_PREFIX))
-    .forEach((k) => localStorage.removeItem(k));
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(HISTORY_PREFIX))
+      .forEach((k) => { try { localStorage.removeItem(k); } catch { /* silent */ } });
+  } catch { /* silent fallback */ }
 }

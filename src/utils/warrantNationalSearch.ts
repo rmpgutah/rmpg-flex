@@ -4,6 +4,8 @@
 // large route file — this module is pure/testable on its own and reusable
 // if the also-stubbed POST /search-all is ever fixed later.
 
+import { dobOrAgeConfirms } from './identityConfirm';
+
 export const US_STATES: Array<{ code: string; name: string }> = [
   { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' },
   { code: 'AZ', name: 'Arizona' }, { code: 'AR', name: 'Arkansas' },
@@ -47,19 +49,7 @@ export function matchesDobOrAge(
   record: { dob: string | null; age: number | null },
 ): boolean {
   if (!queryDob) return true;
-  if (record.dob) return record.dob === queryDob;
-  if (record.age == null) return false;
-
-  const parsed = new Date(queryDob);
-  if (Number.isNaN(parsed.getTime())) return false;
-  const now = new Date();
-  let computedAge = now.getFullYear() - parsed.getFullYear();
-  const hasHadBirthdayThisYear =
-    now.getMonth() > parsed.getMonth() ||
-    (now.getMonth() === parsed.getMonth() && now.getDate() >= parsed.getDate());
-  if (!hasHadBirthdayThisYear) computedAge--;
-
-  return Math.abs(computedAge - record.age) <= 1;
+  return dobOrAgeConfirms({ dob: queryDob }, { dob: record.dob, age: record.age });
 }
 
 export interface MappedWarrant {

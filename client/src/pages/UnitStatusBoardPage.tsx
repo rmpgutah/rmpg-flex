@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Radio, Search, RefreshCw, Users, CheckCircle, AlertCircle, XCircle, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Shield, Radio, Search, RefreshCw, Users, CheckCircle, AlertCircle, XCircle, X, Download, Copy, Pause } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { downloadTextFile, formatRadioLine, unitsBoardToCsv, unitsBoardToTsv } from '../utils/rmsListExport';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -214,6 +215,14 @@ function UnitCard({ unit, canChangeStatus, onClick }: UnitCardProps) {
         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-[2px]" style={{ background: 'var(--surface-sunken)', color: 'var(--text-secondary)' }}>
           {unit.unit_id}
         </span>
+        <button
+          type="button"
+          title="Copy radio line"
+          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(formatRadioLine(unit)).catch(() => undefined); }}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-secondary)' }}
+        >
+          <Copy size={10} />
+        </button>
       </div>
 
       {/* Officer name */}
@@ -275,6 +284,12 @@ export default function UnitStatusBoardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
   const [modalUnit, setModalUnit] = useState<DispatchUnit | null>(null);
+  const [pollMs, setPollMs] = useState(20_000);
+  const [engagedFirst, setEngagedFirst] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = isAdmin || user?.role === 'supervisor' || user?.role === 'manager';
@@ -286,22 +301,25 @@ export default function UnitStatusBoardPage() {
   const fetchUnits = useCallback(async () => {
     try {
       const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
+      if (!mountedRef.current) return;
       setUnits(Array.isArray(data) ? data : []);
       setLastUpdated(new Date());
       setSecondsAgo(0);
       setError(null);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load units');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchUnits();
-    const interval = setInterval(fetchUnits, 20_000);
+    if (pollMs <= 0) return;
+    const interval = setInterval(fetchUnits, pollMs);
     return () => clearInterval(interval);
-  }, [fetchUnits]);
+  }, [fetchUnits, pollMs]);
 
   // ── Seconds-ago ticker ───────────────────────────────────────────────────────
 
@@ -316,11 +334,19 @@ export default function UnitStatusBoardPage() {
   // ── Status change ────────────────────────────────────────────────────────────
 
   const handleStatusChange = useCallback(async (unitId: number, status: string) => {
-    await apiFetch(`/dispatch/units/${unitId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    });
-    await fetchUnits();
+    try {
+      await apiFetch(`/dispatch/units/${unitId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      setToast('Status updated');
+      setTimeout(() => setToast(null), 2500);
+      await fetchUnits();
+    } catch (e: unknown) {
+      setToast(e instanceof Error ? e.message : 'Status change failed');
+      setTimeout(() => setToast(null), 3500);
+      throw e;
+    }
   }, [fetchUnits]);
 
   // ── Counts ──────────────────────────────────────────────────────────────────
@@ -332,15 +358,38 @@ export default function UnitStatusBoardPage() {
   // ── Filtered list ────────────────────────────────────────────────────────────
 
   const q = search.trim().toLowerCase();
-  const visible = units.filter(u => {
+  let visible = units.filter(u => {
     if (!matchesFilter(u, filter)) return false;
     if (!q) return true;
     return (
       (u.officer_name?.toLowerCase() ?? '').includes(q) ||
       (u.badge?.toLowerCase() ?? '').includes(q) ||
-      (u.unit_id?.toLowerCase() ?? '').includes(q)
+      (u.unit_id?.toLowerCase() ?? '').includes(q) ||
+      (u.current_call_number?.toLowerCase() ?? '').includes(q)
     );
   });
+  if (engagedFirst) {
+    visible = [...visible].sort((a, b) => {
+      const rank = (s: string) => (s === 'available' ? 2 : s === 'out-of-service' ? 3 : 1);
+      return rank(a.status) - rank(b.status);
+    });
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName);
+      if (e.key === 'Escape') {
+        setModalUnit(null);
+        setSearch('');
+      }
+      if (typing) return;
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
+      if (e.key === 'r' || e.key === 'R') { setLoading(true); fetchUnits(); }
+      if (e.key === 'a' || e.key === 'A') setFilter('AVAILABLE');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fetchUnits]);
 
   // ── Filter tab helper ────────────────────────────────────────────────────────
 
@@ -405,6 +454,37 @@ export default function UnitStatusBoardPage() {
           >
             Refresh
           </button>
+          <select
+            value={String(pollMs)}
+            onChange={e => setPollMs(Number(e.target.value))}
+            className="text-[10px] rounded-[2px] px-1 py-0.5"
+            style={{ background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+            title="Auto-refresh"
+          >
+            <option value="10000">10s</option>
+            <option value="20000">20s</option>
+            <option value="30000">30s</option>
+            <option value="0">Pause</option>
+          </select>
+          {pollMs === 0 && <Pause size={10} style={{ color: 'var(--text-secondary)' }} />}
+          <button
+            type="button"
+            disabled={visible.length === 0}
+            onClick={() => downloadTextFile('unit-status.csv', unitsBoardToCsv(visible))}
+            className="px-1.5 py-0.5 text-[10px] rounded-[2px]"
+            style={{ background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+          >
+            <Download size={10} className="inline" /> CSV
+          </button>
+          <button
+            type="button"
+            disabled={visible.length === 0}
+            onClick={() => navigator.clipboard.writeText(unitsBoardToTsv(visible)).then(() => { setToast('Copied TSV'); setTimeout(() => setToast(null), 2000); }).catch(() => undefined)}
+            className="px-1.5 py-0.5 text-[10px] rounded-[2px]"
+            style={{ background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+          >
+            Copy TSV
+          </button>
         </div>
       </div>
 
@@ -420,15 +500,21 @@ export default function UnitStatusBoardPage() {
           {filterBtn('ON-CALL', 'On Call', countOnCall)}
           {filterBtn('OUT', 'Out', countOut)}
         </div>
+        <label className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+          <input type="checkbox" checked={engagedFirst} onChange={e => setEngagedFirst(e.target.checked)} />
+          Engaged first
+        </label>
+        {toast && <span className="text-[10px]" style={{ color: 'var(--text-primary)' }}>{toast}</span>}
 
         {/* Search */}
         <div className="relative ml-auto">
           <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
           <input
+            ref={searchRef}
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Officer name or badge…"
+            placeholder="Officer, badge, call… (/)"
             className="pl-6 pr-2 py-1 text-[11px] rounded-[2px] outline-none w-48"
             style={{
               background: 'var(--surface-sunken)',

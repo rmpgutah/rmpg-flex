@@ -1,6 +1,6 @@
 import SwiftUI
-import DesignSystem
-import CoreAPI
+
+
 
 struct ServeJobDetailView: View {
     let jobId: Int

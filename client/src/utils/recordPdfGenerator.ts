@@ -13,6 +13,7 @@ import { hasValue, toNum } from './sentinel';
 import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
 import { getMeaningfulPersonStatus } from './personStatus';
+import { formatWeatherPdfLine, formatWeatherWind } from './cfsWeatherFormat';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
   addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
@@ -647,6 +648,20 @@ export interface CallPdfData {
   // Scene conditions
   weather_conditions?: string;
   lighting_conditions?: string;
+  weather_snapshot?: {
+    temp_f?: number | null;
+    feels_like_f?: number | null;
+    condition?: string;
+    scene_category?: string;
+    wind_mph?: number | null;
+    wind_gust_mph?: number | null;
+    wind_dir?: string | null;
+    humidity?: number | null;
+    visibility_mi?: number | null;
+    precip_in?: number | null;
+    observed_at?: string | null;
+    source?: 'live' | 'historical';
+  } | string | null;
   scene_safety?: string;
   injuries_reported?: boolean;
   weapons_involved?: string;
@@ -2739,6 +2754,31 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
         { label: 'Result', value: formatEnumValue(data.process_service_result) },
       ], y);
+      const locType = (() => {
+        const notes = Array.isArray(data.notes) ? data.notes : [];
+        for (const n of notes) {
+          const t = String((n as { text?: string; content?: string }).text || (n as { content?: string }).content || '');
+          const m = t.match(/Location type:\s*([^\n*]+)/i);
+          if (m) return m[1].trim();
+        }
+        return '';
+      })();
+      const venueType = (() => {
+        const notes = Array.isArray(data.notes) ? data.notes : [];
+        for (const n of notes) {
+          const t = String((n as { text?: string; content?: string }).text || (n as { content?: string }).content || '');
+          const m = t.match(/Venue overlay:\s*([^\n*]+)/i);
+          if (m) return m[1].trim();
+        }
+        return '';
+      })();
+      if (locType || venueType) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Serve Location Type', value: locType },
+          { label: 'Venue Overlay', value: venueType },
+          { label: 'Ops Playbook', value: Array.isArray(data.notes) && data.notes.some((n) => /^OPS$/i.test(String((n as { author?: string }).author || ''))) ? 'Filed' : '' },
+        ], y);
+      }
       if (data.deadline) {
         y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
       }
@@ -2871,14 +2911,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, flagSec.sectionY, y, undefined, flagSec.sectionPage);
   }
 
-  // Scene Conditions (header 5.5 + row 10 + safety 10 + pad 1.5 = ~27mm, but try to keep on page 1)
-  y = checkPageBreak(doc, y, 18, prio);
+  // Scene Conditions (header + weather metrics — keep on page 1 when possible)
+  y = checkPageBreak(doc, y, 28, prio);
   { const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
-    // All 4 fields in one row
+    const snapRaw = data.weather_snapshot;
+    const snap = typeof snapRaw === 'string'
+      ? (() => { try { return JSON.parse(snapRaw); } catch { return null; } })()
+      : (snapRaw || null);
+    const weatherLabel = formatWeatherPdfLine(snap, data.weather_conditions || '') || data.weather_conditions || '';
     const scW = ffw / 4;
     const scFields = [
-      { label: 'Weather', value: data.weather_conditions || '' },
-      { label: 'Lighting', value: data.lighting_conditions || '' },
+      { label: 'Weather', value: weatherLabel },
+      { label: 'Lighting', value: data.lighting_conditions || (snap?.lighting ?? '') },
       { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'N/A' : data.weapons_involved },
       { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
     ];
@@ -2888,6 +2932,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (fy > maxScY) maxScY = fy;
     }
     y = maxScY;
+    if (snap && (snap.temp_f != null || snap.wind_mph != null || snap.humidity != null || snap.visibility_mi != null)) {
+      const met = [
+        { label: 'Temperature', value: snap.temp_f != null ? `${Math.round(snap.temp_f)} F` : '' },
+        { label: 'Wind', value: formatWeatherWind(snap) },
+        { label: 'Humidity', value: snap.humidity != null ? `${snap.humidity}%` : '' },
+        { label: 'Visibility', value: snap.visibility_mi != null ? `${snap.visibility_mi} mi` : '' },
+      ];
+      let maxMetY = y + SPACING.FIELD_ROW_ADVANCE;
+      for (let i = 0; i < 4; i++) {
+        const fy = addFieldPair(doc, met[i].label, met[i].value, lx + i * scW, y, scW);
+        if (fy > maxMetY) maxMetY = fy;
+      }
+      y = maxMetY;
+      const src = snap.source === 'historical' ? 'Historical observation' : 'Live observation';
+      const when = snap.observed_at ? ` @ ${snap.observed_at}` : '';
+      y = addFieldPair(doc, 'Weather observed', `${src}${when}`, lx, y, ffw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3302,34 +3363,27 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       officerSuffix: string,
       continued: boolean,
     ): number => {
-      // Note entry header — outline only (low ink)
-      doc.setDrawColor(...COLOR.BG_SECTION_HDR);
-      doc.setLineWidth(0.3);
-      doc.rect(lx, strip_y, ffw, headerH);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(lx, strip_y, ffw, headerH, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
       const entryLead = continued
         ? `ENTRY ${entryNum} OF ${total} — CONTINUED`
-        : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
+        : `ENTRY ${entryNum} OF ${total}  ·  ${timestamp}`;
       doc.text(entryLead, lx + 2, strip_y + headerH - 1.5);
       doc.setFontSize(6);
-      const tagW = doc.getTextWidth(entryType) + 3;
+      const tagW = doc.getTextWidth(entryType) + 4;
       const tagX = lx + ffw - tagW - 1.5;
-      const tagY = strip_y + 1;
-      // Tag chip — outline only (low ink)
-      doc.setDrawColor(tagBg[0], tagBg[1], tagBg[2]);
-      doc.setLineWidth(0.2);
-      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
+      const tagY = strip_y + 0.9;
+      doc.setFillColor(tagBg[0], tagBg[1], tagBg[2]);
+      doc.roundedRect(tagX, tagY, tagW, headerH - 1.8, 0.4, 0.4, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.0, { align: 'center' });
       if (officerSuffix && !continued) {
         doc.setFont(PDF_VALUE_FONT, 'normal');
         doc.setFontSize(5.5);
-        // intentional one-off light gray, no matching COLOR token — very
-        // faint suffix text, close to BG_TABLE_HDR (224,224,224) but not
-        // the same use case (a table header fill, not near-white text)
-        doc.setTextColor(220, 220, 220);
+        doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED);
         const offW = doc.getTextWidth(officerSuffix);
         doc.text(officerSuffix, tagX - 2 - offW, strip_y + headerH - 1.6);
       }
@@ -3370,16 +3424,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // on CFS26-00100).
       const authorRaw = (n.author || '').trim();
       const upper = authorRaw.toUpperCase();
-      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR)$/i.test(authorRaw)
+      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR|OPS)$/i.test(authorRaw)
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [60, 60, 60]   // neutralized 2026-05-30
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [75, 75, 75]
-        : upper === 'NCIC' || upper === 'ALERT' ? [45, 45, 45]
-        : upper === 'OFFICER SAFETY' || upper === 'OCR' ? [80, 80, 80]
-        : !isSystemTag ? [90, 90, 90]
-        : [70, 70, 70];
+      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [26, 47, 92]
+        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [38, 62, 110]
+        : upper === 'NCIC' || upper === 'ALERT' ? [90, 32, 32]
+        : upper === 'OFFICER SAFETY' ? [90, 32, 32]
+        : upper === 'OPS' ? [26, 47, 92]
+        : upper === 'OCR' ? [55, 60, 72]
+        : !isSystemTag ? [70, 75, 85]
+        : [45, 55, 70];
 
       // Same field drift as the body: timestamp arrives as `created_at`
       // (interface) or `timestamp` (live CallNote). Coalesce so the header
@@ -3419,13 +3475,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         (n as { body?: string }).body ||
         (n as { narrative?: string }).narrative ||
         '';
+      const preserveMarkdown = isSystemTag;
       const bodyEndY = addFormattedText(
         doc,
-        noteBody.toUpperCase(),
+        preserveMarkdown ? noteBody : noteBody.toUpperCase(),
         lx + bodyIndent,
         y,
         ffw - bodyIndent,
-        FONT.SIZE_FIELD_VALUE,
+        preserveMarkdown ? FONT.SIZE_FIELD_VALUE + 0.5 : FONT.SIZE_FIELD_VALUE,
         onEntryPageBreak,
       );
       y = bodyEndY;
@@ -3454,85 +3511,20 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Signatures — full-width stacked (one on top of the other)
   y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
 
-  // PSO Client Request: QR code for mobile quick-login.
-  // Renders into the COMPANY SEAL slot on the last content page (the
-  // signature block's right cell) so it doesn't push to a new sheet.
-  // Sized at 12mm so it tucks into the bottom-right corner of the
-  // seal slot with the "SCAN FOR MOBILE PSO" caption fitting alongside
-  // — pre-fix the 18mm QR was overflowing the slot and visually
-  // crowding the date/time row (caught 2026-05-04).
-  // Mobile-PSO QR badge is gated OFF until the mobile-PSO backend subsystem
-  // (POST /api/cfs/:id/qr-token + the /api/mobile/cfs/* challenge/auth/status/
-  // narrative/pso routes from legacy mobileCfs.ts) is LIVE in the Worker
-  // (src/routes/mobileCfs.ts). The Worker can't rasterize a QR, so the endpoint
-  // returns { token, url } and we render the PNG here with the bundled qrcode lib.
-  const MOBILE_PSO_QR_ENABLED: boolean = true;
-  // Also fires for any serve-queue-linked call (isProcessServiceCall +
-  // serve_queue_id), not just pso_client_request — the CallPdfData
-  // interface's own comment on `serve_queue_id` ("enables QR code on
-  // printout for mobile status update") documents this as intended, but
-  // the field was never actually read anywhere in this generator
-  // (2026-07-13 fix). Caption reflects which flow the QR leads to.
-  const showMobileQr = data.incident_type === 'pso_client_request' || (isProcessServiceCall && !!data.serve_queue_id);
-  if (MOBILE_PSO_QR_ENABLED && showMobileQr && data.id) {
-    try {
-      const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('rmpg_token') || ''}`,
-        },
-      });
-      if (resp.ok) {
-        const { url } = await resp.json();
-        const qr_png_base64 = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
-        // Last page, for the same reason as the recipient badge below:
-        // a multi-page call report would otherwise strand this badge on
-        // whatever page happened to be current.
-        doc.setPage(doc.getNumberOfPages());
-        const pageW = doc.internal.pageSize.getWidth();
-        const pageH = doc.internal.pageSize.getHeight();
-        const qrSize = 12; // mm — compact corner badge
-        // Anchored to the absolute bottom-right corner of the page,
-        // NOT the signature block's seal slot (which it was previously
-        // sharing and visually overlapping — caught 2026-05-04). Sits
-        // in the empty band between the signature block and the
-        // bottom-strip PDF417 barcode + footer text. The seal slot
-        // stays clean for an agency seal stamp; the QR gets a
-        // stationary, predictable corner location regardless of what
-        // content sits above it.
-        //
-        // Vertical: bottom of QR sits at pageH-23 — 3mm above the top
-        // of the bottom-strip PDF417 barcode (which lives at y∈
-        // [pageH-20, pageH-12]). Horizontal: 1mm in from the page
-        // right margin so it visually mirrors the barcode at left.
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1;
-        const qrY = pageH - 23 - qrSize;
-        doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(4.5);
-        doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        const qrCaption = data.incident_type === 'pso_client_request' ? 'SCAN FOR MOBILE PSO' : 'SCAN FOR SERVICE STATUS';
-        doc.text(qrCaption, qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
-      }
-    } catch { /* non-fatal — PDF still prints without QR */ }
-  }
-
   // ── Recipient Receipt of Service QR ────────────────────────
-  // A SECOND, different-audience badge. The QR above is the OFFICER's
-  // (multi-scan, opens the mobile PSO status surface); this one is the
-  // RECIPIENT's — the officer shows it at the door and the person being
-  // served scans it on their own phone to sign the Receipt of Service
-  // and, for substitute service, the Court Document Release.
+  // The QR the officer shows at the door. The person being served scans
+  // it on their own phone to sign the Acknowledgement of Service and,
+  // for substitute service, the Court Document Release.
   //
   // Its token is single-use and burned on signature, which is why it
   // cannot share the /api/cfs/:id/qr-token credential above: an officer
   // scanning the status QR would otherwise consume the recipient's.
   //
-  // Placed to the LEFT of the officer QR with its own caption so the two
-  // are never confused at a doorstep. Non-fatal on failure — a run sheet
-  // that prints without this badge is still a valid run sheet, and the
-  // officer can fall back to the in-app attempt modal.
+  // Placed in the bottom-right corner of the last page so it's the
+  // first thing the recipient sees when the officer flips to the back.
+  // Non-fatal on failure — a run sheet that prints without this badge
+  // is still a valid run sheet, and the officer can fall back to the
+  // in-app attempt modal.
   if (isProcessServiceCall && data.serve_queue_id) {
     try {
       const resp = await fetch(`/api/serve-receipts/${data.serve_queue_id}/token`, {
@@ -3545,7 +3537,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       });
       if (resp.ok) {
         const { url } = await resp.json();
-        const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
+        const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'H', margin: 1, scale: 8 });
         // Pin to the LAST page explicitly. jsPDF draws on whatever page
         // is current, and by this point the report may have spilled —
         // the badge would then sit mid-document where nobody looks for
@@ -3554,15 +3546,19 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setPage(doc.getNumberOfPages());
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
-        const qrSize = 12;
-        // 4mm gap left of the officer QR, same baseline.
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1 - qrSize - 4;
+        const qrSize = 28; // Large, scannable — same size as mobile "HAVE THEM SCAN"
+        // Anchored to the absolute bottom-right corner of the page.
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1;
         const qrY = pageH - 23 - qrSize;
         doc.addImage(png, 'PNG', qrX, qrY, qrSize, qrSize);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(4.5);
+        doc.setFontSize(5);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        doc.text('HAVE THEM SCAN', qrX + qrSize / 2, qrY - 3, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(4);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text('RECIPIENT: SCAN TO SIGN', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
+        doc.text('Scan to sign on their phone.', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
       }
     } catch { /* non-fatal — PDF still prints without the receipt QR */ }
   }

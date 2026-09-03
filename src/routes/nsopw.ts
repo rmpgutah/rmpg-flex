@@ -24,7 +24,8 @@ import {
   runNsopwScreening, screenPersonForSor, ensureNsopwColumns,
 } from '../utils/nsopw';
 import { isConfigured } from '../utils/nsopw/client';
-import { getDecrypted } from '../utils/encryptedR2';
+import { getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
+import { log } from '../utils/logger';
 import { listRecentQueries, vacuumCache } from '../utils/nsopw/cache';
 import { recordAudit } from '../utils/auditLog';
 import { enrichPendingOffenders } from '../utils/sorEnrichment/runner';
@@ -202,33 +203,44 @@ nsopw.get('/photo/:offenderRowId', requireRole(...READ_ROLES), async (c) => {
   ).catch(() => null);
   if (!row?.local_photo_key) return c.json({ error: 'no local photo' }, 404);
 
-  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, row.local_photo_key);
-  if (decrypted) {
-    return new Response(decrypted.bytes, {
+  try {
+    const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, row.local_photo_key);
+    if (decrypted) {
+      return new Response(decrypted.bytes, {
+        headers: {
+          'content-type': row.photo_content_type || decrypted.httpMetadata?.contentType || 'image/jpeg',
+          'cache-control': 'private, max-age=3600',
+          'content-length': String(decrypted.bytes.length),
+        },
+      });
+    }
+    // getDecrypted() returns null both for "object never existed" and for a
+    // genuinely crypto-shredded object with no key row -- neither is
+    // distinguishable here from a LEGACY object stored before this feature
+    // shipped (also "object exists, no key row"). Fall back to serving the
+    // raw R2 bytes as-is, mirroring fieldPhotos.ts's GET /file/* route. Safe
+    // today because nothing in this codebase does standalone crypto-shredding
+    // of nsopw-photos/ objects, so "object present, row absent" can currently
+    // only mean "predates encryption," never "was shredded."
+    const legacy = await c.env.UPLOADS.get(row.local_photo_key).catch(() => null);
+    if (!legacy) return c.json({ error: 'photo bytes missing' }, 404);
+    return new Response(legacy.body, {
       headers: {
-        'content-type': row.photo_content_type || decrypted.httpMetadata?.contentType || 'image/jpeg',
+        'content-type': row.photo_content_type || legacy.httpMetadata?.contentType || 'image/jpeg',
         'cache-control': 'private, max-age=3600',
-        'content-length': String(decrypted.bytes.length),
+        'content-length': String(legacy.size),
       },
     });
+  } catch (err) {
+    // A genuine decrypt failure (malformed/rotated KEK, tampered ciphertext)
+    // must not fall through to the legacy raw-R2 path — that would serve
+    // AES-GCM ciphertext as image/jpeg. Catch here so the Worker test isolate
+    // does not also see an unhandled rejection (Hono onError is not mounted
+    // on the isolated nsopw test app, and workerd reports the throw anyway).
+    log.error('GET /api/nsopw/photo/:id failed', { src: 'src/routes/nsopw.ts' }, err);
+    const message = err instanceof FileEncryptionError ? err.message : (err instanceof Error ? err.message : 'photo decrypt failed');
+    return c.json({ error: message }, 500);
   }
-  // getDecrypted() returns null both for "object never existed" and for a
-  // genuinely crypto-shredded object with no key row -- neither is
-  // distinguishable here from a LEGACY object stored before this feature
-  // shipped (also "object exists, no key row"). Fall back to serving the
-  // raw R2 bytes as-is, mirroring fieldPhotos.ts's GET /file/* route. Safe
-  // today because nothing in this codebase does standalone crypto-shredding
-  // of nsopw-photos/ objects, so "object present, row absent" can currently
-  // only mean "predates encryption," never "was shredded."
-  const legacy = await c.env.UPLOADS.get(row.local_photo_key).catch(() => null);
-  if (!legacy) return c.json({ error: 'photo bytes missing' }, 404);
-  return new Response(legacy.body, {
-    headers: {
-      'content-type': row.photo_content_type || legacy.httpMetadata?.contentType || 'image/jpeg',
-      'cache-control': 'private, max-age=3600',
-      'content-length': String(legacy.size),
-    },
-  });
 });
 
 // ── GET /api/nsopw/person/:id/hits ──────────────────────────

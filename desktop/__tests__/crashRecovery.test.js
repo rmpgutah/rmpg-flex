@@ -84,3 +84,22 @@ test('a full crash-loop cycle: 3 rapid crashes recover, the 4th does not', () =>
   const fourthNow = start + MAX_RENDERER_RECOVERIES * 1000;
   assert.equal(shouldAutoRecover(timestamps, fourthNow), false, 'the 4th rapid crash should not auto-recover');
 });
+
+// ─── Manual reload counter-reset contract ─────────────────────
+// The F5 / Ctrl+Shift+F5 global hotkeys in main.js reset
+// rendererRecoveryTimestamps to [] on press. This verifies that
+// an empty array restores full auto-recovery capacity — a
+// crash immediately after a manual reload MUST be recoverable.
+test('resetting timestamps to [] re-enables full auto-recovery after a crash loop', () => {
+  const now = 1_000_000;
+  // Fill the cap (simulate a crash loop)
+  let timestamps = [];
+  for (let i = 0; i < MAX_RENDERER_RECOVERIES; i++) {
+    timestamps = recordRecoveryAttempt(timestamps, now + i * 1000);
+  }
+  assert.equal(shouldAutoRecover(timestamps, now + 10_000), false, 'cap reached before reset');
+
+  // Operator presses F5 — main.js sets rendererRecoveryTimestamps = []
+  timestamps = [];
+  assert.equal(shouldAutoRecover(timestamps, now + 11_000), true, 'reset restores recovery capacity');
+});

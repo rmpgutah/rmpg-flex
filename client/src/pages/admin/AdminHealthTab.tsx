@@ -164,17 +164,17 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     fetchHealth();
     fetchChangelog();
-    // Upgrade: fetch new system health and activity data
-    apiFetch<any>('/admin/system-health').then(d => d && setSystemHealth(d)).catch(() => {});
-    apiFetch<any>('/admin/users-activity-summary?days=30').then(d => d && setUsersActivity(d)).catch(() => {});
-    apiFetch<any>('/admin/realtime-stats').then(d => d && setRealtimeStats(d)).catch(() => {});
+    apiFetch<any>('/admin/system-health').then(d => { if (!cancelled && d) setSystemHealth(d); }).catch(() => {});
+    apiFetch<any>('/admin/users-activity-summary?days=30').then(d => { if (!cancelled && d) setUsersActivity(d); }).catch(() => {});
+    apiFetch<any>('/admin/realtime-stats').then(d => { if (!cancelled && d) setRealtimeStats(d); }).catch(() => {});
     const interval = setInterval(() => {
       fetchHealth();
-      apiFetch<any>('/admin/realtime-stats').then(d => d && setRealtimeStats(d)).catch(() => {});
+      apiFetch<any>('/admin/realtime-stats').then(d => { if (!cancelled && d) setRealtimeStats(d); }).catch(() => {});
     }, 60000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [fetchHealth, fetchChangelog]);
 
   // Set document title

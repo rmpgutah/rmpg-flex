@@ -38,7 +38,7 @@ export default function DashboardMiniMap() {
   const [error, setError] = useState<string | null>(null);
   const [units, setUnits] = useState<MapUnit[]>([]);
   const [calls, setCalls] = useState<ActiveCall[]>([]);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // Data fetch — same endpoints the full Map page uses.
   useEffect(() => {
@@ -84,7 +84,7 @@ export default function DashboardMiniMap() {
         // 'load' never dispatches, leaving the loading overlay stuck forever).
         // 'idle' (no pending map operations) is a more reliable "ready" signal
         // and fires at least once after the first render regardless.
-        const markReady = () => { if (!cancelled) setLoaded(true); };
+        const markReady = () => { if (!cancelled) { onMapLoaded(map); setLoaded(true); } };
         map.on('load', markReady);
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });

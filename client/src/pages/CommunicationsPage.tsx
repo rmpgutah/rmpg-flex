@@ -49,6 +49,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { openConversationTranscriptPdf } from '../utils/conversationTranscriptPdf';
+import { commsThreadsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 // ============================================================
 // Backend -> Frontend Mappers
@@ -283,6 +285,8 @@ export default function CommunicationsPage() {
   // boloSearch filters the BOLO card list independently.
   const [searchQuery, setSearchQuery] = useState('');
   const [boloSearch, setBoloSearch] = useState('');
+  const threadSearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(threadSearchRef);
 
   // --- Messages state ---
   const [messages, setMessages] = useState<Message[]>([]);
@@ -508,18 +512,20 @@ export default function CommunicationsPage() {
 
   // Initial load for messages (default panel) + officers list + stats
   useEffect(() => {
+    let cancelled = false;
     fetchMessages();
     apiFetch<any[]>('/personnel')
-      .then((data) => setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))))
-      .catch((err) => { console.warn('[CommunicationsPage] fetch personnel failed:', err); });
+      .then((data) => { if (!cancelled) setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))); })
+      .catch((err) => { if (!cancelled) console.warn('[CommunicationsPage] fetch personnel failed:', err); });
     // Fetch BOLO stats
     apiFetch<any>('/comms/bolos/stats')
-      .then((data) => { if (data) setBoloStats(data); })
+      .then((data) => { if (!cancelled && data) setBoloStats(data); })
       .catch(() => { /* stats optional */ });
     // Fetch message priority stats
     apiFetch<any>('/comms/messages/priority-stats')
-      .then((data) => { if (data) setMsgPriorityStats(data); })
+      .then((data) => { if (!cancelled && data) setMsgPriorityStats(data); })
       .catch(() => { /* stats optional */ });
+    return () => { cancelled = true; };
   }, [fetchMessages]);
 
   // Scroll to bottom of thread when selected or new messages arrive
@@ -1023,8 +1029,9 @@ export default function CommunicationsPage() {
             <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: 'var(--surface-deep)' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
               <input id="ff-communicationspage-0"
+                ref={threadSearchRef}
                 type="text"
-                placeholder="Search conversations..." aria-label="Search conversations"
+                placeholder="Search conversations… (/)" aria-label="Search conversations"
                 autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -1040,6 +1047,17 @@ export default function CommunicationsPage() {
             <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              disabled={filteredThreads.length === 0}
+              onClick={() => downloadTextFile('comms-threads.csv', commsThreadsToCsv(filteredThreads.map((t) => ({
+                subject: t.subject,
+                channel: t.isBroadcast ? 'broadcast' : 'message',
+                status: t.hasUnread ? 'unread' : 'read',
+                updated_at: t.lastMessage.created_at,
+              }))))}
+            >CSV</button>
             {/* Feature 30: Emergency broadcast — opens a themed modal
                 (was a native prompt() before #1614) so an officer doesn't
                 lose the message text to a misclick outside the prompt and
@@ -1161,6 +1179,7 @@ export default function CommunicationsPage() {
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchMessages(); }}>Retry</button>
           <button aria-label="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">
             <X className="w-3 h-3" />
           </button>

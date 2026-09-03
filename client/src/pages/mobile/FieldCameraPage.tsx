@@ -28,6 +28,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 import TrustBadge from '../../components/TrustBadge';
 import LiveDlScanner, { type IdScanResult } from '../../components/LiveDlScanner';
+import { formatStampTimestampMountain } from '../../utils/photoStamp';
 import type { AamvaResult, ScanAlert } from '../../utils/aamvaParser';
 import { aamvaToScanResultObj } from '../../utils/scanIdToRecipient';
 import { importWithRetry } from '../../utils/importWithRetry';
@@ -118,9 +119,7 @@ export function stampOverlay(
 }
 
 function fmtStamp(d: Date): string {
-  // America/Denver wall clock, court-readable: 2026-06-09 14:23:07 MT
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} MT`;
+  return formatStampTimestampMountain(d);
 }
 
 export default function FieldCameraPage() {

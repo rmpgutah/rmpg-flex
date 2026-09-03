@@ -15,6 +15,7 @@ import {
   Settings,
   LogOut,
   Phone,
+  PhoneCall,
   QrCode,
   ScrollText,
   Search,
@@ -114,6 +115,7 @@ import PanicButton from './PanicButton';
 // it renders behind a boolean. Layout wraps every authenticated route, so a
 // static import here landed both in the entry chunk on every cold load.
 const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
+const DialerPanel = lazyRetry(() => import('./DialerPanel'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
@@ -193,6 +195,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/national-warrant-search': 'National Warrant Search',
   '/downloads': 'Downloads',
   '/geography': 'Dispatch Geography',
+  '/dialer-connect': 'Dialer Connect',
   '/connections': 'Connections',
   '/intel': 'Intel Search',
   '/intel/plate-log': 'Plate Log',
@@ -253,6 +256,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+    { path: '/dialer-connect', icon: PhoneCall, label: 'Dialer Connect' },
   ]},
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
     { path: '/map', icon: Map, label: 'Live Map' },
@@ -318,6 +322,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
+    { path: '/dialer-connect', icon: Phone, label: 'Dial Connect' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -386,7 +391,7 @@ const TOOLBAR_NAV: NavItem[] = [
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/scheduler', '/shift-briefings', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/dialer-connect',
 ]);
 
 // Paths that contract_manager role is NOT allowed to see
@@ -404,9 +409,7 @@ export default function Layout() {
     setProfileDropdownOpen(false);
     const result = await signOut();
     if (!result.ok) {
-      // Shift gate blocked sign-out. Surface via alert() so the operator
-      // can't miss it; the End Shift flow lives on the ShiftCard.
-      try { window.alert(result.message); } catch { /* noop */ }
+      toast?.addToast(result.message, 'error', 8000);
     }
   }, [signOut]);
   const { isConnected, subscribe } = useWebSocket();
@@ -915,7 +918,7 @@ export default function Layout() {
     const unsub2 = subscribe('bolo_alert', () => fetchDispatchStats());
     const unsub3 = subscribe('email:new_messages', () => {
       apiFetch<{ count: number }>('/email/unread-count')
-        .then(r => setEmailUnreadCount(r.count || 0))
+        .then(r => { setEmailUnreadCount(r.count || 0); })
         .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });
     });
     return () => { unsub1(); unsub2(); unsub3(); };
@@ -1161,11 +1164,6 @@ export default function Layout() {
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
-              {/* 2: Tighter line-height on app name for compact branding */}
-              <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
-                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
-              </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
@@ -1681,6 +1679,7 @@ export default function Layout() {
                       {item.children!.filter(child => {
                         if (child.adminOnly && !isAdmin) return false;
                         if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(child.path)) return false;
+                        if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(child.path)) return false;
                         return true;
                       }).map((child) => {
                         const ChildIcon = child.icon;
@@ -1897,6 +1896,13 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
+      {/* Dialer — always-on /dialer iframe (authenticated Twilio Client).
+          Dispatch → Dialer Connect docks it into the CAD page. Close (X) parks
+          the iframe off-screen so Twilio stays registered. Pop-out unloads
+          the iframe and opens a named Dial Connect window. */}
+      <React.Suspense fallback={null}>
+        <DialerPanel />
+      </React.Suspense>
 
     </div>
   );

@@ -19,6 +19,8 @@ import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
 import RunCardPreview, { type RunCard } from './RunCardPreview';
+import { CfsWeatherStrip, WeatherQuickChips } from './CfsWeatherStrip';
+import { fetchCfsWeatherSnapshot } from '../utils/cfsWeatherApi';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../hooks/useAddressAutofill';
 import { useLinkOptions } from '../hooks/useLinkOptions';
@@ -123,6 +125,8 @@ const DEFAULT_FORM_DATA = {
   scene_safety: '',
   weather_conditions: '',
   lighting_conditions: '',
+  weather_manual: false,
+  weather_snapshot: null as any,
   alcohol_involved: false,
   drugs_involved: false,
   domestic_violence: false,
@@ -263,6 +267,36 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       } catch { setVehicleSearchResults([]); }
     }, 300);
   }, []);
+
+  // Live / historical weather fill once we have coordinates (and when
+  // historical entry time changes). Dispatcher-picked weather is sticky.
+  useEffect(() => {
+    if (!isOpen) return;
+    const lat = formData.latitude == null ? null : Number(formData.latitude);
+    const lng = formData.longitude == null ? null : Number(formData.longitude);
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    let at: string | undefined;
+    if (formData.is_historical && formData.historical_date) {
+      const timeStr = formData.historical_time || '00:00';
+      at = `${formData.historical_date} ${timeStr}:00`;
+    }
+    let cancelled = false;
+    fetchCfsWeatherSnapshot(lat, lng, at).then((snap) => {
+      if (cancelled || !snap) return;
+      setFormData((prev) => {
+        const manual = !!(prev as any).weather_manual;
+        return {
+          ...prev,
+          weather_snapshot: snap,
+          weather_conditions: manual && prev.weather_conditions
+            ? prev.weather_conditions
+            : (snap.scene_category || prev.weather_conditions),
+          lighting_conditions: prev.lighting_conditions || snap.lighting || '',
+        };
+      });
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, formData.latitude, formData.longitude, formData.is_historical, formData.historical_date, formData.historical_time]);
 
   // Pre-fill form when initialData changes, or restore draft on open
   useEffect(() => {
@@ -918,6 +952,17 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             <PremiseHistory address={formData.location} compact />
             {/* Duplicate Call Warning — flags active calls at same address */}
             <DuplicateCallWarning address={formData.location} />
+            {(formData as any).weather_snapshot && (
+              <div className="mt-1.5 px-2 py-1.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-raised)' }}>
+                <CfsWeatherStrip snapshot={(formData as any).weather_snapshot} conditions={formData.weather_conditions} />
+              </div>
+            )}
+            <div className="mt-1.5">
+              <WeatherQuickChips
+                value={formData.weather_conditions}
+                onSelect={(v) => setFormData((prev) => ({ ...prev, weather_conditions: v, weather_manual: true }))}
+              />
+            </div>
           </div>
 
           {/* Description — moved up for faster tab flow */}
@@ -932,7 +977,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             />
           </div>
 
-          {/* ── Narrative / Incident Summary ─────────────────── */}
+          {/* ── Narrative / Incident Summary (full mode) ─────── */}
+          {mode === 'full' && (
+          <>
           <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
             <label className="block text-[9px] font-bold uppercase tracking-wider text-rmpg-300 mb-1">Narrative / Incident Summary</label>
             <textarea
@@ -1105,6 +1152,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               </div>
             ))}
           </div>
+          </>
+          )}
 
           {/* ── Full Mode: Extended Fields ────────────────────── */}
 
@@ -1275,7 +1324,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             <div>
               <label htmlFor="ff-newcallmodal-31" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weather</label>
-              <select id="ff-newcallmodal-31" className="select-dark" value={formData.weather_conditions || ''} onChange={(e) => update('weather_conditions', e.target.value)}>
+              <select id="ff-newcallmodal-31" className="select-dark" value={formData.weather_conditions || ''} onChange={(e) => setFormData((prev) => ({ ...prev, weather_conditions: e.target.value, weather_manual: true }))}>
                 <option value="">— Select —</option>
                 {WEATHER_OPTIONS.filter(Boolean).map((w) => <option key={w} value={w}>{w}</option>)}
               </select>

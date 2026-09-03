@@ -26,6 +26,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NFCReaderUsageDescription</key>
+	<string>RMPG Flex uses NFC to read chip-enabled ID cards and passports.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -43,34 +45,20 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>RMPG Flex uses the camera to scan driver's licenses, state IDs, passports, and body-worn/dash footage capture.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>RMPG Flex needs access to your photo library to attach ID scans and evidence photos.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>RMPG Flex uses the microphone to record voice notes and field interview audio.</string>
-	<key>NFCReaderUsageDescription</key>
-	<string>RMPG Flex uses NFC to read chip-enabled ID cards and passports.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>RMPG Flex tracks your location for officer safety and dispatch routing. Location data is sent to the RMPG dispatch center in real time.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>RMPG Flex tracks your location in the background for officer safety monitoring and welfare checks.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RMPG Flex uses your location to show your position on the patrol map and route to calls.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>RMPG Flex uses the microphone to record voice notes and field interview audio.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RMPG Flex needs access to your photo library to attach ID scans and evidence photos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
-		<key>UISceneConfigurations</key>
-		<dict>
-			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneConfigurationName</key>
-					<string>CarPlay Configuration</string>
-					<key>UISceneDelegateClassName</key>
-					<string>CoreCarPlay.CarPlaySceneDelegate</string>
-				</dict>
-			</array>
-		</dict>
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
@@ -78,13 +66,9 @@
 		<string>location</string>
 		<string>remote-notification</string>
 		<string>audio</string>
-		<string>bluetooth-central</string>
-		<string>processing</string>
 		<string>bluetooth-peripheral</string>
+		<string>processing</string>
 		<string>push-to-talk</string>
-		<string>voip</string>
-		<string>nearby-interaction</string>
-		<string>external-accessory</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>
@@ -99,13 +83,13 @@
 		<string>location-services</string>
 		<string>gps</string>
 	</array>
+	<key>UIStatusBarHidden</key>
+	<true/>
 	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleLightContent</string>
+	<string>UIStatusBarStyleDarkContent</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>

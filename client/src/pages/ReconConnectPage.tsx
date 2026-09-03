@@ -162,7 +162,7 @@ export default function ReconConnectPage() {
   const ensureTerminal = () => {
     if (termRef.current || !termHostRef.current) return termRef.current;
     const term = new XTerm({
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontFamily: 'Arial, sans-serif',
       fontSize: 12,
       theme: { background: 'var(--surface-overlay)', foreground: 'var(--text-secondary)', cursor: 'var(--field-label-color)' },
       cursorBlink: true,

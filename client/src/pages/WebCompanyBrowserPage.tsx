@@ -8,6 +8,7 @@ import React, {
   useCallback, useEffect, useReducer, useRef, useState,
 } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { apiHttpBase, apiWsBase } from '../utils/apiOrigin';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,8 +60,7 @@ function uid(): string {
 }
 
 function resolveWsBase(): string {
-  const h = window.location.hostname;
-  return (h === 'localhost' || h === '127.0.0.1') ? `ws://${h}:8787` : 'wss://api.rmpgutah.us';
+  return apiWsBase();
 }
 
 // Feature 10/11: normalize address bar input
@@ -69,10 +69,7 @@ function normalize(raw: string): string {
   if (!t) return 'about:blank';
   if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
   if (/\s/.test(t) || !/^[^.\s]+\.[^.\s]/.test(t)) {
-    const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:8787'
-      : 'https://api.rmpgutah.us';
-    return `${base}/api/browser-search?q=${encodeURIComponent(t)}`;
+    return `${apiHttpBase()}/api/browser-search?q=${encodeURIComponent(t)}`;
   }
   return `https://${t}`;
 }
@@ -95,7 +92,7 @@ function saveJson(key: string, value: unknown): void {
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const S = {
-  root: { display: 'flex', flexDirection: 'column' as const, height: '100vh', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 11, fontFamily: 'inherit' },
+  root: { display: 'flex', flexDirection: 'column' as const, height: '100vh', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 11, fontFamily: 'Arial, sans-serif' },
   toolbar: { display: 'flex', alignItems: 'center', gap: 2, padding: '2px 4px', background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 },
   tabBar: { display: 'flex', alignItems: 'flex-end', gap: 1, padding: '2px 4px 0', background: 'var(--surface-base)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0, overflowX: 'auto' as const },
   btn: { padding: '2px 6px', fontSize: 10, background: 'rgba(195,204,214,0.08)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', cursor: 'pointer', borderRadius: 2, flexShrink: 0, lineHeight: '16px' },

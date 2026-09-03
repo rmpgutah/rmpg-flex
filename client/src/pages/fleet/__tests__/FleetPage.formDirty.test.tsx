@@ -63,26 +63,22 @@ describe('FleetPage — every form modal establishes a dirty baseline', () => {
 
   it('marks a non-vehicle form dirty once edited, so the discard confirm fires', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const dialog = await openMaintenanceModal(user);
 
     await user.type(within(dialog).getByLabelText(/description/i), 'Brake pads');
 
-    // Closing a dirty form must prompt. Before the fix, isDirty was permanently
-    // false for this form, so this closed silently and the entry was lost.
     await user.click(within(dialog).getByRole('button', { name: /^x$/i }));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(await screen.findByRole('alertdialog', { name: /discard unsaved/i })).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('does not prompt when the form was opened but never touched', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm');
     const dialog = await openMaintenanceModal(user);
 
     await user.click(within(dialog).getByRole('button', { name: /^x$/i }));
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog', { name: /discard unsaved/i })).toBeNull();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });

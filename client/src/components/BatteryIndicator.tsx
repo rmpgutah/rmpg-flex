@@ -95,7 +95,7 @@ export default function BatteryIndicator({ compact }: BatteryIndicatorProps) {
   if (compact) {
     return (
       <span
-        style={{ color, fontSize: '11px', fontFamily: 'monospace' }}
+        style={{ color, fontSize: '11px', fontFamily: 'Arial, sans-serif' }}
         className={isLow ? 'animate-led-blink' : ''}
       >
         {charging ? '⚡' : '🔋'}{level}%
@@ -145,7 +145,7 @@ export default function BatteryIndicator({ compact }: BatteryIndicatorProps) {
         />
       </div>
       <span
-        style={{ color, fontSize: '11px', fontFamily: 'var(--font-mono, monospace)' }}
+        style={{ color, fontSize: '11px', fontFamily: 'Arial, sans-serif' }}
         className={isLow ? 'animate-led-blink' : ''}
       >
         {charging && '⚡'}{level}%

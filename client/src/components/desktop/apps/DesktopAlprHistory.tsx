@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Camera, Download, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp, formatDateTime } from '../../../utils/dateUtils';
+import { copyToClipboard } from '../../../utils/clipboard';
+import { alprCapturesToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 interface AlprCapture {
   id: number;
@@ -30,25 +32,7 @@ function formatDateRange(range: DateRange): string {
 }
 
 function exportCsv(rows: AlprCapture[]) {
-  const headers = ['ID', 'Timestamp', 'Plate', 'Make', 'Model', 'Color', 'Confidence%', 'Stolen', 'Call ID'];
-  const lines = rows.map(r => [
-    r.id,
-    r.captured_at,
-    r.plate_number ?? '',
-    r.make ?? '',
-    r.model ?? '',
-    r.color ?? '',
-    r.confidence != null ? Math.round(r.confidence * 100) : '',
-    r.is_stolen ? 'YES' : 'NO',
-    r.call_id ?? '',
-  ].map(String).join(','));
-  const csv = [headers.join(','), ...lines].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `alpr-history-${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadTextFile(`alpr-history-${Date.now()}.csv`, alprCapturesToCsv(rows));
 }
 
 interface Props {
@@ -63,6 +47,7 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
   const [stolenOnly, setStolenOnly] = useState(false);
   const [minConfidence, setMinConfidence] = useState(0);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [plateQ, setPlateQ] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,8 +71,10 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
     if (stolenOnly && !c.is_stolen) return false;
     const conf = c.confidence != null ? c.confidence * 100 : 100;
     if (conf < minConfidence) return false;
+    if (plateQ.trim() && !(c.plate_number ?? '').toLowerCase().includes(plateQ.trim().toLowerCase())) return false;
     return true;
   });
+  const filterActive = stolenOnly || minConfidence > 0 || dateRange !== 'today' || !!plateQ.trim();
 
   const th: React.CSSProperties = {
     textAlign: 'left', padding: '3px 8px', fontSize: 9, fontWeight: 700,
@@ -125,6 +112,14 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
             >{d}</button>
           ))}
         </div>
+        <input
+          type="search"
+          value={plateQ}
+          onChange={(e) => setPlateQ(e.target.value)}
+          placeholder="Plate…"
+          aria-label="Filter by plate"
+          style={{ fontSize: 11, padding: '3px 8px', width: 100, background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+        />
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer' }}>
           <input type="checkbox" checked={stolenOnly} onChange={e => setStolenOnly(e.target.checked)} />
           Stolen only
@@ -154,7 +149,12 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
       {/* Table */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         {loading && <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>Loading…</p>}
-        {error && <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--sev-critical)' }}>{error}</p>}
+        {error && (
+          <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--sev-critical)' }}>
+            {error}{' '}
+            <button type="button" onClick={() => void load()} style={{ fontSize: 10, marginLeft: 8, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button>
+          </p>
+        )}
         {!loading && !error && (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -171,7 +171,9 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text-secondary)', paddingTop: 32 }}>No captures matching filters</td></tr>
+                <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text-secondary)', paddingTop: 32 }}>
+                  {captures.length === 0 ? 'No captures on file' : filterActive ? 'No captures matching filters' : 'No captures'}
+                </td></tr>
               )}
               {filtered.map(c => (
                 <React.Fragment key={c.id}>
@@ -183,7 +185,7 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
                       {expanded === c.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
                     <td style={td}>{formatDateTime(c.captured_at)}</td>
-                    <td style={{ ...td, fontWeight: 700, fontFamily: 'monospace' }}>{c.plate_number ?? '—'}</td>
+                    <td style={{ ...td, fontWeight: 700, fontFamily: 'Arial, sans-serif' }}>{c.plate_number ?? '—'}</td>
                     <td style={td}>{[c.make, c.model].filter(Boolean).join(' ') || '—'}</td>
                     <td style={td}>{c.color ?? '—'}</td>
                     <td style={td}>{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : '—'}</td>

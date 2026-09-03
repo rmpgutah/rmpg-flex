@@ -57,7 +57,7 @@ describe('FeatureInspectorPanel', () => {
   it('states plainly when nothing is there', () => {
     const result: InspectionResult = { ...base, features: [] };
     render(<FeatureInspectorPanel {...props} result={result} />);
-    expect(screen.getByText(/no overlay features here/i)).toBeInTheDocument();
+    expect(screen.getByText(/no overlay or CAD features here/i)).toBeInTheDocument();
     expect(screen.getByText(/-111\.85355/)).toBeInTheDocument();
   });
 
@@ -77,6 +77,42 @@ describe('FeatureInspectorPanel', () => {
   it('never leaks a raw layer id to the operator', () => {
     render(<FeatureInspectorPanel {...props} result={{ ...base, features: [school] }} />);
     expect(document.body.textContent).not.toContain('vt-osm_');
+  });
+
+  it('renders CAD unit detail without OSM source or Edit / Verify', () => {
+    const unit = {
+      key: 'cad:unit:u1', layerId: 'cad-unit', kind: 'cad' as const, cadKind: 'unit' as const,
+      categoryLabel: 'Unit', groupLabel: 'Units & Calls',
+      properties: { __cad_title: '1A12', officer_name: 'Hale', status: 'available' },
+      geometry: { type: 'Point', coordinates: [-111.89, 40.76] } as any,
+    };
+    render(<FeatureInspectorPanel {...props} result={{ ...base, features: [unit] }} />);
+    expect(screen.getByText('1A12')).toBeInTheDocument();
+    expect(screen.getByText('Hale')).toBeInTheDocument();
+    expect(screen.getByText(/Source: CAD/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit \/ verify/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/openstreetmap/i)).not.toBeInTheDocument();
+  });
+
+  it('offers Edit / Verify when the feature has an OSM id', () => {
+    const onEditOsmFeature = vi.fn();
+    const withId = {
+      ...hydrant,
+      properties: { ...hydrant.properties, osm_id: 'n55' },
+    };
+    render(
+      <FeatureInspectorPanel
+        {...props}
+        result={{ ...base, features: [withId] }}
+        onEditOsmFeature={onEditOsmFeature}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /edit \/ verify/i }));
+    expect(onEditOsmFeature).toHaveBeenCalledWith(expect.objectContaining({
+      osmId: 'n55',
+      group: 'safety',
+      cat: 'hydrant',
+    }));
   });
 
   it('falls back to a neutral marker glyph for UGRC layers with no icon category', () => {

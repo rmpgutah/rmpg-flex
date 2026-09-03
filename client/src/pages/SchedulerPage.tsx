@@ -22,11 +22,12 @@ import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import {
-  CalendarDays, Plus, RefreshCw, X, MapPin, Bell,
+  CalendarDays, Plus, RefreshCw, X, MapPin, Bell, Download, Search,
 } from 'lucide-react';
 import { agendaItemToEvent, isDraggableSource, SOURCE_COLORS, type AgendaItem, type AgendaSource } from './scheduler/agendaToCalendarEvents';
 import { rescheduleAgendaItem } from './scheduler/agendaMutations';
 import { toDisplayLabel } from '../utils/formatters';
+import { agendaToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Officer { id: number; full_name: string; badge_number?: string }
 
@@ -51,6 +52,8 @@ export default function SchedulerPage() {
   const [sources, setSources] = useState<Set<AgendaSource>>(new Set(['serve', 'shift', 'court', 'custom']));
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [officerFilter, setOfficerFilter] = useState('');
+  const [textQuery, setTextQuery] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -69,13 +72,14 @@ export default function SchedulerPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const params = new URLSearchParams({ start: rangeStart, end: rangeEnd });
       if (officerFilter) params.set('officer_id', officerFilter);
       const data = await apiFetch<{ items: AgendaItem[] }>(`/scheduler/agenda?${params}`);
       setItems(data.items || []);
     } catch (err) {
-      console.error('[scheduler] agenda load failed', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load agenda');
     } finally {
       setLoading(false);
     }
@@ -83,7 +87,11 @@ export default function SchedulerPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    apiFetch<Officer[]>('/personnel?status=active').then(d => setOfficers(asArray(d))).catch(() => setOfficers([]));
+    let cancelled = false;
+    apiFetch<Officer[]>('/personnel?status=active')
+      .then(d => { if (!cancelled) setOfficers(asArray(d)); })
+      .catch(() => { if (!cancelled) setOfficers([]); });
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     if (searchParams.get('call_id') || searchParams.get('serve_queue_id')) setShowCreate(true);
@@ -98,7 +106,14 @@ export default function SchedulerPage() {
     if (match) calendarRef.current?.getApi().gotoDate(match.date);
   }, [highlightId, items]);
 
-  const visible = useMemo(() => items.filter((i) => sources.has(i.source)), [items, sources]);
+  const visible = useMemo(() => {
+    const q = textQuery.trim().toLowerCase();
+    return items.filter((i) => {
+      if (!sources.has(i.source)) return false;
+      if (!q) return true;
+      return i.title.toLowerCase().includes(q) || (i.subtitle ?? '').toLowerCase().includes(q);
+    });
+  }, [items, sources, textQuery]);
   const events = useMemo(() => visible.map(agendaItemToEvent), [visible]);
   const linkByKey = useMemo(() => new Map(items.map((i) => [i.key, i.link])), [items]);
 
@@ -169,11 +184,31 @@ export default function SchedulerPage() {
     if (link) navigate(link);
   }
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName);
+      if (e.key === 'Escape' && showCreate) { setShowCreate(false); return; }
+      if (typing) return;
+      if (e.key === 'n' || e.key === 'N') setShowCreate(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showCreate]);
+
   const inputCls = 'w-full bg-surface-base border border-rmpg-700 rounded px-2 py-[3px] text-[11px] text-rmpg-100 focus:border-brand-400 focus:outline-none';
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SCHEDULER — UNIFIED AGENDA" icon={CalendarDays} />
+      {loadError && (
+        <div className="text-[11px] px-3 py-2 border border-red-700/40 bg-red-900/20 text-red-400 flex justify-between" role="alert">
+          <span>{loadError}</span>
+          <button type="button" onClick={load} className="underline">Retry</button>
+        </div>
+      )}
+      {items.length > 0 && visible.length === 0 && (
+        <div className="text-[11px] text-fg-muted">Filters hid every event. Clear search or re-enable a source.</div>
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
@@ -193,6 +228,17 @@ export default function SchedulerPage() {
           <option value="">All officers</option>
           {officers.map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}
         </select>
+        <div className="relative">
+          <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-muted" />
+          <input value={textQuery} onChange={(e) => setTextQuery(e.target.value)} placeholder="Search titles…"
+            aria-label="Search schedule titles"
+            className="w-36 bg-surface-base border border-rmpg-700 rounded pl-6 pr-2 py-[3px] text-[10px] text-rmpg-100" />
+        </div>
+        <button type="button" disabled={visible.length === 0}
+          onClick={() => downloadTextFile('scheduler-agenda.csv', agendaToCsv(visible))}
+          className="flex items-center gap-1 px-2 py-[3px] rounded border border-rmpg-700 text-[10px] text-rmpg-200 disabled:opacity-40">
+          <Download className="w-3 h-3" /> CSV
+        </button>
         <div className="flex-1" />
         <IconButton aria-label="Refresh agenda" onClick={load}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />

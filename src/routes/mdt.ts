@@ -16,7 +16,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import {
   validateMdtSend, counterpartEndpoint, inboxDirectionFor, normalizeEndpoint,
   MDT_ONLINE_WINDOW_SECONDS,
@@ -95,8 +95,8 @@ mdt.get('/inbox', async (c) => {
       ORDER BY id ASC LIMIT 50`, userId, dir);
   if (rows.length) {
     const ids = rows.map((r) => r.id);
-    await execute(db,
-      `UPDATE mdt_messages SET consumed_at = datetime('now') WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+    await executeInChunks(db, ids,
+      (ph) => `UPDATE mdt_messages SET consumed_at = datetime('now') WHERE id IN (${ph})`);
   }
 
   const messages = rows.map((r) => ({

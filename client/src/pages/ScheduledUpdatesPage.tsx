@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Download, RefreshCw, CheckCircle, AlertCircle, Clock, Package } from 'lucide-react';
 import { parseTimestamp } from '../utils/dateUtils';
+import { updateHistoryToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -106,6 +108,7 @@ export default function ScheduledUpdatesPage() {
   const [progress, setProgress]         = useState<DownloadProgress | null>(null);
   const [confirmInstall, setConfirmInstall] = useState(false);
   const [error, setError]               = useState<string | null>(null);
+  const [histQuery, setHistQuery]       = useState('');
 
   // Fetch app version on mount (async — ipcRenderer.invoke)
   useEffect(() => {
@@ -356,7 +359,7 @@ export default function ScheduledUpdatesPage() {
                 background: 'var(--surface-base)', border: '1px solid var(--border-subtle)',
                 borderRadius: 2, padding: 8, margin: 0,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                fontFamily: 'inherit', maxHeight: 180, overflowY: 'auto',
+                fontFamily: 'Arial, sans-serif', maxHeight: 180, overflowY: 'auto',
               }}>
                 {updateInfo.releaseNotes}
               </pre>
@@ -427,24 +430,42 @@ export default function ScheduledUpdatesPage() {
 
       {/* update history */}
       <div style={panel}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
           <Package className="w-3 h-3" style={{ color: 'var(--field-label-color)' }} />
           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--field-label-color)', letterSpacing: '0.08em' }}>
             UPDATE HISTORY
           </div>
+          <input
+            value={histQuery}
+            onChange={(e) => setHistQuery(e.target.value)}
+            placeholder="Search versions…"
+            aria-label="Search update history"
+            style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px', width: 140, border: '1px solid var(--border-subtle)', background: 'var(--surface-sunken)', color: 'var(--text-primary)' }}
+          />
+          <button
+            type="button"
+            disabled={history.length === 0}
+            onClick={() => downloadTextFile('update-history.csv', updateHistoryToCsv(history))}
+            style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+          >CSV</button>
         </div>
 
         {history.length === 0 ? (
           <div style={secondary}>No update history recorded.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {history.slice(0, 5).map((entry, i) => (
+            {history.filter((entry) => {
+              const q = histQuery.trim().toLowerCase();
+              if (!q) return true;
+              return entry.version.toLowerCase().includes(q) || (entry.notes ?? '').toLowerCase().includes(q);
+            }).map((entry, i) => (
               <div key={i} style={{
-                paddingBottom: i < Math.min(history.length, 5) - 1 ? 8 : 0,
-                borderBottom: i < Math.min(history.length, 5) - 1 ? '1px solid var(--border-subtle)' : 'none',
+                paddingBottom: 8,
+                borderBottom: '1px solid var(--border-subtle)',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <span style={{ ...value, fontWeight: 600 }}>{entry.version}</span>
+                  <button type="button" onClick={() => void copyToClipboard(entry.version)} style={{ fontSize: 9, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>Copy version</button>
                   <span style={secondary}>{fmtTimestamp(entry.date)}</span>
                 </div>
                 {entry.notes && (

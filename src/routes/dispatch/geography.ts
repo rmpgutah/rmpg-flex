@@ -107,7 +107,7 @@ geography.get('/codes/lookup/:code', async (c) => {
 // path — which routed to env.API and 404'd (no handler). Serve the read here.
 // Always filtered to active + unexpired. flags is returned as the raw string the
 // client's PremiseAlert type expects.
-geography.get('/premise-alerts', async (c) => {
+geography.get('/premise-alerts', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin', 'client_viewer'), async (c) => {
   try {
     const db = getDb(c.env);
     const address = (c.req.query('address') || '').trim();
@@ -215,7 +215,7 @@ geography.get('/districts/identify', async (c) => {
 // calls + incidents near a clicked location (cross-system map<->dispatch/RMS).
 // Bounding-box filter on lat/lng (indexed), newest first. Best-effort — a
 // query error degrades to empty so the popup still renders geography.
-geography.get('/premise-intel', async (c) => {
+geography.get('/premise-intel', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const lat = Number.parseFloat(c.req.query('lat') ?? '');
   const lng = Number.parseFloat(c.req.query('lng') ?? '');
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
@@ -327,11 +327,11 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       const body = await c.req.json<Record<string, unknown>>();
       if (!body[meta.codeCol] || !body[meta.nameCol]) return c.json({ error: `${meta.codeCol} and ${meta.nameCol} required` }, 400);
       if (meta.parentCol && !body[meta.parentCol]) return c.json({ error: `${meta.parentCol} required` }, 400);
-      const cols = [meta.codeCol, meta.nameCol, 'active', "datetime('now')"];
+      const cols = [meta.codeCol, meta.nameCol, 'active'];
       const vals: unknown[] = [body[meta.codeCol], body[meta.nameCol], 1];
-      const ph = ['?', '?', '?', "datetime('now')"];
+      const ph = ['?', '?', '?'];
       if (meta.parentCol) { cols.splice(2, 0, meta.parentCol); vals.splice(2, 0, body[meta.parentCol]); ph.splice(2, 0, '?'); }
-      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')})`, ...vals);
+      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')}, datetime('now'))`, ...vals);
       return c.json({ success: true, id: result.meta.last_row_id }, 201);
     } catch (err) {
       log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to create' }, 500); }
@@ -341,7 +341,8 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
     try {
       const db = getDb(c.env);
       const id = c.req.param('id');
-      await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      const result = await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      if ((result.meta.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
       return c.json({ success: true });
     } catch (err) {
       log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to delete' }, 500); }
@@ -489,6 +490,127 @@ geography.get('/road-speed', async (c) => {
   } catch (err) {
     log.error('road-speed lookup failed', { lat, lng }, err as Error);
     return c.json(miss);
+  }
+});
+
+// ── GET /dispatch/geography/beat-coverage ──────────────────────
+// For each beat, returns unit count, active call count, and
+// avg response time in the last 24 h. coverage_status:
+//   'covered'   ≥1 available unit assigned
+//   'undermanned' ≥1 unit but all are busy / assigned to calls
+//   'uncovered'  0 units assigned
+geography.get('/beat-coverage', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Beat-level unit counts (grouped by assigned_beat)
+    const unitRows = await query<{ beat: string; unit_count: number; available_count: number }>(
+      db,
+      `SELECT
+         COALESCE(assigned_beat, 'Unzoned') AS beat,
+         COUNT(*) AS unit_count,
+         SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available_count
+       FROM units
+       WHERE status NOT IN ('off_duty','out_of_service')
+       GROUP BY assigned_beat`,
+    );
+    // Active call counts per beat. CFS geography columns are beat_id /
+    // zone_beat / zone_name (there is no `beat` or `zone` column).
+    const callRows = await query<{ beat: string; call_count_active: number }>(
+      db,
+      `SELECT
+         COALESCE(beat_id, zone_beat, zone_name, 'Unzoned') AS beat,
+         COUNT(*) AS call_count_active
+       FROM calls_for_service
+       WHERE COALESCE(status,'') NOT IN ('closed','cleared','cancelled','canceled','archived','completed')
+       GROUP BY beat`,
+    );
+    // Avg response time per beat in last 24 h (dispatched_at → onscene_at;
+    // there are no dispatch_time / on_scene_time columns).
+    const respRows = await query<{ beat: string; avg_response_time_24h: number | null }>(
+      db,
+      `SELECT
+         COALESCE(beat_id, zone_beat, zone_name, 'Unzoned') AS beat,
+         AVG(
+           (julianday(onscene_at) - julianday(dispatched_at)) * 1440
+         ) AS avg_response_time_24h
+       FROM calls_for_service
+       WHERE onscene_at IS NOT NULL
+         AND dispatched_at IS NOT NULL
+         AND created_at >= datetime('now', '-24 hours')
+       GROUP BY beat`,
+    );
+
+    // Build lookup maps
+    const callMap = new Map<string, number>();
+    for (const r of callRows) callMap.set(r.beat, r.call_count_active);
+    const respMap = new Map<string, number | null>();
+    for (const r of respRows) respMap.set(r.beat, r.avg_response_time_24h);
+
+    const result = unitRows.map((r) => {
+      let coverage_status: 'covered' | 'undermanned' | 'uncovered';
+      if (r.unit_count === 0) {
+        coverage_status = 'uncovered';
+      } else if (r.available_count === 0) {
+        coverage_status = 'undermanned';
+      } else {
+        coverage_status = 'covered';
+      }
+      const avgResp = respMap.get(r.beat) ?? null;
+      return {
+        beat: r.beat,
+        unit_count: r.unit_count,
+        call_count_active: callMap.get(r.beat) ?? 0,
+        avg_response_time_24h: avgResp != null ? Math.round(avgResp * 10) / 10 : null,
+        coverage_status,
+      };
+    });
+
+    return c.json(result);
+  } catch (err) {
+    log.error('[geography] GET /beat-coverage failed', {}, err);
+    return c.json({ error: 'Beat coverage unavailable' }, 500);
+  }
+});
+
+// ── GET /dispatch/geography/incident-heatmap ────────────────────
+// Returns lat/lng/weight/incident_type for all calls in the last
+// N hours (default 24, max 168). Used by Mapbox heatmap layer.
+geography.get('/incident-heatmap', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const hours = Math.min(168, Math.max(1, parseInt(c.req.query('hours') || '24', 10) || 24));
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      latitude: number | null;
+      longitude: number | null;
+      incident_type: string | null;
+      priority: string | null;
+    }>(
+      db,
+      `SELECT latitude, longitude, incident_type, priority
+       FROM calls_for_service
+       WHERE latitude IS NOT NULL
+         AND longitude IS NOT NULL
+         AND created_at >= datetime('now', '-' || ? || ' hours')`,
+      hours,
+    );
+    // Weight by priority: critical=3, high=2, others=1
+    const heatmap = rows
+      .filter((r) => r.latitude != null && r.longitude != null)
+      .map((r) => {
+        const p = (r.priority ?? '').toLowerCase();
+        const weight = p === 'critical' || p === '1' ? 3
+          : p === 'high' || p === '2' ? 2 : 1;
+        return {
+          latitude: r.latitude as number,
+          longitude: r.longitude as number,
+          weight,
+          incident_type: r.incident_type ?? 'Unknown',
+        };
+      });
+    return c.json({ hours, count: heatmap.length, points: heatmap });
+  } catch (err) {
+    log.error('[geography] GET /incident-heatmap failed', { hours }, err);
+    return c.json({ error: 'Heatmap data unavailable' }, 500);
   }
 });
 

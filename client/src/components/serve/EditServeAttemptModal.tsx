@@ -13,6 +13,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, Loader2, AlertTriangle, Trash2, Camera, PenTool, Clock, Plus } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
+import ServeAttemptFileFolders from './ServeAttemptFileFolders';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeAttempt } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -478,6 +479,8 @@ export default function EditServeAttemptModal({
               <span>Original photos and GPS are immutable evidence. New photos are appended.</span>
             </div>
           </div>
+
+          <ServeAttemptFileFolders queueId={queueId} attemptId={attempt.id} />
 
           {/* Signature preview */}
           {attempt.signature_data && (

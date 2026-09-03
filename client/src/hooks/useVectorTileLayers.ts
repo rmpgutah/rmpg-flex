@@ -29,6 +29,14 @@ import {
   classifyCartocode, classifyPtType,
 } from '../pages/map/utils/landTypes';
 import { OSM_GROUPS, OSM_EXTRACT_DATE, type OsmGroup } from '../config/osmLayers.generated';
+import {
+  osmColorFor, osmLinePaint, osmFillPaint, osmFillOutlinePaint, OSM_CAT_DESCRIPTION,
+} from '../utils/osmOverlayStyle';
+import {
+  isSurveillanceCameraCat, isCameraConeCat,
+  cameraSymbolLayout, cameraHaloPaint,
+  cameraConeFillPaint, cameraConeOutlinePaint, cameraConeFilter, cameraConeBeforeLayerId,
+} from '../utils/osmCamera';
 
 export type VectorLayerKind = 'line' | 'point' | 'icon' | 'fill';
 
@@ -168,32 +176,18 @@ function osmKindFor(geometry: OsmGroup['geometry']): VectorLayerKind {
   // further distinguishes fill/line categories within a 'mixed' group by cat.
 }
 
-// Blue & Silver theme literals (mapbox paint props cannot resolve var()).
-// Silver-family for neutral infrastructure, sev-* hues keep CAD meaning.
-const OSM_COLOR_BY_GROUP: Record<string, string> = {
-  surveillance: '#c3ccd6', // silver-500
-  traffic: '#d0d8e0',      // silver-400
-  safety: '#ef4444',       // sev-critical (fire/life safety)
-  utility: '#a0adbd',      // silver-600
-  sites: '#7c8b9e',        // silver-700
-  access: '#c3ccd6',       // silver-500
-  drivability: '#d9bd72',  // accent-gold-300 (text-safe) — surface attribute
-  terrain: '#f59e0b',      // sev-warn (natural hazard caution)
-  jurisdiction: '#a0adbd', // silver-600
-};
-
 export const OSM_VECTOR_CONFIGS: VectorTileLayerConfig[] = OSM_GROUPS.flatMap((group) =>
   group.categories.map((cat) => ({
     id: `osm_${group.name}_${cat.cat}`,
     label: cat.label,
-    description: cat.label,
+    description: OSM_CAT_DESCRIPTION[cat.cat] ?? cat.label,
     name: `osm-${group.name}`,
     sourceLayer: group.name,
     sourceMinzoom: Math.min(...group.categories.map((c) => c.minzoom)),
     sourceMaxzoom: 16,
     kind: osmKindFor(group.geometry),
     minzoom: cat.minzoom,
-    color: OSM_COLOR_BY_GROUP[group.name] ?? '#c3ccd6',
+    color: osmColorFor(cat.cat, group.name),
     labelProp: 'name',
     // Intentionally empty for OSM: the OSM popup is built by
     // buildOsmPopupHtml (client/src/utils/osmPopup.ts), which renders EVERY
@@ -277,6 +271,31 @@ const OSM_LABEL_RULES: Record<string, LabelRule> = {
     field: ['case', ['has', 'capacity'], ['to-string', ['get', 'capacity']], ''],
     minzoom: 16, placement: 'point', size: 10,
   },
+  // Operator at high zoom only — a name on every CCTV at z15 is clutter.
+  alpr: {
+    field: ['coalesce', ['get', 'operator'], ['get', 'name'], ''],
+    minzoom: 16, placement: 'point', size: 9,
+  },
+  camera: {
+    field: ['coalesce', ['get', 'operator'], ['get', 'name'], ''],
+    minzoom: 17, placement: 'point', size: 9,
+  },
+  hydrant: {
+    field: ['coalesce', ['get', 'colour'], ['get', 'color'], ''],
+    minzoom: 17, placement: 'point', size: 9,
+  },
+  bldg_height: {
+    field: [
+      'case',
+      ['has', 'building:levels'],
+      ['concat', ['to-string', ['get', 'building:levels']], ' fl'],
+      '',
+    ],
+    minzoom: 17, placement: 'line', size: 9,
+  },
+  protected: { field: ['coalesce', ['get', 'name'], ''], minzoom: 12, placement: 'point', size: 10 },
+  tribal: { field: ['coalesce', ['get', 'name'], ''], minzoom: 10, placement: 'point', size: 10 },
+  military: { field: ['coalesce', ['get', 'name'], ''], minzoom: 11, placement: 'point', size: 10 },
 };
 
 export function buildOsmLabelSpec(
@@ -338,19 +357,45 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
 
   const specs: OsmLayerSpec[] = [];
   const idBase = `vt-${cfg.id}`;
+  const cat = cfg.categoryFilter ?? '';
 
-  if (type === 'fill') {
+  if (isCameraConeCat(cat)) {
+    // Fill first (under), then identity outlines. ALPR = solid cyan edge;
+    // public CCTV = dashed violet. Opacity stays well under 0.35 so streets
+    // and names remain readable through the wedge.
     specs.push({
       id: `${idBase}-fill`,
       type: 'fill',
       ...base,
-      paint: { 'fill-color': cfg.color, 'fill-opacity': 0.25 },
+      filter: cameraConeFilter(),
+      paint: cameraConeFillPaint(),
+    });
+    specs.push({
+      id: `${idBase}-outline-alpr`,
+      type: 'line',
+      ...base,
+      filter: cameraConeFilter('alpr'),
+      paint: cameraConeOutlinePaint('alpr'),
+    });
+    specs.push({
+      id: `${idBase}-outline-camera`,
+      type: 'line',
+      ...base,
+      filter: cameraConeFilter('camera'),
+      paint: cameraConeOutlinePaint('camera'),
+    });
+  } else if (type === 'fill') {
+    specs.push({
+      id: `${idBase}-fill`,
+      type: 'fill',
+      ...base,
+      paint: osmFillPaint(cat, cfg.color),
     });
     specs.push({
       id: `${idBase}-outline`,
       type: 'line',
       ...base,
-      paint: { 'line-color': cfg.color, 'line-width': 1, 'line-opacity': 0.6 },
+      paint: osmFillOutlinePaint(cfg.color),
     });
   } else if (type === 'line') {
     specs.push({
@@ -358,64 +403,44 @@ export function buildOsmLayerSpecs(cfg: VectorTileLayerConfig, isLight: boolean)
       type: 'line',
       ...base,
       layout: { ...base.layout, 'line-join': 'round', 'line-cap': 'round' },
-      paint: {
-        'line-color': cfg.color,
-        // Thin/dim right at the category's own minzoom (still visible against
-        // the basemap), thickening/opaquing as the operator zooms in — mirrors
-        // the point-category circle-radius interpolation just below.
-        'line-width': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 1, cfg.minzoom + 5, 2, 18, 3.5],
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.55, cfg.minzoom + 5, 0.85, 18, 0.95],
-      },
+      paint: osmLinePaint(cat, cfg.color, cfg.minzoom),
     });
   } else {
     // Point categories: use our own registered icon so a hydrant, a camera and
     // a power pole are distinguishable. iconIdForCat only returns ids that
     // ensureOsmIcons registers via map.addImage — never a bare basemap sprite
     // name, because a missing sprite name renders NOTHING, silently.
-    const cat = cfg.categoryFilter ?? '';
     const iconId = iconIdForCat(cat);
     if (iconId) {
-      const isCamera = cat === 'camera' || cat === 'alpr';
+      if (isSurveillanceCameraCat(cat)) {
+        // Identity ring under the glyph — colour is the tool (ALPR vs CCTV),
+        // silhouette is the object. No bloom, no glow.
+        specs.push({
+          id: `${idBase}-halo`,
+          type: 'circle',
+          ...base,
+          paint: cameraHaloPaint(cat, cfg.minzoom),
+        });
+      }
       specs.push({
         id: `${idBase}-symbol`,
         type: 'symbol',
         ...base,
         layout: {
           ...base.layout,
-          // A data expression, not a bare id: the sprite is chosen per feature
-          // from its own OSM tags (NFPA flow class, stop vs signal, dome vs
-          // bullet, out-of-service) and stepped down to a simplified sprite
-          // below the zoom where that detail is resolvable. Every branch
-          // resolves to an id ensureOsmIcons registers.
-          'icon-image': iconImageExpression(cat, cfg.minzoom) ?? iconId,
-          // The 64px design box is 2x the old one, so the size ramp is halved
-          // to keep the on-screen footprint the operator is used to.
-          'icon-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.26, 18, 0.5],
-          'icon-allow-overlap': false,
-          'icon-ignore-placement': false,
-          // Lower sorts first, and first-placed wins a collision. Without this
-          // every category shared the default, so a street lamp could beat a
-          // fire hydrant for the same pixels at z15.
+          ...(isSurveillanceCameraCat(cat)
+            ? cameraSymbolLayout(cat, cfg.minzoom, iconImageExpression(cat, cfg.minzoom) ?? iconId)
+            : {
+              'icon-image': iconImageExpression(cat, cfg.minzoom) ?? iconId,
+              'icon-size': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 0.26, 18, 0.5],
+              'icon-allow-overlap': false,
+              'icon-ignore-placement': false,
+            }),
           'symbol-sort-key': symbolSortKeyFor(cat),
-          // A camera icon must point where the camera actually points.
-          // rotation-alignment MUST be 'map': the default ('viewport') pins the
-          // icon to the screen, so the bearing becomes a lie the moment the
-          // operator rotates the map. Absent camera:direction -> 0 (unrotated),
-          // which reads as "bearing unknown" rather than a fabricated north.
-          ...(isCamera
-            ? {
-              'icon-rotate': ['coalesce', ['to-number', ['get', 'camera:direction']], 0],
-              'icon-rotation-alignment': 'map',
-            }
-            : {}),
         },
-        // Symbol layers need no paint here — the icon carries its own colour,
-        // baked in at registration. `paint` is required by OsmLayerSpec.
         paint: {},
       });
     } else {
-      // No icon for this category yet — a plain circle still renders, rather
-      // than the layer silently drawing nothing.
       specs.push({
         id: `${idBase}-circle`,
         type: 'circle',
@@ -476,6 +501,12 @@ interface UseVectorTileLayersOptions {
     osmId: string; group: string; cat: string | null;
     categoryLabel: string; featureName: string; osmTags: Record<string, unknown>;
   }) => void;
+  /**
+   * When true, feature-click popups are not opened (Identify / Feature
+   * Inspector already shows the same tags). Click handlers stay bound so
+   * cursor styling still works.
+   */
+  suppressPopup?: boolean;
 }
 
 function srcId(id: string) { return `vt-${id}`; }
@@ -494,7 +525,7 @@ function escapeHtml(s: string): string {
 
 export function useVectorTileLayers({
   map, popup, isLight = false, onUseLocation,
-  osmOverrides, osmHiddenIds, onEditOsmFeature,
+  osmOverrides, osmHiddenIds, onEditOsmFeature, suppressPopup = false,
 }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
@@ -516,6 +547,11 @@ export function useVectorTileLayers({
   useEffect(() => { isLightRef.current = isLight; }, [isLight]);
   const onUseLocationRef = useRef(onUseLocation);
   useEffect(() => { onUseLocationRef.current = onUseLocation; }, [onUseLocation]);
+  const suppressPopupRef = useRef(suppressPopup);
+  useEffect(() => { suppressPopupRef.current = suppressPopup; }, [suppressPopup]);
+  useEffect(() => {
+    if (suppressPopup) popupRef.current?.remove();
+  }, [suppressPopup]);
 
   // Guard against double-add when multiple effects race the style-ready gate.
   const addedRef = useRef<Set<string>>(new Set());
@@ -527,14 +563,16 @@ export function useVectorTileLayers({
 
   // Label paint that stays legible on both dark and light basemaps.
   const labelPaint = (light: boolean) => ({
-    text: light ? '#3a2e05' : '#e8d8a8',
-    halo: light ? '#ffffff' : '#000000',
+    // Near-white on dark / ink on light — gold is reserved for map arterials
+    // and field labels, not overlay annotation.
+    text: light ? '#1e293b' : '#f0f4f9',
+    halo: light ? '#ffffff' : '#0a1422',
   });
 
   const buildPopupHtml = useCallback((cfg: VectorTileLayerConfig, props: Record<string, any>): string => {
     const titleRaw = props[cfg.labelProp];
     const title = titleRaw != null && String(titleRaw).trim() !== '' ? String(titleRaw) : cfg.label;
-    let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:150px;">`;
+    let html = `<div style="font-family:'Arial, sans-serif';color:#d4d4d4;font-size:11px;min-width:150px;">`;
     html += `<div style="font-weight:bold;font-size:12px;color:${cfg.color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeHtml(title)}</div>`;
     // Subtitle: layer label + (for address points) a colored property-type chip.
     let subtitle = `<span style="color:#888;font-size:9px;text-transform:uppercase;">${escapeHtml(cfg.label)}</span>`;
@@ -590,6 +628,9 @@ export function useVectorTileLayers({
           }
 
           const specs = buildOsmLayerSpecs(cfg, isLightRef.current);
+          const beforeId = isCameraConeCat(cfg.categoryFilter ?? '')
+            ? cameraConeBeforeLayerId((id) => hasLayer(map, id))
+            : undefined;
           for (const spec of specs) {
             if (!hasLayer(map, spec.id)) {
               map.addLayer({
@@ -601,7 +642,7 @@ export function useVectorTileLayers({
                 filter: spec.filter as any,
                 layout: spec.layout as any,
                 paint: spec.paint as any,
-              } as any);
+              } as any, beforeId && hasLayer(map, beforeId) ? beforeId : undefined);
             }
           }
 
@@ -622,6 +663,7 @@ export function useVectorTileLayers({
             clickBoundRef.current.add(layerId);
             map.on('click', layerId, (e) => {
               const pop = popupRef.current;
+              if (suppressPopupRef.current) return;
               if (!pop || !e.features || e.features.length === 0) return;
               const rawProps = e.features[0].properties || {};
               const osmId = String(rawProps.osm_id ?? '').trim();
@@ -836,6 +878,7 @@ export function useVectorTileLayers({
           clickBoundRef.current.add(cfg.id);
           map.on('click', interactiveLayer, (e) => {
             const pop = popupRef.current;
+            if (suppressPopupRef.current) return;
             if (!pop || !e.features || e.features.length === 0) return;
             const props = e.features[0].properties || {};
             const titleRaw = props[cfg.labelProp];
@@ -843,7 +886,7 @@ export function useVectorTileLayers({
             let html = buildPopupHtml(cfg, props);
             const canUse = !!onUseLocationRef.current;
             if (canUse) {
-              html += `<button id="vt-use-loc" style="margin-top:6px;width:100%;padding:4px;font-family:'Courier New',monospace;font-size:10px;font-weight:bold;letter-spacing:0.5px;color:#0a0a0a;background:${cfg.color};border:none;border-radius:2px;cursor:pointer;text-transform:uppercase;">Use This Location</button>`;
+              html += `<button id="vt-use-loc" style="margin-top:6px;width:100%;padding:4px;font-family:'Arial, sans-serif';font-size:10px;font-weight:bold;letter-spacing:0.5px;color:#0a0a0a;background:${cfg.color};border:none;border-radius:2px;cursor:pointer;text-transform:uppercase;">Use This Location</button>`;
             }
             pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
             if (canUse) {

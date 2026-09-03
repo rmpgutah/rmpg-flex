@@ -44,6 +44,20 @@ export function exceedsLikePatternLimit(term: string): boolean {
 }
 
 /**
+ * Build a `%term%` LIKE pattern (escaped for `ESCAPE '\'`) that is GUARANTEED
+ * to fit D1's 50-char pattern cap: the escaped term is truncated to 48 chars,
+ * and a dangling odd backslash left by the cut is trimmed so it can't escape
+ * the trailing `%` wildcard. Prefer containsClause() for new code; use this
+ * when a call site must stay on LIKE.
+ */
+export function cappedLikePattern(term: string): string {
+  const escaped = escapeLike(term)
+    .slice(0, D1_LIKE_PATTERN_LIMIT - 2)
+    .replace(/\\+$/, (m) => (m.length % 2 ? m.slice(0, -1) : m));
+  return `%${escaped}%`;
+}
+
+/**
  * A case-insensitive "column contains term" clause that is safe at ANY term
  * length — the D1-safe replacement for `col LIKE '%term%'`.
  *

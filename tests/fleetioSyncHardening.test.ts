@@ -195,7 +195,7 @@ describe('outbound: vendor FK translation (was silently dropped)', () => {
     let sent: Record<string, unknown> | undefined;
     const adapter = { async createWorkOrder(a: { payload: Record<string, unknown> }) { sent = a.payload; return { id: 4242 } as never; } };
 
-    const r = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const r = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
 
     expect(r.completed).toBe(1);
     expect(sent!.vehicle_id).toBe(999);
@@ -212,7 +212,7 @@ describe('outbound: vendor FK translation (was silently dropped)', () => {
     let sent: Record<string, unknown> | undefined;
     const adapter = { async createWorkOrder(a: { payload: Record<string, unknown> }) { sent = a.payload; return { id: 1 } as never; } };
 
-    await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
 
     // Optional + unlinked → omitted, so Fleet.io doesn't receive an RMPG id.
     expect(sent!).not.toHaveProperty('vendor_id');
@@ -230,7 +230,7 @@ describe('outbound: fuel_entry/delete (was a guaranteed dead letter)', () => {
     const seen: number[] = [];
     const adapter = { async deleteFuelEntry(a: { fleetioId: number }) { seen.push(a.fleetioId); return null; } };
 
-    const r = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const r = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
 
     expect(seen).toEqual([900]);
     expect(r.completed).toBe(1);
@@ -246,7 +246,7 @@ describe('outbound: fuel_entry/delete (was a guaranteed dead letter)', () => {
     });
     const { db } = makeDb(state);
     const adapter = { async deleteFuelEntry() { throw new Error('must not be called'); } };
-    const r = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const r = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(r.completed).toBe(1);
     expect(r.errors).toEqual([]);
   });
@@ -264,8 +264,8 @@ describe('outbound: concurrency claim', () => {
     // Two drains over the SAME state, as two overlapping cron ticks would be.
     const h1 = makeDb(state);
     const h2 = makeDb(state);
-    await applyOutbound({ db: h1.db, adapter: adapter as never, config: stubConfig });
-    await applyOutbound({ db: h2.db, adapter: adapter as never, config: stubConfig });
+    await applyOutbound({ paceMs: 0, db: h1.db, adapter: adapter as never, config: stubConfig });
+    await applyOutbound({ paceMs: 0, db: h2.db, adapter: adapter as never, config: stubConfig });
 
     // Exactly one remote create. Without the claim, a duplicate vehicle is
     // created in Fleet.io and its id is unreachable forever (INSERT OR IGNORE
@@ -277,7 +277,7 @@ describe('outbound: concurrency claim', () => {
   it('stamps the claim time so the reaper can age it out', async () => {
     const state = emptyState({ events: [ev({ id: 10, resource: 'inspection', action: 'create' })] });
     const { db, writes } = makeDb(state);
-    await applyOutbound({ db, adapter: {} as never, config: stubConfig });
+    await applyOutbound({ paceMs: 0, db, adapter: {} as never, config: stubConfig });
     // `SET status='processing'` specifically — the reaper statement also
     // mentions 'processing' (in its WHERE clause).
     const claim = writes.find((w) => /SET status='processing'/.test(w.sql));
@@ -288,7 +288,7 @@ describe('outbound: concurrency claim', () => {
   it('the reaper only re-pends claims older than the stale window', async () => {
     const state = emptyState();
     const { db, writes } = makeDb(state);
-    await applyOutbound({ db, adapter: {} as never, config: stubConfig });
+    await applyOutbound({ paceMs: 0, db, adapter: {} as never, config: stubConfig });
     const reap = writes.find((w) => /status='pending'/.test(w.sql) && /status='processing'/.test(w.sql));
     expect(reap).toBeDefined();
     // Ages on processed_at (the claim stamp), NOT created_at (the queue time) —

@@ -21,8 +21,9 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, executeInChunks, ensureHrTables } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks, queryInChunks, ensureHrTables } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { populatePayrollFromClocks, denverToday } from '../utils/corporateWorkflows';
 
 const hr = new Hono<Env>();
 
@@ -120,6 +121,9 @@ hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
     new_hires_30d: await n("SELECT COUNT(*) n FROM users WHERE created_at >= datetime('now','-30 days')"),
     on_leave_today: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='approved' AND date('now') BETWEEN date(start_date) AND date(end_date)"),
     pending_approvals: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='pending'"),
+    clocked_in_now: await n("SELECT COUNT(*) n FROM time_entries WHERE clock_out IS NULL"),
+    scheduled_today: (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) n FROM schedules WHERE shift_date = ? AND status != 'cancelled'`, denverToday()).catch(() => ({ n: 0 })))?.n ?? 0,
+    unattended_today: (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) n FROM schedules s WHERE s.shift_date = ? AND s.status != 'cancelled' AND NOT EXISTS (SELECT 1 FROM time_entries te WHERE te.officer_id = s.officer_id AND (date(te.clock_in) = s.shift_date OR date(te.clock_in_local) = s.shift_date))`, denverToday()).catch(() => ({ n: 0 })))?.n ?? 0,
     // These were hardcoded 0 with a comment saying they'd stay that way "until
     // those tables land" — but officer_certifications, training_courses and
     // training_enrollments all exist on live. Same stale-comment trap as the
@@ -384,16 +388,18 @@ hr.get('/leave/balances', requireRole(...ALL_ROLES), async (c) => {
 
     // Sum approved hours per (officer, type) for the requested year.
     // start_date is TEXT ISO so substr-based year extraction is fine.
-    const idList = officers.map(o => o.id).join(',');
-    const usage = await query<{ officer_id: number; type: string; used: number }>(
+    // queryInChunks with year as a leadingBinding keeps all params bound
+    // (no integer interpolation) and handles org sizes > 100 officers.
+    const usage = await queryInChunks<{ officer_id: number; type: string; used: number }>(
       db,
-      `SELECT officer_id, type, COALESCE(SUM(hours_requested), 0) AS used
+      officers.map(o => o.id),
+      (ph) => `SELECT officer_id, type, COALESCE(SUM(hours_requested), 0) AS used
        FROM leave_requests
-       WHERE status = 'approved'
-         AND officer_id IN (${idList})
-         AND substr(start_date, 1, 4) = ?
+       WHERE substr(start_date, 1, 4) = ?
+         AND status = 'approved'
+         AND officer_id IN (${ph})
        GROUP BY officer_id, type`,
-      String(year)
+      [String(year)],
     );
 
     const usageByOfficer = new Map<number, Record<string, number>>();
@@ -1230,25 +1236,8 @@ hr.post('/payroll/periods/:id/populate', requireRole(...MANAGER_ROLES), async (c
     const id = Number(c.req.param('id'));
     const period = await queryFirst<{ name: string; status: string }>(db, 'SELECT name, status FROM hr_pay_periods WHERE id = ?', id);
     if (!period) return c.json({ error: 'Pay period not found' }, 404);
-
-    const activeUsers = await query<{ id: number; full_name: string }>(db,
-      `SELECT u.id FROM users u WHERE u.status = 'active' ORDER BY u.full_name`);
-    const existingEntries = await query<{ user_id: number }>(db,
-      'SELECT user_id FROM hr_payroll_entries WHERE pay_period_id = ?', id);
-    const existingIds = new Set(existingEntries.map(e => e.user_id));
-    const now = nowIso();
-    let created = 0;
-    for (const u of activeUsers) {
-      if (existingIds.has(u.id)) continue;
-      const payRate = await queryFirst<{ id: number }>(db,
-        `SELECT id FROM hr_pay_rates WHERE user_id = ? AND end_date IS NULL ORDER BY effective_date DESC LIMIT 1`, u.id);
-      await execute(db,
-        `INSERT INTO hr_payroll_entries (user_id, pay_period_id, pay_rate_id, regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, base_pay, overtime_pay, holiday_pay, gross_pay, total_deductions, net_pay, status, created_at, updated_at)
-         VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'draft', ?, ?)`,
-        u.id, id, payRate?.id ?? null, now, now);
-      created++;
-    }
-    return c.json({ success: true, created, total: activeUsers.length });
+    const result = await populatePayrollFromClocks(db, id);
+    return c.json({ success: true, ...result });
   } catch (err) {
     console.error('[hr] POST /payroll/periods/:id/populate', err);
     return c.json({ error: 'Failed to populate pay period', code: 'HR_PAY_PERIOD_POP_ERR' }, 500);
@@ -1321,6 +1310,18 @@ hr.put('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
   }
 });
 
+hr.delete('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM overtime_requests WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /payroll/overtime/:id', err);
+    return c.json({ error: 'Failed to delete OT request', code: 'HR_OT_DELETE_ERR' }, 500);
+  }
+});
+
 // ─── Payroll CSV Export ──────────────────────────────────────
 
 hr.get('/payroll/export/csv', requireRole(...MANAGER_ROLES), async (c) => {
@@ -1373,13 +1374,13 @@ hr.post('/grievances', requireRole(...ALL_ROLES), async (c) => {
     const db = getDb(c.env);
     const user = c.get('user') as { id: number };
     const body = await c.req.json();
-    const { type, subject, description, priority, assigned_to } = body ?? {};
+    const { type, grievance_type, subject, description, priority, assigned_to, against_user_id } = body ?? {};
     if (!subject || !description) return c.json({ error: 'subject and description are required' }, 400);
     const now = nowIso();
     const res = await execute(db,
-      `INSERT INTO hr_grievances (officer_id, type, subject, description, status, priority, assigned_to, filed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'filed', ?, ?, ?, ?, ?)`,
-      user.id, type || 'general', subject, description, priority || 'normal', assigned_to || null, now, now, now
+      `INSERT INTO hr_grievances (officer_id, type, subject, description, status, priority, assigned_to, against_user_id, filed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'filed', ?, ?, ?, ?, ?, ?)`,
+      user.id, type || grievance_type || 'general', subject, description, priority || 'normal', assigned_to || null, against_user_id || null, now, now, now
     );
     return c.json({ success: true, id: res.meta.last_row_id }, 201);
   } catch (err) {
@@ -1393,7 +1394,9 @@ hr.put('/grievances/:id', requireRole(...MANAGER_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
     const body = await c.req.json();
-    const fields = ['type', 'subject', 'description', 'priority', 'assigned_to', 'resolution'];
+    const fields = ['type', 'subject', 'description', 'priority', 'assigned_to', 'against_user_id', 'resolution'];
+    // alias grievance_type → type (client sent the wrong key historically)
+    if ('grievance_type' in body && !('type' in body)) body.type = body.grievance_type;
     const sets: string[] = []; const params: unknown[] = [];
     for (const f of fields) {
       if (f in body) { sets.push(`${f} = ?`); params.push(body[f]); }
@@ -1589,6 +1592,39 @@ hr.post('/attendance', requireRole(...MANAGER_ROLES), async (c) => {
   } catch (err) {
     console.error('[hr] POST /attendance', err);
     return c.json({ error: 'Failed to create attendance record', code: 'HR_ATTEND_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/attendance/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const ALLOWED = new Set(['type', 'date', 'minutes_late', 'reason', 'excused', 'documented_by']);
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, v] of Object.entries(body ?? {})) {
+      if (ALLOWED.has(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    }
+    if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+    vals.push(id);
+    await execute(db, `UPDATE hr_attendance SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] PUT /attendance/:id', err);
+    return c.json({ error: 'Failed to update attendance record', code: 'HR_ATTEND_UPDATE_ERR' }, 500);
+  }
+});
+
+hr.delete('/attendance/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM hr_attendance WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /attendance/:id', err);
+    return c.json({ error: 'Failed to delete attendance record', code: 'HR_ATTEND_DELETE_ERR' }, 500);
   }
 });
 

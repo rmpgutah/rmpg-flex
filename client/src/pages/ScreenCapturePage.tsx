@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Camera, Clipboard, Save, Tag, Square, Trash2, Paperclip, AlertCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
+import { apiHttpBase } from '../utils/apiOrigin';
 import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -258,8 +259,9 @@ export default function ScreenCapturePage() {
       const fd = new FormData();
       fd.append('photo', blob, filename);
       fd.append('source', 'screen_capture');
+      fd.append('call_id', String(activeCallId));
 
-      await fetch(`${(window as any).__RMPG_API_BASE__ ?? 'https://api.rmpgutah.us'}/api/calls/${activeCallId}/field-photos`, {
+      await fetch(`${apiHttpBase()}/api/field-photos`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${localStorage.getItem('rmpg_token') ?? ''}`,
@@ -606,7 +608,7 @@ export default function ScreenCapturePage() {
                 borderRadius: 1,
                 pointerEvents: 'none',
                 letterSpacing: '0.04em',
-                fontFamily: 'monospace',
+                fontFamily: 'Arial, sans-serif',
               }}
             >
               {watermarkText}

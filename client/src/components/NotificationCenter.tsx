@@ -341,7 +341,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               fontSize: '9px',
               fontWeight: 700,
               lineHeight: 1,
-              fontFamily: 'monospace',
+              fontFamily: 'Arial, sans-serif',
               boxShadow: '0 0 6px currentColor',
             }}
           >
@@ -510,7 +510,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         className="text-green-400"
                         style={{
                           fontSize: '9px',
-                          fontFamily: 'monospace',
+                          fontFamily: 'Arial, sans-serif',
                           lineHeight: '12px',
                           opacity: 0.7,
                         }}

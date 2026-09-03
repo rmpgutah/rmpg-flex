@@ -22,6 +22,7 @@ import {
   MapPin,
   Navigation,
   RefreshCw,
+  Route,
   Trophy,
   XCircle,
 } from 'lucide-react';
@@ -30,6 +31,8 @@ import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
+import { useServeRunOptimization } from './hooks/useServeRunOptimization';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -116,9 +119,11 @@ interface RunJobRowProps {
   onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
   navigate: NavigateFunction;
   routeStop?: number;
+  /** Formatted ETA string from optimization (shown next to the address). */
+  eta?: string;
 }
 
-function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop }: RunJobRowProps) {
+function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }: RunJobRowProps) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
 
@@ -180,6 +185,9 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop }: Run
           {job.recipient_address
             ? [job.recipient_address, job.recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
             : '— no address —'}
+          {eta && (
+            <span className="ml-1.5 text-[9px] text-brand-400 font-medium">ETA {eta}</span>
+          )}
         </div>
         {job.deadline && (
           <div className="text-[9px] text-rmpg-600 mt-0.5">
@@ -661,6 +669,66 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
     return groups;
   }, [todayOfficerJobs, routeStopIndex]);
 
+  // ── Optimization V2 ───────────────────────────────────────────────────
+  const optRun = useServeRunOptimization();
+
+  // ETA lookup: jobId → formatted local time string
+  const etaByJobId = useMemo((): Map<number, string> => {
+    if (optRun.status !== 'complete') return new Map();
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const map = new Map<number, string>();
+    for (const stop of optRun.optimizedOrder) {
+      try {
+        map.set(stop.jobId, fmt.format(parseTimestamp(stop.eta)));
+      } catch {
+        // malformed ISO — skip
+      }
+    }
+    return map;
+  }, [optRun.status, optRun.optimizedOrder]);
+
+  // When optimization completes, reorder pending jobs to match the optimized sequence.
+  // Non-routed pending jobs stay at the end; other folders are unaffected.
+  const pendingJobsForDisplay = useMemo((): ServeJob[] => {
+    const pending = byFolder.pending;
+    if (optRun.status !== 'complete' || optRun.optimizedOrder.length === 0) return pending;
+    const orderMap = new Map(optRun.optimizedOrder.map((s, i) => [s.jobId, i]));
+    return [...pending].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? Infinity;
+      const bi = orderMap.get(b.id) ?? Infinity;
+      return ai - bi;
+    });
+  }, [byFolder.pending, optRun.status, optRun.optimizedOrder]);
+
+  // Queue jobs that have coordinates (prerequisite for routing)
+  const routableQueueCount = useMemo(
+    () => byFolder.pending.filter((j) => j.recipient_lat != null && j.recipient_lng != null).length,
+    [byFolder.pending],
+  );
+
+  // Denver shift window helpers for today
+  function denverShiftTimes(): { shiftStart: string; shiftEnd: string } {
+    const now = new Date();
+    const ymd = now.toLocaleDateString('en-CA', { timeZone: 'America/Denver' }); // YYYY-MM-DD
+    return {
+      shiftStart: `${ymd}T06:00:00-06:00`,
+      shiftEnd:   `${ymd}T18:00:00-06:00`,
+    };
+  }
+
+  const handleOptimize = useCallback(() => {
+    const { shiftStart, shiftEnd } = denverShiftTimes();
+    // TODO: wire officerUnitId from auth context when available
+    const officerUnitId = 0;
+    // TODO: wire serveRouteId from active route when available
+    const serveRouteId = 0;
+    void optRun.startOptimization(byFolder.pending, officerUnitId, shiftStart, shiftEnd, serveRouteId);
+  }, [optRun, byFolder.pending]);
+
   // ─────────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────────
@@ -712,6 +780,50 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
         </div>
       )}
 
+      {/* ── Optimize Run toolbar ─────────────────────────────────── */}
+      {routableQueueCount >= 2 && (
+        <div className="px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken flex items-center gap-2">
+          {(optRun.status === 'idle' || optRun.status === 'error') && (
+            <button
+              type="button"
+              onClick={handleOptimize}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-transparent border border-brand-400/40 rounded-[2px] hover:bg-brand-400/10 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-brand-400/40"
+              aria-label="Optimize route order"
+            >
+              <Route size={11} />
+              Optimize Route
+            </button>
+          )}
+          {(optRun.status === 'pending' || optRun.status === 'processing') && (
+            <span className="flex items-center gap-1.5 text-[10px] text-blue-400 animate-pulse">
+              <Loader2 size={10} className="animate-spin" />
+              Optimizing…
+            </span>
+          )}
+          {optRun.status === 'complete' && (
+            <>
+              <span className="text-[9px] text-rmpg-500">Route optimized</span>
+              <button
+                type="button"
+                onClick={optRun.reset}
+                className="text-[9px] text-rmpg-600 hover:text-rmpg-400 transition-colors focus:outline-none ml-auto"
+                aria-label="Clear optimization"
+              >
+                Clear
+              </button>
+            </>
+          )}
+          {optRun.status === 'error' && (
+            <span className="text-[9px] text-red-400 ml-1">Optimization failed</span>
+          )}
+          {optRun.status === 'complete' && optRun.droppedJobIds.length > 0 && (
+            <span className="text-[9px] text-amber-400 ml-auto">
+              {optRun.droppedJobIds.length} job{optRun.droppedJobIds.length === 1 ? '' : 's'} could not be optimally scheduled
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ── Scrollable body ──────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark">
         <div className="p-3 space-y-3">
@@ -733,7 +845,8 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
           {/* ── Folder-grouped job list ─────────────────────────── */}
           <div className="space-y-2">
             {FOLDER_ORDER.map((folder) => {
-              const folderJobs = byFolder[folder];
+              // Use the optimized order for pending jobs when available
+              const folderJobs = folder === 'pending' ? pendingJobsForDisplay : byFolder[folder];
               const cfg = SERVE_FOLDER_CONFIG[folder];
               // Skip the archived folder entirely if it's empty
               if (folder === 'archived' && folderJobs.length === 0) return null;
@@ -754,6 +867,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
                       onOptimisticUpdate={handleOptimisticUpdate}
                       navigate={navigate}
                       routeStop={routeStopIndex.get(job.id)}
+                      eta={folder === 'pending' ? etaByJobId.get(job.id) : undefined}
                     />
                   ))}
                 </ServeStatusFolder>

@@ -18,33 +18,33 @@ interface VerifyResponse {
   message: string;
 }
 
-// ── Design tokens (Navy/Silver — matches app Blue & Silver theme) ──
-// Surface: deep navy  |  Accent: cool silver  |  Text: near-white
+// ── Design tokens — matches the Acknowledgement wizard dark palette ──
+// Page: #141414 (same as bg-white override)  |  Card: raised dark surface
 const C = {
-  pageBg:      '#1a3050',
-  cardBg:      '#22405f',
-  cardBorder:  'rgba(191,202,215,0.12)',   // silver-500 / 12%
-  eyebrow:     'rgba(207,216,226,0.5)',    // silver-400 / 50%
-  agencyName:  '#cfd8e2',                  // silver-400
-  refBadgeBg:  'rgba(0,0,0,0.22)',
-  refBadgeBdr: 'rgba(207,216,226,0.2)',
-  refBadgeTxt: 'rgba(207,216,226,0.85)',
-  verifiedBg:  'rgba(34,160,100,0.12)',
-  verifiedBdr: 'rgba(34,160,100,0.3)',
-  verifiedTxt: '#5de0a0',
-  bodyTxt:     'rgba(240,244,249,0.72)',
-  divider:     'rgba(191,202,215,0.12)',
-  callBtnBg:   '#2d5a8a',
-  callBtnTxt:  '#f0f4f9',
-  callBtnBdr:  'rgba(207,216,226,0.12)',
-  locBtnBg:    'rgba(207,216,226,0.06)',
-  locBtnTxt:   'rgba(207,216,226,0.6)',
-  locBtnBdr:   'rgba(207,216,226,0.14)',
-  noteTxt:     'rgba(207,216,226,0.35)',
-  footerTxt:   'rgba(207,216,226,0.28)',
-  successTxt:  '#5de0a0',
-  spinnerBdr:  'rgba(207,216,226,0.15)',
-  spinnerAcct: '#cfd8e2',
+  pageBg:      '#141414',
+  cardBg:      '#1c1c1c',
+  cardBorder:  'rgba(255,255,255,0.07)',
+  eyebrow:     'rgba(156,163,175,0.65)',
+  agencyName:  '#f0f4f9',
+  refBadgeBg:  'rgba(255,255,255,0.05)',
+  refBadgeBdr: 'rgba(255,255,255,0.12)',
+  refBadgeTxt: 'rgba(209,213,219,0.75)',
+  verifiedBg:  'rgba(34,197,94,0.1)',
+  verifiedBdr: 'rgba(34,197,94,0.25)',
+  verifiedTxt: '#4ade80',
+  bodyTxt:     'rgba(209,213,219,0.8)',
+  divider:     'rgba(255,255,255,0.07)',
+  callBtnBg:   '#2563eb',
+  callBtnTxt:  '#ffffff',
+  callBtnBdr:  'rgba(37,99,235,0.4)',
+  locBtnBg:    'rgba(255,255,255,0.04)',
+  locBtnTxt:   'rgba(156,163,175,0.7)',
+  locBtnBdr:   'rgba(255,255,255,0.1)',
+  noteTxt:     'rgba(156,163,175,0.65)',
+  footerTxt:   'rgba(156,163,175,0.4)',
+  successTxt:  '#4ade80',
+  spinnerBdr:  'rgba(255,255,255,0.1)',
+  spinnerAcct: 'rgba(255,255,255,0.55)',
 };
 
 const S: Record<string, React.CSSProperties> = {
@@ -56,15 +56,15 @@ const S: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'flex-start',
     padding: '24px 16px 40px',
-    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+    fontFamily: 'Arial, sans-serif',
   },
   card: {
     background: C.cardBg,
-    borderRadius: 6,
+    borderRadius: 2,
     padding: '28px 24px 24px',
     maxWidth: 480,
     width: '100%',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
     border: `1px solid ${C.cardBorder}`,
   },
   eyebrow: {
@@ -123,11 +123,11 @@ const S: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     background: C.callBtnBg,
     color: C.callBtnTxt,
-    borderRadius: 5,
+    borderRadius: 2,
     padding: '14px 20px',
     textDecoration: 'none',
     fontWeight: 700,
-    fontSize: 16,
+    fontSize: 15,
     letterSpacing: '0.01em',
     border: `1px solid ${C.callBtnBdr}`,
   },
@@ -139,7 +139,7 @@ const S: Record<string, React.CSSProperties> = {
     background: C.locBtnBg,
     color: C.locBtnTxt,
     border: `1px solid ${C.locBtnBdr}`,
-    borderRadius: 5,
+    borderRadius: 2,
     padding: '11px 16px',
     fontSize: 13,
     fontWeight: 500,
@@ -423,10 +423,28 @@ export default function VerifyNoticePage() {
 
   const keyframes = `@keyframes spin { to { transform: rotate(360deg) } }`;
 
+  const pageHeader = (
+    <div style={{
+      width: '100%',
+      maxWidth: 480,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '12px 4px',
+      marginBottom: 8,
+      borderBottom: `1px solid ${C.divider}`,
+    }}>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.eyebrow }}>RMPG</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: C.bodyTxt }}>Notice of Attempt</span>
+      <span style={{ width: 36 }} />
+    </div>
+  );
+
   if (error) {
     return (
       <div style={S.page}>
         <style>{keyframes}</style>
+        {pageHeader}
         <div style={S.card}>
           <div style={S.eyebrow}>State of Utah · Private Process Server</div>
           <div style={S.agencyName}>Rocky Mountain Protective Group</div>
@@ -447,6 +465,7 @@ export default function VerifyNoticePage() {
     return (
       <div style={S.page}>
         <style>{keyframes}</style>
+        {pageHeader}
         <div style={{ ...S.card, textAlign: 'center', padding: '40px 24px' }}>
           <div style={S.spinner} />
           <div style={{ marginTop: 16, color: C.noteTxt, fontSize: 13 }}>
@@ -460,6 +479,7 @@ export default function VerifyNoticePage() {
   return (
     <div style={S.page}>
       <style>{keyframes}</style>
+      {pageHeader}
       <div style={S.card}>
         <div style={S.eyebrow}>State of Utah · Private Process Server</div>
         <div style={S.agencyName}>{data.agency}</div>

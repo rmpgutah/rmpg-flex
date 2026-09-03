@@ -90,7 +90,7 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
-import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -98,7 +98,10 @@ import { routeJsonColumn } from '../utils/serveRoutePayload';
 let scheduleSchemaReconciled = false;
 async function reconcileScheduleSchema(db: D1Database): Promise<void> {
   if (scheduleSchemaReconciled) return;
-  scheduleSchemaReconciled = true;
+  // Set flag ONLY after all DDL succeeds — same pattern as ensureQualityGateColumns.
+  // Setting it before means a failed ALTER on one cold-start permanently skips
+  // reconciliation for the lifetime of that isolate.
+  let allOk = true;
 
   // serve_attempt_schedules columns from migration 0140
   for (const [name, type] of [
@@ -112,7 +115,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
   }
 
   // serve_queue columns from migration 0140
@@ -125,7 +128,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
   }
 
   // PR 2: updated_at for optimistic concurrency on PATCH /schedule/:slotId
@@ -136,8 +139,10 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
   }
+
+  if (allOk) scheduleSchemaReconciled = true;
 }
 
 // ── Migration 0152 runtime reconciler ───────────────────────
@@ -323,7 +328,7 @@ async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | 
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
   const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
-  await putEncrypted(env.UPLOADS, getDb(env), env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
+  await putEncrypted(env.UPLOADS, getDb(env), env, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
   });
   return key;
@@ -1476,21 +1481,23 @@ si.get('/documents/:docId/file', async (c) => {
     docId,
   );
   if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-  // getDecrypted() cleanly returns null when there's no file_encryption_keys
-  // row (the legacy pre-encryption case — this feature has been live, and
-  // production R2 already holds serve-intake/ objects written before this
-  // task shipped). A genuine decrypt failure (bad KEK, tampered ciphertext)
-  // THROWS instead and must propagate as a real error, not silently fall
-  // back to raw bytes — so this is deliberately NOT wrapped in .catch().
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
-  if (decrypted) {
-    return new Response(decrypted.bytes, {
-      headers: {
-        'Content-Type': doc.file_type || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
-        'Cache-Control': 'private, max-age=300',
-      },
-    });
+  try {
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
+    if (decrypted) {
+      return new Response(decrypted.bytes, {
+        headers: {
+          'Content-Type': doc.file_type || 'application/octet-stream',
+          'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
+          'Cache-Control': 'private, max-age=300',
+        },
+      });
+    }
+  } catch (err) {
+    if (err instanceof FileEncryptionError) {
+      log.error('Serve-intake document decrypt failed', { docId }, err);
+      return c.json({ error: 'File storage is temporarily unavailable. Contact a supervisor.', code: 'ENCRYPTION_FAILED' }, 503);
+    }
+    throw err;
   }
   const legacy = await c.env.UPLOADS.get(doc.r2_key);
   if (!legacy) return c.json({ error: 'File missing in R2' }, 404);
@@ -1521,7 +1528,7 @@ async function reprocessDocument(
     // objects written before this task shipped); it THROWS for a genuine
     // decrypt failure, which is deliberately left uncaught here so it
     // propagates as a real error instead of masquerading as "no image".
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
     let bytes: Uint8Array | null = decrypted ? decrypted.bytes : null;
     if (!bytes) {
       const legacy = await c.env.UPLOADS.get(doc.r2_key);
@@ -1723,7 +1730,8 @@ si.get('/', async (c) => {
   if (priority) { where.push('priority = ?'); args.push(priority); }
   if (search) {
     where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    args.push(s, s, s);
   }
   const sql = `
     SELECT q.*, u.full_name AS officer_name
@@ -2783,8 +2791,23 @@ si.get('/:id/skip-trace', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
-  const rows = await query(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
-  return c.json({ data: rows });
+  const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
+  const data = rows.map((row: Record<string, unknown>) => {
+    let addresses_found: unknown[] = [];
+    const raw = row.addresses_found_json;
+    if (typeof raw === 'string' && raw.trim()) {
+      try { addresses_found = JSON.parse(raw); } catch { addresses_found = []; }
+    } else if (Array.isArray(row.addresses_found)) {
+      addresses_found = row.addresses_found as unknown[];
+    }
+    let results_json: unknown = row.results_json;
+    if (typeof results_json === 'string' && results_json.trim()) {
+      try { results_json = JSON.parse(results_json); } catch { /* keep string */ }
+    }
+    const { addresses_found_json: _drop, ...rest } = row;
+    return { ...rest, results_json, addresses_found };
+  });
+  return c.json({ data });
 });
 
 // ── POST /:id/skip-trace ────────────────────────────────────

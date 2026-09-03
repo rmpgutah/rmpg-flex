@@ -306,7 +306,36 @@ arrests.delete('/manual/:id', async (c) => {
   }
 });
 
-// ── GET /recent ─────────────────────────────────────────────
+// ── GET /status (Admin Arrests tile — not the old stub shape) ─
+arrests.get('/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const totalRow = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM arrest_records');
+    const lastRow = await queryFirst<{ t: string | null }>(
+      db,
+      `SELECT MAX(COALESCE(booking_date, fetched_at)) AS t FROM arrest_records`,
+    );
+    const counties = await query<{ county: string }>(
+      db,
+      `SELECT DISTINCT county AS county FROM arrest_records WHERE county IS NOT NULL AND county != ''`,
+    );
+    const countyList = counties.map((r) => r.county);
+    return c.json({
+      configured: true,
+      enabled: true,
+      enabledCounties: countyList,
+      lastSync: lastRow?.t ?? null,
+      recordsCount: totalRow?.n ?? 0,
+      countiesSynced: countyList.length,
+      status: 'ok',
+      lastError: null,
+    });
+  } catch (err) {
+    log.error('GET /status failed', { src: 'src/routes/arrests.ts' }, err);
+    return c.json({ error: 'Failed to load arrest status', code: 'ARREST_STATUS_ERROR' }, 500);
+  }
+});
+
 arrests.get('/recent', async (c) => {
   try {
     const db = getDb(c.env);
@@ -331,7 +360,12 @@ arrests.get('/recent', async (c) => {
        ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT ? OFFSET ?`,
       ...params, limit, offset,
     );
-    return c.json({ data: await enrichLinkedPersons(db, rows), total: totalRow?.n ?? rows.length });
+    const enriched = await enrichLinkedPersons(db, rows);
+    return c.json({
+      data: enriched,
+      records: enriched,
+      total: totalRow?.n ?? rows.length,
+    });
   } catch (err) {
     log.error('GET /recent failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to list recent arrests', code: 'RECENT_ARRESTS_ERROR' }, 500);
@@ -341,8 +375,8 @@ arrests.get('/recent', async (c) => {
 // ── GET /search?q= ──────────────────────────────────────────
 arrests.get('/search', async (c) => {
   try {
-    const q = (c.req.query('q') ?? '').trim();
-    if (q.length < 2) return c.json({ data: [] });
+    const q = (c.req.query('q') ?? c.req.query('name') ?? '').trim();
+    if (q.length < 2) return c.json({ data: [], records: [], resultCount: 0 });
     const db = getDb(c.env);
     const m = containsAnyClause(['full_name', 'first_name', 'last_name', 'booking_number']);
     const rows = await query<Record<string, unknown>>(
@@ -351,7 +385,8 @@ arrests.get('/search', async (c) => {
        ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT 100`,
       ...m.binds(q),
     );
-    return c.json({ data: await enrichLinkedPersons(db, rows) });
+    const enriched = await enrichLinkedPersons(db, rows);
+    return c.json({ data: enriched, records: enriched, resultCount: enriched.length });
   } catch (err) {
     log.error('GET /search failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to search arrests', code: 'SEARCH_ARRESTS_ERROR' }, 500);

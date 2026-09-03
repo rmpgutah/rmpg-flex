@@ -41,7 +41,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -80,6 +80,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
             map.remove();
             return;
           }
+          onMapLoaded(map);
           map.addSource(REMAINING_SOURCE_ID, { type: 'geojson', data: emptyLineFeature() });
           map.addLayer({
             id: REMAINING_LAYER_ID,

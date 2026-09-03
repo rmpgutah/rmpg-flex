@@ -30,6 +30,7 @@ import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import { toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { downloadTextFile, fleetListToCsv } from '../../utils/rmsListExport';
 
 // ------------------------------------------------------------
 // Types — mirror the JSON shapes returned by src/routes/fleetViz.ts
@@ -166,6 +167,7 @@ export default function FleetDashboardPage() {
 
   const [period, setPeriod] = useState<Period>('30d');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [kpi, setKpi] = useState<KpiData | null>(null);
   const [readiness, setReadiness] = useState<ReadinessRow[]>([]);
@@ -183,6 +185,7 @@ export default function FleetDashboardPage() {
 
   const load = useCallback(async (p: Period) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const q = `?period=${p}`;
       const [
@@ -208,7 +211,9 @@ export default function FleetDashboardPage() {
       setWoFlow(woRes.nodes || []);
       setFuelAnomalies((anomRes.data || []).filter((r) => r.flagged));
     } catch (err) {
-      addToast(err instanceof Error ? `Failed to load fleet dashboard: ${err.message}` : 'Failed to load fleet dashboard', 'error');
+      const msg = err instanceof Error ? `Failed to load fleet dashboard: ${err.message}` : 'Failed to load fleet dashboard';
+      setLoadError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -247,7 +252,7 @@ export default function FleetDashboardPage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -274,7 +279,7 @@ export default function FleetDashboardPage() {
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        const markReady = () => { if (!cancelled) setMapLoaded(true); };
+        const markReady = () => { if (!cancelled) { onMapLoaded(map); setMapLoaded(true); } };
         map.on('load', markReady);
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setMapError(e.error?.message || 'Map error'); });
@@ -337,11 +342,28 @@ export default function FleetDashboardPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={readiness.length === 0}
+          onClick={() => downloadTextFile('fleet-readiness.csv', fleetListToCsv(readiness.map((r) => ({
+            unit: r.vehicle_number,
+            status: r.status,
+            make: '',
+            model: '',
+            plate: '',
+          }))))}
+        >CSV</button>
       </PanelTitleBar>
 
       {loading && !kpi ? (
         <div className="flex items-center justify-center gap-2 text-fg-muted py-10 text-xs">
           <Loader2 className="w-5 h-5 animate-spin" role="status" aria-label="Loading dashboard" /> Loading fleet dashboard...
+        </div>
+      ) : !kpi && loadError ? (
+        <div className="text-center py-10 space-y-2" role="alert">
+          <div className="text-[color:var(--sev-critical)] text-sm">{loadError}</div>
+          <button type="button" className="toolbar-btn" onClick={() => { void load(period); }}>Retry</button>
         </div>
       ) : (
         <>

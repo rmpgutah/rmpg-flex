@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
@@ -20,7 +20,7 @@ const CHART_TOOLTIP_STYLE = {
     border: '1px solid var(--border-default)',
     color: 'var(--text-primary)',
     fontSize: 10,
-    fontFamily: 'Consolas, monospace',
+    fontFamily: 'Arial, sans-serif',
     borderRadius: 2,
   },
 };
@@ -187,6 +187,8 @@ function InfoTooltip({ text }: { text: string }) {
 
 export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }: Props) {
   useEffect(() => { document.title = 'Fleet - Analytics \u2014 RMPG Flex'; }, []);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const [period, setPeriod] = useState('90d');
 
@@ -218,23 +220,29 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
   // Fetch health scores
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ health_scores: HealthScoreItem[] }>('/fleet/health-scores')
-      .then((d) => d?.health_scores && setHealthScores(d.health_scores))
+      .then((d) => { if (!cancelled && d?.health_scores) setHealthScores(d.health_scores); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch maintenance schedule
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ schedule: MaintenanceScheduleItem[] }>('/fleet/maintenance-schedule')
-      .then((d) => d?.schedule && setMaintSchedule(d.schedule))
+      .then((d) => { if (!cancelled && d?.schedule) setMaintSchedule(d.schedule); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch driver performance
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ drivers: DriverPerformanceItem[] }>('/fleet/driver-performance')
-      .then((d) => d?.drivers && setDriverPerf(d.drivers))
+      .then((d) => { if (!cancelled && d?.drivers) setDriverPerf(d.drivers); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Sorted health scores
@@ -251,32 +259,38 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   [maintSchedule]);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ all_alerts: FleetServiceAlert[] }>('/fleet/service-alerts')
-      .then((d) => d?.all_alerts && setServiceAlerts(d.all_alerts))
+      .then((d) => { if (!cancelled && d?.all_alerts) setServiceAlerts(d.all_alerts); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch cost trends
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ cost_trends: CostTrendItem[] }>('/fleet/cost-trends')
-      .then((d) => d?.cost_trends && setCostTrends(d.cost_trends))
+      .then((d) => { if (!cancelled && d?.cost_trends) setCostTrends(d.cost_trends); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch vehicle lifecycle
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ lifecycle: LifecycleItem[] }>('/fleet/vehicle-lifecycle')
-      .then((d) => d?.lifecycle && setLifecycle(d.lifecycle))
+      .then((d) => { if (!cancelled && d?.lifecycle) setLifecycle(d.lifecycle); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch all vehicles list for comparison selector
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ vehicles: FleetVehicleOption[] }>('/fleet?limit=500&fields=id,vehicle_number,make,model')
-      .then((d) => {
-        if (d?.vehicles) setAllVehicles(d.vehicles);
-      })
+      .then((d) => { if (!cancelled && d?.vehicles) setAllVehicles(d.vehicles); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const handlePeriodChange = useCallback((newPeriod: string) => {
@@ -288,9 +302,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     if (selectedIds.length < 2 || selectedIds.length > 5) return;
     setCompareLoading(true);
     apiFetch<{ vehicles: ComparisonVehicle[] }>(`/fleet/vehicle-comparison?ids=${selectedIds.join(',')}`)
-      .then((d) => d?.vehicles && setComparisonResults(d.vehicles))
+      .then((d) => { if (mountedRef.current && d?.vehicles) setComparisonResults(d.vehicles); })
       .catch(() => {})
-      .finally(() => setCompareLoading(false));
+      .finally(() => { if (mountedRef.current) setCompareLoading(false); });
   }, [selectedIds]);
 
   const toggleVehicleSelection = useCallback((id: number) => {
@@ -339,34 +353,42 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   }, [dailyGpsMileage]);
 
   useEffect(() => {
-    apiFetch<any>('/fleet/fleet-cost-analytics').then((d: any) => d && setCostAnalytics(d)).catch(() => {});
-    apiFetch<any>('/fleet/inspection-stats').then((d: any) => d && setInspectionStats(d)).catch(() => {});
-    apiFetch<any>('/fleet/notifications').then((d: any) => d?.notifications && setNotifications(d.notifications)).catch(() => {});
-    apiFetch<any>('/fleet/overdue-inspections').then((d: any) => d?.alerts && setOverdueInspections(d.alerts)).catch(() => {});
-    apiFetch<any>('/fleetio/analytics').then((d: any) => d && !d.error && setFleetioAnalytics(d)).catch(() => {});
+    let cancelled = false;
+    apiFetch<any>('/fleet/fleet-cost-analytics').then((d: any) => { if (!cancelled && d) setCostAnalytics(d); }).catch(() => {});
+    apiFetch<any>('/fleet/inspection-stats').then((d: any) => { if (!cancelled && d) setInspectionStats(d); }).catch(() => {});
+    apiFetch<any>('/fleet/notifications').then((d: any) => { if (!cancelled && d?.notifications) setNotifications(d.notifications); }).catch(() => {});
+    apiFetch<any>('/fleet/overdue-inspections').then((d: any) => { if (!cancelled && d?.alerts) setOverdueInspections(d.alerts); }).catch(() => {});
+    apiFetch<any>('/fleetio/analytics').then((d: any) => { if (!cancelled && d && !d.error) setFleetioAnalytics(d); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch combined cost trend (12 months)
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ combined_cost_trend: any[] }>('/fleet/combined-cost-trend')
-      .then((d) => d?.combined_cost_trend && setCombinedCostTrend(d.combined_cost_trend))
+      .then((d) => { if (!cancelled && d?.combined_cost_trend) setCombinedCostTrend(d.combined_cost_trend); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch monthly spend (8 months)
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ monthly_spend: any[] }>('/fleet/monthly-spend?months=8')
-      .then((d) => d?.monthly_spend && setMonthlySpend(d.monthly_spend))
+      .then((d) => { if (!cancelled && d?.monthly_spend) setMonthlySpend(d.monthly_spend); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Fetch daily GPS mileage (30 days)
   useEffect(() => {
+    let cancelled = false;
     setDailyGpsLoading(true);
     apiFetch<{ daily_mileage: any[] }>('/fleet/daily-gps-mileage?days=30')
-      .then((d) => d?.daily_mileage && setDailyGpsMileage(d.daily_mileage))
+      .then((d) => { if (!cancelled && d?.daily_mileage) setDailyGpsMileage(d.daily_mileage); })
       .catch(() => {})
-      .finally(() => setDailyGpsLoading(false));
+      .finally(() => { if (!cancelled) setDailyGpsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
 

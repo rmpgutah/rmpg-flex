@@ -97,7 +97,15 @@ crm.get('/tasks', async (c) => {
     const db = getDb(c.env);
     // Honor the client's status filter (comma-separated). Only exclude completed
     // by default (no param); selecting Completed/Cancelled/All must work.
-    const statuses = (c.req.query('status') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    // Allowlist against the known crm_tasks statuses (mirrors the ARCHIVABLE
+    // pattern in dispatch/calls.ts archive-bulk) so an attacker-supplied CSV
+    // can't inflate the IN() list or bind arbitrary values.
+    const VALID_TASK_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'];
+    const statuses = (c.req.query('status') || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => VALID_TASK_STATUSES.includes(s))
+      .slice(0, VALID_TASK_STATUSES.length);
     if (statuses.length) {
       const placeholders = statuses.map(() => '?').join(',');
       return c.json(await query(db,
@@ -105,7 +113,10 @@ crm.get('/tasks', async (c) => {
         ...statuses));
     }
     return c.json(await query(db, "SELECT * FROM crm_tasks WHERE status != 'completed' ORDER BY (due_date IS NULL), due_date, id DESC"));
-  } catch { return c.json([]); }
+  } catch (e) {
+    log.error('GET /tasks failed', { src: 'src/routes/crm.ts', status: c.req.query('status') ?? null }, e);
+    return c.json({ error: 'Failed to load tasks' }, 500);
+  }
 });
 crm.post('/tasks', async (c) => {
   try {

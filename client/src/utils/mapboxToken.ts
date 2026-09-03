@@ -15,6 +15,8 @@
 // directly from here instead.
 // ============================================================
 
+import { resolveApiHttpBase } from './apiOrigin';
+
 let _serverConfigPromise: Promise<{ accessToken?: string }> | null = null;
 let _fetchFailCount = 0;
 const MAX_FETCH_RETRIES = 3;
@@ -35,7 +37,11 @@ export async function fetchMapboxConfig(): Promise<{ accessToken?: string }> {
 
   _serverConfigPromise = (async () => {
     try {
-      const base = import.meta.env.VITE_API_BASE_URL || '';
+      const base = import.meta.env.VITE_API_BASE_URL
+        || resolveApiHttpBase({
+          isDev: Boolean(import.meta.env?.DEV),
+          hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+        });
       const res = await fetch(`${base}/api/integrations/mapbox/client-token`, {
         headers: { Authorization: `Bearer ${token}` },
       });

@@ -133,6 +133,8 @@ contextBridge.exposeInMainWorld('electron', {
   getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
   setKioskShell: (enabled) => ipcRenderer.invoke('device:set-kiosk-shell', enabled),
   getKioskShellState: () => ipcRenderer.invoke('device:kiosk-shell-state'),
+  /** Run a passive WiFi + Bluetooth RF scan. opts: { lat, lng, deviceId, callId } */
+  rfScan: (opts) => ipcRenderer.invoke('device:rf-scan', opts ?? {}),
   registerGlobalShortcut: (accelerator, actionId) => ipcRenderer.invoke('device:register-shortcut', accelerator, actionId),
   unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('device:unregister-shortcut', accelerator),
   onShortcutTriggered: (callback) => {
@@ -142,13 +144,11 @@ contextBridge.exposeInMainWorld('electron', {
   },
   getDisplays: () => ipcRenderer.invoke('device:displays'),
 
-  // Barcode scanner (FZ-VBR551M xPAK) — HID keyboard-wedge input classified
-  // in main.js and pushed here as a single scanned payload per burst.
-  onBarcodeScanned: (callback) => {
-    const handler = (_e, payload) => callback(payload);
-    ipcRenderer.on('hardware:barcode-scanned', handler);
-    return () => ipcRenderer.removeListener('hardware:barcode-scanned', handler);
-  },
+  // NOTE: barcode scanner (FZ-VBR551M xPAK) input arrives via onBarcodeScan
+  // below (channel 'hardware:barcode-scan'). A duplicate `onBarcodeScanned`
+  // API listening on 'hardware:barcode-scanned' (extra "ned") lived here with
+  // no caller anywhere in the app and no matching sender in main.js — removed
+  // as dead code rather than fixed, since onBarcodeScan already covers this.
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
@@ -187,6 +187,22 @@ contextBridge.exposeInMainWorld('electron', {
     const handler = (_e, err) => callback(err);
     ipcRenderer.on('geo:internal-gps-error', handler);
     return () => ipcRenderer.removeListener('geo:internal-gps-error', handler);
+  },
+  // Satellite count/signal from $GPGSV — main.js forwards InternalGps's own
+  // 'gps:constellation' event under this channel. No consumer wired yet;
+  // exposed so main.js's send isn't dropped with zero listeners.
+  onGpsConstellation: (callback) => {
+    const handler = (_e, c) => callback(c);
+    ipcRenderer.on('geo:internal-gps-constellation', handler);
+    return () => ipcRenderer.removeListener('geo:internal-gps-constellation', handler);
+  },
+  // Fired from the USB hot-plug re-detect handler when a GPS-looking serial
+  // device is plugged in. No consumer wired yet; exposed so the send isn't
+  // dropped with zero listeners.
+  onGpsPlugged: (callback) => {
+    const handler = (_e, info) => callback(info);
+    ipcRenderer.on('hardware:gps-plugged', handler);
+    return () => ipcRenderer.removeListener('hardware:gps-plugged', handler);
   },
 
   // ─── Auto-Update API ────────────────────────────────
@@ -265,6 +281,18 @@ contextBridge.exposeInMainWorld('electron', {
   getBattery: () => ipcRenderer.invoke('system:get-battery'),
   getNetwork: () => ipcRenderer.invoke('system:get-network'),
   setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+
+  // ─── WiFi Selector ──────────────────────────────────────
+  // Full detail for the currently-connected network (IP, gateway, DNS, channel, etc.)
+  wifiGetDetail:    ()              => ipcRenderer.invoke('wifi:get-detail'),
+  // Scan all visible SSIDs with signal strength, security, channel
+  wifiScanNetworks: ()              => ipcRenderer.invoke('wifi:scan-networks'),
+  // List saved Windows WLAN profiles (connectable without credentials)
+  wifiListProfiles: ()              => ipcRenderer.invoke('wifi:list-profiles'),
+  // Connect to a saved profile by name
+  wifiConnect:      (profile)       => ipcRenderer.invoke('wifi:connect', { profile }),
+  // Disconnect from the current wireless network
+  wifiDisconnect:   ()              => ipcRenderer.invoke('wifi:disconnect'),
 
   // ─── Auth Session Bridge ────────────────────────────────
   // Called by AuthContext.tsx right after login/2FA/token-refresh so the
@@ -382,5 +410,21 @@ contextBridge.exposeInMainWorld('electron', {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on('hardware:barcode-scan', handler);
     return () => ipcRenderer.removeListener('hardware:barcode-scan', handler);
+  },
+
+  // ─── Thermal / connectivity signals ──────────────────────────
+  // Fired when the Toughbook's thermal zone exceeds 185°F. No consumer
+  // wired yet; exposed so the send isn't dropped with zero listeners.
+  onThermalAlert: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('hardware:thermal-alert', handler);
+    return () => ipcRenderer.removeListener('hardware:thermal-alert', handler);
+  },
+  // Fired when the app fails over from WiFi to WWAN. No consumer wired yet;
+  // exposed so the send isn't dropped with zero listeners.
+  onConnectivityFailover: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('connectivity:failover', handler);
+    return () => ipcRenderer.removeListener('connectivity:failover', handler);
   },
 });

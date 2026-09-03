@@ -80,7 +80,8 @@ accreditations.post('/', async (c) => {
 accreditations.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const body = await c.req.json<{
       type?: string; issuing_body?: string; certificate_number?: string;
       issued_date?: string; expiration_date?: string; status?: string; notes?: string;
@@ -111,7 +112,10 @@ accreditations.put('/:id', async (c) => {
 accreditations.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, 'DELETE FROM accreditations WHERE id = ?', c.req.param('id'));
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(db, 'DELETE FROM accreditations WHERE id = ?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     return dbErrorResponse(c, err, 'Failed to delete accreditation');

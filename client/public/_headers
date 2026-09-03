@@ -25,9 +25,9 @@
 
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), payment=()
+  Permissions-Policy: camera=(self), microphone=(self "https://dialer.rmpgutah.us"), geolocation=(self), autoplay=(self "https://dialer.rmpgutah.us"), payment=()
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   X-Content-Type-Options: nosniff
-  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
   Cross-Origin-Resource-Policy: same-origin

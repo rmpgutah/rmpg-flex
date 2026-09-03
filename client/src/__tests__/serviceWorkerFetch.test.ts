@@ -128,6 +128,43 @@ describe('service worker fetch handler — transient failure vs. genuine offline
     expect(await response?.text()).not.toContain('Connection Lost');
   });
 
+  it('serves the cached SPA shell for /login?return= when the network fails', async () => {
+    // Precache key is `/`. A login URL with a query string used to miss and
+    // become 503 Offline even though the shell was already cached.
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const { listeners } = loadServiceWorker(
+      fetchMock,
+      new Response('<!doctype html>login shell', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    );
+
+    const response = await dispatchAndSettle(
+      listeners,
+      makeFetchEvent(`${ORIGIN}/login?return=%2F`, { mode: 'navigate' }),
+    );
+
+    expect(response?.status).toBe(200);
+    expect(await response?.text()).toContain('login shell');
+  });
+
+  it('strips Cloudflare Insights beacon tags from navigated HTML', async () => {
+    vi.useFakeTimers();
+    const html = '<!doctype html><html><body>ok<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925"></script></body></html>';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(html, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' },
+    }));
+    const { listeners } = loadServiceWorker(fetchMock);
+    const response = await dispatchAndSettle(
+      listeners,
+      makeFetchEvent(`${ORIGIN}/login?return=%2F`, { mode: 'navigate' }),
+    );
+    const body = await response?.text();
+    expect(body).toContain('ok');
+    expect(body).not.toContain('cloudflareinsights');
+    expect(body).not.toContain('beacon.min.js');
+  });
+
   it('falls back to the Connection Lost card when a navigation is truly offline', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
@@ -166,6 +203,7 @@ describe('service worker fetch handler — requests it must decline', () => {
   // refactor from quietly taking ownership of third-party requests.
   it.each([
     ['cross-origin telemetry', 'https://static.cloudflareinsights.com/beacon.min.js'],
+    ['cross-origin telemetry hashed', 'https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925'],
     ['cross-origin dialer iframe', 'https://dialer.rmpgutah.us/dialer'],
   ])('does not respond to %s', async (_label, url) => {
     vi.useFakeTimers();

@@ -1,0 +1,90 @@
+# Apply one D1 migration file to live `rmpg-flex` and mark it tracked.
+#
+# Why this exists: `deploy.yml` runs `wrangler d1 migrations apply --remote`
+# against EVERY untracked file. That aborts at the first bare ALTER that
+# already exists on live (today: 0227 starting_mileage), so later files
+# like 0270 never run. This workflow executes a single file via
+# `d1 execute --file` — the same path as scripts/apply-migration.sh.
+#
+# Usage:
+#   gh workflow run apply-d1-migration.yml -f filename=0270_tesseract_box_page_number.sql
+
+name: Apply D1 migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      filename:
+        description: 'File under migrations/ (e.g. 0270_tesseract_box_page_number.sql)'
+        required: true
+        type: string
+        default: 0270_tesseract_box_page_number.sql
+  # First-merge bootstrap: opening/updating a PR that adds this workflow
+  # applies 0270 so we do not wait for a second dispatch after it lands on main.
+  pull_request:
+    paths:
+      - '.github/workflows/apply-d1-migration.yml'
+
+concurrency:
+  group: apply-d1-${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Apply file to live D1 and mark tracked
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FILENAME: ${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
+        run: |
+          set -euo pipefail
+          case "$FILENAME" in
+            *.sql) ;;
+            *) echo "::error::filename must end in .sql"; exit 65 ;;
+          esac
+          if ! [[ "$FILENAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::filename contains illegal characters"
+            exit 65
+          fi
+          FILE="migrations/${FILENAME}"
+          if [ ! -f "$FILE" ]; then
+            echo "::error::$FILE does not exist"
+            exit 66
+          fi
+          echo "Applying $FILE to live D1 rmpg-flex..."
+          set +e
+          OUT=$(npx wrangler d1 execute rmpg-flex --remote --file "$FILE" 2>&1)
+          EC=$?
+          set -e
+          echo "$OUT"
+          if [ "$EC" -ne 0 ]; then
+            if echo "$OUT" | grep -qiE 'duplicate column|already exists'; then
+              echo "Idempotent re-apply — continuing to tracker insert"
+            else
+              echo "::error::wrangler d1 execute failed"
+              exit "$EC"
+            fi
+          fi
+          echo "Tracking $FILENAME in d1_migrations..."
+          npx wrangler d1 execute rmpg-flex --remote \
+            --command "INSERT OR IGNORE INTO d1_migrations (name, applied_at) VALUES ('${FILENAME}', datetime('now'))"
+          echo "Verifying tesseract_box_annotations.page_number..."
+          npx wrangler d1 execute rmpg-flex --remote \
+            --command "SELECT cid, name, type, dflt_value FROM pragma_table_info('tesseract_box_annotations') WHERE name = 'page_number'"

@@ -21,7 +21,7 @@ export default function IntelMapPage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState('');
   const [active, setActive] = useState<Record<string, boolean>>(() => Object.fromEntries(LAYER_DEFS.map((l) => [l.key, true])));
@@ -47,7 +47,7 @@ export default function IntelMapPage() {
       webglRecoveryCleanupRef.current = attach(map, 'IntelMapPage');
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px' });
-      map.on('load', () => { if (!cancelled) setReady(true); });
+      map.on('load', () => { if (!cancelled) { onMapLoaded(map); setReady(true); } });
     })();
     return () => {
       cancelled = true;

@@ -26,7 +26,7 @@ import {
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
 import { containsAnyClause } from '../utils/searchText';
-import { log as logger } from '../utils/logger';
+import { log as logger, logErrorToDb } from '../utils/logger';
 import {
   crossReferenceDefendant,
   validateCharges,
@@ -586,9 +586,13 @@ sqe.post('/complete-with-proof', async (c) => {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
   // Proof-of-service is a legal attestation — only the officer actually
-  // assigned to this job (or a supervisor-tier override) may file it, or any
-  // authenticated WRITE-role user could fabricate service on someone else's job.
-  if (queue.assigned_officer_id != null && queue.assigned_officer_id !== userId && requireRole(c, ...BULK)) {
+  // assigned to this job (or a supervisor-tier override) may file it.
+  // Guard: if the job is assigned to a specific officer AND the caller is not
+  // that officer AND the caller is not a supervisor-tier role → deny.
+  // Previously the condition used requireRole() as a truthy "denied" string,
+  // which inverted the logic: the guard PASSED when the role was insufficient
+  // (requireRole returned an error string = truthy) and FAILED for supervisors.
+  if (queue.assigned_officer_id != null && queue.assigned_officer_id !== userId && requireRole(c, ...BULK) !== null) {
     return c.json({ error: 'Only the assigned officer or a supervisor may complete this job' }, 403);
   }
   if (['served', 'cancelled', 'failed'].includes(queue.status)) {
@@ -775,9 +779,19 @@ sqe.post('/schedule-attempt', async (c) => {
     || queue.document_type === 'order_to_show_cause'
     || (queue.time_window || '').toLowerCase().includes('business');
 
-  const scheduledDateTime = new Date(`${body.scheduledDate}T${body.scheduledTime || '09:00'}`);
-  const hour = scheduledDateTime.getHours();
-  const minute = scheduledDateTime.getMinutes();
+  // Parse as Mountain Time (America/Denver) — appending 'T...' without a
+  // timezone designator causes the Workers runtime to treat the string as UTC,
+  // so a 09:00 Mountain schedule was being stored and validated as 09:00 UTC
+  // (03:00 Mountain). Use Intl to extract the wall-clock hour in Denver instead.
+  const scheduledDateTimeUtc = new Date(`${body.scheduledDate}T${body.scheduledTime || '09:00'}:00`);
+  const denverParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    hour: 'numeric', minute: 'numeric', weekday: 'short', hour12: false,
+  }).formatToParts(scheduledDateTimeUtc);
+  const getPart = (t: string) => denverParts.find(p => p.type === t)?.value ?? '';
+  const hour = parseInt(getPart('hour'), 10);
+  const minute = parseInt(getPart('minute'), 10);
+  const scheduledDateTime = scheduledDateTimeUtc; // keep reference for .getDay() fallback below
   const timeDecimal = hour + minute / 60;
 
   const parseTimeDecimal = (t: string): number => {
@@ -786,10 +800,11 @@ sqe.post('/schedule-attempt', async (c) => {
   };
   const bizStart = parseTimeDecimal(serveConfig.business_hours_start);
   const bizEnd = parseTimeDecimal(serveConfig.business_hours_end);
-  const dayOfWeek = scheduledDateTime.getDay();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const denverWeekday = getPart('weekday');
+  const dayOfWeek = dayNames.indexOf(denverWeekday);
   const isAllowedDay = serveConfig.business_hours_days.includes(dayOfWeek);
   if (isBusinessServe && (!isAllowedDay || timeDecimal < bizStart || timeDecimal > bizEnd)) {
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const allowedDayStr = serveConfig.business_hours_days.map(d => dayNames[d]).join('/');
     return c.json({
       error: `Business serves must be scheduled during business hours (${serveConfig.business_hours_start}–${serveConfig.business_hours_end}, ${allowedDayStr})`,
@@ -1017,15 +1032,39 @@ sqe.post('/optimize-route', async (c) => {
   if (deniedOptimizeRoute) return c.json({ error: deniedOptimizeRoute }, 403);
   try {
     const db = getDb(c.env);
-    const { optimizeRouteFullPipeline } = await import('../utils/serveRouteOptimizer');
+    const { optimizeRouteFullPipeline, resolveMapboxDirectionsToken } = await import('../utils/serveRouteOptimizer');
     type RouteStop = import('../utils/serveRouteOptimizer').RouteStop;
-    const body = await c.req.json<{ stops: RouteStop[]; departAt?: string }>();
+    const body = await c.req.json<{
+      stops: RouteStop[];
+      departAt?: string;
+      origin?: { lat: number; lng: number } | null;
+      circular?: boolean;
+      officer_id?: number;
+    }>();
     const departAt = body.departAt ?? new Date().toISOString();
-    const mapboxToken = c.env.MAPBOX_SECRET_TOKEN ?? '';
-    const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken);
-    return c.json(result);
+    const mapboxToken = resolveMapboxDirectionsToken(c.env);
+
+    // Look up the officer's fleet vehicle MPG (falls back to fleet-wide average).
+    const { lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
+    const avgMpg = await lookupOfficerFleetMpg(db, body.officer_id);
+
+    const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken, {
+      origin: body.origin ?? null,
+      circular: body.circular === true,
+      avgMpg,
+    });
+    return c.json({ ...result, avg_mpg: avgMpg });
   } catch (err) {
-    console.error('[serve-queue] optimize-route error', err);
+    logger.error('[serve-queue] optimize-route error', {}, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: (err as Error)?.message ?? String(err),
+      details: { route: 'POST /serve-queue/optimize-route' },
+      traceId: c.get('traceId') ?? '',
+      source: 'serveQueueEnhanced',
+      statusCode: 500,
+    }, c.executionCtx);
     return c.json({ error: 'Route optimization failed' }, 500);
   }
 });
@@ -1062,7 +1101,7 @@ sqe.post('/batch-optimize', async (c) => {
     const result = await batchOptimizeAllServers(db);
     return c.json(result);
   } catch (err) {
-    console.error('[serve-queue] batch-optimize error', err);
+    logger.error('[serve-queue] batch-optimize error', { src: 'src/routes/serveQueueEnhanced.ts' }, err);
     return c.json({ error: 'Batch optimization failed' }, 500);
   }
 });
@@ -1086,14 +1125,17 @@ sqe.get('/nearest-unassigned', async (c) => {
 
 // ── POST /route/traffic-check — mid-shift traffic degradation check ──
 sqe.post('/route/traffic-check', async (c) => {
+  const deniedTrafficCheck = requireRole(c, ...WRITE);
+  if (deniedTrafficCheck) return c.json({ error: deniedTrafficCheck }, 403);
   try {
     const body = await c.req.json<{
       remainingStops: import('../utils/serveRouteOptimizer').RouteStop[];
       currentOrder: number[];
       currentPosition: { lat: number; lng: number };
       originalEtas: string[];
+      officer_id?: number;
     }>();
-    const { remainingStops, currentOrder, currentPosition, originalEtas } = body;
+    const { remainingStops, currentOrder, currentPosition, originalEtas, officer_id } = body;
 
     if (!remainingStops?.length) {
       return c.json<import('../utils/serveRouteOptimizer').TrafficCheckResult>({
@@ -1106,15 +1148,19 @@ sqe.post('/route/traffic-check', async (c) => {
       });
     }
 
-    const { checkTrafficDegradation } = await import('../utils/serveRouteOptimizer');
+    const { checkTrafficDegradation, resolveMapboxDirectionsToken, lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
     const db = getDb(c.env);
+
+    const avgMpg = await lookupOfficerFleetMpg(db, officer_id);
+
     const result = await checkTrafficDegradation(
       remainingStops,
       currentOrder,
       currentPosition,
       originalEtas,
       db,
-      c.env.MAPBOX_SECRET_TOKEN ?? '',
+      resolveMapboxDirectionsToken(c.env),
+      avgMpg ? { avgMpg } : undefined,
     );
     return c.json(result);
   } catch (err) {

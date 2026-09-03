@@ -25,6 +25,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
+import { mergeExif, parseImageExif } from '../utils/imageExif';
 
 const fieldPhotos = new Hono<Env>();
 
@@ -81,20 +82,26 @@ fieldPhotos.post('/', async (c) => {
 
   const ext = file.type === 'image/png' ? '.png' : file.type === 'image/webp' ? '.webp' : '.jpg';
   const key = `field-photos/${crypto.randomUUID()}${ext}`;
+  const bytes = await file.arrayBuffer();
+  const evidence = mergeExif(
+    { latitude: lat, longitude: lng, taken_at: form.get('taken_at') ? String(form.get('taken_at')) : null },
+    parseImageExif(new Uint8Array(bytes)),
+  );
 
   const db = getDb(c.env);
-  await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
+  await putEncrypted(c.env.UPLOADS, db, c.env, key, bytes, {
     httpMetadata: { contentType: file.type },
   });
 
   await ensureTable(db);
   const r = await execute(db,
-    `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes, taken_at)
+     VALUES (?,?,?,?,?,?,?,?,?, COALESCE(?, datetime('now')))`,
     user.id, Number.isFinite(callId as number) ? callId : null,
     Number.isFinite(incidentId as number) ? incidentId : null,
     key, file.type, file.size,
-    Number.isFinite(lat as number) ? lat : null, Number.isFinite(lng as number) ? lng : null, notes,
+    evidence.latitude ?? null, evidence.longitude ?? null, notes,
+    evidence.taken_at ?? null,
   );
   return c.json({
     success: true, id: r.meta.last_row_id, r2_key: key,
@@ -104,6 +111,9 @@ fieldPhotos.post('/', async (c) => {
 
 // GET / — list (filterable)
 fieldPhotos.get('/', async (c) => {
+  const u = c.get('user') as { role: string } | undefined;
+  if (!u || ['contract_manager', 'client_viewer'].includes(u.role))
+    return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   await ensureTable(db);
   const { officer_id, call_id, incident_id, from, to, limit } = c.req.query();
@@ -147,7 +157,7 @@ fieldPhotos.get('/file/*', async (c) => {
   if (!key.startsWith('field-photos/') || key.includes('..')) {
     return c.json({ error: 'Invalid key' }, 400);
   }
-  const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, key);
   if (result) {
     return new Response(result.bytes, {
       headers: {

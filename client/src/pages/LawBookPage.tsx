@@ -28,6 +28,7 @@ import { OffenseLevelBadge, type StatuteResult } from '../components/StatuteLook
 import { parseOutline } from '../utils/statuteOutline';
 import { generateStatutePdf, printStatuteSection, printStatuteChapter } from '../utils/statutePdfGenerator';
 import { toDisplayLabel } from '../utils/formatters';
+import { statuteHitsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 // Roles allowed to add/edit/delete statutes.
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -84,7 +85,7 @@ const LEVELS: { key: string; short: string; dot: string }[] = [
 function StatuteBody({ text }: { text: string }) {
   const segs = parseOutline(text);
   return (
-    <div style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+    <div style={{ fontFamily: 'Arial, sans-serif' }}>
       {segs.map((s, i) => (
         <p
           key={i}
@@ -177,6 +178,8 @@ export default function LawBookPage() {
 
   const [toc, setToc] = useState<TocRow[]>([]);
   const [tocLoading, setTocLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const [category, setCategory] = useState<CategoryKey>('all');
   const [level, setLevel] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -199,13 +202,19 @@ export default function LawBookPage() {
   const [recent, setRecent] = useState<RecentStatute[]>(() => getRecentStatutes(user?.id));
   useEffect(() => { setRecent(getRecentStatutes(user?.id)); }, [user?.id]);
 
-  // Full TOC fetched once; stats + category filtering derived client-side.
-  useEffect(() => {
+  const loadToc = useCallback(() => {
+    setTocLoading(true);
+    setLoadError(null);
     apiFetch<{ data: TocRow[] }>(`/statutes/toc`)
       .then((r) => setToc(r.data || []))
-      .catch(() => setToc([]))
+      .catch((err) => {
+        setToc([]);
+        setLoadError(err instanceof Error ? err.message : 'Failed to load table of contents');
+      })
       .finally(() => setTocLoading(false));
   }, []);
+
+  useEffect(() => { loadToc(); }, [loadToc]);
 
   const stats = useMemo(() => {
     const cats = new Set<string>();
@@ -247,12 +256,15 @@ export default function LawBookPage() {
       if (category !== 'all') params.set('category', category);
       if (level) params.set('level', level);
       apiFetch<{ data: StatuteResult[] }>(`/statutes/search?${params}`)
-        .then((r) => setResults(r.data || []))
-        .catch(() => setResults([]))
+        .then((r) => { setResults(r.data || []); setLoadError(null); })
+        .catch((err) => {
+          setResults([]);
+          setLoadError(err instanceof Error ? err.message : 'Search failed');
+        })
         .finally(() => setSearching(false));
     }, 280);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [query, category, level]);
+  }, [query, category, level, reloadTick]);
 
   const loadChapter = useCallback(async (
     title: number, code: string, name: string, opts?: { openCitation?: string },
@@ -400,7 +412,26 @@ export default function LawBookPage() {
 
   return (
     <div className="p-4 space-y-3">
-      <PanelTitleBar title="UTAH LAW BOOK" icon={Scale} />
+      <PanelTitleBar title="UTAH LAW BOOK" icon={Scale}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={visibleSections.length === 0}
+          onClick={() => downloadTextFile('law-book.csv', statuteHitsToCsv(visibleSections.map((s) => ({
+            code: s.citation,
+            title: s.short_title,
+            category: s.category,
+            offense_level: s.offense_level,
+          }))))}
+        >CSV</button>
+      </PanelTitleBar>
+
+      {loadError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>{loadError}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setReloadTick((n) => n + 1); loadToc(); }}>Retry</button>
+        </div>
+      )}
 
       {/* ── ConfirmDialog: clear recent statutes history ── */}
       <ConfirmDialog
@@ -461,6 +492,7 @@ export default function LawBookPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"… (press / to focus)'
+              aria-label="Search Utah Code"
               className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder:text-rmpg-500"
               style={{ borderRadius: 2 }}
             />

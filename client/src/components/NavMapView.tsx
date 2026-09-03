@@ -117,7 +117,7 @@ export default function NavMapView({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [style, setStyle] = useState<'dark' | 'satellite' | 'streets'>(initialStyle);
@@ -201,6 +201,7 @@ export default function NavMapView({
 
         map.on('load', () => {
           if (cancelled) return;
+          onMapLoaded(map);
           // Breadcrumb trail
           map.addSource(TRAIL_SOURCE_ID, {
             type: 'geojson',

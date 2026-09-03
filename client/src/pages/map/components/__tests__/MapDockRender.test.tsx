@@ -19,9 +19,19 @@ import { buildDockSections, type LayerBindingMap } from '../../hooks/useLayerBin
 import { HIERARCHY_CONFIGS } from '../../../../hooks/useDistrictHierarchyLayers';
 import { GEO_LAYER_CONFIGS } from '../../../../hooks/useGeoJsonLayers';
 
-/** Every registry layer bound `active: false` with a spyable onToggle,
- *  built by iterating MAP_LAYER_REGISTRY so it cannot drift from the
- *  real registry set (derived from the catalog, not a pinned count). */
+function nonOsmRegistry() {
+  return MAP_LAYER_REGISTRY.filter((l) => !l.group.startsWith('OSM'));
+}
+
+async function expandOsmSections(user: ReturnType<typeof userEvent.setup>) {
+  for (const title of LEFT_DOCK_GROUPS.filter((g) => g.startsWith('OSM'))) {
+    const header = screen.getByRole('button', { name: title });
+    if (header.getAttribute('aria-expanded') === 'false') {
+      await user.click(header);
+    }
+  }
+}
+
 function buildAllBoundBindings(): LayerBindingMap {
   const bindings: LayerBindingMap = {};
   for (const layer of MAP_LAYER_REGISTRY) {
@@ -49,7 +59,8 @@ describe('Map dock render (registry-driven)', () => {
     }
   });
 
-  it('renders one switch row per registry entry, with matching accessible names', () => {
+  it('renders one switch row per registry entry, with matching accessible names', async () => {
+    const user = userEvent.setup();
     const bindings = buildAllBoundBindings();
     const leftSections = buildDockSections(LEFT_DOCK_GROUPS, bindings);
     const rightSections = buildDockSections(RIGHT_DOCK_GROUPS, bindings);
@@ -61,11 +72,11 @@ describe('Map dock render (registry-driven)', () => {
       </div>,
     );
 
-    // All sections render open by default (DockSection's defaultOpen defaults
-    // to true and neither dock overrides it), so no expand-click is needed —
-    // confirmed by reading DockSection.tsx/MapLeftDock.tsx/MapRightDock.tsx.
+    expect(screen.getAllByRole('switch')).toHaveLength(nonOsmRegistry().length);
+
+    await expandOsmSections(user);
+
     const switches = screen.getAllByRole('switch');
-    expect(switches).toHaveLength(MAP_LAYER_REGISTRY.length);
     expect(switches).toHaveLength(MAP_LAYER_REGISTRY.length);
 
     const renderedNames = new Set(switches.map((el) => el.textContent?.trim()));
@@ -86,7 +97,8 @@ describe('Map dock render (registry-driven)', () => {
     }
   });
 
-  it('gives every row a leading lucide <svg> icon (never the loading/error icon)', () => {
+  it('gives every row a leading lucide <svg> icon (never the loading/error icon)', async () => {
+    const user = userEvent.setup();
     const bindings = buildAllBoundBindings();
     const leftSections = buildDockSections(LEFT_DOCK_GROUPS, bindings);
     const rightSections = buildDockSections(RIGHT_DOCK_GROUPS, bindings);
@@ -97,12 +109,11 @@ describe('Map dock render (registry-driven)', () => {
       </div>,
     );
 
+    await expandOsmSections(user);
+
     const switches = screen.getAllByRole('switch');
     expect(switches).toHaveLength(MAP_LAYER_REGISTRY.length);
     for (const row of switches) {
-      // The leading icon is the FIRST svg in the row (loading/error icons, when
-      // present, render at the end). With no error/loading bound, exactly one
-      // svg — the registry-supplied lucide icon — should be present.
       const svgs = row.querySelectorAll('svg');
       expect(svgs.length).toBe(1);
       expect(svgs[0]).toHaveAttribute('aria-hidden', 'true');
@@ -160,5 +171,19 @@ describe('Map dock render (registry-driven)', () => {
     for (const row of switches) {
       expect(row).toHaveStyle({ minHeight: '24px' });
     }
+  });
+
+  it('OSM All enables the group without expanding it', async () => {
+    const user = userEvent.setup();
+    const bindings = buildAllBoundBindings();
+    const sections = buildDockSections(LEFT_DOCK_GROUPS, bindings);
+    render(<MapLeftDock sections={sections} />);
+
+    const header = screen.getByRole('button', { name: 'OSM Fire & Safety' });
+    const group = header.closest('.border-b') as HTMLElement;
+    await user.click(within(group).getByRole('button', { name: 'All' }));
+    expect(bindings['osm_safety_hydrant'].onToggle).toHaveBeenCalled();
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('switch', { name: 'Fire hydrants' })).not.toBeInTheDocument();
   });
 });

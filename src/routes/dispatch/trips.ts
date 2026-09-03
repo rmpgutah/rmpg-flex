@@ -5,8 +5,8 @@
 // audit Trip Log PDF.
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
-
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 const trips = new Hono<Env>();
 
@@ -21,7 +21,7 @@ const trips = new Hono<Env>();
 //
 // Pass ?include_noise=1 to see them anyway (admin/debug). Active trips are
 // always shown — distance/duration are 0 by definition until they close.
-trips.get('/', async (c) => {
+trips.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { unit_id, call_id, from, to, limit, include_noise } = c.req.query();
@@ -51,11 +51,11 @@ trips.get('/', async (c) => {
 });
 
 // GET /dispatch/trips/active — one+ active trip per unit (board badges)
-trips.get('/active', async (c) => {
+trips.get('/active', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT id, unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type, prev_trip_id, start_time, start_lat, start_lng, start_mileage, end_time, end_lat, end_lng, end_mileage, close_reason, distance_m, max_speed, speed_sum, fix_count, max_lat_g, harsh_accel_count, harsh_brake_count, harsh_corner_count, stop_count, anchor_lat, anchor_lng, last_move_at, last_fix_ts, prev_lat, prev_lng, prev_mph, prev_bearing, duration_s, avg_speed, created_at, updated_at FROM unit_trips WHERE status = 'active' ORDER BY unit_id, start_time DESC`);
+      `SELECT id, unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type, prev_trip_id, start_time, start_lat, start_lng, start_mileage, end_time, end_lat, end_lng, end_mileage, close_reason, distance_m, max_speed, speed_sum, fix_count, max_lat_g, harsh_accel_count, harsh_brake_count, harsh_corner_count, stop_count, anchor_lat, anchor_lng, last_move_at, last_fix_ts, prev_lat, prev_lng, prev_mph, prev_bearing, duration_s, avg_speed, created_at, updated_at FROM unit_trips WHERE status = 'active' ORDER BY unit_id, start_time DESC LIMIT 200`);
     return c.json(rows);
   } catch (e) {
     log.error('GET /active failed', { src: 'src/routes/dispatch/trips.ts' }, e);
@@ -72,7 +72,7 @@ trips.get('/active', async (c) => {
 // registration order, and if /:id came first a request to /score-trend would
 // match id="score-trend" instead (see test-workers/tripsScoreTrend.test.ts,
 // which proves both the correct response shape AND that this route wins).
-trips.get('/score-trend', async (c) => {
+trips.get('/score-trend', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = c.req.query('unit_id');
@@ -96,7 +96,7 @@ trips.get('/score-trend', async (c) => {
 });
 
 // GET /dispatch/trips/:id — trip + its breadcrumbs (for replay)
-trips.get('/:id', async (c) => {
+trips.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -129,30 +129,43 @@ trips.delete('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isFinite(id)) return c.json({ error: 'Invalid trip id' }, 400);
 
-    const user = c.get('user') as { id: number; role: string } | undefined;
+    const user = c.get('user') as Record<string, unknown> | undefined;
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
+    const userId = (user.user_id ?? user.userId ?? user.id) as number | undefined;
+    const userRole = (user.role as string | undefined) ?? '';
 
     const trip = await queryFirst<{ id: number; officer_id: number | null; status: string; trip_type: string; start_time: string; distance_m: number | null }>(
       db, 'SELECT id, officer_id, status, trip_type, start_time, distance_m FROM unit_trips WHERE id = ?', id);
     if (!trip) return c.json({ error: 'Not found' }, 404);
 
-    const isPrivileged = TRIP_DELETE_ROLES.has(user.role);
-    const isOwner = trip.officer_id != null && trip.officer_id === user.id;
+    const isPrivileged = TRIP_DELETE_ROLES.has(userRole);
+    const isOwner = trip.officer_id != null && trip.officer_id === userId;
     if (!isPrivileged && !isOwner) {
       return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    // Officers (non-privileged) may only delete PATROL trips auto-flagged as
+    // false positives. CALL_RESPONSE and TRANSPORT trips are audit-critical
+    // and require a supervisor/admin role.
+    if (!isPrivileged && ['CALL_RESPONSE', 'call_response', 'TRANSPORT', 'transport'].includes(trip.trip_type)) {
+      return c.json({ error: 'Call response and transport trips require supervisor or admin to delete', code: 'AUDIT_TRIP_PROTECTED' }, 403);
     }
     if (trip.status === 'active') {
       return c.json({ error: 'Cannot delete an active trip — end it first' }, 409);
     }
 
-    await execute(db, 'UPDATE gps_breadcrumbs SET trip_id = NULL WHERE trip_id = ?', id);
-    await execute(db, 'DELETE FROM unit_trips WHERE id = ?', id);
+    // Atomic: detach breadcrumbs and delete the trip in a single batch so a
+    // mid-flight Worker termination cannot orphan breadcrumbs or leave a
+    // trip row with no GPS history.
+    await executeBatch(db, [
+      { sql: 'UPDATE gps_breadcrumbs SET trip_id = NULL WHERE trip_id = ?', bindings: [id] },
+      { sql: 'DELETE FROM unit_trips WHERE id = ?', bindings: [id] },
+    ]);
 
     try {
       await execute(db,
         `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-        user.id, 'DELETE', 'unit_trip', id,
+        userId ?? null, 'DELETE', 'unit_trip', id,
         `Deleted ${trip.trip_type} trip #${id} (start ${trip.start_time}, ${((trip.distance_m ?? 0) / 1609.34).toFixed(2)} mi) as false record`);
     } catch (auditErr) {
       console.warn('audit_log insert failed for trip delete:', auditErr);

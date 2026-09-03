@@ -28,6 +28,8 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openTrespassOrderPdf } from '../utils/trespassOrderPdf';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { trespassOrdersToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -93,6 +95,8 @@ export default function TrespassOrdersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
   const [filterStatus, setFilterStatus] = useState('active');
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
@@ -528,6 +532,20 @@ export default function TrespassOrdersPage() {
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/trespass-orders/export/csv" exportFilename="trespass_orders_export.csv" />
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={orders.length === 0}
+          onClick={() => downloadTextFile('trespass-orders.csv', trespassOrdersToCsv(orders.map((o) => ({
+            order_number: o.order_number,
+            order_type: o.order_type,
+            status: o.status,
+            property_name: o.property_name,
+            location: o.location,
+            effective_date: o.effective_date,
+            expiration_date: o.expiration_date,
+          }))))}
+        >CSV</button>
         {/* Feature 18: Expiration Calendar */}
         <button type="button" onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
           <Calendar style={{ width: 11, height: 11 }} /> Expirations
@@ -599,7 +617,7 @@ export default function TrespassOrdersPage() {
       <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700 bg-surface-base`}>
         <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input id="ff-trespassorderspage-2" type="text" placeholder="Search orders..." aria-label="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
+          <input id="ff-trespassorderspage-2" ref={searchRef} type="text" placeholder="Search orders... (/)" aria-label="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
             value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
             style={isMobile ? { minHeight: 44 } : undefined} />
         </div>
@@ -639,6 +657,7 @@ export default function TrespassOrdersPage() {
       {error && (
         <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3" /> {error}
+          <button type="button" className="toolbar-btn ml-2" onClick={() => { void fetchOrders(); }}>Retry</button>
           <button aria-label="Close" type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
         </div>
       )}

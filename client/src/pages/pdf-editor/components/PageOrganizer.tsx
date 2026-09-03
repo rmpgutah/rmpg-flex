@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LayoutGrid, X, Trash2, RotateCw, RotateCcw, CheckSquare, Square } from 'lucide-react';
 import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import { PageMeta } from '../types';
 
 interface Props {
@@ -30,6 +31,7 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Reset selection whenever the dialog opens or the page set changes shape.
   useEffect(() => { if (open) setSelected(new Set()); }, [open, pageOrder.length]);
@@ -84,6 +86,7 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
   const targets = () => [...selected].sort((a, b) => a - b);
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex flex-col bg-black/80" onClick={onClose}>
       <div className="m-auto bg-surface-sunken border border-border-default rounded-[2px] w-[min(1100px,94vw)] h-[min(86vh,900px)] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default">
@@ -104,7 +107,7 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
           <button type="button" disabled={selected.size === 0} onClick={() => onBulkRotate(targets(), 1)}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-border-default hover:text-rmpg-100 disabled:opacity-30"><RotateCw className="w-3 h-3" /> Rotate CW</button>
           <button type="button" disabled={selected.size === 0 || selected.size >= pageOrder.length}
-            onClick={() => { if (window.confirm(`Delete ${selected.size} page(s)?`)) { onBulkDelete(targets()); setSelected(new Set()); } }}
+            onClick={() => setDeleteOpen(true)}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-red-900/40 text-red-300 hover:bg-red-900/20 disabled:opacity-30"><Trash2 className="w-3 h-3" /> Delete</button>
         </div>
 
@@ -150,5 +153,19 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
         </div>
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={deleteOpen}
+      onClose={() => setDeleteOpen(false)}
+      onConfirm={() => {
+        onBulkDelete(targets());
+        setSelected(new Set());
+        setDeleteOpen(false);
+      }}
+      title="Delete pages"
+      message={`Delete ${selected.size} page(s)? This cannot be undone from the organizer (use editor Undo after).`}
+      confirmLabel="Delete"
+      confirmVariant="danger"
+    />
+    </>
   );
 }

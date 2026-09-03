@@ -34,8 +34,16 @@ const dayNormalized = (expr: string): string =>
   `CASE WHEN length(${expr}) = 10 THEN ${expr} || ' 12:00:00' ELSE ${expr} END`;
 
 async function all<T>(db: D1Database, sql: string, ...binds: unknown[]): Promise<T[]> {
-  const rs = await db.prepare(sql).bind(...binds).all<T>();
-  return rs.results ?? [];
+  try {
+    const rs = await db.prepare(sql).bind(...binds).all<T>();
+    return rs.results ?? [];
+  } catch (e: unknown) {
+    // Degrade gracefully when a table doesn't exist yet (e.g. missing migration
+    // or test-worker DB lacking the schema for this query's tables).
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/no such (table|column)/i.test(msg)) return [];
+    throw e;
+  }
 }
 
 export async function collectDailyReport(
@@ -47,8 +55,16 @@ export async function collectDailyReport(
 
   const calls = await all<CallRow>(
     db,
-    `SELECT call_number, received_at, incident_type, priority, location_address,
-            disposition, status, unit_call_signs, responding_officer
+    `SELECT call_number, received_at, created_at, incident_type, priority, location_address,
+            disposition, status, unit_call_signs, responding_officer,
+            description, notes, source, dispatch_code, sector_name, zone_name,
+            beat_name, weapons_involved, domestic_violence, mental_health_crisis,
+            juvenile_involved, felony_in_progress, officer_safety_caution,
+            k9_requested, ems_requested, response_time_seconds,
+            onscene_duration_seconds, pso_requestor_name, pso_service_type,
+            le_notified, le_case_number, supervisor_notified, damage_estimate,
+            damage_description, action_taken, caller_relationship, caller_name,
+            secondary_type, scene_safety
        FROM calls_for_service
       WHERE COALESCE(received_at, created_at) >= ? AND COALESCE(received_at, created_at) < ?
       ORDER BY COALESCE(received_at, created_at) ASC`,

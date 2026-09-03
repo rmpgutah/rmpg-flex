@@ -23,8 +23,9 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -187,28 +188,14 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
   const M = 36;
   let y = 36;
 
-  // Banner — RMPG gold strap with report id + force type.
+  // Banner — navy strap with report id + force type.
   const headerLabel = `UoF-${report.id ?? '?'} — ${toDisplayLabel(report.force_type).toUpperCase()}`;
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`USE OF FORCE REPORT — ${ellipsize(headerLabel, 50)}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap.
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text(
-    'Rocky Mountain Protective Group  ·  Use of Force / Internal Affairs / Utah POST Reporting',
-    M, y,
-  );
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `USE OF FORCE REPORT — ${ellipsize(headerLabel, 50)}`,
+    subtitle: 'Use of Force / Internal Affairs',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // ── Alerts: lethal-force + injuries (stacked, both can fire). ──
   if (isLethalForce(report)) {
@@ -466,6 +453,6 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
 
 export function openUseOfForceReportPdf(input: UofReportPdfInput): void {
   const doc = generateUseOfForceReportPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Use of Force Report');
 }

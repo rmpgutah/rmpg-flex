@@ -13,10 +13,51 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { normalizeClassification, validateManifest, evidenceNumber, shortHash } from '../utils/evidence';
+import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
+
+const OFFICER_STORAGE_UNAVAILABLE = 'File storage is temporarily unavailable. Contact a supervisor.';
+
+function isDigitalEvidenceKey(key: string): boolean {
+  return key.startsWith('digital-evidence/') && !key.includes('..');
+}
+
+async function streamDigitalEvidenceFile(
+  c: Context<Env>,
+  r2Key: string,
+  mime?: string | null,
+  filename?: string | null,
+): Promise<Response> {
+  if (!isDigitalEvidenceKey(r2Key)) return c.json({ error: 'Invalid key' }, 400);
+  try {
+    const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, r2Key);
+    if (decrypted) {
+      const headers: Record<string, string> = {
+        'Content-Type': decrypted.httpMetadata?.contentType || mime || 'application/octet-stream',
+        'Cache-Control': 'private, max-age=300',
+      };
+      if (filename) headers['Content-Disposition'] = `inline; filename="${filename.replace(/"/g, '')}"`;
+      return new Response(decrypted.bytes, { headers });
+    }
+  } catch (err) {
+    if (err instanceof FileEncryptionError) {
+      return c.json({ error: OFFICER_STORAGE_UNAVAILABLE, code: 'ENCRYPTION_FAILED' }, 503);
+    }
+    throw err;
+  }
+  const legacy = await c.env.UPLOADS?.get(r2Key);
+  if (!legacy) return c.json({ error: 'Not found' }, 404);
+  const headers = new Headers();
+  legacy.writeHttpMetadata(headers);
+  headers.set('Cache-Control', 'private, max-age=300');
+  if (filename) headers.set('Content-Disposition', `inline; filename="${filename.replace(/"/g, '')}"`);
+  if (mime && !headers.has('Content-Type')) headers.set('Content-Type', mime);
+  return new Response(legacy.body, { headers });
+}
 
 const evidence = new Hono<Env>();
 
@@ -134,17 +175,322 @@ evidence.get('/', async (c): Promise<Response> => {
   return c.json({ data: rows });
 });
 
+async function ensureDigitalEvidenceTables(db: ReturnType<typeof getDb>): Promise<void> {
+  await execute(db, `CREATE TABLE IF NOT EXISTS digital_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename TEXT NOT NULL,
+    original_filename TEXT,
+    evidence_type TEXT NOT NULL DEFAULT 'photo',
+    mime_type TEXT,
+    file_size INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending_review',
+    case_id INTEGER,
+    call_id INTEGER,
+    case_number TEXT,
+    call_number TEXT,
+    officer_id INTEGER,
+    officer_name TEXT,
+    uploaded_by INTEGER,
+    uploaded_by_name TEXT,
+    r2_key TEXT,
+    url TEXT,
+    thumbnail_url TEXT,
+    description TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS digital_evidence_custody (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    actor_name TEXT,
+    actor_id INTEGER,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    notes TEXT
+  )`);
+}
+
+// GET /pending — items requiring action/review (for Desktop widget & dashboard)
+evidence.get('/pending', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+  const rows = await query<Record<string, unknown>>(
+    db,
+    `SELECT id, filename, original_filename, evidence_type, mime_type, file_size, status,
+            case_id, call_id, case_number, call_number, officer_id, officer_name,
+            created_at, description
+       FROM digital_evidence
+      WHERE status = 'pending_review'
+      ORDER BY id DESC LIMIT 50`,
+  ).catch(() => [] as Record<string, unknown>[]);
+  return c.json({ data: rows });
+});
+
+// GET /digital — list digital evidence (photos, videos, audio, screenshots)
+evidence.get('/digital', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+  const typeFilter = c.req.query('type');
+  const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500);
+
+  let sql = `SELECT * FROM digital_evidence`;
+  const params: unknown[] = [];
+  if (typeFilter && typeFilter !== 'all') {
+    sql += ` WHERE evidence_type = ?`;
+    params.push(typeFilter);
+  }
+  sql += ` ORDER BY id DESC LIMIT ?`;
+  params.push(limit);
+
+  const rows = await query<Record<string, unknown>>(db, sql, ...params).catch(() => [] as Record<string, unknown>[]);
+  return c.json({ items: rows });
+});
+
+// POST /digital — upload new digital evidence file
+evidence.post('/digital', async (c): Promise<Response> => {
+  const user = c.get('user') as { id?: number; full_name?: string; username?: string; role?: string } | undefined;
+  const userId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
+  const userName = user?.full_name ?? user?.username ?? 'Officer';
+
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+
+  let filename = 'evidence_file';
+  let evidenceType = 'photo';
+  let mimeType = 'application/octet-stream';
+  let fileSize = 0;
+  let caseId: number | null = null;
+  let callId: number | null = null;
+  let description: string | null = null;
+  let fileBytes: Uint8Array | null = null;
+
+  try {
+    const formData = await c.req.formData();
+    const fileEntry = formData.get('file');
+    filename = (formData.get('filename') as string) || (fileEntry instanceof File ? fileEntry.name : 'file');
+    evidenceType = (formData.get('evidence_type') as string) || 'photo';
+    const cId = formData.get('case_id');
+    if (cId) caseId = parseInt(String(cId), 10) || null;
+    const clId = formData.get('call_id');
+    if (clId) callId = parseInt(String(clId), 10) || null;
+    description = (formData.get('description') as string) || null;
+
+    if (fileEntry instanceof File) {
+      mimeType = fileEntry.type || 'application/octet-stream';
+      fileSize = fileEntry.size;
+      const buf = await fileEntry.arrayBuffer();
+      fileBytes = new Uint8Array(buf);
+    }
+  } catch {
+    const json = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    filename = String(json.filename ?? 'file');
+    evidenceType = String(json.evidence_type ?? 'photo');
+    caseId = json.case_id ? Number(json.case_id) : null;
+    callId = json.call_id ? Number(json.call_id) : null;
+    description = json.description ? String(json.description) : null;
+  }
+
+  const ext = filename.split('.').pop()?.toLowerCase() ?? 'bin';
+  const r2Key = `digital-evidence/${crypto.randomUUID()}.${ext}`;
+
+  if (fileBytes && c.env.UPLOADS) {
+    try {
+      await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, fileBytes, {
+        httpMetadata: { contentType: mimeType },
+      });
+    } catch (err) {
+      if (err instanceof FileEncryptionError) {
+        return c.json({ error: OFFICER_STORAGE_UNAVAILABLE, code: 'ENCRYPTION_FAILED' }, 503);
+      }
+      throw err;
+    }
+  }
+
+  const res = await execute(
+    db,
+    `INSERT INTO digital_evidence
+       (filename, original_filename, evidence_type, mime_type, file_size, status,
+        case_id, call_id, officer_id, officer_name, uploaded_by, uploaded_by_name,
+        r2_key, url, description)
+     VALUES (?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    filename,
+    filename,
+    evidenceType,
+    mimeType,
+    fileSize,
+    caseId,
+    callId,
+    userId,
+    userName,
+    userId,
+    userName,
+    r2Key,
+    '',
+    description,
+  );
+
+  const newId = Number(res.meta?.last_row_id) || Date.now();
+  const fileUrl = `/api/evidence/digital/${newId}/file`;
+  await execute(db, `UPDATE digital_evidence SET url = ? WHERE id = ?`, fileUrl, newId);
+
+  await execute(
+    db,
+    `INSERT INTO digital_evidence_custody (evidence_id, action, actor_name, actor_id, notes)
+     VALUES (?, 'uploaded', ?, ?, ?)`,
+    newId,
+    userName,
+    userId,
+    `Initial file upload: ${filename}`,
+  ).catch(() => {});
+
+  return c.json({
+    item: {
+      id: newId,
+      filename,
+      original_filename: filename,
+      evidence_type: evidenceType,
+      mime_type: mimeType,
+      file_size: fileSize,
+      status: 'pending_review',
+      case_id: caseId,
+      call_id: callId,
+      officer_id: userId,
+      officer_name: userName,
+      uploaded_by: userId,
+      uploaded_by_name: userName,
+      r2_key: r2Key,
+      url: fileUrl,
+      description,
+      created_at: new Date().toISOString(),
+    },
+  });
+});
+
+// GET /digital/file/* — stream by R2 key (legacy stored URLs)
+evidence.get('/digital/file/*', async (c): Promise<Response> => {
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+  const r2Key = decodeURIComponent(c.req.path.replace(/^.*\/file\//, ''));
+  return streamDigitalEvidenceFile(c, r2Key);
+});
+
+// GET /digital/:id/file — stream evidence media file by row id
+evidence.get('/digital/:id/file', async (c): Promise<Response> => {
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+  const row = await queryFirst<{ r2_key: string | null; mime_type: string | null; filename: string | null; original_filename: string | null }>(
+    db,
+    `SELECT r2_key, mime_type, filename, original_filename FROM digital_evidence WHERE id = ?`,
+    id,
+  );
+  if (!row?.r2_key) return c.json({ error: 'Not found' }, 404);
+  return streamDigitalEvidenceFile(c, row.r2_key, row.mime_type, row.original_filename || row.filename);
+});
+
+// GET /digital/:id/custody — get chain of custody log entries
+evidence.get('/digital/:id/custody', async (c): Promise<Response> => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+  const rows = await query<Record<string, unknown>>(
+    db,
+    `SELECT id, evidence_id, action, actor_name, actor_id, timestamp, notes
+       FROM digital_evidence_custody
+      WHERE evidence_id = ?
+      ORDER BY id ASC`,
+    id,
+  ).catch(() => [] as Record<string, unknown>[]);
+  return c.json(rows);
+});
+
+// POST /digital/:id/seal — seal evidence item
+evidence.post('/digital/:id/seal', async (c): Promise<Response> => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+  const userId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
+  const userName = user?.full_name ?? user?.username ?? 'Officer';
+
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM digital_evidence WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+
+  const r = await execute(
+    db,
+    `UPDATE digital_evidence SET status = 'sealed', updated_at = datetime('now') WHERE id = ?`,
+    id,
+  );
+  if (!r.meta.changes) return c.json({ error: 'Evidence not found' }, 404);
+
+  await execute(
+    db,
+    `INSERT INTO digital_evidence_custody (evidence_id, action, actor_name, actor_id, notes)
+     VALUES (?, 'sealed', ?, ?, 'Evidence sealed by authorized officer')`,
+    id,
+    userName,
+    userId,
+  ).catch(() => {});
+
+  return c.json({ success: true, status: 'sealed' });
+});
+
+// POST /digital/:id/release — release sealed evidence item
+evidence.post('/digital/:id/release', async (c): Promise<Response> => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+  const userId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
+  const userName = user?.full_name ?? user?.username ?? 'Officer';
+
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM digital_evidence WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+
+  const r = await execute(
+    db,
+    `UPDATE digital_evidence SET status = 'released', updated_at = datetime('now') WHERE id = ?`,
+    id,
+  );
+  if (!r.meta.changes) return c.json({ error: 'Evidence not found' }, 404);
+
+  await execute(
+    db,
+    `INSERT INTO digital_evidence_custody (evidence_id, action, actor_name, actor_id, notes)
+     VALUES (?, 'released', ?, ?, 'Evidence released by authorized officer')`,
+    id,
+    userName,
+    userId,
+  ).catch(() => {});
+
+  return c.json({ success: true, status: 'released' });
+});
+
 // GET /verify/:sha256 — confirm a (full or 16-char prefix) hash was filed.
 evidence.get('/verify/:sha256', async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureTable(db);
   const sha = c.req.param('sha256');
+  // D1 caps LIKE patterns at 50 chars — a full 64-char SHA-256 plus '%' would
+  // throw and the catch would report {verified:false} for genuinely-filed
+  // evidence. Full hashes match exactly; the LIKE prefix path is only for the
+  // short (16-char) prefix form.
   const match = await queryFirst<Record<string, unknown>>(
     db,
-    `SELECT id, evidence_number, sha256, classification, captured_at
-       FROM evidence_manifests WHERE sha256 = ? OR sha256 LIKE ? ORDER BY id DESC LIMIT 1`,
-    sha,
-    `${sha}%`,
+    sha.length > 48
+      ? `SELECT id, evidence_number, sha256, classification, captured_at
+           FROM evidence_manifests WHERE sha256 = ? ORDER BY id DESC LIMIT 1`
+      : `SELECT id, evidence_number, sha256, classification, captured_at
+           FROM evidence_manifests WHERE sha256 = ? OR sha256 LIKE ? ORDER BY id DESC LIMIT 1`,
+    ...(sha.length > 48 ? [sha] : [sha, `${sha}%`]),
   ).catch(() => null);
   return c.json({ verified: !!match, match: match ?? null });
 });

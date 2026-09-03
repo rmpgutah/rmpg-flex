@@ -224,6 +224,9 @@ export const GLYPHS: Record<string, GlyphArt> = {
   // Both camera glyphs point UP. icon-rotate treats 0 as north, so artwork
   // that points any other way makes every camera:direction bearing a lie —
   // the previous set pointed east, i.e. every camera was wrong by 90 degrees.
+  // Public CCTV: bullet body, lens NORTH (icon-rotate 0). ALPR: rectangular
+  // plate-reader head on a short mast — a different object, not a recolored
+  // camera. Both stay line-art, no fill chrome.
   camera: {
     main: `<path d="M22.6 24.2 a9.4 9.4 0 0 1 18.8 0 v14.4 h-18.8 z"/>`
       + `<path d="M32 38.6 v6.0"/><path d="M24.4 48.6 h15.2"/>`,
@@ -232,11 +235,10 @@ export const GLYPHS: Record<string, GlyphArt> = {
       + `<path d="M28.6 44.6 h6.8 v4.0 h-6.8 z"/><path d="M25.2 33.4 h13.6"/>`,
   },
   alpr: {
-    main: `<path d="M21.6 20.4 h20.8 a2.4 2.4 0 0 1 2.4 2.4 v9.6 a2.4 2.4 0 0 1 -2.4 2.4 h-20.8`
-      + ` a2.4 2.4 0 0 1 -2.4 -2.4 v-9.6 a2.4 2.4 0 0 1 2.4 -2.4 z"/>`
-      + `<path d="M22.6 40.6 h18.8 v9.4 h-18.8 z"/>`,
-    det: `<circle cx="32" cy="27.6" r="4.0"/><path d="M32 34.8 v5.8"/>`
-      + `<path d="M26.4 44.4 h11.2"/><path d="M26.4 47.2 h11.2" stroke-dasharray="2.2 2.0"/>`,
+    main: `<path d="M23.4 14.8 h17.2 v16.4 h-17.2 z"/>`
+      + `<path d="M32 31.2 v10.4"/><path d="M22.2 43.4 h19.6 v8.4 h-19.6 z"/>`,
+    det: `<circle cx="32" cy="22.2" r="3.6"/><path d="M32 25.8 v5.4"/>`
+      + `<path d="M25.2 46.0 h13.6"/><path d="M25.2 49.2 h13.6" stroke-dasharray="2.0 1.8"/>`,
   },
 
   // ── Traffic ─────────────────────────────────────────────
@@ -496,7 +498,7 @@ export const CONTROL_VARIANTS: Record<string, GlyphArt> = {
       + ` fill="#06111d" opacity="0.85"/>`
       + `<path d="M24.3 11.8 h15.4 L50.6 22.7 v15.4 L39.7 49.0 h-15.4 L13.4 38.1 v-15.4 z"`
       + ` fill="#c1121f" stroke="#f5f7fa" stroke-width="2.7" stroke-linejoin="round"/>`
-      + `<text x="32" y="35.4" font-family="Helvetica,Arial,sans-serif" font-weight="700"`
+      + `<text x="32" y="35.4" font-family="Arial, sans-serif" font-weight="700"`
       + ` font-size="13.6" letter-spacing="0.3" text-anchor="middle" fill="#f5f7fa">STOP</text>`,
     overIsIdentity: true,
   },

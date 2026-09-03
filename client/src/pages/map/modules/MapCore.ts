@@ -49,6 +49,10 @@ export interface UseMapCoreResult {
   loading: boolean;
   mapError: string | null;
   mapLibreFallback: boolean;
+  /** True while the WebGL context is lost and a rebuild is pending (grace window). */
+  isContextLost: boolean;
+  /** True when the rebuild loop-guard tripped — manual page reload is the only fix. */
+  needsManualReload: boolean;
   /**
    * Switches the live map instance to a new style and re-applies dark-style 3D
    * buildings and terrain (if enabled) once the new style loads. Callers must
@@ -87,6 +91,8 @@ export function useMapCore({
   const [loading, setLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapLibreFallback, setMapLibreFallback] = useState(false);
+  const [isContextLost, setIsContextLost] = useState(false);
+  const [needsManualReload, setNeedsManualReload] = useState(false);
 
   useEffect(() => {
     if (preferredEngine === 'maplibre' && !mapLibreFallback) {
@@ -204,12 +210,19 @@ export function useMapCore({
           label: 'MapPage',
           onRebuild: (camera) => {
             pendingRestoreCameraRef.current = camera;
+            setIsContextLost(false);
             cancelled = true;
             webglRecoveryCleanup?.();
             webglRecoveryCleanup = null;
             destroyMapboxMap(mapRef.current);
             mapRef.current = null;
             onRetryNonceRequest();
+          },
+          onContextLost: () => setIsContextLost(true),
+          onContextRestored: () => setIsContextLost(false),
+          onGiveUp: () => {
+            setIsContextLost(false);
+            setNeedsManualReload(true);
           },
         });
 
@@ -359,7 +372,9 @@ export function useMapCore({
   const snapshot = useMapSnapshot();
 
   return {
-    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token,
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback,
+    isContextLost, needsManualReload,
+    changeStyle, token,
     daylight, projection, atmosphere, cameraAnimation, snapshot,
   };
 }

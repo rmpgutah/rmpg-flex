@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   submitOptimizationJob,
   pollOptimizationJob,
@@ -99,5 +99,13 @@ export function useOptimizationV2(): UseOptimizationV2 {
     }
   }, [reset, startPolling]);
 
-  return { submit, status, solution, elapsedMs, error, reset };
+  // Memoize the returned object so callers get a stable reference between
+  // renders. Without this, every render creates a new object — any useCallback
+  // that lists the whole object in its deps (e.g. handleOptimizeAssignments in
+  // DispatchPage) is recreated every render, and any child component with that
+  // callback in a useEffect dep re-runs the effect every render.
+  return useMemo(
+    () => ({ submit, status, solution, elapsedMs, error, reset }),
+    [submit, status, solution, elapsedMs, error, reset],
+  );
 }

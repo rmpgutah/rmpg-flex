@@ -5,22 +5,13 @@ import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 import { denverNowDateExpr } from '../../utils/denverTime';
+import { haversineM } from '../../utils/tripTelemetry';
 
 const units = new Hono<Env>();
 
-// Columns a client may set via PUT /dispatch/units/:id. The handler
-// interpolates body keys directly into the SQL SET clause, so without this
-// allowlist any key would be concatenated into the query (column-name
-// injection) and any column writable. Keys outside this set are ignored.
-// `updated_at` is intentionally omitted — the handler stamps it itself.
-const UPDATABLE_UNIT_COLUMNS = new Set([
-  'call_sign', 'officer_id', 'status', 'latitude', 'longitude',
-  'vehicle_id', 'capabilities', 'current_call_id', 'current_call_number',
-  'last_status_change', 'audio_mode',
-]);
 
 // GET /dispatch/units
-units.get('/', async (c) => {
+units.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // next_service_date is a plain DATE (no time-of-day) representing a
@@ -83,7 +74,7 @@ units.get('/', async (c) => {
 // new unit, the fleet_vehicles.assigned_unit_id back-link is written in
 // the same transaction so a subsequent fleet LIST JOIN doesn't show the
 // vehicle as still belonging to its previous owner (or unassigned).
-units.post('/', async (c) => {
+units.post('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
@@ -173,7 +164,7 @@ const UNIT_WRITABLE_COLUMNS = new Set([
 units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
 
@@ -203,6 +194,7 @@ units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
       params.push(v == null ? null : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
+    let prevCallId: number | null = null;
     if (typeof body.status === 'string') {
       // Status is changing → restart the board's time-in-status dwell timer.
       // Without this, a manual edit kept the OLD last_status_change and the
@@ -212,12 +204,32 @@ units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
       // otherwise the stale current_call_id kept the unit pinned to a dead
       // call (and DELETE refused with UNIT_ON_CALL).
       if (['available', 'off_duty', 'out_of_service'].includes(body.status)) {
+        const prev = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', id).catch(() => null);
+        prevCallId = prev?.current_call_id ?? null;
         sets.push('current_call_id = NULL');
       }
     }
     sets.push("updated_at = datetime('now')");
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
+
+    // If the unit just disengaged from a call, remove it from that call's
+    // assigned_unit_ids so the dispatch board doesn't show a ghost assignment.
+    if (prevCallId) {
+      try {
+        const callRow = await queryFirst<{ assigned_unit_ids: string }>(
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prevCallId,
+        );
+        if (callRow) {
+          const unitIdNum = parseInt(id, 10);
+          const remaining = (JSON.parse(callRow.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unitIdNum);
+          await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(remaining), prevCallId);
+        }
+      } catch (callErr) {
+        log.error('PUT /units/:id call cleanup failed (non-fatal)', { unitId: id, callId: prevCallId }, callErr as Error);
+      }
+    }
+
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
     try {
       await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated });
@@ -286,14 +298,25 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
 // PUT /dispatch/units/:id/status — thin convenience route for status-only updates.
 // Multiple client surfaces (MdtPage, UnitStatusCard, voiceCommandExecutor,
 // cadCommandParser) call this path rather than the general PUT /:id.
-units.put('/:id/status', async (c) => {
+// requireRole gates write access — without it any authenticated user can silently
+// set any unit off-duty (the exact attack the general PUT /:id gate was added to prevent).
+units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
+    const existing = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
+    // Officers may only update their own unit — dispatchers and above can update any.
+    const user = c.get('user') as { role: string } | undefined;
+    if (user?.role === 'officer' && existing.officer_id !== (c.get('userId') as number | undefined)) {
+      return c.json({ error: 'Officers may only update their own unit', code: 'FORBIDDEN' }, 403);
+    }
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
+    const VALID_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    if (!VALID_STATUSES.includes(body.status as string)) {
+      return c.json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+    }
     const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
       ? ', current_call_id = NULL' : '';
     // Going off duty / out of service ends any on-foot episode — otherwise the
@@ -322,21 +345,52 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     const db = getDb(c.env);
     const { unit_ids, status } = await c.req.json<{ unit_ids: number[]; status: string }>();
     if (!Array.isArray(unit_ids) || !unit_ids.length) return c.json({ error: 'unit_ids array required' }, 400);
-    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'unavailable', 'out_of_service'];
+    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
     if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
+
+    // Disengaged statuses must clear current_call_id and remove the unit
+    // from the call's assigned_unit_ids — otherwise the board shows ghost
+    // assignments and those calls never release for queue promotion.
+    const DISENGAGING = new Set(['available', 'off_duty', 'out_of_service', 'on_patrol']);
+    const isDisengaging = DISENGAGING.has(status);
 
     let updated = 0;
     const userId = c.get('userId') as number | undefined;
     for (const unitId of unit_ids) {
+      // Read current call assignment before status change for cleanup below.
+      const unitRow = isDisengaging
+        ? await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', unitId).catch(() => null)
+        : null;
+
       const r = await execute(db,
-        `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        isDisengaging
+          ? `UPDATE units SET status = ?, current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`
+          : `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
         status, unitId);
       if ((r as any)?.meta?.changes > 0) {
         updated++;
+
+        // Remove this unit from its previously active call's assigned_unit_ids.
+        if (isDisengaging && unitRow?.current_call_id) {
+          try {
+            const callRow = await queryFirst<{ assigned_unit_ids: string }>(
+              db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', unitRow.current_call_id,
+            );
+            if (callRow) {
+              const remaining = (JSON.parse(callRow.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unitId);
+              await execute(db,
+                'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?',
+                JSON.stringify(remaining), unitRow.current_call_id);
+            }
+          } catch (callErr) {
+            log.error('batch-status call cleanup failed (non-fatal)', { unitId, callId: unitRow.current_call_id }, callErr as Error);
+          }
+        }
+
         if (userId) {
           await execute(db,
-            `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
-            userId, unitId, `Batch set to ${status}`);
+            `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
+            userId, unitId, JSON.stringify({ status, unit_id: unitId }));
         }
       }
     }
@@ -344,6 +398,180 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
   } catch (err) {
     log.error('POST /batch-status failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to update unit statuses' }, 500);
+  }
+});
+
+// GET /dispatch/units/my-assignment
+// Returns the current officer's unit and default radio channel. Used by
+// DesktopSystemTray for the radio channel display in the status bar.
+units.get('/my-assignment', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const unit = await queryFirst<{ call_sign: string; status: string; vehicle_id: string | null }>(
+      db, 'SELECT call_sign, status, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId,
+    );
+    if (!unit) return c.json({ call_sign: null, radio_channel: null, channel: null });
+
+    // Look up the default radio channel name for display.
+    const defaultChannel = await queryFirst<{ name: string }>(
+      db, 'SELECT name FROM radio_channels WHERE is_default = 1 LIMIT 1',
+    );
+
+    return c.json({
+      call_sign: unit.call_sign,
+      status: unit.status,
+      radio_channel: defaultChannel?.name ?? null,
+      channel: defaultChannel?.name ?? null,
+    });
+  } catch (err) {
+    log.error('GET /dispatch/units/my-assignment failed', {}, err);
+    return c.json({ call_sign: null, radio_channel: null, channel: null });
+  }
+});
+
+// ── GET /dispatch/units/:id/eta — estimated travel time to a call ─
+// Computes haversine distance from unit's last GPS → call location,
+// then divides by default urban speed (35 mph). The gps.ts ETA route
+// mirrors this but is mounted under /api/dispatch/gps (different prefix);
+// THIS route is the canonical /api/dispatch/units/:id/eta endpoint.
+const ETA_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+units.get('/:id/eta', requireRole(...ETA_READ_ROLES), async (c) => {
+  const unitId = c.req.param('id');
+  const callId = c.req.query('call_id');
+  if (!callId) return c.json({ error: 'call_id query param required' }, 400);
+  try {
+    const db = getDb(c.env);
+    const unit = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+      db, 'SELECT latitude, longitude FROM units WHERE id = ? LIMIT 1', unitId,
+    );
+    if (!unit || unit.latitude == null || unit.longitude == null) {
+      return c.json({ error: 'Unit GPS location unavailable' }, 404);
+    }
+    const call = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+      db, 'SELECT latitude, longitude FROM calls_for_service WHERE id = ? LIMIT 1', callId,
+    );
+    if (!call || call.latitude == null || call.longitude == null) {
+      return c.json({ error: 'Call location unavailable' }, 404);
+    }
+    const distM = haversineM(unit.latitude, unit.longitude, call.latitude, call.longitude);
+    const distMiles = distM / 1609.344;
+    const speedMph = 35;
+    const etaMin = (distMiles / speedMph) * 60;
+    return c.json({
+      eta_minutes: Math.round(etaMin * 10) / 10,
+      distance_miles: Math.round(distMiles * 100) / 100,
+      unit_lat: unit.latitude,
+      unit_lng: unit.longitude,
+      call_lat: call.latitude,
+      call_lng: call.longitude,
+    });
+  } catch (err) {
+    log.error('[units] GET /:id/eta failed', { unitId, callId }, err);
+    return c.json({ error: 'ETA calculation failed' }, 500);
+  }
+});
+
+// GET /dispatch/units/workload
+// Returns each unit with: active_call_count, queued_call_count,
+// avg_response_time_today, utilization_pct. Used by dispatch board to show
+// which units are overloaded.
+units.get('/workload', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    // All non-off-duty units
+    const unitRows = await query<{
+      id: number;
+      call_sign: string;
+      status: string;
+      clock_in: string | null;
+    }>(db, `
+      SELECT u.id, u.call_sign, u.status,
+        te.clock_in
+      FROM units u
+      LEFT JOIN time_entries te ON te.officer_id = u.officer_id
+        AND te.clock_out IS NULL
+      WHERE u.status != 'off_duty'
+      ORDER BY u.call_sign ASC
+    `);
+
+    const now = Date.now();
+
+    // For each unit count active/queued calls and avg response time today
+    const results = await Promise.all(unitRows.map(async (u) => {
+      // Active call count: calls this unit is currently assigned to
+      let active_call_count = 0;
+      let queued_call_count = 0;
+      try {
+        const counts = await queryFirst<{ active: number; queued: number }>(db, `
+          SELECT
+            SUM(CASE WHEN c.status IN ('dispatched','enroute','onscene') THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN c.status = 'pending' THEN 1 ELSE 0 END) as queued
+          FROM calls_for_service c
+          WHERE (
+            instr(',' || c.assigned_unit_ids || ',', ',' || ? || ',') > 0
+          )
+          AND c.status IN ('dispatched','enroute','onscene','pending')
+        `, String(u.id));
+        active_call_count = counts?.active ?? 0;
+        queued_call_count = counts?.queued ?? 0;
+      } catch { /* best-effort */ }
+
+      // Avg response time today from call_response_times
+      let avg_response_time_today: number | null = null;
+      try {
+        const rt = await queryFirst<{ avg_rt: number | null }>(db, `
+          SELECT AVG(response_seconds) as avg_rt
+          FROM call_response_times
+          WHERE unit_id = ? AND onscene_at >= date('now')
+        `, u.id);
+        avg_response_time_today = rt?.avg_rt != null ? Math.round(rt.avg_rt) : null;
+      } catch { /* table may not exist yet */ }
+
+      // Utilization: active_minutes / shift_minutes
+      let utilization_pct: number | null = null;
+      if (u.clock_in) {
+        try {
+          const shiftMs = now - new Date(u.clock_in.includes('T') ? u.clock_in : u.clock_in.replace(' ', 'T') + 'Z').getTime();
+          const shiftMinutes = shiftMs / 60000;
+          if (shiftMinutes > 0) {
+            // Estimate active minutes from calls with response times
+            const activeResult = await queryFirst<{ active_secs: number | null }>(db, `
+              SELECT SUM(
+                CASE
+                  WHEN c.status IN ('dispatched','enroute','onscene')
+                    AND c.dispatched_at IS NOT NULL
+                  THEN CAST((julianday('now') - julianday(c.dispatched_at)) * 86400 AS INTEGER)
+                  ELSE 0
+                END
+              ) as active_secs
+              FROM calls_for_service c
+              WHERE instr(',' || c.assigned_unit_ids || ',', ',' || ? || ',') > 0
+                AND c.status IN ('dispatched','enroute','onscene')
+            `, String(u.id));
+            const activeMinutes = (activeResult?.active_secs ?? 0) / 60;
+            utilization_pct = Math.min(100, Math.round((activeMinutes / shiftMinutes) * 100));
+          }
+        } catch { /* best-effort */ }
+      }
+
+      return {
+        unit_id: u.id,
+        call_sign: u.call_sign,
+        status: u.status,
+        active_call_count,
+        queued_call_count,
+        avg_response_time_today,
+        utilization_pct,
+        shift_start: u.clock_in ?? null,
+      };
+    }));
+
+    return c.json(results);
+  } catch (err) {
+    log.error('GET /dispatch/units/workload failed', {}, err as Error);
+    return c.json({ error: 'Failed to get unit workload' }, 500);
   }
 });
 

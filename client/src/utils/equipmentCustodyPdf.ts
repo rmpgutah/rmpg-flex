@@ -12,12 +12,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import type { OfficerEquipment } from '../types';
 import { toDisplayLabel, stripHtmlForPdf } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -102,23 +103,12 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
     || `EQ-${item.id ?? '?'}`;
 
   // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`EQUIPMENT CUSTODY — ${refLabel}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Personnel / Equipment Room', M, y);
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `EQUIPMENT CUSTODY — ${refLabel}`,
+    subtitle: 'Personnel / Equipment Room',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // Loss / damage alert banner — equivalent to the disposition-overdue
   // banner on evidence: if the item is currently lost or damaged the
@@ -291,6 +281,6 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
 
 export function openEquipmentCustodyPdf(input: EquipmentPdfInput): void {
   const doc = generateEquipmentCustodyPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Equipment Custody');
 }

@@ -352,7 +352,7 @@ export class VoiceHubDO {
       if (settings.auto_record) {
         try {
           const key = `radio-audio/${id}.webm`;
-          await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+          await putEncrypted(this.env.UPLOADS, db, this.env, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
           await execute(
             db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
             `/api/radio/transmissions/${id}/audio`, id,
@@ -402,7 +402,7 @@ export class VoiceHubDO {
       if (existing?.audio_file_id != null) { this.panicRecorded = true; return; }
       this.panicRecorded = true;
       const key = `panic-audio/${this.refId}.webm`;
-      await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+      await putEncrypted(this.env.UPLOADS, db, this.env, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
       await execute(
         db,
         `UPDATE panic_alerts SET audio_file_id = ?, audio_duration_seconds = ? WHERE id = ?`,
@@ -693,7 +693,7 @@ export class VoiceHubDO {
       if (!Number.isFinite(dispId)) throw new Error('dispatch transmission INSERT returned no last_row_id');
       // Per-call .catch so a flaky R2 / UPDATE can't drop the broadcast once the
       // row is minted — the live audio still plays even if replay-by-URL 404s.
-      await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, `radio-audio/${dispId}.webm`, audioBytes, {
+      await putEncrypted(this.env.UPLOADS, db, this.env, `radio-audio/${dispId}.webm`, audioBytes, {
         httpMetadata: { contentType: 'audio/mpeg' },
       }).catch((e) => console.warn('[VoiceHubDO] dispatch audio R2 put failed:', (e as Error)?.message));
       await execute(

@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef, useState, useEffect } from 'react';
 import RichTextArea from '../../../components/RichTextArea';
 import { useToast } from '../../../components/ToastProvider';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetVehicle } from '../../../types';
 
@@ -27,25 +28,33 @@ interface Props {
   vehicle: FleetVehicle | null;
   isOpen: boolean;
   onClose: () => void;
+  onSaved?: () => void;
 }
 
-export default function FleetPretripModal({ vehicle, isOpen, onClose }: Props) {
+export default function FleetPretripModal({ vehicle, isOpen, onClose, onSaved }: Props) {
   const { addToast } = useToast();
   const titleId = useId();
   const firstItemRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState<PretripForm>({ ...PRETRIP_DEFAULTS, notes: '' });
   const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const isDirty = PRETRIP_ITEMS.some((it) => !(form as Record<string, unknown>)[it.key])
     || form.notes.trim() !== '';
 
   const close = useCallback(() => {
     if (saving) return;
-    if (isDirty && !window.confirm('Discard this pre-trip checklist?')) return;
+    if (isDirty) { setDiscardOpen(true); return; }
     setForm({ ...PRETRIP_DEFAULTS, notes: '' } as PretripForm);
     onClose();
   }, [saving, isDirty, onClose]);
+
+  const confirmDiscard = () => {
+    setDiscardOpen(false);
+    setForm({ ...PRETRIP_DEFAULTS, notes: '' } as PretripForm);
+    onClose();
+  };
 
   const submit = useCallback(async () => {
     if (!vehicle) return;
@@ -60,11 +69,12 @@ export default function FleetPretripModal({ vehicle, isOpen, onClose }: Props) {
         result.overall_pass ? 'success' : 'error',
       );
       setForm({ ...PRETRIP_DEFAULTS, notes: '' } as PretripForm);
+      onSaved?.();
       onClose();
     } catch (err: unknown) {
       addToast((err as Error)?.message || 'Failed to submit pre-trip', 'error');
     } finally { setSaving(false); }
-  }, [vehicle, form, addToast, onClose]);
+  }, [vehicle, form, addToast, onClose, onSaved]);
 
   useEffect(() => {
     if (isOpen) firstItemRef.current?.focus();
@@ -131,6 +141,12 @@ export default function FleetPretripModal({ vehicle, isOpen, onClose }: Props) {
           </button>
         </div>
       </div>
+      <DiscardUnsavedDialog
+        isOpen={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={confirmDiscard}
+        message="Discard this pre-trip checklist?"
+      />
     </div>
   );
 }

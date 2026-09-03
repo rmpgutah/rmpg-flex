@@ -60,11 +60,12 @@ export function useEnrichment() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  const search = useCallback(async (seed: EnrichmentSeed) => {
+  const search = useCallback(async (seed: EnrichmentSeed, options?: { refresh?: boolean }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<EnrichmentResponse>('/enrichment/search', {
+      const qs = options?.refresh ? '?refresh=1' : '';
+      const res = await apiFetch<EnrichmentResponse>(`/enrichment/search${qs}`, {
         method: 'POST',
         body: JSON.stringify(seed),
       });

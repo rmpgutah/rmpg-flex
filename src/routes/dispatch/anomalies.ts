@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 
 const READ_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
@@ -30,6 +31,7 @@ anomalies.get('/anomaly-alerts', requireRole(...READ_ROLES), async (c) => {
               acknowledged_by, acknowledged_at, created_at
          FROM anomaly_alerts
         WHERE created_at >= datetime('now', '-' || ? || ' hours')
+         AND acknowledged_at IS NULL
         ORDER BY created_at DESC
         LIMIT 200`,
       hours,
@@ -38,7 +40,7 @@ anomalies.get('/anomaly-alerts', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     // Table-missing or query error → empty list so the banner degrades
     // to "no alerts" rather than throwing.
-    console.error('[dispatch] anomaly-alerts list error', err);
+    log.error('[dispatch] anomaly-alerts list error', {}, err);
     return c.json([]);
   }
 });
@@ -64,7 +66,7 @@ anomalies.post('/anomaly-alerts/:id/acknowledge', requireRole(...READ_ROLES), as
     );
     return c.json({ success: true, id });
   } catch (err) {
-    console.error('[dispatch] anomaly acknowledge error', err);
+    log.error('[dispatch] anomaly acknowledge error', {}, err);
     return c.json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERR' }, 500);
   }
 });
@@ -83,7 +85,7 @@ export default anomalies;
 // Rules use only columns that exist on live D1:
 //   - unassigned_call : status pending/dispatched, aged >20min, no unit
 //                       has current_call_id pointing at it (HIGH).
-//   - overdue_onscene : status onscene, onscene_at >3h ago (MEDIUM).
+//   - overdue_onscene : status onscene; PSO types >25 min (HIGH), others >3h (MEDIUM).
 
 interface AnomalyCandidate {
   dedup_key: string;
@@ -134,34 +136,56 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
   }
 
   // Rule 2 — calls on-scene far past a reasonable duration.
-  const overdue = await query<{ id: number; call_number: string; beat_id: number | null }>(
+  // PSO paper service is planned at ~18–22 min on site; 3 hours is a patrol
+  // welfare check, not a serve. Flag PSO visits after 25 minutes so Dispatch
+  // can bounce the unit to the next client request instead of waiting for 3h.
+  const overdue = await query<{ id: number; call_number: string; beat_id: number | null; incident_type: string | null }>(
     db,
-    `SELECT c.id, c.call_number, c.beat_id
+    `SELECT c.id, c.call_number, c.beat_id, c.incident_type
        FROM calls_for_service c
       WHERE c.status = 'onscene'
         AND c.onscene_at IS NOT NULL
-        AND c.onscene_at <= datetime('now', '-3 hours')
+        AND (
+          (
+            c.incident_type IN ('pso_client_request', 'process_service', 'civil_paper_service')
+            AND c.onscene_at <= datetime('now', '-25 minutes')
+          )
+          OR (
+            c.incident_type NOT IN ('pso_client_request', 'process_service', 'civil_paper_service')
+            AND c.onscene_at <= datetime('now', '-3 hours')
+          )
+        )
       LIMIT 100`,
   );
   for (const c of overdue) {
+    const isPso = ['pso_client_request', 'process_service', 'civil_paper_service'].includes(String(c.incident_type || ''));
     candidates.push({
       dedup_key: `overdue_onscene:${c.id}`,
       alert_type: 'overdue_onscene',
-      severity: 'medium',
-      title: `Call ${c.call_number} on-scene >3 h`,
-      details: `Unit has been on-scene for call ${c.call_number} over 3 hours without clearing — confirm officer status.`,
+      severity: isPso ? 'high' : 'medium',
+      title: isPso
+        ? `PSO ${c.call_number} on-scene >25 min`
+        : `Call ${c.call_number} on-scene >3 h`,
+      details: isPso
+        ? `Process-server visit ${c.call_number} has been on-scene over 25 minutes — log the attempt and roll to the next stop.`
+        : `Unit has been on-scene for call ${c.call_number} over 3 hours without clearing — confirm officer status.`,
       zone_beat: c.beat_id != null ? String(c.beat_id) : null,
     });
   }
 
   // Rule 3 — Priority auto-reassessment: escalate aging calls
   let escalated = 0;
+  // Only escalate calls that haven't been escalated in the last 2 hours.
+  // Without this guard a long-running P3 call would be re-escalated to P2 on
+  // every cron tick after 60 min, and a re-lowered priority would immediately
+  // bounce back up on the next run.
   const agingCalls = await query<{ id: number; call_number: string; priority: string; created_at: string }>(
     db,
     `SELECT id, call_number, priority, created_at FROM calls_for_service
       WHERE status IN ('pending', 'dispatched')
         AND priority IN ('P2', 'P3')
         AND created_at <= datetime('now', CASE WHEN priority = 'P2' THEN '-30 minutes' ELSE '-60 minutes' END)
+        AND (updated_at IS NULL OR updated_at <= datetime('now', '-2 hours'))
       LIMIT 50`,
   );
   for (const call of agingCalls) {
@@ -242,7 +266,7 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     db,
     `SELECT id, dedup_key FROM anomaly_alerts
       WHERE acknowledged_at IS NULL
-        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot')`,
+        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot', 'bolo_expired')`,
   );
   let resolved = 0;
   for (const row of active) {

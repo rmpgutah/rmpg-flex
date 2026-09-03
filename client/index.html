@@ -118,7 +118,7 @@
       the CSP header and all inline <script>/<style> tags. This requires server-side
       rendering of index.html (not static serving).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://esm.sh https://cdn.esm.sh https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' blob: ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://tile.openweathermap.org https://api.rainviewer.com https://tilecache.rainviewer.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://overpass-api.de https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://esm.sh https://cdn.esm.sh https://unpkg.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' blob: ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://www.cloudflare.com https://cloudflare.com https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://tile.openweathermap.org https://api.rainviewer.com https://tilecache.rainviewer.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://overpass-api.de https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://challenges.cloudflare.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
     <link rel="manifest" href="/manifest.json" />
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
   </head>
@@ -132,7 +132,7 @@
           <div style="margin-top:16px;margin-bottom:12px;width:140px;height:2px;background:#1a1a1a;border-radius:1px;overflow:hidden">
             <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#888888,transparent);animation:sl 1.6s ease-in-out infinite"></div>
           </div>
-          <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:Calibri,Arial,Helvetica,sans-serif;margin:0">
+          <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:Arial,Helvetica,sans-serif;margin:0">
             Initializing
           </p>
         </div>
@@ -321,6 +321,38 @@
         //
         // 15s is deliberately well past a cold boot on a slow connection —
         // this must never fire on a page that was merely going to be late.
+        //
+        // Offline branch: if the device is offline when the watchdog fires,
+        // purge+reload is pointless (the reload also fails and re-enters this
+        // path, burning the once-per-30s budget each time). Instead, swap the
+        // splash to a lightweight "Connection Lost" screen and wire a one-shot
+        // 'online' listener to reload as soon as connectivity returns. The SW
+        // caches are left intact so the recovery load is cache-fast.
+        function showOfflineSplash() {
+          try {
+            var splash = document.getElementById('pre-splash');
+            if (!splash) return;
+            splash.innerHTML =
+              '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;max-width:320px;padding:24px">' +
+              '<img src="/rmpg flex.png" alt="RMPG Flex" width="72" height="72"' +
+              '     style="filter:drop-shadow(0 0 12px rgba(136,136,136,0.3));object-fit:contain;margin-bottom:20px" draggable="false" />' +
+              '<p style="font-size:11px;text-transform:uppercase;letter-spacing:0.18em;font-weight:700;color:rgba(240,244,249,0.9);font-family:Arial,Helvetica,sans-serif;margin:0 0 8px">' +
+              'Connection Lost</p>' +
+              '<p style="font-size:11px;color:rgba(143,163,184,0.85);font-family:Arial,Helvetica,sans-serif;margin:0 0 20px;line-height:1.6">' +
+              'Unable to reach the RMPG Flex server.<br>Check your network connection.</p>' +
+              '<button onclick="window.location.reload()" type="button"' +
+              '  style="background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:9px 24px;' +
+              '         font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;' +
+              '         cursor:pointer;border-radius:2px;font-family:Arial,Helvetica,sans-serif">' +
+              'Retry Connection</button>' +
+              '</div>';
+            window.addEventListener('online', function onOnline() {
+              window.removeEventListener('online', onOnline);
+              window.location.reload();
+            });
+          } catch (e) { /* never let the offline UI itself throw */ }
+        }
+
         var BOOT_TIMEOUT_MS = 15000;
         setTimeout(function () {
           try {
@@ -330,6 +362,12 @@
             var root = document.getElementById('root');
             var mounted = root && root.children.length > 0 && !root.contains(splash);
             if (mounted) return;
+            // If offline, show a friendly screen and auto-recover on reconnect.
+            // Do NOT purge caches — they're needed for the recovery load.
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+              showOfflineSplash();
+              return;
+            }
             if (mayRecover()) purgeThenReload();
           } catch (e) { /* never let the watchdog itself throw */ }
         }, BOOT_TIMEOUT_MS);

@@ -1,10 +1,12 @@
 // client/src/pages/serve/AssignTab.tsx
 import { useEffect, useState } from 'react';
-import { Users } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Users, Settings } from 'lucide-react';
 import { useServeAssignments, type BoardJob } from '../../hooks/useServeAssignments';
 import { toggleSelect, attentionSummary } from './serveAssignHelpers';
 
 export default function AssignTab() {
+  const navigate = useNavigate();
   const { board, loading, loadBoard, assign } = useServeAssignments();
   const [sel, setSel] = useState<number | 'unassigned' | null>('unassigned');
   const [picked, setPicked] = useState<number[]>([]);
@@ -40,6 +42,13 @@ export default function AssignTab() {
     // no scrollbar. The unassigned-pool table is the part that grows here.
     <div className="h-full overflow-y-auto p-4 grid grid-cols-[200px_1fr] gap-4 content-start scrollbar-dark">
       <div>
+        <button
+          type="button"
+          onClick={() => navigate('/admin?tab=servemanager')}
+          className="mb-2 flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg-secondary"
+        >
+          <Settings size={11} /> ServeManager setup
+        </button>
         <div className="text-[9px] font-semibold text-fg-muted uppercase mb-1">Officers</div>
         {/* These rows carried no font-size class at all, so they inherited the
             page default and rendered at 16.8px against the app's 11px dense
@@ -48,12 +57,12 @@ export default function AssignTab() {
             live browser at x=200/right=209 on a 200px button, i.e. 9px outside
             its own box ("Claude AI Audit User0"). min-w-0 + truncate lets the
             name yield, and flex-shrink-0 pins the count inside. */}
-        <button className={`w-full flex justify-between items-center gap-2 text-[11px] px-2 py-[3px] border-b border-border-subtle ${sel === 'unassigned' ? 'text-accent-silver-300' : 'text-rmpg-300'}`} onClick={() => { setSel('unassigned'); setPicked([]); }}>
+        <button type="button" className={`w-full flex justify-between items-center gap-2 text-[11px] px-2 py-[3px] border-b border-border-subtle ${sel === 'unassigned' ? 'text-accent-silver-300' : 'text-rmpg-300'}`} onClick={() => { setSel('unassigned'); setPicked([]); }}>
           <span className="min-w-0 truncate">Unassigned</span>
           <span className="text-fg-muted flex-shrink-0 tabular-nums">{board.unassigned.length}</span>
         </button>
         {board.officers.map((o) => (
-          <button key={o.id} title={o.name} className={`w-full flex justify-between items-center gap-2 text-[11px] px-2 py-[3px] border-b border-border-subtle ${sel === o.id ? 'text-accent-silver-300' : 'text-rmpg-300'}`} onClick={() => { setSel(o.id); setPicked([]); }}>
+          <button type="button" key={o.id} title={o.name} className={`w-full flex justify-between items-center gap-2 text-[11px] px-2 py-[3px] border-b border-border-subtle ${sel === o.id ? 'text-accent-silver-300' : 'text-rmpg-300'}`} onClick={() => { setSel(o.id); setPicked([]); }}>
             <span className="min-w-0 truncate text-left">{o.name}</span>
             <span className="flex gap-1 items-center flex-shrink-0"><span className="text-fg-muted tabular-nums">{o.count}</span>{attentionSummary(o.attention) && <span className="text-[color:var(--sev-critical)] text-[9px]">⚠</span>}</span>
           </button>
@@ -75,7 +84,7 @@ export default function AssignTab() {
                 <option value="">officer…</option>
                 {board.officers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
-              <button className="px-2 py-[2px] bg-accent-silver-500 hover:bg-accent-silver-400 text-surface-base" onClick={doAssign}>Assign</button>
+              <button type="button" className="px-2 py-[2px] bg-accent-silver-500 hover:bg-accent-silver-400 text-surface-base" onClick={doAssign}>Assign</button>
             </div>
           )}
         </div>

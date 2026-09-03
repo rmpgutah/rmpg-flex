@@ -42,8 +42,17 @@ initUiClickSounds();
     preloadSoundAssets();
     preloadSoundAssets(['navigate', 'ui_open', 'ui_close', 'ui_error']);
     preloadSoundAssets([
-      'info', 'chirp', 'double_chirp', 'error', 'caution', 'warning',
-      'alert', 'alarm', 'descending', 'p1_alert', 'key_up', 'key_out', 'data_chirp',
+      // Core dispatch — fired before any user interaction in a busy shift
+      'dispatch_bell', 'info', 'caution', 'warning', 'alert', 'alarm',
+      'descending', 'p1_alert', 'emergency_three',
+      // Status chirps — fired on every unit status change
+      'chirp', 'double_chirp', 'enroute_chirp', 'onscene_chirp', 'cleared_chirp',
+      // Radio / comms
+      'key_up', 'key_out', 'roger', 'data_chirp',
+      // Error / NACK
+      'error', 'bonk',
+      // Session
+      'login_ok', 'logoff',
     ]);
   });
 }

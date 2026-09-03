@@ -31,6 +31,12 @@ interface TriggerConfig {
   threshold_m?: number;
 }
 
+/** Mirrors client/src/utils/automationEngine.ts's ClientGpsFix.lat/lng shape. */
+export interface AssignedCallLatLng {
+  lat: number;
+  lng: number;
+}
+
 interface ActionConfig {
   message?: string;
   severity?: 'info' | 'warn' | 'critical';
@@ -49,6 +55,7 @@ function matchesTrigger(
   fix: IncomingFix,
   prevFix: IncomingFix | null,
   lastMovedTs: number,
+  assignedCallLatLng: AssignedCallLatLng | null,
 ): boolean {
   const cfg = parseCfg<TriggerConfig>(rule.trigger_config);
   switch (rule.trigger_type) {
@@ -61,6 +68,19 @@ function matchesTrigger(
     case 'no_movement': {
       if (!cfg.threshold_ms) return false;
       return (fix.ts - lastMovedTs) > cfg.threshold_ms;
+    }
+    case 'call_proximity': {
+      // Officers/admins can configure this trigger with evaluate_server: 1
+      // (loadRulesForUser loads it, defaults evaluate_server ?? 1 in
+      // automationRules.ts), but this case never existed — every
+      // call_proximity rule fell through to `default: return false` and
+      // could never fire server-side, defeating the whole point of a
+      // server-side fallback for officers whose device automation isn't
+      // running (app backgrounded/killed). Mirrors the client's haversine
+      // check in client/src/utils/automationEngine.ts.
+      if (!assignedCallLatLng) return false;
+      const radius = cfg.radius_m ?? 200;
+      return haversineM(fix.lat, fix.lng, assignedCallLatLng.lat, assignedCallLatLng.lng) <= radius;
     }
     case 'low_accuracy': {
       // IncomingFix has no accuracy field — skip client-originated fixes without it
@@ -77,7 +97,16 @@ async function isDuped(
   userId: number,
   dedupMs: number,
 ): Promise<boolean> {
-  const cutoff = new Date(Date.now() - dedupMs).toISOString();
+  // automation_rule_firings.fired_at defaults to SQLite's datetime('now'),
+  // which stores zoneless, SPACE-separated text ("YYYY-MM-DD HH:MM:SS"). A
+  // raw toISOString() cutoff is T-separated with a trailing ".sssZ"
+  // ("YYYY-MM-DDTHH:MM:SS.sssZ"). D1/SQLite compares TEXT columns
+  // lexicographically, and ' ' (0x20) sorts below 'T' (0x54), so
+  // `fired_at > cutoff` was false for every row on the same date regardless
+  // of actual chronological order — isDuped() always returned false and the
+  // dedup window had zero effect (every matching GPS fix re-fired the rule).
+  // Build the cutoff in the same space-separated format the column stores.
+  const cutoff = new Date(Date.now() - dedupMs).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
   const row = await db.prepare(
     `SELECT id FROM automation_rule_firings
      WHERE rule_id = ? AND user_id = ? AND fired_at > ?
@@ -188,6 +217,7 @@ export async function evaluateServerRules(
   unitId: number | null,
   fixes: IncomingFix[],
   rules: AutomationRule[],
+  assignedCallLatLng: AssignedCallLatLng | null = null,
 ): Promise<void> {
   if (rules.length === 0 || fixes.length === 0) return;
 
@@ -205,16 +235,23 @@ export async function evaluateServerRules(
     }
 
     for (const rule of enabledRules) {
-      if (!matchesTrigger(rule, fix, prevFix, lastMovedTs)) continue;
+      if (!matchesTrigger(rule, fix, prevFix, lastMovedTs, assignedCallLatLng)) continue;
       try {
         const duped = await isDuped(db, rule.id, userId, rule.dedup_window_ms);
         if (duped) continue;
+        // Await the dedup-row INSERT itself (not just fire it into waitUntil)
+        // before moving to the next fix. A batch carries several fixes for the
+        // same rule (e.g. 5 fixes/5s over a speed threshold); isDuped only sees
+        // a row once it's actually committed, so backgrounding insertFiring let
+        // every fix in the batch race past the dedup check before the prior
+        // fix's INSERT landed — firing the same rule (and its notify/welfare/
+        // status-change action) once per fix instead of once per dedup window.
+        await insertFiring(db, rule.id, userId, unitId, fix, {
+          trigger_type: rule.trigger_type,
+          speed: fix.speed,
+        });
         ctx.waitUntil(
-          insertFiring(db, rule.id, userId, unitId, fix, {
-            trigger_type: rule.trigger_type,
-            speed: fix.speed,
-          })
-            .then(() => fireAction(db, env, ctx, rule, fix, userId, unitId))
+          fireAction(db, env, ctx, rule, fix, userId, unitId)
             .catch((err) => log.error('[automation] firing failed', { rule_id: rule.id }, err)),
         );
       } catch (err) {

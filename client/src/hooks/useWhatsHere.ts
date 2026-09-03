@@ -230,7 +230,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
           : '';
 
         const hasImg = !!(street?.thumbUrl || perspectiveUrl || aerialUrl);
-        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:${hasImg ? 248 : 200}px;padding:9px 10px 8px;">`;
+        let html = `<div style="font-family:'Arial, sans-serif';color:#d4d4d4;font-size:11px;min-width:${hasImg ? 248 : 200}px;padding:9px 10px 8px;">`;
         html += `<div style="font-weight:bold;font-size:11px;color:#d4a017;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;letter-spacing:0.5px;">WHAT'S HERE</div>`;
 
         // Visual band — a GROUND view always leads:
@@ -289,7 +289,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
         html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #2a2a2a;">`;
         html += `<div style="font-size:8px;color:#888;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;display:flex;align-items:center;gap:4px;">`
           + `<span id="wh-nav-arrow" style="display:inline-block;color:#d4a017;font-size:11px;line-height:1;transition:transform .3s ease;">↑</span> Nav to point</div>`;
-        html += `<div style="font-size:11px;color:#e8b84b;font-weight:bold;font-family:'Courier New',monospace;">`
+        html += `<div style="font-size:11px;color:#e8b84b;font-weight:bold;font-family:'Arial, sans-serif';">`
           + `<span id="wh-nav-dist">…</span><span style="color:#666;"> · </span>`
           + `<span id="wh-nav-bear" style="color:#bbb;"></span><span style="color:#666;"> · </span>`
           + `<span id="wh-nav-eta" style="color:#9ad29a;"></span></div>`;

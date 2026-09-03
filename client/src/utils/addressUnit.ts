@@ -29,3 +29,18 @@ export function composeAddressUnit(address: string, unit: string): string {
   if (addr.toLowerCase().includes(label.toLowerCase())) return addr;
   return `${addr}, ${label}`;
 }
+
+/**
+ * Inverse of composeAddressUnit. Splits a stored single-line address back
+ * into a street and unit portion so edit forms can repopulate both fields.
+ * Returns `{ street, unit }` where `unit` is empty when none is found.
+ */
+export function splitAddressUnit(address: string): { street: string; unit: string } {
+  const addr = (address || '').trim();
+  // Match ", Apt 4B" / ", Unit 12" / ", #305" / ", Ste 200" style suffix
+  const m = addr.match(/,\s*((?:apt|apartment|unit|ste|suite|#|bldg|building|trlr|lot|rm|room|fl|floor|spc|space|box)\s*\S+.*)$/i);
+  if (m) {
+    return { street: addr.slice(0, addr.length - m[0].length).trim(), unit: m[1].trim() };
+  }
+  return { street: addr, unit: '' };
+}

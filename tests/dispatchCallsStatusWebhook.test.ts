@@ -51,6 +51,7 @@ const WEBHOOK_ENV = {
 
 function statusCanned(externalSourceSystem: string | null) {
   return [
+    { match: /SELECT id FROM calls_for_service WHERE id = \?/, rows: [{ id: 42 }] },
     { match: /SELECT \* FROM calls_for_service WHERE id = \?/, rows: [{ id: 42, call_number: 'CFS26-00042', status: 'onscene', assigned_unit_ids: '[]' }] },
     { match: /FROM calls_for_service_ext WHERE id = \?/, rows: [{ external_source_system: externalSourceSystem }] },
   ];

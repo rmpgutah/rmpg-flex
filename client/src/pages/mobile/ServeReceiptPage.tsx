@@ -28,6 +28,7 @@ import {
 } from '../../utils/serveReceiptVariant';
 import { formatPhoneInput } from '../../utils/formatters';
 import { collectDeviceCapture, type DeviceCapture } from '../../utils/deviceCapture';
+import { openPdfDocument } from '../../utils/openPdfDocument';
 
 // Step components
 import WizardShell from './steps/WizardShell';
@@ -420,6 +421,7 @@ export default function ServeReceiptPage() {
     variantLabel: VARIANT_LABEL[variant],
     courtName: ctx?.job.court_name ?? '',
     caseNumber: ctx?.job.case_number ?? '',
+    jobId: ctx?.job.id,
     jurisdiction: ctx?.job.jurisdiction ?? '',
     plaintiffName: ctx?.job.plaintiff_name ?? '',
     defendantName: ctx?.job.defendant_name ?? '',
@@ -465,7 +467,7 @@ export default function ServeReceiptPage() {
 
   const downloadPdf = useCallback(async (receiptId: number) => {
     const doc = await generateReceiptOfService({ ...buildPdfData(receiptId), copy: 'subject' });
-    doc.save(`acknowledgement-of-service-${ctx?.job.case_number || receiptId}.pdf`);
+    openPdfDocument(doc, `acknowledgement-of-service-${ctx?.job.case_number || receiptId}.pdf`);
   }, [buildPdfData, ctx]);
 
   const printPdf = useCallback(async (receiptId: number) => {
@@ -734,6 +736,9 @@ export default function ServeReceiptPage() {
   };
 
   return (
+    <>
+      {/* Screen-reader live region — announces step progress without relying on colour */}
+      <span role="status" className="sr-only">Step {sectionsDone} of 5 complete</span>
     <WizardShell
       currentStep={step}
       sectionsDone={sectionsDone}
@@ -846,5 +851,6 @@ export default function ServeReceiptPage() {
         />
       )}
     </WizardShell>
+    </>
   );
 }

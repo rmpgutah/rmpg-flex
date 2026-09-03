@@ -102,10 +102,18 @@ interface UseGpsTrackingOptions {
  *  At ~1 position/second, each batch carries ~5 points. */
 const DEFAULT_BATCH_INTERVAL = 5000;
 
+/** Batch interval when running on the Toughbook FZ-55 with the internal u-blox
+ *  chip configured at 5 Hz (UBX-CFG-RATE). Reduces map lag from ~6 s to ~1.2 s. */
+const WINDOWS_INTERNAL_BATCH_MS = 1000;
+
+/** Skip a 'poor' quality fix (HDOP > 5) if the last accepted fix is younger than
+ *  this window. Prevents urban-canyon signal from overwriting the last good road fix. */
+const POOR_FIX_SKIP_WINDOW_MS = 30_000;
+
 /** Whether the current device is likely a desktop/laptop (no GPS hardware).
  *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
  *  vehicles typically returns 100–500m accuracy. */
-const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const IS_DESKTOP = typeof window !== 'undefined' && typeof navigator !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator?.userAgent ?? '');
 
 /** Reject GPS readings less accurate than this (meters).
  *  Mobile (GPS hardware): 100m — modern phones get 3-15m; 100m filters WiFi junk.
@@ -139,6 +147,7 @@ interface QueuedPoint {
   source: PositionSource;
   activity?: string | null;
   activity_confidence?: string | null;
+  fixQuality?: 'excellent' | 'good' | 'degraded' | 'poor' | null;
 }
 
 // ── CoreMotion activity bridge (native iOS only) ─────────────
@@ -256,6 +265,19 @@ const HEARTBEAT_INTERVAL = 15000; // 15 seconds
  * the aggressive base cadence with no penalty.
  */
 const MAX_HEARTBEAT_BACKOFF_FACTOR = 10;
+
+/**
+ * Process-wide throttle for the staleness WARNING. Each mounted
+ * useGpsTracking() used to own its own last-warn timestamp, so Layout +
+ * MDT + map logged the same line three times every tick (field console
+ * 2026-08-28). One shared clock bounds the volume across every consumer.
+ */
+let lastGlobalStaleWarnAt = 0;
+
+/** @internal — tests only. */
+export function _resetGpsStaleWarnForTest(): void {
+  lastGlobalStaleWarnAt = 0;
+}
 
 // ─── Electron Desktop Detection ──────────────────────────────
 // Desktop Electron apps often lack GPS hardware. Chromium's
@@ -396,10 +418,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
    *
    * This gates only the LOG. Restart/retry behaviour is deliberately untouched:
    * a vehicle CAD must keep trying to reacquire, and the surrounding code says
-   * so emphatically. Staleness is still reported every time at debug level, and
-   * the UI `error` string still surfaces the degradation.
+   * so emphatically. The UI `error` string still surfaces the degradation.
    */
-  const lastStaleWarnAtRef = useRef(0);
   const STALE_WARN_INTERVAL_MS = 5 * 60 * 1000;
   // True while a one-shot "restart on the next user gesture" listener is armed,
   // so a heartbeat firing every 27s can't stack dozens of duplicate listeners.
@@ -483,6 +503,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const sendBatch = useCallback(async () => {
     // Read-only consumer — never upload; drain the queue so it can't grow.
     if (!uploadRef.current) { queueRef.current = []; return; }
+    // Keep breadcrumbs queued in IDB; don't 3× retry POST /dispatch/gps
+    // while the radio is down (ERR_INTERNET_DISCONNECTED storm).
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
     isSendingRef.current = true;
@@ -580,6 +603,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
     // Read-only consumer — never upload.
     if (!uploadRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     // Skip POST when a hardware GPS tracker is managing this unit's position
     if (gpsSourceRef.current === 'clearpathgps') return;
 
@@ -757,6 +781,70 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
   }, [sendBatch]);
 
+  // ─── Automation rule evaluation for an accepted fix ───────
+  // Extracted so BOTH accepted-fix paths run automation identically instead
+  // of drifting the way they did before this fix: ingestPosition (the
+  // Toughbook internal-GPS path) called this inline, but the
+  // navigator.geolocation.watchPosition callback below — what every phone,
+  // tablet, and non-Toughbook desktop actually uses — built its own queued
+  // point and never evaluated automation rules at all. A speed/no-movement/
+  // call-proximity rule configured with evaluate_client: 1 silently never
+  // fired for the majority of devices in the fleet.
+  const runAutomationForPoint = useCallback((point: QueuedPoint) => {
+    import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
+      const fix = {
+        ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
+        lat: point.lat,
+        lng: point.lng,
+        accuracy: point.accuracy,
+        heading: point.heading,
+        speed: point.speed,
+        source: point.source,
+      };
+      updateMovementState(fix, evaluatorStateRef.current);
+      const actions = evaluateRules(fix, automationRulesRef.current, evaluatorStateRef.current, []);
+      for (const action of actions) {
+        if (action.localAction?.type === 'notify_officer') {
+          if (action.localAction.confirmCallback === 'mark_on_scene') {
+            addToastRef.current?.(
+              `${action.localAction.message} — tap to mark on scene`,
+              'info',
+              8000,
+            );
+          } else {
+            addToastRef.current?.(
+              action.localAction.message,
+              action.localAction.severity === 'critical' ? 'error' : 'info',
+            );
+          }
+        }
+        // Queue for offline replay on reconnect — but ONLY for rules the
+        // server never independently evaluates (evaluate_server !== 1). This
+        // uploaded fix also reaches the server (queueRef feeds sendBatch),
+        // and the server runs its OWN evaluateServerRules pass over every
+        // evaluate_server:1 rule against that same fix — including
+        // 'notify_officer'-typed rules, which the server's fireAction()
+        // treats identically to notify_dispatch/notify_supervisor. A rule
+        // configured with both evaluate_client:1 and evaluate_server:1
+        // previously got reported here AND independently fired server-side,
+        // inserting two automation_rule_firings rows and emitting the
+        // 'automation_alert' notification twice for one real-world trigger.
+        if (action.rule.evaluate_server !== 1) {
+          queueClientFiring({
+            rule_id: action.rule.id,
+            rule_name: action.rule.name,
+            trigger_type: action.rule.trigger_type,
+            action_type: action.rule.action_type,
+            trigger_lat: fix.lat,
+            trigger_lng: fix.lng,
+            fired_at: new Date(fix.ts).toISOString(), // new-date-ok — fix.ts is epoch ms from IDB
+            context: { speed: fix.speed, accuracy: fix.accuracy },
+          }).catch(() => {}); // fire-and-forget, never blocks eval
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   // ─── Shared position ingestion ───────────────────────────
   // Used by BOTH navigator.geolocation.watchPosition (browser path) AND
   // the Electron internal-GPS IPC stream (Toughbook path). Keeps a single
@@ -769,6 +857,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     speed: number | null;
     sourceHint?: PositionSource;
     fromInternalGps?: boolean;
+    fixQuality?: 'excellent' | 'good' | 'degraded' | 'poor' | null;
   }) => {
     const { latitude, longitude, accuracy, heading, speed } = coords;
 
@@ -778,6 +867,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     if (!coords.fromInternalGps && useInternalGpsRef.current) {
       const sinceInternal = Date.now() - lastInternalGpsAtRef.current;
       if (sinceInternal < INTERNAL_GPS_FRESH_MS) return;
+    }
+
+    // Quality gate — reject 'poor' fixes (HDOP > 5) while a good fix is recent.
+    // Prevents urban-canyon reflections from overwriting the last road position.
+    // Once the good-fix window expires (30 s), poor fixes are accepted — the
+    // officer must not be left with a stale position indefinitely.
+    if (coords.fixQuality === 'poor' && lastAcceptedRef.current) {
+      const sinceGood = Date.now() - lastAcceptedRef.current.time;
+      if (sinceGood < POOR_FIX_SKIP_WINDOW_MS) return;
     }
 
     if (coords.fromInternalGps) {
@@ -821,6 +919,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         speed,
         timestamp: new Date().toISOString(),
         source,
+        fixQuality: coords.fixQuality ?? null,
       };
 
       lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
@@ -842,46 +941,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       }).catch(() => { /* non-fatal */ });
 
       // Evaluate automation rules (lazy import keeps initial bundle small).
-      import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
-        const fix = {
-          ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
-          lat: point.lat,
-          lng: point.lng,
-          accuracy: point.accuracy,
-          heading: point.heading,
-          speed: point.speed,
-          source: point.source,
-        };
-        updateMovementState(fix, evaluatorStateRef.current);
-        const actions = evaluateRules(fix, automationRulesRef.current, evaluatorStateRef.current, []);
-        for (const action of actions) {
-          if (action.localAction?.type === 'notify_officer') {
-            if (action.localAction.confirmCallback === 'mark_on_scene') {
-              addToastRef.current?.(
-                `${action.localAction.message} — tap to mark on scene`,
-                'info',
-                8000,
-              );
-            } else {
-              addToastRef.current?.(
-                action.localAction.message,
-                action.localAction.severity === 'critical' ? 'error' : 'info',
-              );
-            }
-          }
-          // Queue every firing (local or server) for offline replay on reconnect
-          queueClientFiring({
-            rule_id: action.rule.id,
-            rule_name: action.rule.name,
-            trigger_type: action.rule.trigger_type,
-            action_type: action.rule.action_type,
-            trigger_lat: fix.lat,
-            trigger_lng: fix.lng,
-            fired_at: new Date(fix.ts).toISOString(), // new-date-ok — fix.ts is epoch ms from IDB
-            context: { speed: fix.speed, accuracy: fix.accuracy },
-          }).catch(() => {}); // fire-and-forget, never blocks eval
-        }
-      }).catch(() => {});
+      runAutomationForPoint(point);
 
       // Opt-in exportable session track (separate from the upload queue, which
       // gets drained on every batch send).
@@ -913,7 +973,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       connectionType: connType,
       positionSource: source,
     }));
-  }, [shouldAcceptPoint, sendImmediate]);
+  }, [shouldAcceptPoint, sendImmediate, runAutomationForPoint]);
 
   // ─── Toughbook internal GPS subscription ─────────────────
   // Detect on mount; if it's a Toughbook with a live COM port, start the
@@ -953,6 +1013,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           speed: pos.speed ?? null,
           sourceHint: 'gps',
           fromInternalGps: true,
+          fixQuality: pos.fixQuality ?? null,
         });
       });
       unsubError = electron.onInternalGpsError((err: any) => {
@@ -1021,10 +1082,25 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // Start tracking
   const startTracking = useCallback(() => {
-    // On Toughbook FZ-55, internal NMEA is primary but navigator.geolocation
-    // also runs as a SECONDARY fallback — when GPS lock is lost (concrete
-    // buildings, parking garages), WiFi triangulation fills the gap.
-    // ingestPosition gates browser fixes via lastInternalGpsAtRef.
+    // On Windows Electron (Toughbook FZ-55), the internal u-blox NMEA reader is
+    // the ONLY GPS source. navigator.geolocation on Windows routes through the
+    // Windows Location Platform (WiFi/IP triangulation), which is less accurate
+    // than the dedicated hardware chip and creates an unnecessary permission flow.
+    // Skip it entirely — just arm the batch send timer so queued internal-GPS
+    // fixes get uploaded. The IS_WINDOWS_ELECTRON useEffect above calls
+    // setIsTracking(true) once the COM port is confirmed, so tracking state is
+    // accurate (not prematurely "on" while the port is still being enumerated).
+    if (IS_WINDOWS_ELECTRON) {
+      setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
+      if (uploadRef.current) {
+        // Use the faster Windows interval — chip configured at 5 Hz via UBX-CFG-RATE,
+        // so 1 s batches upload fresh positions every second instead of every 5 s.
+        const interval = setInterval(sendBatch, WINDOWS_INTERNAL_BATCH_MS);
+        batchIntervalRef.current = interval;
+      }
+      return;
+    }
+
     if (!('geolocation' in navigator)) {
       setState((prev) => ({
         ...prev,
@@ -1135,6 +1211,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           source: point.source,
         }).catch(() => { /* non-fatal */ });
 
+        // Evaluate automation rules — see runAutomationForPoint's own comment
+        // for why this call (previously missing entirely from this path) matters:
+        // without it, every non-Toughbook device silently never ran
+        // client-side automation (speed/no-movement/call-proximity rules).
+        runAutomationForPoint(point);
+
         // ── Exportable session track (PARITY FIX) ──
         // `capturedCount` drives the HUD's "Track N pts" readout and the
         // CSV/GeoJSON export. ingestPosition (the Toughbook internal-GPS path)
@@ -1162,6 +1244,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         }
       },
       (err) => {
+        // CoreLocation / Android LOCATION_UNAVAILABLE still *is* a callback.
+        // Without this, kCLErrorLocationUnknown (Safari/WebKit field console
+        // 2026-08-28) left lastCallbackTime stale and the watchdog logged
+        // "No position callback in 31s" forever while the OS was answering.
+        lastCallbackTimeRef.current = Date.now();
         let msg = 'GPS error';
         let denied = false;
         switch (err.code) {
@@ -1299,19 +1386,31 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (permissionDeniedRef.current) {
           return;
         }
+        // No radio / background tab: the Geolocation API often withholds
+        // callbacks (CoreLocation kCLErrorLocationUnknown while offline).
+        // Restarting the watch and warning does not acquire a fix.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          return;
+        }
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          return;
+        }
         // Throttle log noise. Two independent conditions must BOTH hold to warn:
         //   - still in the aggressive restart phase, AND
         //   - we have not already warned within STALE_WARN_INTERVAL_MS.
         // The second is what actually bounds the volume: the restart counter is
         // reset by every successful fix, so under intermittent GPS it never
         // reaches the cap and the first condition alone warned on every cycle.
+        // lastGlobalStaleWarnAt is process-wide so Layout + MDT + map don't
+        // each emit the same line.
         const now = Date.now();
         const withinAggressivePhase = heartbeatRestartCountRef.current < MAX_HEARTBEAT_RESTARTS;
-        const warnIntervalElapsed = now - lastStaleWarnAtRef.current >= STALE_WARN_INTERVAL_MS;
+        const warnIntervalElapsed = now - lastGlobalStaleWarnAt >= STALE_WARN_INTERVAL_MS;
         const shouldWarn = withinAggressivePhase && warnIntervalElapsed;
-        if (shouldWarn) lastStaleWarnAtRef.current = now;
-        const log = shouldWarn ? console.warn : console.debug;
-        log(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        if (shouldWarn) {
+          lastGlobalStaleWarnAt = now;
+          console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        }
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
           startIpFallbackPoller();
@@ -1395,7 +1494,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }, HEARTBEAT_INTERVAL);
 
     setIsTracking(true);
-  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller, cleanupTracking]);
+  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller, cleanupTracking, runAutomationForPoint]);
 
   // Stop tracking (internal use only — users cannot call this)
   const stopTracking = useCallback(() => {
@@ -1445,15 +1544,21 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       startTracking();
     };
 
-    const permApi = (navigator as any).permissions;
-    if (permApi?.query) {
-      permApi.query({ name: 'geolocation' }).then((res: any) => {
-        if (res.state === 'granted') start();
-      }).catch(() => { /* Permissions API absent — wait for gesture */ });
+    // On Windows Electron, the internal NMEA reader requires no browser permission
+    // prompt — start the batch timer immediately without waiting for a gesture.
+    if (IS_WINDOWS_ELECTRON) {
+      start();
+    } else {
+      const permApi = (navigator as any).permissions;
+      if (permApi?.query) {
+        permApi.query({ name: 'geolocation' }).then((res: any) => {
+          if (res.state === 'granted') start();
+        }).catch(() => { /* Permissions API absent — wait for gesture */ });
+      }
+      window.addEventListener('click', start, { once: true });
+      window.addEventListener('keydown', start, { once: true });
+      window.addEventListener('touchstart', start, { once: true });
     }
-    window.addEventListener('click', start, { once: true });
-    window.addEventListener('keydown', start, { once: true });
-    window.addEventListener('touchstart', start, { once: true });
 
     return () => {
       mountedRef.current = false;

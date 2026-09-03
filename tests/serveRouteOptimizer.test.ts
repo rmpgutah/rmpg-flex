@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RouteStop, OptimizeResult, TrafficCheckResult } from '../src/utils/serveRouteOptimizer';
-import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, optimizeRouteFullPipeline, checkTrafficDegradation } from '../src/utils/serveRouteOptimizer';
+import { buildCostMatrix, haversineMatrix, haversineDurationSeconds, metresToDriveSeconds, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, checkTrafficDegradation, denverWallClockToUtcMs, clampArrivalToServeWindow, resolveMapboxDirectionsToken, clampDepartAtForMapbox } from '../src/utils/serveRouteOptimizer';
 
 const STOPS_3: RouteStop[] = [
   { jobId: 1, lat: 40.760, lng: -111.890, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
@@ -55,7 +55,7 @@ describe('buildCostMatrix', () => {
 
     const firstUrl = (fetchMock.mock.calls[0][0] as string);
     expect(firstUrl).toContain('directions/v5/mapbox/driving-traffic');
-    // Should NOT use the old matrix endpoint
+    expect(firstUrl).toContain('depart_at=');
     expect(firstUrl).not.toContain('directions-matrix');
   });
 
@@ -222,25 +222,20 @@ describe('geocodeQualityScore', () => {
   it('returns low for centroid geocode', () => {
     expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'centroid' })).toBe('low');
   });
-  it('returns none when geocodeSource is null', () => {
-    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('high');
+  it('returns low when geocodeSource is null (unverified pin)', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('low');
   });
 });
 
 describe('collectGeocodeWarnings', () => {
-  it('includes low and none stops, excludes high and null (null = high by policy)', () => {
-    // null geocodeSource is treated as 'high' (benefit of the doubt for pre-existing jobs)
-    // A stop with no coords at all (lat/lng null) is 'none' and should warn.
+  it('includes centroid and null geocode sources', () => {
     const stops: RouteStop[] = [
       { ...STOPS_3[0], geocodeSource: 'point' },
       { ...STOPS_3[1], geocodeSource: 'centroid' },
       { ...STOPS_3[2], geocodeSource: null },
     ];
     const warnings = collectGeocodeWarnings(stops);
-    // Only the centroid stop should warn; null and point are both 'high'.
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].jobId).toBe(2);
-    expect(warnings[0].quality).toBe('low');
+    expect(warnings.map((w) => w.jobId).sort()).toEqual([2, 3]);
   });
 
   it('returns empty array when all stops have high quality', () => {
@@ -354,5 +349,74 @@ describe('checkTrafficDegradation', () => {
     );
     expect(result.matrixFallback).toBe(true);
     expect(result.degraded).toBe(false);
+  });
+});
+
+describe('cost matrix units', () => {
+  it('converts one road-mile of great-circle into ~3 minutes, not 1609 seconds', () => {
+    const seconds = metresToDriveSeconds(1609.344);
+    expect(seconds).toBeGreaterThan(180);
+    expect(seconds).toBeLessThan(200);
+  });
+
+  it('does not treat a 30-mile haversine hop as half a day', () => {
+    const a = { lat: 40.7608, lng: -111.8910 };
+    const b = { lat: 40.333, lng: -111.8910 }; // ~30 mi due south
+    const seconds = haversineDurationSeconds(a, b);
+    expect(seconds).toBeGreaterThan(30 * 60);
+    expect(seconds).toBeLessThan(3 * 3600);
+  });
+});
+
+describe('Denver wall-clock conversion', () => {
+  it('maps 14:30 MDT on 2026-08-28 to 20:30 UTC', () => {
+    const ms = denverWallClockToUtcMs(2026, 7, 28, 14, 30);
+    expect(new Date(ms).toISOString()).toBe('2026-08-28T20:30:00.000Z');
+  });
+
+  it('waits until the serve window opens', () => {
+    const arriveEarly = Date.parse('2026-08-28T20:00:00.000Z'); // 14:00 MDT
+    const clamped = clampArrivalToServeWindow(arriveEarly, '17:00', '21:00');
+    expect(new Date(clamped).toISOString()).toBe('2026-08-28T23:00:00.000Z'); // 17:00 MDT
+  });
+
+  it('does not roll a missed morning window to +1d after a 6pm start', () => {
+    const sixPmMdt = Date.parse('2026-08-29T00:00:00.000Z'); // 18:00 MDT Aug 28
+    const clamped = clampArrivalToServeWindow(
+      sixPmMdt + 15 * 60_000,
+      '08:00',
+      '12:00',
+      '2026-08-29T00:00:00.000Z',
+    );
+    expect(clamped).toBe(sixPmMdt + 15 * 60_000);
+    expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(clamped)))
+      .toBe('2026-08-28');
+  });
+});
+
+describe('resolveMapboxDirectionsToken', () => {
+  it('prefers MAPBOX_SECRET_TOKEN then MAPBOX_ACCESS_TOKEN', () => {
+    expect(resolveMapboxDirectionsToken({ MAPBOX_SECRET_TOKEN: 'sk.a', MAPBOX_ACCESS_TOKEN: 'pk.b' })).toBe('sk.a');
+    expect(resolveMapboxDirectionsToken({ MAPBOX_ACCESS_TOKEN: 'pk.b' })).toBe('pk.b');
+    expect(resolveMapboxDirectionsToken({})).toBe('');
+  });
+});
+
+describe('clampDepartAtForMapbox', () => {
+  it('clamps a stale morning shift start to now', () => {
+    const now = Date.parse('2026-08-28T23:18:00.000Z');
+    expect(clampDepartAtForMapbox('2026-08-28T14:00:00.000Z', now)).toBe('2026-08-28T23:18:00.000Z');
+  });
+});
+
+describe('applyTimeWindowPenalties Denver windows', () => {
+  it('does not penalize an 08:00 MDT departure into an 08:00–17:00 window', () => {
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], locationNote: null },
+      { ...STOPS_3[1], locationNote: { serveStart: '08:00', serveEnd: '17:00' } },
+    ];
+    const matrix = [[0, 300], [300, 0]];
+    const penalized = applyTimeWindowPenalties(matrix, stops, '2026-08-12T14:00:00.000Z', [0, 0]);
+    expect(penalized[0][1]).toBe(matrix[0][1]);
   });
 });

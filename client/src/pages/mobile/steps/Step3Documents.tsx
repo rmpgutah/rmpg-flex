@@ -25,7 +25,7 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
   return (
     <div className="p-4 pb-6 max-w-lg mx-auto space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-gray-800 mb-1">Documents received</h2>
+        <h2 className="text-xl font-bold text-white mb-1">Documents received</h2>
         <p className="text-[14px] text-gray-500 leading-relaxed">
           Review the documents listed below. This is what you are confirming receipt of.
         </p>
@@ -36,7 +36,7 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
           // No itemized list — fall back to the document_type field
           <div className="flex items-center gap-3 p-3.5 rounded-sm bg-gray-50 border border-gray-200">
             <FileText size={18} className="text-gray-400 shrink-0" />
-            <span className="flex-1 text-[15px] text-gray-800">
+            <span className="flex-1 text-[15px] text-white">
               {documentType || 'Court documents'} — 1 set
             </span>
           </div>
@@ -47,7 +47,7 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
               className="flex items-center gap-3 p-3.5 rounded-sm bg-gray-50 border border-gray-200"
             >
               <FileText size={18} className="text-gray-400 shrink-0" />
-              <span className="flex-1 text-[15px] text-gray-800 leading-snug break-words">
+              <span className="flex-1 text-[15px] text-white leading-snug break-words">
                 {title}
               </span>
 
@@ -59,18 +59,18 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
                     onClick={() => adjust(title, -1)}
                     disabled={copies <= 1}
                     aria-label={`Decrease copies of ${title}`}
-                    className="w-7 h-7 flex items-center justify-center rounded-sm border border-gray-300 text-gray-600 disabled:opacity-30 active:bg-gray-100"
+                    className="w-7 h-7 flex items-center justify-center rounded-sm border border-gray-600 text-gray-300 disabled:opacity-30 active:opacity-60"
                   >
                     <Minus size={14} />
                   </button>
-                  <span className="w-6 text-center text-[14px] font-semibold text-gray-700 tabular-nums">
+                  <span className="w-6 text-center text-[14px] font-semibold text-gray-200 tabular-nums">
                     {copies}
                   </span>
                   <button
                     type="button"
                     onClick={() => adjust(title, 1)}
                     aria-label={`Increase copies of ${title}`}
-                    className="w-7 h-7 flex items-center justify-center rounded-sm border border-gray-300 text-gray-600 active:bg-gray-100"
+                    className="w-7 h-7 flex items-center justify-center rounded-sm border border-gray-600 text-gray-300 active:opacity-60"
                   >
                     <Plus size={14} />
                   </button>
@@ -81,7 +81,7 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
         )}
       </div>
 
-      <p className="text-[13px] text-gray-400 leading-relaxed border-t border-gray-100 pt-4">
+      <p className="text-[13px] text-gray-400 leading-relaxed border-t border-gray-700 pt-4">
         If anything listed here was not handed to you, tell the process server before
         you continue.
       </p>

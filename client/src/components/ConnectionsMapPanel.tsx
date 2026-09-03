@@ -33,6 +33,8 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [pointCount, setPointCount] = useState(0);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [needsManualReload, setNeedsManualReload] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +79,8 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
       webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'ConnectionsMapPanel',
         onRebuild: (recoveredCamera) => {
+          setIsRecovering(false);
+          setNeedsManualReload(false);
           webglRecoveryCleanupRef.current?.();
           webglRecoveryCleanupRef.current = null;
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
@@ -89,6 +93,9 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
             ? { center: recoveredCamera.center, zoom: recoveredCamera.zoom }
             : null);
         },
+        onContextLost: () => setIsRecovering(true),
+        onContextRestored: () => setIsRecovering(false),
+        onGiveUp: () => { setIsRecovering(false); setNeedsManualReload(true); },
       });
     }
 
@@ -118,31 +125,11 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
         // rejection, so it's inside this same try/catch.
         const token = await getMapboxAccessToken();
         if (cancelled || !containerRef.current) return;
-        initMapbox(token);
-        const first = track[0] || points[0];
-        const center: [number, number] = first ? [first.lng, first.lat] : [-111.891, 40.7608];
-        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 12, projection: 'mercator', attributionControl: false });
-        mapRef.current = map;
-        registerMapInstance(map);
-        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        map.on('load', () => {
-          if (cancelled) return;
-          if (track.length > 1) {
-            const line = track.map((p) => [p.lng, p.lat]);
-            map.addSource('gps-track', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: line } } });
-            map.addLayer({ id: 'gps-track', type: 'line', source: 'gps-track', paint: { 'line-color': CYAN, 'line-width': 3, 'line-opacity': 0.85 } });
-          }
-          for (const p of points) {
-            const el = buildDotMarker({ color: 'var(--sev-critical)', size: 10 });
-            const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
-            markersRef.current.push(m);
-          }
-          const all = [...track, ...points];
-          if (all.length > 1) {
-            const b = all.reduce((acc, pt) => acc.extend([pt.lng, pt.lat]), new mapboxgl.LngLatBounds([all[0].lng, all[0].lat], [all[0].lng, all[0].lat]));
-            map.fitBounds(b, { padding: 32, maxZoom: 15, duration: 0 });
-          }
-        });
+        // Route through drawMap() so the initial map gets the same WebGL
+        // context-loss recovery as every subsequent rebuild. Previously this
+        // block duplicated the map-creation logic inline without calling
+        // installWebglContextRecovery, so only rebuilt maps were protected.
+        drawMap(containerRef.current, token, track, points, null);
       } catch (err) {
         // Token missing/misconfigured, apiFetch throwing, or any other
         // init failure — degrade to the existing empty state rather than
@@ -172,6 +159,24 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
       {!loading && pointCount === 0 && (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-fg-muted">
           No geo data for this entity.
+        </div>
+      )}
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 size={16} className="animate-spin text-brand-400" />
+            <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+              RELOAD PAGE
+            </button>
+          </div>
         </div>
       )}
     </div>

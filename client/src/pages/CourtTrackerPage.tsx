@@ -36,6 +36,8 @@ import { isValidDate } from '../utils/validate';
 import { formatDate, localToday, parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { openCourtAppearancePdf } from '../utils/courtAppearancePdf';
+import { useSlashFocus } from '../hooks/useSlashFocus';
+import { courtDocketToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
   { value: 'arraignment', label: 'Arraignment' }, { value: 'hearing', label: 'Hearing' },
@@ -116,6 +118,10 @@ export default function CourtTrackerPage() {
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
   const [filterType, setFilterType] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -386,15 +392,17 @@ export default function CourtTrackerPage() {
         ...(filterType ? { event_type: filterType } : {}),
       });
       const res = await apiFetch<{ data: CourtEvent[]; pagination: any }>(`/court/events?${params}`);
+      if (!mountedRef.current) return;
       setEvents(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
+    } catch (err: any) { if (mountedRef.current) setFetchError(err?.message || 'Failed to load data'); } finally { if (mountedRef.current) setLoading(false); }
   }, [page, searchQuery, filterType]);
 
   const fetchUpcoming = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: CourtEvent[] }>('/court/events/upcoming');
+      if (!mountedRef.current) return;
       setUpcoming(res.data || []);
     } catch { /* silent */ }
   }, []);
@@ -403,6 +411,7 @@ export default function CourtTrackerPage() {
   const fetchCalendar = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: Record<string, any[]> }>(`/court/calendar?month=${calendarMonth}&year=${calendarYear}`);
+      if (!mountedRef.current) return;
       setCalendarData(res.data || {});
     } catch { /* silent */ }
   }, [calendarMonth, calendarYear]);
@@ -412,17 +421,19 @@ export default function CourtTrackerPage() {
     setStatsLoading(true);
     try {
       const res = await apiFetch<{ data: any }>('/court/statistics');
+      if (!mountedRef.current) return;
       setStats(res.data || null);
     } catch { /* silent */ }
-    finally { setStatsLoading(false); }
+    finally { if (mountedRef.current) setStatsLoading(false); }
   }, []);
 
   // Feature 2: Conflict check
   const fetchConflicts = useCallback(async (eventId: number) => {
     try {
       const res = await apiFetch<{ data: any[] }>(`/court/events/${eventId}/conflicts`);
+      if (!mountedRef.current) return;
       setConflicts(res.data || []);
-    } catch { setConflicts([]); }
+    } catch { if (mountedRef.current) setConflicts([]); }
   }, []);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
@@ -495,7 +506,7 @@ export default function CourtTrackerPage() {
       addToast('Outcome recorded', 'success');
       setOutcomeOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setOutcomeSubmitting(false); }
@@ -508,7 +519,7 @@ export default function CourtTrackerPage() {
       await apiFetch(`/court/events/${selected.id}/confirm`, { method: 'PUT' });
       addToast('Attendance confirmed', 'success');
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
   };
 
@@ -524,7 +535,7 @@ export default function CourtTrackerPage() {
       setContinuanceOpen(false);
       setContinuanceData({ reason: '', new_date: '', new_time: '' });
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setContinuanceSubmitting(false); }
@@ -541,7 +552,7 @@ export default function CourtTrackerPage() {
       addToast('Bail/bond info updated', 'success');
       setBailOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setBailSubmitting(false); }
   };
@@ -557,7 +568,7 @@ export default function CourtTrackerPage() {
       addToast('Judge notes saved', 'success');
       setJudgeNotesOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setJudgeNotesSubmitting(false); }
   };
@@ -743,6 +754,19 @@ export default function CourtTrackerPage() {
       {/* Left Panel */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={events.length === 0}
+            onClick={() => downloadTextFile('court-docket.csv', courtDocketToCsv(events.map((ev) => ({
+              event_number: ev.event_number,
+              event_type: ev.event_type,
+              status: ev.status,
+              event_date: ev.event_date,
+              court_name: ev.court_name,
+              court_case_number: ev.court_case_number,
+            }))))}
+          >CSV</button>
           {canManage && (
             <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
               <FileText style={{ width: 11, height: 11 }} /> From Citation
@@ -758,6 +782,7 @@ export default function CourtTrackerPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <AlertTriangle className="w-3 h-3 flex-shrink-0" /> <span>{fetchError}</span>
+            <button type="button" className="toolbar-btn" onClick={() => { void fetchEvents(); }}>Retry</button>
             <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
         )}
@@ -785,7 +810,7 @@ export default function CourtTrackerPage() {
           <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-              <input id="ff-courttrackerpage-0" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
+              <input id="ff-courttrackerpage-0" ref={searchRef} value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events... (/)" aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
             </div>
             <select id="ff-courttrackerpage-1" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
               <option value="">All Types</option>

@@ -18,10 +18,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -156,24 +157,13 @@ export function generateOffenderRegistrationCardPdf(input: OffenderPdfInput): js
   const M = 36;
   let y = 36;
 
-  // Banner (RMPG gold)
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('NSOPW OFFENDER IDENTIFICATION CARD', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Sex Offender Registry Cross-Reference', M, y);
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  // Banner
+  y = drawNavyBanner(doc, {
+    title: 'NSOPW OFFENDER IDENTIFICATION CARD',
+    subtitle: 'Sex Offender Registry Cross-Reference',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // Classification banner (red / amber / grey based on match strength)
   const c = classificationBanner(classification ?? null);
@@ -403,6 +393,6 @@ export function generateOffenderRegistrationCardPdf(input: OffenderPdfInput): js
 
 export function openOffenderRegistrationCardPdf(input: OffenderPdfInput): void {
   const doc = generateOffenderRegistrationCardPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Offender Registration Card');
 }

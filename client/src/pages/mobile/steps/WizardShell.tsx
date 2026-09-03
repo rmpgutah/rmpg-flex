@@ -4,6 +4,7 @@
 // The shell owns nothing about form state — it just renders chrome and
 // forwards navigation events to the controller.
 
+import { useEffect, useRef } from 'react';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 
 interface WizardShellProps {
@@ -31,8 +32,24 @@ export default function WizardShell({
   continueLoading = false,
   children,
 }: WizardShellProps) {
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  // iOS keyboard: shrink the shell to the visual viewport so the footer stays visible.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleResize = () => {
+      if (shellRef.current) {
+        shellRef.current.style.height = `${vv.height}px`;
+      }
+    };
+    vv.addEventListener('resize', handleResize);
+    handleResize();
+    return () => vv.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div ref={shellRef} className="min-h-screen bg-white flex flex-col" style={{ height: '100dvh' }}>
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="bg-white border-b border-gray-200 px-4 pt-3 pb-3 flex-shrink-0">
         <div className="max-w-lg mx-auto">
@@ -41,7 +58,7 @@ export default function WizardShell({
               <button
                 type="button"
                 onClick={onBack}
-                className="p-1 -ml-1 text-gray-500 active:opacity-60 shrink-0"
+                className="p-1 -ml-1 text-gray-300 active:opacity-60 shrink-0"
                 aria-label="Go back"
               >
                 <ChevronLeft size={24} />
@@ -78,7 +95,7 @@ export default function WizardShell({
       </div>
 
       {/* ── Footer: Continue button ────────────────────────────── */}
-      <div className="bg-white border-t border-gray-200 px-4 pt-3 pb-5 flex-shrink-0">
+      <div className="bg-white border-t border-gray-200 px-4 pt-3 pb-5 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
         <div className="max-w-lg mx-auto">
           <button
             type="button"

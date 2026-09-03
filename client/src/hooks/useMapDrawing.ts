@@ -50,7 +50,7 @@ const DRAW_ACTIVE_SOURCE = 'rmpg-draw-active';
 const DRAW_ACTIVE_LINE = 'rmpg-draw-active-line';
 const DRAW_ACTIVE_POINTS = 'rmpg-draw-active-points';
 
-const SHAPE_COLORS = ['#d4a017', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#f59e0b'];
+const SHAPE_COLORS = ['#c3ccd6', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#f59e0b'];
 
 function nextColor(index: number): string {
   return SHAPE_COLORS[index % SHAPE_COLORS.length];
@@ -163,7 +163,7 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
       map.addLayer({
         id: DRAW_POINTS, type: 'circle', source: DRAW_SOURCE,
         filter: ['==', ['geometry-type'], 'Point'],
-        paint: { 'circle-color': '#d4a017', 'circle-radius': 4 },
+        paint: { 'circle-color': '#c3ccd6', 'circle-radius': 4 },
       });
     }
 
@@ -171,12 +171,12 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
       map.addSource(DRAW_ACTIVE_SOURCE, { type: 'geojson', data: empty });
       map.addLayer({
         id: DRAW_ACTIVE_LINE, type: 'line', source: DRAW_ACTIVE_SOURCE,
-        paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-dasharray': [2, 2] },
+        paint: { 'line-color': '#c3ccd6', 'line-width': 2, 'line-dasharray': [2, 2] },
       });
       map.addLayer({
         id: DRAW_ACTIVE_POINTS, type: 'circle', source: DRAW_ACTIVE_SOURCE,
         filter: ['==', ['geometry-type'], 'Point'],
-        paint: { 'circle-color': '#d4a017', 'circle-radius': 5, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
+        paint: { 'circle-color': '#c3ccd6', 'circle-radius': 5, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
       });
     }
 

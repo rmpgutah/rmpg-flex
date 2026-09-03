@@ -23,8 +23,9 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -95,27 +96,11 @@ export function generateWebResearchReportPdf(
 
   const filterLabel = FILTER_LABEL[ctx.filter] || ctx.filter;
 
-  // ── Gold banner ──
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`WEB RESEARCH REPORT — ${filterLabel.toUpperCase()}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Generated ${fmtDateTime(new Date())}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // ── Agency strap ──
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Investigations / OSINT', M, y);
-  if (ctx.officerName) {
-    const right = ctx.badgeNumber ? `${ctx.officerName} #${ctx.badgeNumber}` : ctx.officerName;
-    doc.text(right, W - M, y, { align: 'right' });
-  }
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: `WEB RESEARCH REPORT — ${filterLabel.toUpperCase()}`,
+    subtitle: 'Investigations / OSINT',
+    rightLine1: `Generated ${fmtDateTime(new Date())}`,
+  });
 
   // ── Context block ──
   doc.setDrawColor(BORDER);
@@ -318,6 +303,6 @@ export function openWebResearchReportPdf(
   ctx: WebResearchPdfContext,
 ): void {
   const doc = generateWebResearchReportPdf(results, ctx);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank', 'noopener,noreferrer');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Web Research Report');
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { coded } from '../../utils/searchText';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import {
@@ -399,15 +399,19 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const fetchHashes = useCallback(async () => {
     try {
       const data = await apiFetch<{ results: HashResult[] }>(`/iped/hash/results?evidence_id=${evidenceId}`);
+      if (!mountedRef.current) return;
       setHashes(data.results || []);
     } catch {
+      if (!mountedRef.current) return;
       setHashes([]);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [evidenceId]);
 
@@ -749,7 +753,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   const doc = printWindow.document;
                   doc.open();
                   const container = doc.createElement('div');
-                  container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;font-family:monospace;';
+                  container.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;font-family:'Arial, sans-serif';";
                   const h2 = doc.createElement('h2');
                   h2.textContent = selectedEvidence.evidence_number || '';
                   container.appendChild(h2);

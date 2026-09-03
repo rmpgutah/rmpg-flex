@@ -177,18 +177,22 @@ function isFallbackEngine(model: string | null | undefined): boolean {
 }
 
 const DOCUMENT_TYPES = [
-  { value: 'court_filing', label: 'Court Filing/Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
+  { value: 'court_filing', label: 'Court Filing / Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
-  { value: 'summons', label: 'Summons', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'summons', label: 'Summons & Complaint', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
+  { value: 'small_claims', label: 'Small Claims Filing', color: 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40' },
+  { value: 'divorce_family', label: 'Divorce & Family Petition', color: 'bg-sky-900/40 text-sky-400 border-sky-700/40' },
+  { value: 'garnishment', label: 'Writ of Garnishment', color: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/40' },
   { value: 'subpoena', label: 'Subpoena', color: 'bg-pink-900/40 text-pink-400 border-pink-700/40' },
-  { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
-  { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
-  { value: 'identification', label: 'ID/Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'eviction', label: 'Eviction / UD Notice', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
+  { value: 'restraining_order', label: 'Restraining / Protective Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
+  { value: 'probate', label: 'Probate / Guardianship Citation', color: 'bg-teal-900/40 text-teal-400 border-teal-700/40' },
+  { value: 'identification', label: 'ID / Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'correspondence', label: 'Correspondence', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
-  { value: 'other', label: 'Other', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'other', label: 'Other Legal Document', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
 // Human-readable label for the per-document `ocr_engine` slug shown in the
@@ -1470,6 +1474,7 @@ export default function ServeIntakePage() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
               {[
                 { key: 'plaintiff',         label: 'Plaintiff' },
+                { key: 'defendant',         label: 'Defendant' },
                 { key: 'court_name',        label: 'Court' },
                 { key: 'case_number',       label: 'Case #' },
                 { key: 'job_number',        label: 'Job #' },
@@ -1522,8 +1527,8 @@ export default function ServeIntakePage() {
                 </div>
               ))}
             </div>
-            {/* Process type + Priority row */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            {/* Process type + Priority + Urgency Tier row */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
                 <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
                   Process Type
@@ -1560,6 +1565,35 @@ export default function ServeIntakePage() {
                   <option value="urgent">Urgent</option>
                 </select>
               </div>
+              <div>
+                <label className="text-[9px] text-fg-muted uppercase font-mono block mb-0.5">Urgency Tier</label>
+                <select
+                  id="ff-intake-override-urgency_tier"
+                  value={editOverrides['urgency_tier'] ?? ''}
+                  onChange={e => overrideField('urgency_tier', e.target.value)}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">Auto</option>
+                  <option value="standard">Standard</option>
+                  <option value="tight">Tight</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+            </div>
+            {/* Urgency Tier row */}
+            <div className="mb-3">
+              <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Urgency Tier</label>
+              <select
+                id="ff-intake-override-urgency_tier"
+                value={editOverrides['urgency_tier'] ?? ''}
+                onChange={e => overrideField('urgency_tier', e.target.value)}
+                className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+              >
+                <option value="">— Auto —</option>
+                <option value="standard">Standard</option>
+                <option value="tight">Tight</option>
+                <option value="critical">Critical</option>
+              </select>
             </div>
             {/* Service instructions */}
             <div className="mb-3">
@@ -1595,11 +1629,41 @@ export default function ServeIntakePage() {
                   >
                     <option value="">— unknown —</option>
                     <option value="residential">Residential</option>
-                    <option value="commercial">Commercial</option>
+                    <option value="corporate">Corporate / Large Business</option>
+                    <option value="small_business">Small Business</option>
+                    <option value="government">Government Office</option>
+                    <option value="business">Business (generic)</option>
                     <option value="gated">Gated / HOA</option>
                     <option value="po_box">PO Box</option>
                   </select>
                   {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
+                  <p className="text-[8px] text-rmpg-500 mt-0.5">Venue overlay can be forced below; otherwise inferred into the OPS tree.</p>
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">Venue overlay</label>
+                  <select
+                    value={editOverrides['venue_kind'] ?? ''}
+                    onChange={e => overrideField('venue_kind', e.target.value)}
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                  >
+                    <option value="">Auto infer</option>
+                    <option value="none">None</option>
+                    <option value="medical_hospice">Medical / Hospice</option>
+                    <option value="hospital">Hospital</option>
+                    <option value="nursing_home">Nursing / Assisted Living</option>
+                    <option value="financial">Bank / Financial</option>
+                    <option value="law_office">Law Office</option>
+                    <option value="school">School / Campus</option>
+                    <option value="hotel">Hotel / Lodging</option>
+                    <option value="warehouse">Warehouse / Industrial</option>
+                    <option value="church">House of Worship</option>
+                    <option value="storage">Self-Storage</option>
+                    <option value="apartment_complex">Apartment Complex</option>
+                    <option value="high_rise">High-Rise / Office</option>
+                    <option value="military">Military / Restricted</option>
+                    <option value="construction">Construction Site</option>
+                    <option value="rural">Rural / Farm</option>
+                  </select>
                 </div>
                 <div>
                   <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
@@ -1823,7 +1887,8 @@ export default function ServeIntakePage() {
                   recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
                 </span>
                 <button
-                  onClick={() => navigate(`/serve?queue_id=${result.duplicate_of!.serve_queue_id}`)}
+                  type="button"
+                  onClick={() => navigate(`/serve?job_id=${result.duplicate_of!.serve_queue_id}`)}
                   className="text-[10px] text-brand-400 whitespace-nowrap hover:underline shrink-0"
                 >
                   View Entry →
@@ -1867,9 +1932,20 @@ export default function ServeIntakePage() {
                 </div>
                 <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + toDisplayLabel(result.extracted.processType.slice(1)) : 'PSO Client Request'} — Pending</p>
-                <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
-                  View in Dispatch →
-                </button>
+                <div className="flex flex-wrap gap-x-2 mt-1">
+                  {result.serve_queue_id != null && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/serve?job_id=${result.serve_queue_id}`)}
+                      className="text-[9px] text-brand-400 hover:underline"
+                    >
+                      Open in Process Server →
+                    </button>
+                  )}
+                  <button type="button" onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 hover:underline">
+                    View in Dispatch →
+                  </button>
+                </div>
               </div>
             </div>
 

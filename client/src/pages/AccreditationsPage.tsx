@@ -19,6 +19,8 @@ import { useToast } from '../components/ToastProvider';
 import { safeDateStr, localToday, parseTimestamp } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { accreditationsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -91,6 +93,7 @@ export default function AccreditationsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [checkingReminders, setCheckingReminders] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // ─── Derived stats ────────────────────────────────────────
 
@@ -123,7 +126,9 @@ export default function AccreditationsPage() {
       const qs = params.toString();
       const data = await apiFetch<Accreditation[]>(`/api/accreditations${qs ? `?${qs}` : ''}`);
       setRecords(asArray<Accreditation>(data));
+      setLoadError(null);
     } catch {
+      setLoadError('Failed to load accreditations');
       addToast('Failed to load accreditations', 'error');
     } finally {
       setLoading(false);
@@ -227,6 +232,7 @@ export default function AccreditationsPage() {
           <input
             type="text"
             placeholder="Search officer, type, issuing body…"
+            aria-label="Search accreditations by officer, type, or issuing body"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-100 placeholder-rmpg-500 focus:border-accent-silver-400 focus:outline-none"
@@ -275,13 +281,28 @@ export default function AccreditationsPage() {
         >
           <Plus className="w-3 h-3" /> Add Accreditation
         </button>
+        <button
+          type="button"
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('accreditations.csv', accreditationsToCsv(filtered))}
+          className="px-3 py-1.5 text-xs text-rmpg-200 bg-surface-sunken border border-rmpg-700 rounded-sm"
+        >CSV</button>
       </div>
+      {loadError && (
+        <div className="text-[11px] text-red-400 flex items-center justify-between border border-red-700/40 px-3 py-2">
+          <span>{loadError}</span>
+          <button type="button" className="toolbar-btn" style={{ height: 24 }} onClick={() => void fetchRecords()}>Retry</button>
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Shield} title="No accreditations found" />
+        <EmptyState
+          icon={Shield}
+          title={records.length === 0 ? 'No accreditations found' : 'No rows match the current filters'}
+        />
       ) : (
         <div className="overflow-x-auto border border-rmpg-700 rounded-sm">
           <table className="w-full text-[11px]">
@@ -306,7 +327,12 @@ export default function AccreditationsPage() {
                   <td className="px-2 py-[2px] text-gray-300">{r.officer_name} <span className="text-gray-600">({r.badge_number})</span></td>
                   <td className="px-2 py-[2px] text-gray-300">{formatEnumValue(r.type)}</td>
                   <td className="px-2 py-[2px] text-gray-400">{r.issuing_body}</td>
-                  <td className="px-2 py-[2px] [color:var(--field-label-color)] font-mono">{r.certificate_number}</td>
+                  <td className="px-2 py-[2px] [color:var(--field-label-color)] font-mono">
+                    {r.certificate_number}
+                    {r.certificate_number && (
+                      <button type="button" className="ml-1 text-[9px] border border-rmpg-700 px-1" onClick={() => void copyToClipboard(r.certificate_number)}>Copy</button>
+                    )}
+                  </td>
                   <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.issued_date)}</td>
                   <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.expiration_date)}</td>
                   <td className="px-2 py-[2px]">

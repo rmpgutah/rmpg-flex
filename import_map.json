@@ -1,9 +1,0 @@
-{
-  "imports": {
-    "@simplewebauthn/server": "./node_modules/@simplewebauthn/server/dist/server.esm.js",
-    "@simplewebauthn/server/helpers": "./node_modules/@simplewebauthn/server/helpers.js",
-    "@hono/zod-validator": "./node_modules/@hono/zod-validator/dist/index.js",
-    "pmtiles": "./node_modules/pmtiles/dist/pmtiles.js",
-    "mp4box": "./node_modules/mp4box/dist/mp4box.all.js"
-  }
-}

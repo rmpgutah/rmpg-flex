@@ -13,8 +13,9 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -135,24 +136,11 @@ export function generateNationalWarrantPdf(input: NationalWarrantPdfInput): jsPD
   const M = 36;
   let y = 36;
 
-  // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('NATIONAL WARRANT — RESULT', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  National Warrant Search', M, y);
-  if (preparedBy) doc.text(`Pulled by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: 'NATIONAL WARRANT — RESULT',
+    subtitle: 'National Warrant Search',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+  });
 
   // Active-warrant alert bar (red) — only when the upstream said active.
   if (isActiveWarrant(warrant)) {
@@ -306,6 +294,6 @@ export function generateNationalWarrantPdf(input: NationalWarrantPdfInput): jsPD
 
 export function openNationalWarrantPdf(input: NationalWarrantPdfInput): void {
   const doc = generateNationalWarrantPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'National Warrant');
 }

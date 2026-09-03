@@ -10,6 +10,8 @@ import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
 import { formatEnumValue } from '../utils/formatters';
+import { pawnItemsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 // ─── Types ───────────────────────────────────────────────────
 interface PawnTransaction {
@@ -282,6 +284,7 @@ export default function PawnTrackingPage() {
           <input
             type="text"
             placeholder="Search serial #, seller name, shop name…"
+            aria-label="Search pawn records by serial, seller, or shop"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 placeholder-rmpg-500 focus:border-accent-silver-600/50 focus:outline-none"
@@ -301,12 +304,19 @@ export default function PawnTrackingPage() {
         <IconButton onClick={fetchTransactions} aria-label="Refresh transactions">
           <RotateCcw className="w-4 h-4 text-accent-silver-500" />
         </IconButton>
+        <button
+          type="button"
+          className="px-2 py-1 text-[11px] border border-border-default"
+          disabled={transactions.length === 0}
+          onClick={() => downloadTextFile('pawn-items.csv', pawnItemsToCsv(transactions))}
+        >CSV</button>
       </div>
 
       {/* ── Error ── */}
       {error && (
-        <div className="text-red-400 text-[11px] bg-red-900/20 border border-red-700/40 px-3 py-2" style={{ borderRadius: 2 }}>
-          {error}
+        <div className="text-red-400 text-[11px] bg-red-900/20 border border-red-700/40 px-3 py-2 flex items-center justify-between" style={{ borderRadius: 2 }}>
+          <span>{error}</span>
+          <button type="button" className="px-2 py-1 border border-border-default text-[10px]" onClick={() => void fetchTransactions()}>Retry</button>
         </div>
       )}
 
@@ -324,7 +334,7 @@ export default function PawnTrackingPage() {
             {loading ? (
               <tr><td colSpan={9} className="text-center py-8 text-rmpg-500"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-rmpg-500">No pawn transactions found.</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-rmpg-500">{searchQuery || filterStatus ? 'No transactions match the current filter.' : 'No pawn transactions found.'}</td></tr>
             ) : (
               transactions.map(txn => (
                 <tr
@@ -335,7 +345,12 @@ export default function PawnTrackingPage() {
                   <td className="px-3 py-[2px] text-rmpg-200 font-mono whitespace-nowrap">{txn.transaction_date}</td>
                   <td className="px-3 py-[2px] text-rmpg-200">{txn.shop_name}</td>
                   <td className="px-3 py-[2px] text-rmpg-200 max-w-[200px] truncate">{txn.item_description}</td>
-                  <td className="px-3 py-[2px] text-rmpg-200 font-mono">{txn.serial_number || '—'}</td>
+                  <td className="px-3 py-[2px] text-rmpg-200 font-mono">
+                    {txn.serial_number || '—'}
+                    {txn.serial_number && (
+                      <button type="button" className="ml-1 text-[9px] border border-border-default px-1" onClick={(e) => { e.stopPropagation(); void copyToClipboard(txn.serial_number); }}>Copy</button>
+                    )}
+                  </td>
                   <td className="px-3 py-[2px] text-rmpg-200 whitespace-nowrap">
                     {txn.seller_last_name ? `${txn.seller_last_name}, ${txn.seller_first_name || ''}`.trim() : '—'}
                   </td>

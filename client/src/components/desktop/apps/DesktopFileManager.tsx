@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Folder, FolderOpen, File, RefreshCw, ExternalLink, Trash2 } from 'lucide-react';
+import { X, Folder, FolderOpen, File, RefreshCw, ExternalLink, Trash2, Download, Copy, Search, ArrowUpDown } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import { formatDateTime } from '../../../utils/dateUtils';
+import { downloadTextFile, fileListingToCsv } from '../../../utils/rmsListExport';
 
 const W = 620;
 const H = 480;
@@ -52,6 +53,8 @@ export default function DesktopFileManager({ onClose }: DesktopFileManagerProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<FileEntry | null>(null);
+  const [fileQuery, setFileQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified'>('name');
 
   const api = (window as unknown as Record<string, unknown>).electron as ElectronApi | undefined;
   const hasElectron = !!api?.fsListDir;
@@ -82,6 +85,29 @@ export default function DesktopFileManager({ onClose }: DesktopFileManagerProps)
   }, [api, selectedCat]);
 
   const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+  const visibleFiles = files
+    .filter((f) => {
+      const q = fileQuery.trim().toLowerCase();
+      if (!q) return true;
+      return f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (sortBy === 'size') return b.size - a.size;
+      if (sortBy === 'modified') return String(b.modified).localeCompare(String(a.modified));
+      return a.name.localeCompare(b.name);
+    });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (deleteTarget) setDeleteTarget(null);
+        else onClose();
+      }
+      if ((e.key === 'r' || e.key === 'R') && !['INPUT'].includes((e.target as HTMLElement)?.tagName)) load();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteTarget, onClose, load]);
 
   const handleDeleteConfirm = useCallback(() => {
     // File deletion is not exposed via current IPC — inform user
@@ -141,6 +167,21 @@ export default function DesktopFileManager({ onClose }: DesktopFileManagerProps)
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 6, padding: '5px 10px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0, alignItems: 'center' }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{CATEGORIES[selectedCat].label}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+              <Search size={10} style={{ color: 'var(--text-muted)' }} />
+              <input value={fileQuery} onChange={e => setFileQuery(e.target.value)} placeholder="Filter files"
+                style={{ flex: 1, fontSize: 10, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', padding: '2px 6px' }} />
+            </div>
+            <button type="button" onClick={() => setSortBy(s => s === 'name' ? 'size' : s === 'size' ? 'modified' : 'name')}
+              title={`Sort: ${sortBy}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, padding: '3px 8px', background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              <ArrowUpDown size={10} /> {sortBy}
+            </button>
+            <button type="button" disabled={visibleFiles.length === 0}
+              onClick={() => downloadTextFile(`${CATEGORIES[selectedCat].label.replace(/\s+/g, '-').toLowerCase()}.csv`, fileListingToCsv(visibleFiles))}
+              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, padding: '3px 8px', background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-secondary)', opacity: visibleFiles.length === 0 ? 0.4 : 1 }}>
+              <Download size={10} /> CSV
+            </button>
             <button onClick={openFolder} title="Open in system file manager" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, padding: '3px 8px', background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-secondary)' }}>
               <ExternalLink size={10} /> Open Folder
             </button>
@@ -157,8 +198,8 @@ export default function DesktopFileManager({ onClose }: DesktopFileManagerProps)
               <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Loading…</div>
             ) : !hasElectron ? (
               <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Feature requires the Rocky Mountain Protective Group desktop app.</div>
-            ) : files.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No files in this directory.</div>
+            ) : visibleFiles.length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{files.length === 0 ? 'No files in this directory.' : 'No files match the filter.'}</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-sunken)', zIndex: 1 }}>
@@ -169,15 +210,22 @@ export default function DesktopFileManager({ onClose }: DesktopFileManagerProps)
                   </tr>
                 </thead>
                 <tbody>
-                  {files.map(f => (
+                  {visibleFiles.map(f => (
                     <tr key={f.path} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       <td style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <File size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                        <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }} title={f.name}>{f.name}</span>
+                        <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }} title={f.name}>{f.name}</span>
                       </td>
                       <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{fmtSize(f.size)}</td>
                       <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: 10 }}>{fmtDate(f.modified)}</td>
-                      <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                      <td style={{ padding: '4px 8px', textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 4 }}>
+                        <button
+                          aria-label={`Copy path ${f.name}`}
+                          onClick={() => navigator.clipboard.writeText(f.path).catch(() => undefined)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                        >
+                          <Copy size={11} />
+                        </button>
                         <button
                           aria-label={`Delete ${f.name}`}
                           onClick={() => setDeleteTarget(f)}
@@ -195,7 +243,7 @@ export default function DesktopFileManager({ onClose }: DesktopFileManagerProps)
 
           {/* Footer */}
           <div style={{ padding: '3px 10px', borderTop: '1px solid var(--border-subtle)', fontSize: 9, color: 'var(--text-muted)', display: 'flex', gap: 10, flexShrink: 0 }}>
-            <span>{files.length} files</span>
+            <span>{visibleFiles.length}/{files.length} files</span>
             {files.length > 0 && <span>Total: {fmtSize(totalSize)}</span>}
           </div>
         </div>

@@ -78,6 +78,8 @@ export default function PersonDossierPage() {
     }
   }, [searchParams, setSearchParams, navigate]);
 
+  const [reloadTick, setReloadTick] = useState(0);
+
   useEffect(() => {
     setData(null); setError(null);
     apiFetch<DossierResponse>(`/intel/dossier/person/${id}`)
@@ -86,7 +88,7 @@ export default function PersonDossierPage() {
         const notFound = e?.status === 404;
         setError({ message: e?.message || 'Failed to load dossier', notFound });
       });
-  }, [id]);
+  }, [id, reloadTick]);
 
   // Esc cascade: photo zoom → navigate back. Read-only page, no forms /
   // confirms / filters to peel off, so the stack is short by design.
@@ -123,13 +125,18 @@ export default function PersonDossierPage() {
           <div className="bg-surface-base border border-border-default p-4 text-[11px] text-fg-muted">
             No person on file for id <span className="text-rmpg-200">#{id}</span>. The record may have been merged, deleted, or never existed.
             <div className="mt-3">
-              <button onClick={() => navigate(-1)} className="text-brand-400 hover:underline">← Back</button>
+              <button type="button" onClick={() => navigate(-1)} className="text-brand-400 hover:underline">← Back</button>
             </div>
           </div>
         </div>
       );
     }
-    return <div className="p-4 text-[11px] text-red-400">{error.message}</div>;
+    return (
+      <div className="p-4 text-[11px] text-red-400 space-y-2" role="alert">
+        <p>{error.message}</p>
+        <button type="button" className="toolbar-btn" onClick={() => setReloadTick((n) => n + 1)}>Retry</button>
+      </div>
+    );
   }
   if (!data) return <div className="p-4 text-[11px] text-fg-muted">Loading dossier…</div>;
 

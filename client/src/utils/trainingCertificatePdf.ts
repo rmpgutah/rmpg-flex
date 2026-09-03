@@ -23,6 +23,8 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel, stripHtmlForPdf } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -192,29 +194,12 @@ export function generateTrainingCertificatePdf(input: TrainingCertificatePdfInpu
   let y = 36;
 
   // ── Banner ─────────────────────────────────────────────
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(
-    `TRAINING RECORD — ${record.course_name || `Record #${record.id ?? '?'}`}`,
-    M + 10, y + 19,
-  );
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // ── Agency strap ───────────────────────────────────────
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text(
-    'Rocky Mountain Protective Group  ·  Officer Training & Qualification Record',
-    M, y,
-  );
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `TRAINING CERTIFICATE — ${record.certificate_number || record.course_name || `Record #${record.id ?? '?'}`}`,
+    subtitle: 'Officer Training & Qualification Record',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // ── Audit alert — completed but no cert or completion date ──
   if (needsAuditAlert(record)) {
@@ -479,6 +464,6 @@ export function generateTrainingCertificatePdf(input: TrainingCertificatePdfInpu
 
 export function openTrainingCertificatePdf(input: TrainingCertificatePdfInput): void {
   const doc = generateTrainingCertificatePdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Training Certificate');
 }

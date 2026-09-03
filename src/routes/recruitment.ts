@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-
+import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
 const recruitment = new Hono<Env>();
+
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'] as const;
 
 recruitment.get('/candidates', async (c) => {
   try {
@@ -26,7 +28,7 @@ recruitment.get('/candidates/:id', async (c) => {
     log.error('GET /candidates/:id failed', { src: 'src/routes/recruitment.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-recruitment.post('/candidates', async (c) => {
+recruitment.post('/candidates', requireRole(...MANAGER_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
@@ -40,10 +42,11 @@ recruitment.post('/candidates', async (c) => {
     log.error('POST /candidates failed', { src: 'src/routes/recruitment.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-recruitment.put('/candidates/:id', async (c) => {
+recruitment.put('/candidates/:id', requireRole(...MANAGER_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
@@ -55,11 +58,13 @@ recruitment.put('/candidates/:id', async (c) => {
     log.error('PUT /candidates/:id failed', { src: 'src/routes/recruitment.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-recruitment.delete('/candidates/:id', async (c) => {
+recruitment.delete('/candidates/:id', requireRole(...MANAGER_ROLES), async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
-  await execute(db, 'DELETE FROM recruitment_candidates WHERE id=?', id);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const result = await execute(db, 'DELETE FROM recruitment_candidates WHERE id=?', id);
+  if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /candidates/:id failed', { src: 'src/routes/recruitment.ts' }, err); return c.json({ error: 'Failed' }, 500); }

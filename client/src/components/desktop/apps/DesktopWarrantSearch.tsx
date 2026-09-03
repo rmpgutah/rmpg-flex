@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { Search, ChevronDown, ChevronRight, Flag } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { formatDate } from '../../../utils/dateUtils';
+import { copyToClipboard } from '../../../utils/clipboard';
+import { warrantDocketToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 interface Warrant {
   id: number;
@@ -168,12 +170,26 @@ export default function DesktopWarrantSearch({ onClose: _onClose }: Props) {
             color: 'var(--text-primary)', fontWeight: 700,
           }}
         >Search</button>
+        <button
+          type="button"
+          disabled={results.length === 0}
+          onClick={() => downloadTextFile('warrant-docket.csv', warrantDocketToCsv(results))}
+          style={{
+            fontSize: 11, padding: '4px 10px', borderRadius: 2, cursor: 'pointer',
+            background: 'none', border: '1px solid var(--border-default)', color: 'var(--text-primary)',
+          }}
+        >CSV</button>
       </div>
 
       {/* Results */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         {loading && results.length === 0 && <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>Searching…</p>}
-        {error && <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--sev-critical)' }}>{error}</p>}
+        {error && (
+          <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--sev-critical)' }}>
+            {error}{' '}
+            <button type="button" onClick={handleSearch} style={{ fontSize: 10, marginLeft: 8, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button>
+          </p>
+        )}
         {searched && !loading && results.length === 0 && !error && (
           <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>No warrants found</p>
         )}
@@ -202,7 +218,7 @@ export default function DesktopWarrantSearch({ onClose: _onClose }: Props) {
                     <td style={{ ...td, color: 'var(--text-secondary)' }}>
                       {expanded === w.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
-                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 10 }}>{w.warrant_number ?? `#${w.id}`}</td>
+                    <td style={{ ...td, fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{w.warrant_number ?? `#${w.id}`}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{warrantName(w)}</td>
                     <td style={td}>{w.date_of_birth ?? '—'}</td>
                     <td style={{ ...td, textTransform: 'capitalize' }}>{warrantType(w)}</td>

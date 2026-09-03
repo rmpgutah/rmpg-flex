@@ -1,5 +1,4 @@
 import UIKit
-import CorePush
 
 /// Minimal `UIApplicationDelegate` whose sole job is receiving the two
 /// remote-notification registration callbacks and forwarding them via

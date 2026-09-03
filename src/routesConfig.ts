@@ -52,8 +52,10 @@
 import type { Hono } from 'hono';
 
 import auth from './routes/auth';
+import ssoAuth from './routes/ssoAuth';
 import health from './routes/health';
 import mapData from './routes/mapData';
+import iosOta from './routes/iosOta';
 import tiles from './routes/tiles';
 import osmOverrides from './routes/osmOverrides';
 import geo from './routes/geo';
@@ -65,6 +67,7 @@ import tips from './routes/tips';
 import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
 import adminMapData from './routes/adminMapData';
+import dailyEmailAdmin from './routes/dailyEmailAdmin';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import oidc from './routes/oidc';
@@ -121,6 +124,7 @@ import alpr from './routes/alpr';
 import analytics from './routes/analytics';
 import automationRules from './routes/automationRules';
 import carxe from './routes/carxe';
+import vehicleEnrichment from './routes/vehicleEnrichment';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
@@ -130,6 +134,9 @@ import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
 import deepResearch from './routes/deepResearch';
+import deepsearch from './routes/deepsearch';
+import gofps from './routes/gofps';
+import gosearch from './routes/gosearch';
 import crisisResponse from './routes/crisisResponse';
 import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
@@ -151,6 +158,7 @@ import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
+import corporateOps from './routes/corporateOps';
 import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
@@ -165,6 +173,7 @@ import serveQueueEnhanced from './routes/serveQueueEnhanced';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
 import skiptracer from './routes/skiptracer';
+import skiptracerV2 from './routes/skiptracerV2';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
@@ -179,6 +188,7 @@ import investigation from './routes/investigation';
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import knowledgeBase from './routes/knowledgeBase';
+import radar360 from './routes/radar360';
 import recruitment from './routes/recruitment';
 import refData from './routes/refData';
 import reports from './routes/reports';
@@ -186,7 +196,7 @@ import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
-import serveManagerRoutes from './routes/serveManagerRoutes';
+import serveManagerRoutes, { serveManagerWebhookRouter } from './routes/serveManagerRoutes';
 import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
 import { serveQrScan } from './routes/serveQrScan';
 import stubs from './routes/stubs';
@@ -196,6 +206,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -217,7 +228,16 @@ import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
+import dispatchActivityFeed from './routes/dispatch/activityFeed';
+import dispatchShiftStats from './routes/dispatch/shiftStats';
+import dispatchCallTemplates from './routes/dispatch/callTemplates';
 import dispatchDataCapture from './routes/dispatch/dataCapture';
+import notificationSubscriptions from './routes/dispatch/notificationSubscriptions';
+import dispatchWeather from './routes/dispatch/dispatchWeather';
+import shiftSchedule from './routes/dispatch/shiftSchedule';
+import unitMessages from './routes/dispatch/unitMessages';
+import analyticsDispatch from './routes/dispatch/analyticsDispatch';
+import callExtras from './routes/dispatch/callExtras';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
 import {
@@ -303,6 +323,8 @@ export interface RouteMount {
 export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Public ─────────────────────────────────────────────────
   { prefix: '/api/health', router: health, auth: 'public' },
+  { prefix: '/api/oidc/dialer', router: ssoAuth, auth: 'public',
+    note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
     note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
@@ -311,6 +333,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
     note: "RMPG's internal edit layer over the OSM overlays, keyed by OSM element id. Auth REQUIRED — unlike /api/tiles (public reference data), these are internal corrections attributable to a named user." },
   { prefix: '/api/geo', router: geo, auth: 'public' },
+  { prefix: '/api/ios-ota', router: iosOta, auth: 'public',
+    note: 'Wireless install package (manifest.plist/ipa/icons) for ios2/RMPGFlexConnect, served from R2 DOWNLOADS under ios-ota/. Public — itms-services on the device fetches these unauthenticated. Needs the same WAF managed-challenge skip as /api/health or the install link 403s (see docs/superpowers/specs/2026-08-22-ios-ota-wireless-install-design.md).' },
 
   // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
   // token IS the credential — no JWT required because the page is meant for
@@ -360,8 +384,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/calls', router: callActions, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /:id/{revert-status,le-notification,transfer,broadcast-note,notes/:noteId,generate-incident}' },
   { prefix: '/api/dispatch/calls', router: callWarnings, auth: 'required' },
+  // callExtras: BEFORE dispatchCalls — handles /:id/suggest-unit and /:id/notes/export
+  { prefix: '/api/dispatch/calls', router: callExtras, auth: 'required' },
   { prefix: '/api/dispatch/units', router: audioMode, auth: 'required' },
   { prefix: '/api/dispatch/units', router: unitStatus, auth: 'required' },
+  // unitMessages: BEFORE dispatchUnits — handles /:id/messages
+  { prefix: '/api/dispatch/units', router: unitMessages, auth: 'required' },
   { prefix: '/api/dispatch/premise-alerts', router: premiseAlerts, auth: 'required' },
   { prefix: '/api/dispatch/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/dispatch/welfare', router: welfareActive, auth: 'required' },
@@ -374,6 +402,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/routing', router: dispatchRouting, auth: 'required',
     note: 'CFS Route Builder backend (optimize/save/unit/:id/complete-stop) — the /route-builder page 404d on all four since it shipped; never mounted before.' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
+  { prefix: '/api/dispatch/analytics', router: analyticsDispatch, auth: 'required',
+    note: 'Dispatch analytics: availability timeline (hourly staffing breakdown) + incident-type breakdown' },
+  { prefix: '/api/dispatch/activity', router: dispatchActivityFeed, auth: 'required',
+    note: 'Dispatch activity feed: recent call/unit/panic events from audit_log, polled every 10s by dispatch board sidebar' },
   // NOTE: dispatchAggregates' internal routes are bare ('/call-volume',
   // '/by-zone', '/integration-dashboard', no '/aggregates' segment) — the
   // client was fixed to match this mount (2026-07-02, PR #2530) rather than
@@ -400,6 +432,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/map-data', router: adminMapData, auth: 'required' },
+  { prefix: '/api/daily-email', router: dailyEmailAdmin, auth: 'public',
+    note: 'Daily email report recipient management: GET/PUT /recipients, POST /test-send, GET /test-open (public). Admin-only (auth handled per-route).' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
   { prefix: '/api/email', router: emailRoute, auth: 'required',
     note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
@@ -457,6 +491,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
+  { prefix: '/api/corporate-ops', router: corporateOps, auth: 'required',
+    note: 'Corporate linkage: clock/fleet/HR/dispatch/map/serve snapshot, mileage reconcile, automatic workflow runs.' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/crisis', router: crisisResponse, auth: 'required',
@@ -464,6 +500,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/crm', router: crm, auth: 'required',
     note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
   { prefix: '/api/deep-research', router: deepResearch, auth: 'required' },
+  { prefix: '/api/deepsearch', router: deepsearch, auth: 'required',
+    note: 'DeepSearch OSINT search powered by Gemini 2.5 Flash with osint_cache backing' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
@@ -480,6 +518,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/carxe', router: carxe, auth: 'required',
     note: 'CarsXE vehicle-data lookups: plate decode, VIN specs, lien/theft, history. Manual/officer-triggered only, cached in carxe_lookups (24h TTL). 200 {ok:false,code:\'not_configured\'} when CARXE_API_KEY is unset.' },
+  { prefix: '/api/vehicle-enrichment', router: vehicleEnrichment, auth: 'required',
+    note: 'Vehicle enrichment chain: plate→VIN→specs via PLATE_TO_VIN / VIN_DECODER / PLATE_DECODER APIs. POST /enrich/:vehicleId (client_viewer excluded), GET /cache/:plate, GET /health. 200 {ok:false,code:\'not_configured\'} when all three keys are unset.' },
   { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
     note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
@@ -488,6 +528,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
   { prefix: '/api/geofences', router: geofences, auth: 'required',
     note: 'Geofence zone CRUD — writes to geofence_zones. All authenticated roles.' },
+  { prefix: '/api/gofps', router: gofps, auth: 'required',
+    note: 'GoFPS FastPeopleSearch people search with osint_cache backing' },
+  { prefix: '/api/gosearch', router: gosearch, auth: 'required',
+    note: 'GoSearch username OSINT (300+ platforms) + breach DB checks with osint_cache backing' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
@@ -518,6 +562,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Case intelligence & cross-reference engine: FTS5 unified search, entity link CRUD, MO pattern matching. See investigation.ts.' },
     { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
+  { prefix: '/api/radar360', router: radar360, auth: 'required',
+    note: 'Radar 360º situational awareness scan: nearby calls, flagged persons, stolen vehicles, active units, incidents within a configurable radius.' },
   { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
     note: 'Imported but never mounted (dead code since import) — dashcam video redaction upload/list/download.' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
@@ -778,13 +824,23 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
+  { prefix: '/api/dispatch/shift-stats', router: dispatchShiftStats, auth: 'required' },
+  { prefix: '/api/dispatch/call-templates', router: dispatchCallTemplates, auth: 'required' },
   { prefix: '/api/dispatch/capture', router: dispatchDataCapture, auth: 'required' },
+  // Backend-C additions
+  { prefix: '/api/dispatch/notifications', router: notificationSubscriptions, auth: 'required' },
+  { prefix: '/api/dispatch', router: dispatchWeather, auth: 'required' },
+  { prefix: '/api/dispatch', router: shiftSchedule, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
   { prefix: '/api/traccar', router: traccar, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
+  // Public webhook receiver must be declared BEFORE the auth-required router so
+  // SM's unsigned POST reaches it without a JWT. The HMAC signature is the guard.
+  { prefix: '/api/servemanager-webhook', router: serveManagerWebhookRouter, auth: 'public' },
   { prefix: '/api/servemanager', router: serveManagerRoutes, auth: 'required' },
-  { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
+  { prefix: '/api/skiptracer-v2', router: skiptracerV2, auth: 'required',
+    note: 'Skip Tracker 3.5 — local RMS + MicroBilt cache + optional RapidAPI + enrichment adapters. Replaces stubs mount that returned empty sources/search.' },
 
   // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────
   // Each of these is called by the client SPA but has no real handler on
@@ -795,6 +851,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  // Longer ingest prefix FIRST so Hono does not let the parent router steal POST /ingest.
+  { prefix: '/api/dialer-connect/ingest', router: dialerConnectIngest, auth: 'public',
+    note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
+  { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
+    note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },

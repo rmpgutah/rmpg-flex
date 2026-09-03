@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { Car } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Car, Loader2 } from 'lucide-react';
 import FormModal from './FormModal';
 import FormField from './records/FormField';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
+import { apiFetch } from '../hooks/useApi';
+import ConfirmDialog from './ConfirmDialog';
+import { useToastSafe } from './ToastProvider';
 
 import RichTextArea from './RichTextArea';
-import { composeAddressUnit } from '../utils/addressUnit';
+import { composeAddressUnit, splitAddressUnit } from '../utils/addressUnit';
 import {
   VEHICLE_BODY_STYLE_OPTIONS, VEHICLE_COLOR_OPTIONS,
   VEHICLE_FUEL_OPTIONS, VEHICLE_TRANSMISSION_OPTIONS,
@@ -17,6 +20,11 @@ import {
   TOW_STATUS_OPTIONS, TITLE_STATUS_OPTIONS,
   VEHICLE_CONDITION_OPTIONS,
 } from '../constants/lawEnforcementEnums';
+
+const VEHICLE_FLAG_OPTIONS = [
+  'BOLO', 'Warrant', 'Known Offender', 'Mental Health', 'Trespass Warning',
+  'Violent History', 'Drug History', 'Gang Affiliated', 'Officer Safety',
+];
 interface VehicleFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -78,6 +86,11 @@ export interface VehicleFormData {
   ncic_entry_number: string;
   primary_driver_name: string;
   vehicle_use: string;
+  flags: string[];
+  tow_lot_location: string;
+  tow_release_date: string;
+  tow_release_to: string;
+  tow_reason: string;
 }
 
 const EMPTY_FORM: VehicleFormData = {
@@ -132,6 +145,11 @@ const EMPTY_FORM: VehicleFormData = {
   ncic_entry_number: '',
   primary_driver_name: '',
   vehicle_use: '',
+  flags: [],
+  tow_lot_location: '',
+  tow_release_date: '',
+  tow_release_to: '',
+  tow_reason: '',
 };
 
 // US_STATES and COMMON_MAKES kept local — broad reference data
@@ -231,14 +249,25 @@ export default function VehicleFormModal({
           owner_name: editingVehicle.owner_name || '',
           registered_owner: editingVehicle.registered_owner || '',
           registration_state: editingVehicle.registration_state || '',
-          insurance_expiry: (editingVehicle as any).insurance_expiry || '',
-          owner_dob: (editingVehicle as any).owner_dob || '',
-          owner_dl_number: (editingVehicle as any).owner_dl_number || '',
-          tow_location: (editingVehicle as any).tow_location || '',
-          ncic_entry_number: (editingVehicle as any).ncic_entry_number || '',
-          primary_driver_name: (editingVehicle as any).primary_driver_name || '',
-          vehicle_use: (editingVehicle as any).vehicle_use || '',
+          insurance_expiry: editingVehicle.insurance_expiry || '',
+          owner_dob: editingVehicle.owner_dob || '',
+          owner_dl_number: editingVehicle.owner_dl_number || '',
+          tow_location: editingVehicle.tow_location || '',
+          ncic_entry_number: editingVehicle.ncic_entry_number || '',
+          primary_driver_name: editingVehicle.primary_driver_name || '',
+          vehicle_use: editingVehicle.vehicle_use || '',
+          flags: Array.isArray(editingVehicle.flags)
+            ? editingVehicle.flags.map((f: any) => typeof f === 'object' ? f.type : f)
+            : [],
+          tow_lot_location: (editingVehicle as any).tow_lot_location || '',
+          tow_release_date: (editingVehicle as any).tow_release_date || '',
+          tow_release_to: (editingVehicle as any).tow_release_to || '',
+          tow_reason: (editingVehicle as any).tow_reason || '',
         };
+        // Split stored "123 Main St #2B" back into street + unit fields
+        const { street, unit } = splitAddressUnit(editingVehicle.owner_address || '');
+        initial.owner_address = street;
+        setOwnerAddressUnit(unit);
         setForm(initial);
         snapshot();
       } else {
@@ -248,28 +277,79 @@ export default function VehicleFormModal({
     }
   }, [isOpen, editingVehicle, snapshot]);
 
+  const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
+  const [showNcicReminder, setShowNcicReminder] = useState(false);
+  const [vinDecoding, setVinDecoding] = useState(false);
+  const [dupPlateOpen, setDupPlateOpen] = useState(false);
+  const toast = useToastSafe();
+  const ncicFieldRef = useRef<HTMLInputElement>(null);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
       setForm((prev) => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
     } else {
-      setForm((prev) => ({ ...prev, [name]: value }));
+      setForm((prev) => {
+        const next = { ...prev, [name]: value };
+        if (name === 'body_style' && !prev.doors) {
+          const m = value.match(/(\d+)-Door/i);
+          if (m) next.doors = m[1];
+        }
+        if (name === 'stolen_status') {
+          const isActiveStolen = value === 'Stolen' || value === 'Active';
+          if (isActiveStolen && !prev.ncic_entry_number) {
+            setShowNcicReminder(true);
+            setTimeout(() => {
+              ncicFieldRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+              ncicFieldRef.current?.focus();
+            }, 100);
+          } else {
+            setShowNcicReminder(false);
+          }
+        }
+        if (name === 'ncic_entry_number' && value) {
+          setShowNcicReminder(false);
+        }
+        return next;
+      });
     }
-    // Editing year/vin clears the inline validation error for that field
-    // so the operator sees the error disappear as they correct the value.
     if (name === 'year' || name === 'vin') {
       setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
     }
   };
 
-  const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
-  // Inline validation errors per field. Surface them on click — previously
-  // the handler silently `return`-ed on bad year/VIN with NO feedback,
-  // which read to the operator as "Create button is dead". Reported
-  // in-session 2026-06-21.
-  const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
+  const handleFlagToggle = (flag: string) => {
+    setForm((prev) => {
+      const next = prev.flags.includes(flag)
+        ? prev.flags.filter((f) => f !== flag)
+        : [...prev.flags, flag];
+      return { ...prev, flags: next };
+    });
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleVinDecode = async () => {
+    if (!form.vin || form.vin.length !== 17) return;
+    setVinDecoding(true);
+    try {
+      const result = await apiFetch<any>(`/records/vehicles/decode-vin?vin=${encodeURIComponent(form.vin)}`);
+      if (result) {
+        setForm((prev) => ({
+          ...prev,
+          make: result.make || prev.make,
+          model: result.model || prev.model,
+          year: result.year ? String(result.year) : prev.year,
+          body_style: result.body_style || prev.body_style,
+          fuel_type: result.fuel_type || prev.fuel_type,
+          trim: result.trim || prev.trim,
+        }));
+      }
+    } catch { /* ignore decode errors */ } finally {
+      setVinDecoding(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: { year?: string; vin?: string } = {};
     if (form.year) {
@@ -291,11 +371,31 @@ export default function VehicleFormModal({
       return;
     }
     setFieldErrors({});
+    if (!editingVehicle && form.plate_number) {
+      try {
+        const existing = await apiFetch<any[]>(
+          `/records/vehicles/plate-lookup?plate=${encodeURIComponent(form.plate_number)}${form.state ? `&state=${encodeURIComponent(form.state)}` : ''}`
+        );
+        if (Array.isArray(existing) && existing.length > 0) {
+          setDupPlateOpen(true);
+          return;
+        }
+      } catch {
+        toast?.addToast('Could not check for an existing plate. You can still create the record.', 'warning');
+      }
+    }
+    signalSaved();
+    onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
+  };
+
+  const submitAfterDupConfirm = () => {
+    setDupPlateOpen(false);
     signalSaved();
     onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 
   return (
+    <>
     <FormModal
       isOpen={isOpen}
       onClose={onClose}
@@ -343,7 +443,7 @@ export default function VehicleFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-fg-muted hover:text-fg-primary hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -414,7 +514,13 @@ export default function VehicleFormModal({
 
           {/* VIN */}
           <FormField label="VIN">
-            <input name="vin" type="text" required maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
+            <div className="flex gap-2">
+              <input name="vin" type="text" required maxLength={17} className="input-dark mt-1 font-mono uppercase flex-1" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
+              <button type="button" onClick={handleVinDecode} disabled={vinDecoding || form.vin.length !== 17} className="mt-1 px-2 py-1 text-[9px] font-bold bg-surface-raised border border-rmpg-600 text-fg-secondary hover:text-fg-primary hover:border-brand-500/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1">
+                {vinDecoding ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Decode
+              </button>
+            </div>
           </FormField>
         </>
       )}
@@ -519,12 +625,15 @@ export default function VehicleFormModal({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="NCIC Entry #">
-              <input name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
+              <input ref={ncicFieldRef} name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
+              {showNcicReminder && (
+                <p className="mt-1 text-[9px] text-amber-400 bg-amber-900/20 border border-amber-700/40 px-2 py-1">Remember to enter NCIC entry number</p>
+              )}
             </FormField>
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
-            <label htmlFor="ff-vehicleformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
+            <label htmlFor="ff-vehicleformmodal-addrunit" className="text-[10px] text-fg-muted uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Owner Name">
                 <input name="owner_name" type="text" className="input-dark mt-1" placeholder="Vehicle owner name" value={form.owner_name} onChange={handleChange} />
@@ -602,15 +711,29 @@ export default function VehicleFormModal({
             <FormField label="Tow Location / Impound Lot" className="mt-3">
               <input name="tow_location" type="text" className="input-dark mt-1" placeholder="Where vehicle was towed / impounded" value={form.tow_location} onChange={handleChange} />
             </FormField>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
+              <FormField label="Tow Lot Location">
+                <input name="tow_lot_location" type="text" className="input-dark mt-1" placeholder="Lot name or address" value={form.tow_lot_location} onChange={handleChange} />
+              </FormField>
+              <FormField label="Tow Release Date">
+                <input name="tow_release_date" type="date" className="input-dark mt-1" value={form.tow_release_date} onChange={handleChange} />
+              </FormField>
+              <FormField label="Tow Release To">
+                <input name="tow_release_to" type="text" className="input-dark mt-1" placeholder="Released to (name)" value={form.tow_release_to} onChange={handleChange} />
+              </FormField>
+            </div>
+            <FormField label="Tow Reason" className="mt-3">
+              <input name="tow_reason" type="text" className="input-dark mt-1" placeholder="Reason for tow" value={form.tow_reason} onChange={handleChange} />
+            </FormField>
           </div>
 
           <div className="flex items-center gap-6 py-2">
-            <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-fg-secondary cursor-pointer">
               <input type="checkbox" name="commercial_vehicle" checked={form.commercial_vehicle} onChange={handleChange}
                 className="w-4 h-4 bg-rmpg-800 border-rmpg-600 text-brand-500 focus:ring-brand-500" />
               Commercial Vehicle
             </label>
-            <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-fg-secondary cursor-pointer">
               <input type="checkbox" name="hazmat" checked={form.hazmat} onChange={handleChange}
                 className="w-4 h-4 bg-rmpg-800 border-rmpg-600 text-red-600 focus:ring-red-500" />
               HAZMAT
@@ -621,6 +744,29 @@ export default function VehicleFormModal({
 
       {activeSection === 'condition' && (
         <>
+          {/* Flags */}
+          <div className="border-b border-rmpg-700 pb-3 mb-3">
+            <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Flags</label>
+            <div className="flex flex-wrap gap-1.5">
+              {VEHICLE_FLAG_OPTIONS.map((flag) => {
+                const active = form.flags.includes(flag);
+                return (
+                  <button
+                    key={flag}
+                    type="button"
+                    onClick={() => handleFlagToggle(flag)}
+                    className={`px-2 py-0.5 text-[9px] font-bold border transition-colors ${
+                      active
+                        ? 'bg-red-900/40 border-red-600/60 text-red-300'
+                        : 'bg-transparent border-rmpg-700 text-fg-muted hover:border-rmpg-500 hover:text-fg-secondary'
+                    }`}
+                  >
+                    {flag}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {/* Condition Dropdowns */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <FormField label="Exterior Condition">
@@ -671,5 +817,15 @@ export default function VehicleFormModal({
         </>
       )}
     </FormModal>
+      <ConfirmDialog
+        isOpen={dupPlateOpen}
+        onClose={() => setDupPlateOpen(false)}
+        onConfirm={submitAfterDupConfirm}
+        title="Duplicate plate"
+        message={`A vehicle with plate ${form.plate_number} already exists. Create anyway?`}
+        confirmLabel="Create anyway"
+        confirmVariant="warning"
+      />
+    </>
   );
 }

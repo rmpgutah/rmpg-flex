@@ -1,5 +1,5 @@
 import Foundation
-import CoreAPI
+
 
 /// Mirrors `cases` (migrations/0028_cases.sql). A prior version used `type`
 /// as the property name and had no `title` at all — the real columns are

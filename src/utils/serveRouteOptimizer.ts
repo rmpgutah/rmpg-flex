@@ -11,6 +11,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, queryInChunks } from './db';
+import { clampDwellSeconds, type DefendantType } from './serveStopTiming';
 
 // ── Phase-1 route-planner types (added 2026-08-12) ─────────
 
@@ -19,8 +20,9 @@ const APARTMENT_PATTERNS = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:o
 export function inferDefendantType(
   address: string | null | undefined,
   businessId: number | null | undefined,
+  recipientType?: string | null,
 ): 'individual' | 'apartment' | 'business' {
-  if (businessId) return 'business';
+  if (businessId || recipientType === 'business') return 'business';
   if (address && APARTMENT_PATTERNS.test(address)) return 'apartment';
   return 'individual';
 }
@@ -45,6 +47,20 @@ export interface GeocodeWarning {
   quality: 'low' | 'none';
 }
 
+export interface OptimizeOrigin {
+  lat: number;
+  lng: number;
+}
+
+export interface OptimizeOptions {
+  origin?: OptimizeOrigin | null;
+  circular?: boolean;
+  /** Vehicle fuel efficiency from fleet_vehicles.avg_mpg. Enables fuel-cost-aware routing. */
+  avgMpg?: number | null;
+  /** Price per gallon of fuel (default $3.50). Used with avgMpg to compute fuel cost. */
+  fuelPricePerGallon?: number;
+}
+
 export interface OptimizeResult {
   orderedStops: RouteStop[];
   etaPerStop: string[];
@@ -64,9 +80,12 @@ export interface TrafficCheckResult {
   fallbackReason?: string;
 }
 
+const METERS_PER_MILE = 1609.344;
+const URBAN_AVG_MPH = 25;
+const ROAD_WINDING_FACTOR = 1.3;
+
 /**
  * Haversine distance between two {lat, lng} points. Returns metres.
- * Used as the fallback matrix calculation when live traffic data is unavailable.
  */
 export function haversineDistance(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6_371_000;
@@ -81,11 +100,47 @@ export function haversineDistance(a: { lat: number; lng: number }, b: { lat: num
 }
 
 /**
- * Build an n×n distance matrix (metres) for a list of stops.
- * Diagonal entries are 0. Used as fallback when Mapbox Matrix API is unavailable.
+ * Convert great-circle metres into estimated driving seconds (winding × 25 mph).
+ * The cost matrix MUST be seconds — Mapbox Directions returns seconds, and
+ * computeEtas / 2-opt add those cells as durations. Raw metres through that
+ * path treat a 30-mile leg as ~13 hours and print next-morning ETAs.
+ */
+export function metresToDriveSeconds(meters: number): number {
+  if (!Number.isFinite(meters) || meters <= 0) return 0;
+  const roadMiles = (meters / METERS_PER_MILE) * ROAD_WINDING_FACTOR;
+  return (roadMiles / URBAN_AVG_MPH) * 3600;
+}
+
+export function haversineDurationSeconds(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  return metresToDriveSeconds(haversineDistance(a, b));
+}
+
+/**
+ * Build an n×n travel-time matrix (seconds). Diagonal entries are 0.
  */
 export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): number[][] {
-  return stops.map(a => stops.map(b => haversineDistance(a, b)));
+  return stops.map(a => stops.map(b => haversineDurationSeconds(a, b)));
+}
+
+/** Prefer the dedicated matrix secret, then the general Mapbox token. */
+export function resolveMapboxDirectionsToken(env: {
+  MAPBOX_SECRET_TOKEN?: string;
+  MAPBOX_ACCESS_TOKEN?: string;
+}): string {
+  return (env.MAPBOX_SECRET_TOKEN || env.MAPBOX_ACCESS_TOKEN || '').trim();
+}
+
+/**
+ * Mapbox driving-traffic rejects depart_at more than ~30 minutes in the past.
+ */
+export function clampDepartAtForMapbox(departAt: string, nowMs: number = Date.now()): string {
+  const t = new Date(departAt).getTime();
+  if (!Number.isFinite(t)) return new Date(nowMs).toISOString();
+  if (nowMs - t > 25 * 60_000) return new Date(nowMs).toISOString();
+  return new Date(t).toISOString();
 }
 
 // ── Directions-API cost matrix (driving-traffic, one call per ordered pair) ──
@@ -97,7 +152,7 @@ export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): num
 
 export async function buildCostMatrix(
   stops: RouteStop[],
-  _departAt: string,
+  departAt: string,
   mapboxToken: string
 ): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
   if (!mapboxToken) {
@@ -112,7 +167,6 @@ export async function buildCostMatrix(
     Array.from({ length: n }, (_, j) => (i === j ? 0 : 0))
   );
 
-  // Build all ordered pairs (i → j where i ≠ j)
   const pairs: [number, number][] = [];
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
@@ -121,6 +175,7 @@ export async function buildCostMatrix(
   }
 
   let anyFailed = false;
+  const departAtIso = clampDepartAtForMapbox(departAt);
 
   const results = await Promise.all(
     pairs.map(async ([i, j]) => {
@@ -132,6 +187,7 @@ export async function buildCostMatrix(
       url.searchParams.set('access_token', mapboxToken);
       url.searchParams.set('overview', 'false');
       url.searchParams.set('steps', 'false');
+      url.searchParams.set('depart_at', departAtIso);
 
       try {
         const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) });
@@ -151,7 +207,7 @@ export async function buildCostMatrix(
     if (duration !== null) {
       matrix[i][j] = duration;
     } else {
-      matrix[i][j] = haversineDistance(stops[i], stops[j]);
+      matrix[i][j] = haversineDurationSeconds(stops[i], stops[j]);
       anyFailed = true;
     }
   }
@@ -214,8 +270,6 @@ export interface NearestAttemptResult {
 // ── Constants ──────────────────────────────────────────────
 
 const EARTH_RADIUS_MI = 3958.8;
-const URBAN_AVG_MPH = 25;
-const ROAD_WINDING_FACTOR = 1.3;
 
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -659,16 +713,36 @@ export function deadlineCoefficient(stop: RouteStop, now: Date): number {
   return 0.1;
 }
 
-function getDenverOffsetMs(date: Date): number {
-  // Returns Denver's UTC offset in milliseconds (e.g. -21600000 for UTC-6)
-  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
-  const denverStr = date.toLocaleString('en-US', { timeZone: 'America/Denver' });
-  return new Date(utcStr).getTime() - new Date(denverStr).getTime();
+export function denverWallClockToUtcMs(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number,
+): number {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const want = `${year}-${pad(monthIndex + 1)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00`;
+  const fmt = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const wallAt = (ms: number) => fmt.format(new Date(ms)).replace(' ', 'T');
+  let utc = Date.parse(want + 'Z');
+  for (let i = 0; i < 4; i++) {
+    const got = wallAt(utc);
+    utc += Date.parse(want + 'Z') - Date.parse(got + 'Z');
+  }
+  return utc;
 }
 
 function parseTimeOfDay(timeStr: string, referenceDate: string): number {
   const [h, m] = timeStr.split(':').map(Number);
-  // Get the Denver date parts for the reference date
   const ref = new Date(referenceDate);
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Denver',
@@ -677,9 +751,25 @@ function parseTimeOfDay(timeStr: string, referenceDate: string): number {
   const year = Number(parts.find(p => p.type === 'year')!.value);
   const month = Number(parts.find(p => p.type === 'month')!.value) - 1;
   const day = Number(parts.find(p => p.type === 'day')!.value);
-  // Build the target time in Denver by creating a UTC date that corresponds to h:m Denver wall clock
-  const denverOffset = getDenverOffsetMs(ref);
-  return Date.UTC(year, month, day, h, m, 0, 0) - denverOffset;
+  return denverWallClockToUtcMs(year, month, day, h || 0, m || 0);
+}
+
+/** If arrival is before today's window, wait; if the window already closed, go now (never +1d). */
+export function clampArrivalToServeWindow(
+  arrivalMs: number,
+  serveStart: string | null | undefined,
+  serveEnd: string | null | undefined,
+  routeRefIso?: string,
+): number {
+  if (!serveStart) return arrivalMs;
+  const refIso = routeRefIso || new Date(arrivalMs).toISOString();
+  let windowStart = parseTimeOfDay(serveStart, refIso);
+  let windowEnd = serveEnd
+    ? parseTimeOfDay(serveEnd, refIso)
+    : windowStart + 24 * 3600_000;
+  if (windowEnd <= windowStart) windowEnd += 86_400_000;
+  if (arrivalMs < windowStart) return windowStart;
+  return arrivalMs;
 }
 
 export function applyTimeWindowPenalties(
@@ -689,24 +779,40 @@ export function applyTimeWindowPenalties(
   dwellSeconds: number[]
 ): number[][] {
   const n = stops.length;
+  if (n === 0) return matrix.map(row => [...row]);
   const flat = matrix.flat();
   const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
   const PENALTY = 10 * maxCost;
   const result = matrix.map(row => [...row]);
   const departMs = new Date(departAt).getTime();
 
+  // Compute cumulative arrival times along a greedy (nearest-neighbor) path
+  // so penalties reflect WHEN the officer actually arrives at each stop,
+  // not just the direct travel from origin.
+  const path = nearestNeighborOrder(matrix, n);
+  const cumulativeArrivalMs: number[] = new Array(n).fill(0);
+  let currentTimeMs = departMs;
+  for (let step = 0; step < path.length; step++) {
+    const idx = path[step];
+    if (step > 0) {
+      const prevIdx = path[step - 1];
+      currentTimeMs += (matrix[prevIdx]?.[idx] ?? 0) * 1000;
+      currentTimeMs += (dwellSeconds[prevIdx] ?? 0) * 1000;
+    }
+    cumulativeArrivalMs[idx] = currentTimeMs;
+  }
+
   for (let j = 0; j < n; j++) {
     const note = stops[j].locationNote;
     if (!note?.serveStart || !note?.serveEnd) continue;
     const windowStart = parseTimeOfDay(note.serveStart, departAt);
-    const windowEnd = parseTimeOfDay(note.serveEnd, departAt);
+    let windowEnd = parseTimeOfDay(note.serveEnd, departAt);
+    if (windowEnd <= windowStart) windowEnd += 86_400_000;
 
-    for (let i = 0; i < n; i++) {
-      if (i === j) continue;
-      const travelS = matrix[i][j] ?? 0;
-      const dwellS = dwellSeconds[i] ?? 0;
-      const arrivalMs = departMs + (travelS + dwellS) * 1000;
-      if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+    const arrivalMs = cumulativeArrivalMs[j];
+    if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+      for (let i = 0; i < n; i++) {
+        if (i === j) continue;
         result[i][j] += PENALTY;
       }
     }
@@ -718,7 +824,11 @@ const BUSINESS_HOURS_START = 8;  // 8 AM
 const BUSINESS_HOURS_END = 17;   // 5 PM
 
 export function isWithinBusinessHours(arrivalIso: string): boolean {
-  const denverFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hour12: false });
+  const denverFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  });
   const hour = Number(denverFmt.format(new Date(arrivalIso)));
   return hour >= BUSINESS_HOURS_START && hour < BUSINESS_HOURS_END;
 }
@@ -730,23 +840,109 @@ export function applyBusinessHoursPenalties(
   dwellSeconds: number[]
 ): number[][] {
   const n = stops.length;
+  if (n === 0) return matrix.map(row => [...row]);
   const flat = matrix.flat();
   const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
-  const PENALTY = 5 * maxCost;
+  const FULL_PENALTY = 5 * maxCost;
   const result = matrix.map(row => [...row]);
   const departMs = new Date(departAt).getTime();
 
+  // Use cumulative arrival times (same greedy path as time-window penalties)
+  // so business-hour penalties reflect when the officer actually reaches the stop.
+  const path = nearestNeighborOrder(matrix, n);
+  const cumulativeArrivalMs: number[] = new Array(n).fill(0);
+  let currentTimeMs = departMs;
+  for (let step = 0; step < path.length; step++) {
+    const idx = path[step];
+    if (step > 0) {
+      const prevIdx = path[step - 1];
+      currentTimeMs += (matrix[prevIdx]?.[idx] ?? 0) * 1000;
+      currentTimeMs += (dwellSeconds[prevIdx] ?? 0) * 1000;
+    }
+    cumulativeArrivalMs[idx] = currentTimeMs;
+  }
+
+  const denverFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  });
+
   for (let j = 0; j < n; j++) {
     if (stops[j].defendantType !== 'business') continue;
-    for (let i = 0; i < n; i++) {
-      if (i === j) continue;
-      const travelS = matrix[i][j] ?? 0;
-      const dwellS = dwellSeconds[i] ?? 0;
-      const arrivalMs = departMs + (travelS + dwellS) * 1000;
-      const arrivalIso = new Date(arrivalMs).toISOString();
-      if (!isWithinBusinessHours(arrivalIso)) {
-        result[i][j] += PENALTY;
+    const arrivalMs = cumulativeArrivalMs[j];
+    const arrivalHour = Number(denverFmt.format(new Date(arrivalMs)));
+
+    // Gradient penalty: full for early/late, reduced for near-boundary.
+    // Before 7 AM or after 8 PM: full penalty (business definitely closed).
+    // 5–7 PM: reduced penalty (many businesses still open, don't penalize hard).
+    // 7–8 AM: reduced penalty (businesses may open early).
+    let penaltyFraction = 0;
+    if (arrivalHour < 7 || arrivalHour >= 20) {
+      penaltyFraction = 1.0;
+    } else if (arrivalHour >= 17) {
+      // 5–8 PM: linearly decay from 100% at 5 PM to 0% at 8 PM
+      penaltyFraction = (20 - arrivalHour) / 3;
+    } else if (arrivalHour < 8) {
+      // 7–8 AM: linearly decay from 100% at 7 AM to 0% at 8 AM
+      penaltyFraction = 8 - arrivalHour;
+    }
+
+    if (penaltyFraction > 0) {
+      const penalty = Math.round(FULL_PENALTY * penaltyFraction);
+      for (let i = 0; i < n; i++) {
+        if (i === j) continue;
+        result[i][j] += penalty;
       }
+    }
+  }
+  return result;
+}
+
+// ── Fuel cost penalty ────────────────────────────────────────────────────────
+
+const DEFAULT_FUEL_PRICE_PER_GALLON = 3.50;
+/** Value of time in $/hour — used to convert fuel cost ($) into a time-equivalent
+ *  penalty (seconds) so it can be blended into the time-based cost matrix.
+ *  At $25/hr (≈ a Process Server's loaded cost), $1 of fuel ≈ 2.4 min. */
+const VALUE_OF_TIME_PER_HOUR = 25;
+
+/**
+ * Blend fuel cost into the time-based cost matrix.
+ *
+ * For each edge (i→j), the travel time in seconds is converted to an estimated
+ * distance (using the average urban speed), then to a fuel cost in gallons, then
+ * to a dollar amount. The dollar amount is converted to a time-equivalent penalty
+ * (seconds) and added to the matrix cell, so the optimizer naturally favors
+ * routes that burn less fuel — without changing the fundamental time-based
+ * optimization.
+ *
+ * @param avgMpg  Vehicle's average MPG from fleet_vehicles.avg_mpg
+ * @param fuelPrice  Price per gallon (default $3.50)
+ */
+export function applyFuelCostPenalties(
+  matrix: number[][],
+  avgMpg: number,
+  fuelPrice: number = DEFAULT_FUEL_PRICE_PER_GALLON,
+): number[][] {
+  if (avgMpg <= 0) return matrix.map(row => [...row]);
+  const n = matrix.length;
+  const result = matrix.map(row => [...row]);
+  const gallonsPerMile = 1 / avgMpg;
+  const fuelCostPerMile = gallonsPerMile * fuelPrice;
+  // Convert fuel cost ($/mile) to time-equivalent seconds per mile:
+  // $cost / ($/hour) * 3600 = seconds
+  const fuelSecPerMile = (fuelCostPerMile / VALUE_OF_TIME_PER_HOUR) * 3600;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      const travelSeconds = matrix[i][j];
+      if (!isFinite(travelSeconds) || travelSeconds <= 0) continue;
+      // Estimate distance from travel time using average urban speed
+      const distanceMiles = (travelSeconds / 3600) * URBAN_AVG_MPH;
+      const fuelPenalty = distanceMiles * fuelSecPerMile;
+      result[i][j] += fuelPenalty;
     }
   }
   return result;
@@ -771,7 +967,7 @@ function nearestNeighborOrder(matrix: number[][], n: number, startIdx: number = 
   return order;
 }
 
-function twoOpt(matrix: number[][], order: number[]): number[] {
+function twoOpt(matrix: number[][], order: number[], circular: boolean): number[] {
   const n = order.length;
   let best = [...order];
   let improved = true;
@@ -779,9 +975,11 @@ function twoOpt(matrix: number[][], order: number[]): number[] {
     improved = false;
     for (let i = 1; i < n - 1; i++) {
       for (let j = i + 1; j < n; j++) {
-        const nextJ = j + 1 < n ? j + 1 : 0;
-        const before = matrix[best[i - 1]][best[i]] + (matrix[best[j]][best[nextJ]] ?? 0);
-        const after = matrix[best[i - 1]][best[j]] + (matrix[best[i]][best[nextJ]] ?? 0);
+        const hasNext = j + 1 < n;
+        const before = matrix[best[i - 1]][best[i]]
+          + (hasNext ? matrix[best[j]][best[j + 1]] : (circular ? matrix[best[j]][best[0]] : 0));
+        const after = matrix[best[i - 1]][best[j]]
+          + (hasNext ? matrix[best[i]][best[j + 1]] : (circular ? matrix[best[i]][best[0]] : 0));
         if (after < before - 0.001) {
           best = [
             ...best.slice(0, i),
@@ -801,40 +999,53 @@ export function optimizeRoute(
   matrix: number[][],
   departAt: string,
   now: Date,
-  dwellSeconds: number[]
+  dwellSeconds: number[],
+  options: { circular?: boolean; lockStart?: boolean; avgMpg?: number | null; fuelPricePerGallon?: number } = {},
 ): number[] {
   const n = stops.length;
   if (n === 0) return [];
   if (n === 1) return [0];
 
-  // Apply deadline coefficients to matrix
   const weighted = matrix.map((row, _i) =>
     row.map((cost, j) => cost * deadlineCoefficient(stops[j], now))
   );
 
-  // Apply time-window penalties on top of weighted costs
-  const penalized = applyTimeWindowPenalties(weighted, stops, departAt, dwellSeconds);
+  // Blend fuel cost into the matrix when vehicle MPG is known.
+  // This runs BEFORE time-window/business-hours penalties so that fuel-aware
+  // ordering is further shaped by constraint penalties.
+  const fuelAware = options.avgMpg && options.avgMpg > 0
+    ? applyFuelCostPenalties(weighted, options.avgMpg, options.fuelPricePerGallon)
+    : weighted;
 
-  // Penalize business stops arriving outside 8 AM – 5 PM Denver time
+  const penalized = applyTimeWindowPenalties(fuelAware, stops, departAt, dwellSeconds);
   const bizPenalized = applyBusinessHoursPenalties(penalized, stops, departAt, dwellSeconds);
 
-  // Start from the most urgent stop (lowest deadline coefficient = highest priority)
   let startIdx = 0;
-  let lowestCoeff = deadlineCoefficient(stops[0], now);
-  for (let i = 1; i < n; i++) {
-    const c = deadlineCoefficient(stops[i], now);
-    if (c < lowestCoeff) { lowestCoeff = c; startIdx = i; }
+  if (!options.lockStart) {
+    // Pick the deadline-urgent stop closest to the cluster centroid so the
+    // route starts near the geographic center while still prioritizing urgency.
+    const centroidLat = stops.reduce((s, st) => s + st.lat, 0) / n;
+    const centroidLng = stops.reduce((s, st) => s + st.lng, 0) / n;
+    let bestScore = Infinity;
+    for (let i = 0; i < n; i++) {
+      const coeff = deadlineCoefficient(stops[i], now);
+      const distSq = (stops[i].lat - centroidLat) ** 2 + (stops[i].lng - centroidLng) ** 2;
+      // Score: deadline urgency × 1000 + distance to centroid.
+      // Urgency wins, but ties are broken by proximity.
+      const score = coeff * 1000 + distSq;
+      if (score < bestScore) { bestScore = score; startIdx = i; }
+    }
   }
 
   const seed = nearestNeighborOrder(bizPenalized, n, startIdx);
-  return twoOpt(bizPenalized, seed);
+  return twoOpt(bizPenalized, seed, options.circular === true);
 }
 
 export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
+  if (stop.lat == null || stop.lng == null) return 'none';
   if (stop.geocodeSource === 'point') return 'high';
   if (stop.geocodeSource === 'centroid') return 'low';
-  if (stop.geocodeSource === null) return 'high'; // null = benefit of the doubt; don't warn on pre-existing jobs
-  if (stop.lat == null || stop.lng == null) return 'none';
+  if (stop.geocodeSource === null) return 'low';
   return 'high';
 }
 
@@ -850,19 +1061,48 @@ export function collectGeocodeWarnings(stops: RouteStop[]): GeocodeWarning[] {
     }));
 }
 
+function makeOriginStop(origin: OptimizeOrigin): RouteStop {
+  return {
+    jobId: -1,
+    lat: origin.lat,
+    lng: origin.lng,
+    geocodeSource: 'point',
+    deadlineAt: null,
+    defendantType: 'individual',
+    addressHash: '',
+    defendant: '__origin__',
+    address: '',
+    locationNote: null,
+  };
+}
+
 export async function optimizeRouteFullPipeline(
   stops: RouteStop[],
   departAt: string,
   db: D1Database,
-  mapboxToken: string
+  mapboxToken: string,
+  options: OptimizeOptions = {},
 ): Promise<OptimizeResult> {
   const now = new Date();
   const geocodeWarnings = collectGeocodeWarnings(stops);
   const dwellSecs = await fetchDwellSeconds(db, stops);
-  const { matrix, fallback, reason } = await buildCostMatrix(stops, departAt, mapboxToken);
-  const orderedIndices = optimizeRoute(stops, matrix, departAt, now, dwellSecs);
-  const orderedStops = orderedIndices.map(i => stops[i]);
-  const etaPerStop = computeEtas(orderedIndices, matrix, dwellSecs, departAt);
+  const origin = options.origin && Number.isFinite(options.origin.lat) && Number.isFinite(options.origin.lng)
+    ? options.origin
+    : null;
+  const allStops = origin ? [makeOriginStop(origin), ...stops] : stops;
+  const allDwell = origin ? [0, ...dwellSecs] : dwellSecs;
+  const { matrix, fallback, reason } = await buildCostMatrix(allStops, departAt, mapboxToken);
+  const orderedIndices = optimizeRoute(allStops, matrix, departAt, now, allDwell, {
+    circular: options.circular === true,
+    lockStart: origin != null,
+    avgMpg: options.avgMpg,
+    fuelPricePerGallon: options.fuelPricePerGallon,
+  });
+  const visitOrder = origin ? orderedIndices.filter(i => i !== 0) : orderedIndices;
+  const orderedStops = visitOrder.map(i => (origin ? allStops[i] : stops[i]));
+  const etaWalk = origin ? orderedIndices : visitOrder;
+  const etaAll = computeEtas(etaWalk, matrix, allDwell, departAt, allStops);
+  const etaPerStop = origin ? etaAll.slice(1) : etaAll;
 
   return { orderedStops, etaPerStop, matrixFallback: fallback, fallbackReason: reason, geocodeWarnings };
 }
@@ -888,16 +1128,9 @@ export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
 
 // ── Dwell-time read path + ETA computation ─────────────────
 
-const DEFAULT_DWELL: Record<RouteStop['defendantType'], number> = {
-  individual: 420,   // 7 minutes — house: knock, ID, serve, brief exchange
-  apartment: 600,    // 10 minutes — complex: navigate building/gate, find unit, wait for access
-  business: 780,     // 13 minutes — lobby/reception, wait for agent, verify authority
-};
-
 /**
  * Fetch per-stop average dwell times (seconds) from the serve_dwell_times table.
- * Falls back to DEFAULT_DWELL constants when no 90-day history exists for a stop.
- * Result array is parallel-indexed to `stops`.
+ * Learned values are clamped to the type range (see DWELL_RANGE_S).
  */
 export async function fetchDwellSeconds(
   db: D1Database,
@@ -907,6 +1140,8 @@ export async function fetchDwellSeconds(
 
   const hashes = stops.map(s => s.addressHash);
   // Use queryInChunks to stay within D1's 100-bound-parameter cap.
+  // serve_dwell_times may not yet exist on all environments — degrade to
+  // defaults rather than crashing the entire route optimization on a missing table.
   const rows = await queryInChunks<{ address_hash: string; avg_dwell: number }>(
     db,
     hashes,
@@ -916,37 +1151,75 @@ export async function fetchDwellSeconds(
        WHERE address_hash IN (${placeholders})
          AND logged_at > datetime('now', '-90 days')
        GROUP BY address_hash`,
-  );
+  ).catch(() => [] as { address_hash: string; avg_dwell: number }[]);
 
   const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
-  return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
+  return stops.map(s => clampDwellSeconds(s.defendantType as DefendantType, byHash.get(s.addressHash)));
+}
+
+/** Attach planner dwell (learned + clamped) onto serve_queue list rows. */
+export async function attachLearnedDwellSeconds<T extends {
+  recipient_address?: string | null;
+  business_id?: number | null;
+  recipient_type?: string | null;
+}>(db: D1Database, jobs: T[]): Promise<void> {
+  if (jobs.length === 0) return;
+  const hashed = await Promise.all(jobs.map(async (j) => {
+    const addr = (j.recipient_address || '').trim();
+    const addressHash = addr ? await hashAddress(addr) : '';
+    return {
+      job: j,
+      stop: {
+        jobId: 0,
+        lat: 0,
+        lng: 0,
+        geocodeSource: null,
+        deadlineAt: null,
+        defendantType: inferDefendantType(j.recipient_address, j.business_id, j.recipient_type),
+        addressHash,
+        defendant: '',
+        address: addr,
+        locationNote: null,
+      } satisfies RouteStop,
+    };
+  }));
+  const withHash = hashed.filter((h) => h.stop.addressHash);
+  const dwells = await fetchDwellSeconds(db, withHash.map((h) => h.stop));
+  const byHash = new Map(withHash.map((h, i) => [h.stop.addressHash, dwells[i]]));
+  for (const h of hashed) {
+    const learned = h.stop.addressHash ? byHash.get(h.stop.addressHash) : undefined;
+    (h.job as T & { learned_dwell_seconds: number }).learned_dwell_seconds =
+      learned ?? clampDwellSeconds(h.stop.defendantType);
+  }
 }
 
 /**
- * Compute ETAs for each stop in the optimized order.
- * Each ETA is the ISO timestamp at which the server is expected to DEPART
- * the stop (arrival + dwell). Travel time between stops comes from `matrix`.
- *
- * @param orderedIndices - Stop indices in visit order (from optimizeRoute)
- * @param matrix - n×n travel-time matrix in seconds
- * @param dwellSeconds - Per-stop dwell time in seconds, parallel-indexed to the original stops array
- * @param departAt - ISO timestamp of route start
- * @returns ISO timestamp strings, one per stop in orderedIndices order
+ * Compute ARRIVAL ETAs for each stop in visit order.
+ * Travel comes from `matrix` (seconds). Dwell is applied AFTER the arrival
+ * so the next leg departs from the stop, but the returned timestamp is when
+ * the officer is expected to arrive — matching the "ETA" label in the planner.
  */
 export function computeEtas(
   orderedIndices: number[],
   matrix: number[][],
   dwellSeconds: number[],
-  departAt: string
+  departAt: string,
+  stops?: RouteStop[],
 ): string[] {
   const etas: string[] = [];
   let currentMs = new Date(departAt).getTime();
+  if (!Number.isFinite(currentMs)) currentMs = Date.now();
   for (let step = 0; step < orderedIndices.length; step++) {
     const idx = orderedIndices[step];
     const prevIdx = step === 0 ? -1 : orderedIndices[step - 1];
-    const travelSeconds = step === 0 ? 0 : (matrix[prevIdx][idx] ?? 0);
-    currentMs += (travelSeconds + (dwellSeconds[idx] ?? 0)) * 1000;
+    const travelSeconds = step === 0 ? 0 : (matrix[prevIdx]?.[idx] ?? 0);
+    currentMs += travelSeconds * 1000;
+    const note = stops?.[idx]?.locationNote;
+    if (note?.serveStart) {
+      currentMs = clampArrivalToServeWindow(currentMs, note.serveStart, note.serveEnd, departAt);
+    }
     etas.push(new Date(currentMs).toISOString());
+    currentMs += (dwellSeconds[idx] ?? 0) * 1000;
   }
   return etas;
 }
@@ -976,6 +1249,7 @@ export async function checkTrafficDegradation(
   originalEtas: string[],
   db: D1Database,
   mapboxToken: string,
+  optimizeOptions?: OptimizeOptions,
 ): Promise<TrafficCheckResult> {
   if (remainingStops.length === 0) {
     return {
@@ -1072,16 +1346,16 @@ export async function checkTrafficDegradation(
 
   const degraded = totalAddedSeconds > TRAFFIC_DEGRADE_THRESHOLD_S;
 
-  // Re-optimize with live matrix when degraded
   const now = new Date();
   const dwellSecs = await fetchDwellSeconds(db, remainingStops);
-  const remainingMatrix = matrix.slice(1).map(row => row.slice(1)); // strip origin row/col
-  const newOrderIndices = degraded
-    ? optimizeRoute(remainingStops, remainingMatrix, nowIso, now, dwellSecs)
-    : currentOrder;
+  const allDwell = [0, ...dwellSecs];
+  const newOrderAll = degraded
+    ? optimizeRoute(allStops, matrix, nowIso, now, allDwell, { lockStart: true, ...optimizeOptions })
+    : [0, ...currentOrder.map(i => i + 1)];
+  const newOrderIndices = newOrderAll.filter(i => i !== 0).map(i => i - 1);
 
   const newOrder = newOrderIndices.map(i => remainingStops[i]);
-  const newEtas = computeEtas(newOrderIndices, remainingMatrix, dwellSecs, nowIso);
+  const newEtas = computeEtas(newOrderAll, matrix, allDwell, nowIso, allStops).slice(1);
 
   return {
     degraded,
@@ -1091,4 +1365,43 @@ export async function checkTrafficDegradation(
     degradedSegments,
     matrixFallback: false,
   };
+}
+
+/**
+ * Look up an officer's fleet vehicle MPG.
+ * Tries: officer → unit → fleet_vehicle chain first.
+ * Falls back to fleet-wide average when the chain has no match.
+ */
+export async function lookupOfficerFleetMpg(
+  db: D1Database,
+  officerId: number | undefined | null,
+): Promise<number | null> {
+  if (!officerId) return null;
+  try {
+    const specific = await db
+      .prepare(
+        `SELECT fv.avg_mpg
+         FROM fleet_vehicles fv
+         JOIN units u ON fv.assigned_unit_id = u.id
+         WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
+         LIMIT 1`,
+      )
+      .bind(officerId)
+      .first<{ avg_mpg: number }>();
+    if (specific?.avg_mpg) return specific.avg_mpg;
+  } catch { /* tables may not exist */ }
+
+  // Fallback: fleet-wide average of active vehicles with data
+  try {
+    const fallback = await db
+      .prepare(
+        `SELECT ROUND(AVG(NULLIF(avg_mpg, 0)), 1) AS avg_mpg
+         FROM fleet_vehicles
+         WHERE archived_at IS NULL AND avg_mpg IS NOT NULL AND avg_mpg > 0`,
+      )
+      .first<{ avg_mpg: number | null }>();
+    if (fallback?.avg_mpg) return fallback.avg_mpg;
+  } catch { /* table may not exist */ }
+
+  return null;
 }

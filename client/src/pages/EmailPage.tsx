@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router';
+import { useSearchParams, Link as RouterLink } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
@@ -783,13 +783,13 @@ function getReadingTheme(userId?: string | number | null): ReadingTheme {
 
 const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
   dark: `
-        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: rgb(192,208,224); background: rgb(12,12,12); margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        body { font-family: 'Arial, sans-serif'; font-size: 13px; color: rgb(192,208,224); background: rgb(12,12,12); margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: rgb(136,136,136); text-decoration: underline; } a:hover { color: rgb(160,160,160); } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid rgb(43,43,43); margin: 8px 0; padding: 4px 12px; color: rgb(136,153,170); }
         pre { background: rgb(20,20,20); padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid rgb(43,43,43); margin: 16px 0; }
   `,
   light: `
-        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: rgb(26,26,26); background: rgb(255,255,255); margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        body { font-family: 'Arial, sans-serif'; font-size: 13px; color: rgb(26,26,26); background: rgb(255,255,255); margin: 16px; line-height: 1.6; word-wrap: break-word; }
         a { color: rgb(85,85,85); text-decoration: underline; } a:hover { color: rgb(26,26,26); } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
         td, th { padding: 4px 8px; } blockquote { border-left: 3px solid rgb(216,216,216); margin: 8px 0; padding: 4px 12px; color: rgb(85,85,85); }
         pre { background: rgb(244,244,244); padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid rgb(221,221,221); margin: 16px 0; }
@@ -833,7 +833,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   // Build print document using safe DOM methods
   const style = doc.createElement('style');
   style.textContent = `
-    body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; color: rgb(26,26,26); margin: 40px; line-height: 1.6; }
+    body { font-family: 'Arial, sans-serif'; font-size: 12pt; color: rgb(26,26,26); margin: 40px; line-height: 1.6; }
     .header { border-bottom: 2px solid rgb(136,136,136); padding-bottom: 12px; margin-bottom: 16px; }
     .header h1 { font-size: 16pt; margin: 0 0 8px; color: rgb(26,26,26); }
     .meta { font-size: 10pt; color: rgb(85,85,85); margin: 2px 0; }
@@ -878,7 +878,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;color:rgb(26,26,26);margin:0;line-height:1.6;}a{color:rgb(136,136,136);}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid rgb(204,204,204);margin:8px 0;padding:4px 12px;color:rgb(102,102,102);}</style></head><body>${cleanHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:'Arial, sans-serif';font-size:12pt;color:rgb(26,26,26);margin:0;line-height:1.6;}a{color:rgb(136,136,136);}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid rgb(204,204,204);margin:8px 0;padding:4px 12px;color:rgb(102,102,102);}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -2008,14 +2008,14 @@ export default function EmailPage() {
   // via /email/status — that flag is no longer a meaningful signal for
   // whether THIS user can use email, and AdminEmailTab no longer offers a
   // way to set it.
-  const [connectStatus, setConnectStatus] = useState<{ connected: boolean; mailbox: string | null } | null>(null);
+  const [connectStatus, setConnectStatus] = useState<{ connected: boolean; mailbox: string | null; azureConfigured?: boolean } | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
   const fetchConnectStatus = useCallback(() => {
-    apiFetch<{ connected: boolean; mailbox: string | null }>('/email/connect/status')
+    apiFetch<{ connected: boolean; mailbox: string | null; azureConfigured?: boolean }>('/email/connect/status')
       .then(setConnectStatus)
-      .catch(() => setConnectStatus({ connected: false, mailbox: null }));
+      .catch(() => setConnectStatus({ connected: false, mailbox: null, azureConfigured: false }));
   }, []);
   useEffect(() => { fetchConnectStatus(); }, [fetchConnectStatus]);
 
@@ -2058,16 +2058,8 @@ export default function EmailPage() {
     }
   };
 
-  const handleDisconnectMailbox = async () => {
-    if (!window.confirm('Disconnect your Microsoft 365 mailbox? You can reconnect at any time.')) return;
-    try {
-      await apiFetch('/email/connect', { method: 'DELETE' });
-      setConnectStatus({ connected: false, mailbox: null });
-      setMessages([]);
-      setFolders([]);
-    } catch (err: any) {
-      addToast(err.message || 'Failed to disconnect mailbox', 'error');
-    }
+  const handleDisconnectMailbox = () => {
+    setConfirmAction({ kind: 'disconnect-mailbox' });
   };
 
   // ─── URL deep-link contract ──────────────────────────────────────────
@@ -2298,7 +2290,8 @@ export default function EmailPage() {
     | { kind: 'block-sender'; message: EmailMessage }
     | { kind: 'sweep-sender'; message: EmailMessage; folder: string }
     | { kind: 'empty-folder'; folder: string }
-    | { kind: 'delete-folder'; folder: EmailFolder };
+    | { kind: 'delete-folder'; folder: EmailFolder }
+    | { kind: 'disconnect-mailbox' };
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -2410,8 +2403,6 @@ export default function EmailPage() {
       }
       setFullMessage({ ...msg, bodyHtml: resolvedHtml });
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
-      try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
-      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
@@ -2891,6 +2882,22 @@ export default function EmailPage() {
     finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
+  const confirmDisconnectMailbox = async () => {
+    if (confirmAction?.kind !== 'disconnect-mailbox') return;
+    setConfirmLoading(true);
+    try {
+      await apiFetch('/email/connect', { method: 'DELETE' });
+      setConnectStatus({ connected: false, mailbox: null });
+      setMessages([]);
+      setFolders([]);
+    } catch (err: any) {
+      addToast(err.message || 'Failed to disconnect mailbox', 'error');
+    } finally {
+      setConfirmLoading(false);
+      setConfirmAction(null);
+    }
+  };
+
   const toggleFolderExpand = (folderId: string) => {
     setExpandedFolders(prev => {
       const next = new Set(prev);
@@ -3044,6 +3051,7 @@ export default function EmailPage() {
   }
 
   if (!connectStatus.connected) {
+    const azureReady = connectStatus.azureConfigured !== false;
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
@@ -3055,6 +3063,22 @@ export default function EmailPage() {
             Connect your Microsoft 365 mailbox to use email. Each operator now signs in with their own
             account — your email stays in Microsoft's servers, RMPG Flex only displays it.
           </p>
+          {!azureReady && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400 text-left">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>
+                Azure AD app registration is not configured yet — ask an admin to set it up
+                {canManage && (
+                  <> in{' '}
+                    <RouterLink to="/admin?tab=email" className="text-brand-400 hover:underline">
+                      Admin → Microsoft Email
+                    </RouterLink>
+                  </>
+                )}
+                .
+              </span>
+            </div>
+          )}
           {connectError && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400 text-left">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3064,8 +3088,8 @@ export default function EmailPage() {
           <button
             type="button"
             onClick={handleConnectMailbox}
-            disabled={connecting}
-            className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5"
+            disabled={connecting || !azureReady}
+            className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Mail className="w-3.5 h-3.5" />}
             {connecting ? 'Redirecting…' : 'Connect Microsoft 365'}
@@ -3805,6 +3829,16 @@ export default function EmailPage() {
         confirmLabel="Delete folder"
         confirmVariant="danger"
         isLoading={confirmLoading && confirmAction?.kind === 'delete-folder'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'disconnect-mailbox'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmDisconnectMailbox}
+        title="Disconnect mailbox"
+        message="Disconnect your Microsoft 365 mailbox? You can reconnect at any time."
+        confirmLabel="Disconnect"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'disconnect-mailbox'}
       />
     </div>
   );

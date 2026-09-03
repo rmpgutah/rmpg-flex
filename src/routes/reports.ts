@@ -619,7 +619,10 @@ reports.get('/officer-activity', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.officer_id, usr.full_name, usr.badge_number,
         (SELECT COUNT(*) FROM incidents i WHERE i.officer_id = u.officer_id) AS incidents_written,
-        (SELECT COUNT(*) FROM calls_for_service c WHERE c.assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
+        -- assigned_unit_ids is a JSON array ('[1,12,21]'); a substring LIKE
+        -- made unit 1 match 11/21/100 and inflated low-id units' counts.
+        (SELECT COUNT(*) FROM calls_for_service c
+           WHERE EXISTS (SELECT 1 FROM json_each(c.assigned_unit_ids) je WHERE je.value = u.id)) AS calls_responded,
         -- Was a hardcoded 0, so this column read "0 hours" for every officer
         -- on the report even though time_entries has the real total (one
         -- officer on live has 498.8 logged hours). A hardcoded metric is worse

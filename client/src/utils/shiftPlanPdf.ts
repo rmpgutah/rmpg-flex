@@ -20,11 +20,12 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 import { SHIFT_TYPES, type ShiftPlan, type ShiftType } from '../hooks/useShiftPlanning';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -90,23 +91,12 @@ export function generateShiftPlanPdf(input: ShiftPlanPdfInput): jsPDF {
   const shiftCfg = SHIFT_TYPES[shiftType] ?? SHIFT_TYPES.custom;
 
   // ── Banner ─────────────────────────────────────────────────
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('SHIFT BRIEFING — DEPLOYMENT PLAN', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap + prepared-by
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Patrol Operations  ·  Shift Plan', M, y);
-  if (input.preparedBy) doc.text(`Prepared by: ${input.preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: 'SHIFT BRIEFING — DEPLOYMENT PLAN',
+    subtitle: 'Patrol Operations',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: input.preparedBy ? `Prepared by: ${input.preparedBy}` : undefined,
+  });
 
   // ── Plan identity block ────────────────────────────────────
   doc.setFont('Arial', 'bold');
@@ -366,14 +356,5 @@ export function openShiftPlanPdf(input: ShiftPlanPdfInput): void {
   const doc = generateShiftPlanPdf(input);
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-  const w = window.open(url, '_blank');
-  if (!w) {
-    // Popup blocked — fall back to download.
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ShiftPlan-${input.plan.date}-${input.plan.shiftType}.pdf`;
-    link.click();
-  }
-  // Revoke after a delay so the new tab has time to load it.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  openPdfBlob(url, 'Shift Plan');
 }

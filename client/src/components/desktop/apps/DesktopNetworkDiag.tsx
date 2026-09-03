@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { X, RefreshCw } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
+import { pingResultsToCsv, networkIfacesToCsv, downloadTextFile } from '../../../utils/rmsListExport';
+import { copyToClipboard } from '../../../utils/contextMenuActions';
 
 interface DesktopNetworkDiagProps {
   onClose: () => void;
@@ -238,6 +240,12 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
               >
                 {pingRunning ? 'Pinging…' : 'Ping'}
               </button>
+              <button
+                type="button"
+                disabled={pingResults.length === 0}
+                onClick={() => downloadTextFile('ping-results.csv', pingResultsToCsv(pingResults))}
+                style={{ padding: '3px 10px', fontSize: 11, background: 'none', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 2, cursor: 'pointer' }}
+              >CSV</button>
             </div>
 
             {pingResults.length > 0 && (
@@ -320,6 +328,13 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
             >
               <RefreshCw size={10} /> Refresh
             </button>
+            {interfaces && interfaces.length > 0 && (
+              <button
+                type="button"
+                onClick={() => downloadTextFile('network-ifaces.csv', networkIfacesToCsv(interfaces))}
+                style={{ alignSelf: 'flex-start', fontSize: 11, padding: '4px 12px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+              >CSV</button>
+            )}
 
             {!window.electronAPI?.sysNetworkInterfaces && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 0' }}>
@@ -349,9 +364,14 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
                     {interfaces.map((iface, i) => (
                       <tr key={i}>
                         <td style={{ ...tdStyle, fontWeight: 600 }}>{iface.name}</td>
-                        <td style={tdStyle}>{iface.ipv4 ?? '—'}</td>
+                        <td style={tdStyle}>
+                          {iface.ipv4 ?? '—'}
+                          {iface.ipv4 && (
+                            <button type="button" onClick={() => void copyToClipboard(iface.ipv4!)} style={{ marginLeft: 6, fontSize: 9, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>Copy</button>
+                          )}
+                        </td>
                         <td style={tdStyle}>{iface.ipv6 ?? '—'}</td>
-                        <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 9 }}>{iface.mac ?? '—'}</td>
+                        <td style={{ ...tdStyle, fontFamily: 'Arial, sans-serif', fontSize: 9 }}>{iface.mac ?? '—'}</td>
                         <td style={{ ...tdStyle, color: iface.status === 'up' ? 'var(--sev-ok)' : 'var(--text-muted)' }}>{iface.status ?? 'unknown'}</td>
                       </tr>
                     ))}

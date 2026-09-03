@@ -37,6 +37,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { helpTopicsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import {
   SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
 } from '../utils/helpReferenceData';
@@ -384,17 +385,21 @@ export default function HelpPage() {
   const [search, setSearch] = useState(searchParam);
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
+  const [healthTick, setHealthTick] = useState(0);
+  const [healthFailed, setHealthFailed] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch server health info for System section
   useEffect(() => {
+    let cancelled = false;
     setHealthLoading(true);
     apiFetch<HealthData>('/api/health')
-      .then(setHealthData)
-      .catch(() => setHealthData(null))
-      .finally(() => setHealthLoading(false));
-  }, []);
+      .then((data) => { if (!cancelled) { setHealthData(data); setHealthFailed(false); } })
+      .catch(() => { if (!cancelled) { setHealthData(null); setHealthFailed(true); } })
+      .finally(() => { if (!cancelled) setHealthLoading(false); });
+    return () => { cancelled = true; };
+  }, [healthTick]);
 
   // Re-sync from URL when the back/forward buttons change ?topic / ?faq /
   // ?search out from under us. Without this, browser back from a deep link
@@ -491,9 +496,7 @@ export default function HelpPage() {
       const mod = await importWithRetry(() => import('../utils/helpQuickReferencePdf'));
       await mod.generateHelpQuickReferencePdfWithDefaults();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[Help] Quick Reference PDF failed:', err);
-      alert('PDF generation failed. See console for details.');
+      setPdfError(err instanceof Error ? err.message : 'PDF generation failed.');
     }
   }, []);
 
@@ -502,9 +505,7 @@ export default function HelpPage() {
       const mod = await importWithRetry(() => import('../utils/dispatchGuidePdfGenerator'));
       await mod.generateDispatchGuidePdf();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[Help] Dispatch Guide PDF failed:', err);
-      alert('Dispatch guide PDF generation failed. See console for details.');
+      setPdfError(err instanceof Error ? err.message : 'Dispatch guide PDF generation failed.');
     }
   }, []);
 
@@ -612,6 +613,14 @@ export default function HelpPage() {
               </button>
             )}
             <span className="text-[9px] text-rmpg-600 font-mono shrink-0">/ to focus</span>
+            <button
+              type="button"
+              className="toolbar-btn shrink-0"
+              onClick={() => downloadTextFile('help-topics.csv', helpTopicsToCsv([
+                ...MODULES.map((m) => ({ id: m.path, title: m.name, category: 'module' })),
+                ...FAQ_ITEMS.map((f, i) => ({ id: `faq-${i}`, title: f.question, category: 'faq' })),
+              ]))}
+            >CSV</button>
           </div>
 
           {/* ── Search results override the section content ── */}
@@ -940,6 +949,15 @@ export default function HelpPage() {
                     </div>
                   ))}
                 </div>
+                {healthLoading && (
+                  <p className="text-[10px] text-fg-muted mt-2" role="status">Checking server health…</p>
+                )}
+                {healthFailed && !healthLoading && (
+                  <div className="mt-3 flex items-center gap-2" role="alert">
+                    <span className="text-[10px] text-[color:var(--sev-critical)]">Live health probe failed.</span>
+                    <button type="button" className="toolbar-btn" onClick={() => setHealthTick((n) => n + 1)}>Retry</button>
+                  </div>
+                )}
               </div>
 
               <PanelTitleBar title="BROWSER COMPATIBILITY" icon={Monitor} />

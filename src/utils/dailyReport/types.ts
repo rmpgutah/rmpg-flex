@@ -9,14 +9,43 @@
 export interface CallRow {
   call_number: string | null;
   received_at: string | null;
+  created_at: string;
   incident_type: string | null;
   priority: string | number | null;
   location_address: string | null;
   disposition: string | null;
   status: string | null;
-  /** From calls_for_service directly — call_units is empty on live. */
   unit_call_signs: string | null;
   responding_officer: string | null;
+  description: string | null;
+  notes: string | null;
+  source: string | null;
+  dispatch_code: string | null;
+  sector_name: string | null;
+  zone_name: string | null;
+  beat_name: string | null;
+  weapons_involved: number | null;
+  domestic_violence: number | null;
+  mental_health_crisis: number | null;
+  juvenile_involved: number | null;
+  felony_in_progress: number | null;
+  officer_safety_caution: number | null;
+  k9_requested: number | null;
+  ems_requested: number | null;
+  response_time_seconds: number | null;
+  onscene_duration_seconds: number | null;
+  pso_requestor_name: string | null;
+  pso_service_type: string | null;
+  le_notified: number | null;
+  le_case_number: string | null;
+  supervisor_notified: number | null;
+  damage_estimate: number | null;
+  damage_description: string | null;
+  action_taken: string | null;
+  caller_relationship: string | null;
+  caller_name: string | null;
+  secondary_type: string | null;
+  scene_safety: string | null;
 }
 
 export interface CitationRow {

@@ -74,11 +74,13 @@ export default function AdminFleetioHealthTab() {
   }, []);
 
   useEffect(() => {
-    fetchHealth();
-    // Auto-refresh every 30s so the dashboard reflects the */30 cron tick
-    // within seconds of it firing.
+    let cancelled = false;
+    setErr(null);
+    apiFetch<HealthResponse>('/fleetio/health')
+      .then((r) => { if (!cancelled) { setHealth(r ?? ZERO_HEALTH); setLoading(false); } })
+      .catch((e) => { if (!cancelled) { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); } });
     const t = setInterval(fetchHealth, 30_000);
-    return () => clearInterval(t);
+    return () => { cancelled = true; clearInterval(t); };
   }, [fetchHealth]);
 
   const runSeed = () => {

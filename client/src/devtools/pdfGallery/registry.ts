@@ -36,6 +36,7 @@ import { generateShiftReportPdf } from '../../utils/shiftReportPdf';
 import { generateShiftPlanPdf } from '../../utils/shiftPlanPdf';
 import { generatePlateCapturePdf } from '../../utils/plateCapturePdf';
 import { generateFiCardPdf } from '../../utils/fiCardPdf';
+import { generateDialerCallRecordPdf } from '../../utils/dialerCallRecordPdf';
 import { generateNoticeOfCommunication } from '../../utils/psoNoticePdfGenerator';
 import { buildPatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { buildNavBriefingPdf } from '../../utils/navBriefingPdf';
@@ -52,6 +53,7 @@ import {
   navTripReportFixtures,
   navTripDetailFixtures,
   mapSituationReportFixtures,
+  dialerCallRecordFixtures,
 } from './fixtures/dispatchPatrol';
 import { generateInvoicePdf } from '../../utils/invoicePdfGenerator';
 import { generateDocumentIntakePdf } from '../../utils/documentIntakePdf';
@@ -382,6 +384,14 @@ export const PDF_REGISTRY: PdfRegistryEntry[] = [
     module: 'client/src/utils/mapSituationReportPdf.ts',
     generate: buildMapSituationReportPdf,
     fixtures: mapSituationReportFixtures,
+  }),
+  createEntry({
+    id: 'dial-connect-call',
+    label: 'Dial Connect Call Record',
+    criticality: 'dispatch-patrol',
+    module: 'client/src/utils/dialerCallRecordPdf.ts',
+    generate: generateDialerCallRecordPdf,
+    fixtures: dialerCallRecordFixtures,
   }),
   createEntry({
     id: 'invoice',

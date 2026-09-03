@@ -3,6 +3,8 @@ import { X, AlertCircle, RefreshCw, Copy, Download } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
+import { errorLogsToCsv, downloadTextFile } from '../../../utils/rmsListExport';
+import { copyToClipboard } from '../../../utils/contextMenuActions';
 
 const W = 720;
 const H = 520;
@@ -51,16 +53,19 @@ function ApiErrorsTab({ isAdmin }: { isAdmin: boolean }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [accessDenied, setAccessDenied] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!isAdmin) { setAccessDenied(true); return; }
     setLoading(true);
+    setLoadError(null);
     apiFetch<ErrorLogRow[]>('/errors?limit=100&sort=created_at_desc')
       .then(data => { setRows(Array.isArray(data) ? data : []); setAccessDenied(false); })
       .catch((err: unknown) => {
         const status = (err as { status?: number })?.status;
         if (status === 403 || status === 401) setAccessDenied(true);
         setRows([]);
+        setLoadError(err instanceof Error ? err.message : 'Failed to load errors');
       })
       .finally(() => setLoading(false));
   }, [isAdmin]);
@@ -76,16 +81,7 @@ function ApiErrorsTab({ isAdmin }: { isAdmin: boolean }) {
   });
 
   const exportCsv = useCallback(() => {
-    const header = 'Timestamp,Severity,Category,Message,Source,TraceID\n';
-    const body = filtered.map(r =>
-      [r.created_at, r.severity, r.category, `"${r.message.replace(/"/g, '""')}"`, r.source ?? '', r.trace_id ?? ''].join(',')
-    ).join('\n');
-    const blob = new Blob([header + body], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `api-errors-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadTextFile(`api-errors-${Date.now()}.csv`, errorLogsToCsv(filtered));
   }, [filtered]);
 
   const inputStyle: React.CSSProperties = { fontSize: 10, padding: '3px 6px', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', borderRadius: 2, outline: 'none' };
@@ -125,7 +121,16 @@ function ApiErrorsTab({ isAdmin }: { isAdmin: boolean }) {
         {loading ? (
           <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Loading…</div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No log entries match the current filter.</div>
+          <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
+            {loadError
+              ? loadError
+              : rows.length === 0
+                ? 'No log entries loaded.'
+                : 'No log entries match the current filter.'}
+            {loadError && (
+              <div><button type="button" onClick={load} style={{ marginTop: 8, fontSize: 10, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button></div>
+            )}
+          </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-sunken)', zIndex: 1 }}>
@@ -138,12 +143,12 @@ function ApiErrorsTab({ isAdmin }: { isAdmin: boolean }) {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 10 }}>{r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}</td>
                   <td style={{ padding: '3px 8px' }}><SeverityBadge sev={r.severity} /></td>
                   <td style={{ padding: '3px 8px', color: 'var(--text-secondary)' }}>{r.category}</td>
                   <td style={{ padding: '3px 8px', color: 'var(--text-primary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.message}>{r.message}</td>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: 10 }}>{r.source ?? '—'}</td>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 10 }}>{r.trace_id ? r.trace_id.slice(0, 12) + '…' : '—'}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{r.source ?? '—'}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{r.trace_id ? r.trace_id.slice(0, 12) + '…' : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -215,7 +220,7 @@ function LocalLogTab() {
         ref={taRef}
         readOnly
         value={lines.join('\n')}
-        style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'var(--surface-sunken)', color: 'var(--text-primary)', fontSize: 10, fontFamily: 'monospace', lineHeight: 1.5, padding: 10, caretColor: 'transparent' }}
+        style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'var(--surface-sunken)', color: 'var(--text-primary)', fontSize: 10, fontFamily: 'Arial, sans-serif', lineHeight: 1.5, padding: 10, caretColor: 'transparent' }}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import { formatDateTime } from '../utils/dateUtils';
 import { CheckCircle, Star, ThumbsUp, Users, Plus, Pencil, Trash2 } from 'lucide-react';
 import OfficerPicker from '../components/OfficerPicker';
 import { formatEnumValue } from '../utils/formatters';
+import { qaReviewsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface QAStats {
   total_reviews: number;
@@ -32,6 +33,8 @@ export default function QAPage() {
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { addToast } = useToast();
   const { user } = useAuth();
   const m = useMenuActions();
@@ -43,11 +46,14 @@ export default function QAPage() {
 
   const fetchData = useCallback(async () => {
     try {
+      setLoadError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/qa/reviews');
       setReviews(r.data ?? []);
       const s = await apiFetch<QAStats>('/qa/stats');
       setStats(s);
-    } catch { /* silent — errors surface only on explicit user actions */ }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load QA reviews');
+    }
   }, []);
 
   useEffect(() => {
@@ -186,24 +192,62 @@ export default function QAPage() {
     }] : []),
   ];
 
-  // Empty-state: distinguish loading vs genuinely empty
-  const emptyMessage = loading ? 'Loading QA records…' : 'No QA reviews on record';
-  const emptyDescription = loading ? undefined : 'Quality assurance reviews will appear here once created.';
+  const reviewTypes = Array.from(new Set(reviews.map((r) => String(r.review_type || '')).filter(Boolean))).sort();
+  const visibleReviews = typeFilter === 'ALL' ? reviews : reviews.filter((r) => r.review_type === typeFilter);
+  const emptyMessage = loading
+    ? 'Loading QA records…'
+    : reviews.length === 0
+      ? 'No QA reviews on record'
+      : 'No reviews match this type filter';
+  const emptyDescription = loading
+    ? undefined
+    : reviews.length === 0
+      ? 'Quality assurance reviews will appear here once created.'
+      : 'Pick All types or another review type.';
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="QUALITY ASSURANCE" icon={CheckCircle}>
-        {canWrite && (
-          <button
-            onClick={openNew}
-            className="toolbar-btn flex items-center gap-1.5"
-            style={{ height: 28, padding: '0 10px' }}
-            title="New Review (N)"
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Filter by review type"
+            className="select-dark text-[11px]"
+            style={{ height: 28 }}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
           >
-            <Plus size={13} /> New Review
+            <option value="ALL">All types</option>
+            {reviewTypes.map((t) => (
+              <option key={t} value={t}>{formatEnumValue(t)}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="toolbar-btn"
+            style={{ height: 28, padding: '0 10px' }}
+            disabled={visibleReviews.length === 0}
+            onClick={() => downloadTextFile('qa-reviews.csv', qaReviewsToCsv(visibleReviews))}
+          >
+            CSV
           </button>
-        )}
+          {canWrite && (
+            <button
+              onClick={openNew}
+              className="toolbar-btn flex items-center gap-1.5"
+              style={{ height: 28, padding: '0 10px' }}
+              title="New Review (N)"
+            >
+              <Plus size={13} /> New Review
+            </button>
+          )}
+        </div>
       </PanelTitleBar>
+      {loadError && (
+        <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 flex items-center justify-between" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="toolbar-btn" style={{ height: 26 }} onClick={() => { setLoading(true); fetchData().finally(() => setLoading(false)); }}>Retry</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatsCard icon={CheckCircle} label="Total Reviews" value={stats.total_reviews} />
@@ -214,7 +258,7 @@ export default function QAPage() {
 
       <DataTable
         columns={columns}
-        data={reviews}
+        data={visibleReviews}
         loading={loading}
         emptyMessage={emptyMessage}
         emptyDescription={emptyDescription}
@@ -223,6 +267,7 @@ export default function QAPage() {
           m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
           m.separator(),
           m.copyId(row.id),
+          m.copy('Copy findings', row.findings ?? ''),
           ...(canDelete
             ? [m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> })]
             : []),
@@ -271,6 +316,7 @@ export default function QAPage() {
                       value={formData.reviewed_officer_id ? Number(formData.reviewed_officer_id) : null}
                       onChange={(id) => setFormData({ ...formData, reviewed_officer_id: id ? String(id) : '' })}
                       placeholder="Search officer by name, badge…"
+                      aria-label="Search officer by name or badge"
                     />
                   </div>
                 </div>

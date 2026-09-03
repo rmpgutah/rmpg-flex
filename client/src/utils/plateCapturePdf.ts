@@ -17,11 +17,12 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 import { fetchImageFromUrl, type ResolvedImage } from './pdfImageHelpers';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -171,24 +172,13 @@ export async function generatePlateCapturePdf(input: PlateCapturePdfInput): Prom
   let y = 36;
 
   // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
   const plateTitle = (cap.canonical_plate || cap.plate || '—').toUpperCase();
-  doc.text(`ALPR CAPTURE — ${plateTitle}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text(`Rocky Mountain Protective Group  ·  Automated Plate Reader  ·  Capture #${cap.id ?? '?'}`, M, y);
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `ALPR CAPTURE — ${plateTitle}`,
+    subtitle: 'Automated Plate Reader',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // Unverified-read alert — see needsVerificationAlert() above.
   if (needsVerificationAlert(cap)) {
@@ -410,6 +400,6 @@ export async function generatePlateCapturePdf(input: PlateCapturePdfInput): Prom
 
 export async function openPlateCapturePdf(input: PlateCapturePdfInput): Promise<void> {
   const doc = await generatePlateCapturePdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Plate Capture');
 }

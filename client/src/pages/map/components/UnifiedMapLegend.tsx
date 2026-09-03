@@ -31,7 +31,7 @@ export interface UnifiedLegendProps {
   visibleOsmConfigs?: VectorTileLayerConfig[];
 }
 
-const HSWATCH: Record<string, string> = { area: '#d4a017', sector: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
+const HSWATCH: Record<string, string> = { area: '#c3ccd6', sector: '#22c55e', zone: '#4ade80', beat: '#22c55e' };
 
 const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boolean }) => (
   <span
@@ -62,32 +62,75 @@ const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boo
  * map, so the key cannot drift from the sprite it documents.
  */
 function OsmIconKey({ visibleOsmConfigs, sub }: { visibleOsmConfigs: VectorTileLayerConfig[]; sub: string }) {
-  const rows = visibleOsmConfigs
+  const points = visibleOsmConfigs
     .filter((c) => c.categoryRender === 'point' && c.categoryFilter)
-    .map((c) => ({ label: c.label, svg: iconSvgForCat(c.categoryFilter as string) }))
-    .filter((r): r is { label: string; svg: string } => !!r.svg);
-  if (rows.length === 0) return null;
+    .map((c) => ({ label: c.label, svg: iconSvgForCat(c.categoryFilter as string), color: c.color }))
+    .filter((r): r is { label: string; svg: string; color: string } => !!r.svg);
+
+  const lines = visibleOsmConfigs.filter((c) => c.categoryRender === 'line');
+  const fills = visibleOsmConfigs.filter((c) => c.categoryRender === 'polygon');
+
+  if (points.length === 0 && lines.length === 0 && fills.length === 0) return null;
 
   return (
     <div>
       <div style={{ color: sub, fontSize: 7, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 3 }}>
         OSM Features
       </div>
-      <div className="grid grid-cols-2 gap-x-2 gap-y-[3px]">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-center gap-1">
-            <img
-              alt=""
-              aria-hidden="true"
-              className="shrink-0"
-              width={16}
-              height={16}
-              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(r.svg)}`}
-            />
-            <span style={{ fontSize: 8.5, color: sub, lineHeight: 1.15 }}>{r.label}</span>
-          </div>
-        ))}
-      </div>
+      {points.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-2 gap-y-[3px]">
+          {points.map((r) => (
+            <div key={r.label} className="flex items-center gap-1">
+              <img
+                alt=""
+                aria-hidden="true"
+                className="shrink-0"
+                width={16}
+                height={16}
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(r.svg)}`}
+              />
+              <span style={{ fontSize: 8.5, color: sub, lineHeight: 1.15 }}>{r.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {lines.length > 0 && (
+        <div className="mt-1 space-y-[2px]">
+          {lines.map((c) => (
+            <div key={c.id} className="flex items-center gap-1.5">
+              <span
+                className="inline-block shrink-0"
+                style={{ width: 14, height: 0, borderTop: `2px ${c.categoryFilter && /unpaved|fourwd|seasonal|restricted|restriction|pipeline|track|cliff/.test(c.categoryFilter) ? 'dashed' : 'solid'} ${c.color}` }}
+              />
+              <span style={{ fontSize: 8.5, color: sub }}>{c.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {fills.length > 0 && (
+        <div className="mt-1 space-y-[2px]">
+          {fills.map((c) => (
+            <div key={c.id} className="flex items-center gap-1.5">
+              <span
+                className="inline-block shrink-0"
+                style={
+                  c.categoryFilter === 'camera_cone'
+                    ? {
+                      width: 0,
+                      height: 0,
+                      borderLeft: '6px solid transparent',
+                      borderRight: '6px solid transparent',
+                      borderBottom: `12px solid ${c.color}`,
+                      opacity: 0.7,
+                    }
+                    : { width: 12, height: 12, borderRadius: 2, background: c.color, opacity: 0.45 }
+                }
+              />
+              <span style={{ fontSize: 8.5, color: sub }}>{c.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -110,7 +153,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   return (
     <div
       className="absolute z-40 backdrop-blur-md"
-      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid var(--border-subtle)', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid var(--border-subtle)', borderRadius: 2, fontFamily: "'Arial','sans-serif'" }}
     >
       <button
         type="button"
@@ -154,10 +197,10 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
             <div>
               <div style={{ color: sub, fontSize: 7, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>Boundaries</div>
               {boundaries.county && (
-                <div className="flex items-center gap-1.5"><Swatch color="#9a9a9a" line /><span style={{ fontSize: 9, color: fg }}>County</span></div>
+                <div className="flex items-center gap-1.5"><Swatch color="#444444" line /><span style={{ fontSize: 9, color: fg }}>County</span></div>
               )}
               {boundaries.municipality && (
-                <div className="flex items-center gap-1.5"><Swatch color="#c9c9c9" line /><span style={{ fontSize: 9, color: fg }}>Municipality</span></div>
+                <div className="flex items-center gap-1.5"><Swatch color="#a855f7" line /><span style={{ fontSize: 9, color: fg }}>Municipality</span></div>
               )}
             </div>
           )}

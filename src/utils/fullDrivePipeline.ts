@@ -81,8 +81,17 @@ function segmentByGap(timestamps: number[]): Array<{ fromMs: number; toMs: numbe
 async function detectTrips(
   db: D1Database, unitId: number | null, fromMs: number, toMs: number,
 ): Promise<TripSegment[]> {
-  const fromIso = new Date(fromMs).toISOString();
-  const toIso = new Date(toMs).toISOString();
+  // Bind SPACE-form UTC bounds ('YYYY-MM-DD HH:MM:SS'), matching how
+  // unit_trips.start_time (tripStore.ts) and gps_breadcrumbs.recorded_at
+  // (datetime('now')) are stored. SQLite compares TEXT lexically and
+  // ' ' < 'T', so an ISO-T bound made every same-day row fail `>= fromIso`
+  // — trip detection silently returned zero rows for single-day windows.
+  const fromIso = new Date(fromMs).toISOString().replace('T', ' ').slice(0, 19);
+  const toIso = new Date(toMs).toISOString().replace('T', ' ').slice(0, 19);
+  // Space-form strings are zone-less; normalize before Date.parse so the
+  // result is UTC regardless of the host zone.
+  const epochMs = (s: string): number =>
+    Date.parse(s.includes('T') ? s : `${s.replace(' ', 'T')}Z`);
 
   // Option 1: Use already-detected unit_trips for this unit.
   // Filter by real duration (≥ MIN_TRIP_SEC) so single-ping GPS records are excluded.
@@ -99,8 +108,8 @@ async function detectTrips(
     ).catch(() => []);
     if (rows.length) {
       return rows.map((r, i) => {
-        const f = Date.parse(r.start_time);
-        const t = Date.parse(r.end_time);
+        const f = epochMs(r.start_time);
+        const t = epochMs(r.end_time);
         return { fromMs: f, toMs: t, label: buildTripLabel(i + 1, f, t) };
       });
     }
@@ -113,7 +122,7 @@ async function detectTrips(
       unitId, fromIso, toIso,
     ).catch(() => []);
     if (crumbs.length >= 2) {
-      const ts = crumbs.map((r) => Date.parse(r.recorded_at));
+      const ts = crumbs.map((r) => epochMs(r.recorded_at));
       const segs = segmentByGap(ts);
       if (segs.length) {
         return segs.slice(0, MAX_TRIPS).map((s, i) => ({

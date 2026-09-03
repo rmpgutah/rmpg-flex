@@ -286,6 +286,8 @@ admin.get('/call-templates', async (c) => {
 });
 
 admin.post('/call-templates', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
@@ -302,9 +304,12 @@ admin.post('/call-templates', async (c) => {
 });
 
 admin.put('/call-templates/:id', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     type CallTemplateBody = { name?: string; incident_type?: string; priority?: string; description_template?: string | null };
     const body = await c.req.json<CallTemplateBody>().catch(() => ({} as CallTemplateBody));
     const sets: string[] = []; const vals: unknown[] = [];
@@ -315,16 +320,22 @@ admin.put('/call-templates/:id', async (c) => {
     if (!sets.length) return c.json({ success: true });
     sets.push("updated_at = datetime('now')");
     vals.push(id);
-    await execute(db, `UPDATE call_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    const r = await execute(db, `UPDATE call_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('PUT /call-templates/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to update call template' }, 500); }
 });
 
 admin.delete('/call-templates/:id', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
-    await execute(db, 'DELETE FROM call_templates WHERE id = ?', c.req.param('id'));
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(db, 'DELETE FROM call_templates WHERE id = ?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /call-templates/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to delete call template' }, 500); }
@@ -499,6 +510,8 @@ export default admin;
 
 // ── Admin dashboard data endpoints ──
 admin.get('/shift-stats', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const now = new Date();
@@ -524,6 +537,8 @@ admin.get('/shift-stats', async (c) => {
 });
 
 admin.get('/upcoming-court-dates', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
@@ -584,6 +599,8 @@ admin.get('/config/branding', (c) => c.json([]));
 // only tables that already exist (sessions, units, calls_for_service,
 // login_attempts, error_log) rather than a not-yet-built metrics pipeline.
 admin.get('/health/detailed', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const cnt = async (sql: string, ...params: unknown[]) => (await queryFirst<{ n: number }>(db, sql, ...params).catch(() => null))?.n ?? 0;
@@ -660,6 +677,8 @@ admin.get('/users-activity-summary', async (c) => {
 });
 
 admin.get('/realtime-stats', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const cnt = async (sql: string) => (await queryFirst<{ n: number }>(db, sql).catch(() => null))?.n ?? 0;
@@ -703,6 +722,8 @@ admin.get('/retention/preview', (c) => c.json([]));
 // metrics — no request-log table exists, so this is action-volume from audit_log,
 // which is exactly what the panel already renders).
 admin.get('/api-stats', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const days = Math.min(Number(c.req.query('days') || 7), 90);
@@ -727,6 +748,8 @@ admin.get('/api-stats', async (c) => {
 // GET /admin/user-activity-heatmap — hour-of-day × day-of-week action volume
 // from audit_log over the window (AdminHealthTab's UserActivityHeatmap panel).
 admin.get('/user-activity-heatmap', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const days = Math.min(Number(c.req.query('days') || 30), 90);
@@ -865,7 +888,8 @@ admin.delete('/departments/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-    await execute(db, `DELETE FROM departments WHERE id = ?`, id);
+    const delResult = await execute(db, `DELETE FROM departments WHERE id = ?`, id);
+    if (!delResult.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /departments/:id failed', { src: 'src/routes/admin.ts' }, err);
@@ -1120,7 +1144,9 @@ const ALLOWED_THIRD_PARTY_KEYS = new Set<string>([
   'nsopw_api_key', 'ofac_api_key', 'screening_ofac_csl_api_key',
   'openweathermap_api_key', 'nominatim_api_key', 'opencage_api_key',
   'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
-  'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
+  'have_i_been_pwned_key', 'hibp_api_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
+  'usa_people_search_rapidapi_key', 'pdl_api_key', 'apollo_api_key', 'courtlistener_token',
+  'skiptracer_rapidapi_key',
   'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',
   'twilio_api_key', 'twilio_account_sid', 'sendgrid_api_key', 'pushover_api_key',
   'ntfy_topic_key', 'slack_webhook_url', 'discord_webhook_url', 'telegram_bot_token',

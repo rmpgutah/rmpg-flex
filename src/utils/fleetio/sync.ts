@@ -49,6 +49,27 @@ import {
   FleetioConfigError,
 } from './errors';
 
+// ─── Pacing ───────────────────────────────────────────────
+
+/** Inter-request spacing for every paced Fleet.io loop (self-imposed pacing;
+ *  Fleet.io limits are plan-dependent — no fixed published number). Shared by
+ *  the route-level /seed, /seed-vendors, /seed-parts and /pull loops AND the
+ *  applyOutbound drain below, so no caller can quietly diverge and start
+ *  earning 429s. */
+export const PACE_MS = 1200;
+
+export const pace = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** D1's bind() throws on non-scalar values (objects/arrays). Inbound Fleet.io
+ *  payload fields are usually scalars, but nested objects (e.g. an embedded
+ *  `specs` dict) do arrive; store those as their JSON text rather than letting
+ *  the bind throw — which used to dead-letter the whole event (applyInbound)
+ *  or 500 the admin's conflict-resolve. */
+export function coerceScalarForD1(v: unknown): unknown {
+  if (v !== null && typeof v === 'object') return JSON.stringify(v);
+  return v;
+}
+
 // ─── Backoff schedule ─────────────────────────────────────
 
 export const BACKOFF_SECONDS = [1, 4, 16, 60, 5 * 60, 30 * 60, 2 * 60 * 60];
@@ -219,6 +240,8 @@ export interface ApplyOutboundDeps {
   config: FleetioConfig; // present so the adapter has what it needs
   now?: () => Date;
   limit?: number;        // max events to drain per invocation; default 50
+  /** Inter-event delay in ms; defaults to PACE_MS. Tests pass 0. */
+  paceMs?: number;
 }
 
 export interface ApplyOutboundResult {
@@ -316,6 +339,13 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
     if (!claimed) {
       result.skipped++;
       continue;
+    }
+    // Real inter-event pacing (the drain previously fired up to `limit`
+    // Fleet.io requests back-to-back despite the comment above claiming
+    // per-event pacing). Sleep BEFORE each dispatch after the first, so the
+    // final event never trails a useless sleep.
+    if (result.attempted > 0) {
+      await pace(deps.paceMs ?? PACE_MS);
     }
     result.attempted++;
     try {
@@ -1000,7 +1030,7 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
         }
       }
       setCols.push(`${f} = ?`);
-      bindings.push(payload[f] ?? null);
+      bindings.push(coerceScalarForD1(payload[f] ?? null));
       applied.push(f);
     }
     if (setCols.length > 0) {

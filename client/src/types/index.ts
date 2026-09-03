@@ -314,6 +314,26 @@ export interface CallForService {
   scene_safety?: string;
   weather_conditions?: string;
   lighting_conditions?: string;
+  /** Live/historical Open-Meteo snapshot stamped at dispatch / on created_at edit. */
+  weather_snapshot?: {
+    temp_f?: number | null;
+    feels_like_f?: number | null;
+    condition?: string;
+    scene_category?: string;
+    weather_code?: number | null;
+    wind_mph?: number | null;
+    wind_gust_mph?: number | null;
+    wind_dir?: string | null;
+    wind_dir_deg?: number | null;
+    humidity?: number | null;
+    visibility_mi?: number | null;
+    precip_in?: number | null;
+    observed_at?: string | null;
+    source?: 'live' | 'historical';
+    lighting?: string;
+    captured_at?: string;
+  } | null;
+  weather_manual?: boolean | number;
   // Flags
   alcohol_involved?: boolean;
   drugs_involved?: boolean;
@@ -356,6 +376,7 @@ export interface CallForService {
   process_service_result?: string;
   court_name?: string;
   attorney_name?: string;
+  plaintiff_name?: string;
   jurisdiction?: string;
   deadline?: string;
   time_window?: string;
@@ -363,6 +384,8 @@ export interface CallForService {
   pso_72hr_deadline?: string;
   pso_72hr_notified?: number | boolean;
   parent_call_id?: number | string | null;
+  parent_call?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  child_calls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -2271,7 +2294,7 @@ export interface PresenceUpdate {
 // --- Invoices ---
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'partial' | 'overdue' | 'void' | 'cancelled';
-export type LineItemType = 'contract_base' | 'service_hours' | 'incident_response' | 'dispatch_call' | 'citation' | 'custom' | 'late_fee' | 'discount';
+export type LineItemType = 'contract_base' | 'service_hours' | 'incident_response' | 'dispatch_call' | 'citation' | 'custom' | 'late_fee' | 'discount' | 'pso_client_request';
 export type PaymentMethod = 'check' | 'ach' | 'wire' | 'credit_card' | 'cash' | 'other';
 
 export interface Invoice {
@@ -3343,8 +3366,12 @@ export interface ServeJob {
   case_number: string | null;
   court_name: string | null;
   jurisdiction: string | null;
+  court_date?: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  attorney_phone?: string | null;
+  attorney_email?: string | null;
+  attorney_bar_number?: string | null;
   plaintiff_name: string | null;
   defendant_name: string | null;
   // Service classification (migration 0237)
@@ -3380,16 +3407,24 @@ export interface ServeJob {
   // attempt — surfaced verbatim on the Notice of Attempt PDF. NULL means use
   // the generic boilerplate. Persisted via migration 0134_serve_queue_next_attempt.
   next_attempt_note: string | null;
+  /** Next serve_attempt_schedules slot (list endpoint). */
+  next_attempt_date?: string | null;
+  next_attempt_window?: string | null;
   created_at: string;
   updated_at: string;
   call_id: number | null;
+  linked_call_number?: string | null;
+  linked_attempt_number?: number | null;
+  linked_parent_call_id?: number | null;
   // Automation columns (migrations 0140, 0153, 0154)
   closed_at?: string | null;
-  urgency_tier?: 'normal' | 'high' | 'critical' | null;
+  urgency_tier?: 'standard' | 'tight' | 'critical' | null;
   auto_assigned?: number | null;
   intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
+  /** QR "Notice of Attempt to Serve" scan evidence (migration 0189). */
+  scans?: ServeNoticeScan[];
   // Raw JSON blob written by commitIntake. Parsed client-side to extract
   // _intake.address_class.{klass, confirmed} for the scheduling UI.
   parsed_data?: string | null;
@@ -3415,6 +3450,8 @@ export interface ServeJob {
   quality_status?: string | null;
   quality_reviewed_by?: string | null;
   quality_reviewed_at?: string | null;
+  /** Clamped learned/default on-site seconds for the route planner. */
+  learned_dwell_seconds?: number | null;
 }
 
 // ── Serve folder helpers ───────────────────────────────────────────────────
@@ -3461,6 +3498,10 @@ export interface ServeJobLinkedCall {
   pso_requestor_name: string | null;
   contract_id: string | null;
   pso_service_windows: string | null;
+  pso_attempt_number?: number | null;
+  parent_call_id?: number | null;
+  parent_call?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  child_calls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
   parentCall?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
   childCalls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
 }
@@ -3472,7 +3513,7 @@ export interface ServeAttempt {
   officer_name?: string;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
-  result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'bad_address' | 'moved' | 'other';
   /** Structured PS/NN.NN disposition code (migration 0143). Null on legacy rows. */
   disposition_code?: string | null;
   latitude: number | null;
@@ -3500,6 +3541,18 @@ export interface ServeAttemptData {
   person_served_relationship?: string;
   person_served_description?: string;
   photo_ids?: string[];
+  /** Documents / photos / MP3s cataloged into this attempt's folder. */
+  evidence_files?: Array<{
+    file_id: string;
+    kind?: 'document' | 'photo' | 'audio';
+    title?: string;
+    description?: string;
+    document_type?: string;
+    copies?: number;
+    original_name?: string;
+    mime_type?: string;
+    file_size?: number;
+  }>;
   signature_data?: string;
   notes?: string;
   // Optional operator-set message for the next attempt window — stored on the
@@ -3510,6 +3563,8 @@ export interface ServeAttemptData {
   // server derives the legacy `result` enum from it via codeToLegacyResult
   // and persists the full code in serve_attempts.disposition_code.
   disposition_code?: string;
+  /** ISO arrival at the door — trains serve_dwell_times. Also accepted as arrived_at. */
+  arrivedAt?: string;
 }
 
 export interface ServeRoute {
@@ -3552,6 +3607,31 @@ export interface ServeSkipTrace {
   lookup_cost: number;
   addresses_found: ServeSkipAddress[];
   created_at: string;
+}
+
+/** QR "Notice of Attempt to Serve" scan evidence (migration 0189). Written
+ *  by the email/scan beacon Worker when a subject opens a notice's QR link. */
+export interface ServeNoticeScan {
+  id: number;
+  serve_queue_id: number;
+  job_ref: string | null;
+  scanned_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  geo_city: string | null;
+  geo_region: string | null;
+  geo_country: string | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  device_type: string | null;
+  device_brand: string | null;
+  device_model: string | null;
+  os_family: string | null;
+  browser_family: string | null;
+  browser_version: string | null;
+  touch_capable: boolean;
+  is_proxy: boolean;
+  is_bot: boolean;
 }
 
 export interface ServeSkipAddress {

@@ -21,7 +21,7 @@
 //   • 3-state empty: loading / no-data / no-results per tab.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +32,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import {
+  communityEventsToCsv, communityTipsSafeToCsv, communityAlertsToCsv, watchGroupsToCsv, downloadTextFile,
+} from '../utils/rmsListExport';
 import {
   Users, Calendar, MessageSquare, Bell, Plus, Pencil, Trash2,
   AlertCircle, Eye, RefreshCw,
@@ -159,6 +162,8 @@ export default function CommunityPage() {
   const [deleteTarget, setDeleteTarget] = useState<CommunityEvent | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // ── Data fetchers ────────────────────────────────────────
 
@@ -331,6 +336,14 @@ export default function CommunityPage() {
       if (e.key === 'Escape') {
         if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
         if (showForm) { e.stopPropagation(); closeForm(); return; }
+        if (search.trim()) { e.stopPropagation(); setSearch(''); return; }
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!inInput && e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
         return;
       }
 
@@ -345,7 +358,35 @@ export default function CommunityPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [deleteTarget, showForm, canWrite, activeTab, openNew, closeForm]);
+  }, [deleteTarget, showForm, canWrite, activeTab, openNew, closeForm, search]);
+
+  const filteredEvents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter((e) => `${e.event_name} ${e.event_type} ${e.location ?? ''} ${e.status}`.toLowerCase().includes(q));
+  }, [events, search]);
+  const filteredTips = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return tips;
+    return tips.filter((t) => `${t.tip_number} ${t.category ?? ''} ${t.location ?? ''} ${t.status}`.toLowerCase().includes(q));
+  }, [tips, search]);
+  const filteredWatch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return watchGroups;
+    return watchGroups.filter((g) => `${g.group_name} ${g.neighborhood ?? ''}`.toLowerCase().includes(q));
+  }, [watchGroups, search]);
+  const filteredAlerts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return alerts;
+    return alerts.filter((a) => `${a.alert_title} ${a.alert_type} ${a.severity} ${a.target_area ?? ''}`.toLowerCase().includes(q));
+  }, [alerts, search]);
+
+  const exportCurrentTab = () => {
+    if (activeTab === 'events') downloadTextFile('community-events.csv', communityEventsToCsv(filteredEvents));
+    else if (activeTab === 'tips') downloadTextFile('community-tips.csv', communityTipsSafeToCsv(filteredTips));
+    else if (activeTab === 'watch-groups') downloadTextFile('community-watch-groups.csv', watchGroupsToCsv(filteredWatch));
+    else downloadTextFile('community-alerts.csv', communityAlertsToCsv(filteredAlerts));
+  };
 
   // ── Column defs ──────────────────────────────────────────
 
@@ -434,6 +475,21 @@ export default function CommunityPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="COMMUNITY ENGAGEMENT" icon={Users}>
+        <input
+          ref={searchRef}
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter list… (/)"
+          className="input-dark text-xs h-7 w-44"
+          aria-label="Filter community list"
+        />
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          onClick={exportCurrentTab}
+        >CSV</button>
         {canWrite && activeTab === 'events' && (
           <button
             onClick={openNew}
@@ -491,10 +547,12 @@ export default function CommunityPage() {
       {activeTab === 'events' && (
         <DataTable
           columns={eventColumns}
-          data={events}
+          data={filteredEvents}
           loading={eventsLoading}
           emptyMessage={
-            canWrite
+            search.trim() && events.length > 0
+              ? `No events match "${search}"`
+              : canWrite
               ? 'No community events found. Press N or click "New Event" to create one.'
               : 'No community events found.'
           }
@@ -515,9 +573,9 @@ export default function CommunityPage() {
       {activeTab === 'tips' && (
         <DataTable
           columns={tipColumns}
-          data={tips}
+          data={filteredTips}
           loading={tipsLoading}
-          emptyMessage={tipsLoading ? 'Loading tips…' : 'No public tips have been submitted yet.'}
+          emptyMessage={tipsLoading ? 'Loading tips…' : (search.trim() && tips.length > 0 ? `No tips match "${search}"` : 'No public tips have been submitted yet.')}
           emptyDescription={tipsLoading ? undefined : 'Anonymous and named tips appear here when submitted.'}
         />
       )}
@@ -526,9 +584,9 @@ export default function CommunityPage() {
       {activeTab === 'watch-groups' && (
         <DataTable
           columns={watchColumns}
-          data={watchGroups}
+          data={filteredWatch}
           loading={watchLoading}
-          emptyMessage={watchLoading ? 'Loading watch groups…' : 'No neighborhood watch groups registered.'}
+          emptyMessage={watchLoading ? 'Loading watch groups…' : (search.trim() && watchGroups.length > 0 ? `No groups match "${search}"` : 'No neighborhood watch groups registered.')}
           emptyDescription={watchLoading ? undefined : 'Watch groups appear here once registered.'}
         />
       )}
@@ -537,9 +595,9 @@ export default function CommunityPage() {
       {activeTab === 'alerts' && (
         <DataTable
           columns={alertColumns}
-          data={alerts}
+          data={filteredAlerts}
           loading={alertsLoading}
-          emptyMessage={alertsLoading ? 'Loading alerts…' : 'No community alerts have been sent.'}
+          emptyMessage={alertsLoading ? 'Loading alerts…' : (search.trim() && alerts.length > 0 ? `No alerts match "${search}"` : 'No community alerts have been sent.')}
           emptyDescription={alertsLoading ? undefined : 'Broadcast alerts appear here once created.'}
         />
       )}

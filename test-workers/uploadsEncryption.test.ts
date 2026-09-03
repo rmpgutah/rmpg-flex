@@ -19,7 +19,8 @@ describe('attachments/ — envelope encryption', () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT UNIQUE, original_name TEXT, stored_name TEXT,
       file_path TEXT, mime_type TEXT, file_size INTEGER, entity_type TEXT, entity_id INTEGER,
       -- Live attachments has no uploaded_at (created_at is the timestamp).
-      folder_id INTEGER, uploaded_by INTEGER
+      folder_id INTEGER, uploaded_by INTEGER,
+      latitude REAL, longitude REAL, taken_at TEXT, reference_notes TEXT
     )`).run();
     await db.prepare(`CREATE TABLE IF NOT EXISTS activity_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, action TEXT, entity_type TEXT,
@@ -97,5 +98,28 @@ describe('attachments/ — envelope encryption', () => {
     expect(downloadRes.status).toBe(200);
     const downloadedBytes = new Uint8Array(await downloadRes.arrayBuffer());
     expect(Array.from(downloadedBytes)).toEqual(Array.from(legacyBytes));
+  });
+
+  it('encrypts via JWT_SECRET when FILE_ENCRYPTION_KEK is unset', async () => {
+    const testEnv = { ...(env as unknown as Record<string, unknown>), JWT_SECRET };
+    delete testEnv.FILE_ENCRYPTION_KEK;
+    const token = await mintToken();
+    const original = new Uint8Array([9, 8, 7, 6, 5]);
+    const form = new FormData();
+    form.append('files', new File([original], 'jwt-fallback.txt', { type: 'text/plain' }));
+    const uploadRes = await app.request('/api/uploads', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body: form,
+    }, testEnv);
+    expect(uploadRes.status).toBe(201);
+    const [row] = await uploadRes.json() as Array<{ file_id: string; file_path: string }>;
+    const raw = await (testEnv as any).UPLOADS.get(row.file_path);
+    expect(Array.from(new Uint8Array(await raw!.arrayBuffer()))).not.toEqual(Array.from(original));
+    const downloadRes = await app.request(`/api/uploads/${row.file_id}/download`, {
+      headers: { authorization: `Bearer ${token}` },
+    }, testEnv);
+    expect(downloadRes.status).toBe(200);
+    expect(Array.from(new Uint8Array(await downloadRes.arrayBuffer()))).toEqual(Array.from(original));
   });
 });

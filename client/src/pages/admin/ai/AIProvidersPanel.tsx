@@ -35,11 +35,13 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
 
   // Fetch priority on mount
   React.useEffect(() => {
+    let cancelled = false;
     apiFetch<any>('/ai/master-config').then(mc => {
-      if (mc.providerPriority && Array.isArray(mc.providerPriority)) {
+      if (!cancelled && mc.providerPriority && Array.isArray(mc.providerPriority)) {
         setPriority(mc.providerPriority);
       }
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const updateProvider = (val: string) => {

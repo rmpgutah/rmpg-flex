@@ -16,6 +16,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openNationalWarrantPdf, type NationalWarrantHit } from '../utils/nationalWarrantPdf';
 import { toDisplayLabel } from '../utils/formatters';
+import { nationalWarrantsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 type CoverageStatus = 'active' | 'pending' | 'disabled';
 
@@ -330,6 +331,7 @@ export default function NationalWarrantSearchPage() {
   const [coverage, setCoverage] = useState<any>(null);
   const [coverageLoading, setCoverageLoading] = useState(true);
   const [searchValidationError, setSearchValidationError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // ?warrant_id= deep-link — highlights a specific result row and scrolls
   // to it once the auto-triggered search resolves. Cleared on Esc or click.
@@ -344,11 +346,13 @@ export default function NationalWarrantSearchPage() {
 
   // ── Load Coverage ─────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
     setCoverageLoading(true);
     apiFetch<NationalCoverageResponse>('/api/warrants/national-coverage')
-      .then(data => setCoverage(data))
-      .catch(() => setCoverage(null))
-      .finally(() => setCoverageLoading(false));
+      .then(data => { if (!cancelled) setCoverage(data); })
+      .catch(() => { if (!cancelled) setCoverage(null); })
+      .finally(() => { if (!cancelled) setCoverageLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   // ── Search Handler ────────────────────────────────────────
@@ -375,6 +379,7 @@ export default function NationalWarrantSearchPage() {
     if (!body.first_name && !body.last_name && !body.dob && !body.state && !body.charge_keyword) return;
 
     setSearchValidationError(null);
+    setSearchError(null);
     setSearching(true);
     setSearched(true);
     setResults(null);
@@ -389,6 +394,7 @@ export default function NationalWarrantSearchPage() {
         addToast('No national warrants found for the linked subject', 'warning');
       }
     } catch {
+      setSearchError('Search failed — check server connection');
       setResults({ total: 0, search_time_ms: 0, by_state: {}, local: [], error: 'Search failed — check server connection' });
     } finally {
       setSearching(false);
@@ -508,6 +514,39 @@ export default function NationalWarrantSearchPage() {
 
   // Officer signature line for every PDF pulled from this page — same
   // resolution rule the criminal-history + FI PDFs use.
+  const flattenedWarrants = useMemo(() => {
+    const rows: Array<{
+      id?: string | number; state?: string; warrant_type?: string | null; status?: string | null;
+      offense_level?: string | null; court?: string; source?: string;
+    }> = [];
+    if (!results) return rows;
+    for (const w of (results.local ?? []) as Warrant[]) {
+      rows.push({
+        id: w.id,
+        state: w.state,
+        warrant_type: w.warrant_type,
+        status: w.status,
+        offense_level: w.offense_level,
+        court: w.court,
+        source: w.source ?? 'local',
+      });
+    }
+    for (const [st, list] of Object.entries((results.by_state ?? {}) as Record<string, Warrant[]>)) {
+      for (const w of list ?? []) {
+        rows.push({
+          id: w.id,
+          state: w.state ?? st,
+          warrant_type: w.warrant_type,
+          status: w.status,
+          offense_level: w.offense_level,
+          court: w.court,
+          source: w.source ?? st,
+        });
+      }
+    }
+    return rows;
+  }, [results]);
+
   const preparedBy = useMemo(() => (
     user
       ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
@@ -519,6 +558,12 @@ export default function NationalWarrantSearchPage() {
     <div className="flex flex-col h-full overflow-hidden bg-surface-sunken">
       {/* ─── Header ──────────────────────────────────── */}
       <PanelTitleBar title="NATIONAL WARRANT SEARCH" icon={Globe}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          disabled={flattenedWarrants.length === 0}
+          onClick={() => downloadTextFile('national-warrants.csv', nationalWarrantsToCsv(flattenedWarrants))}
+        >CSV</button>
         <span className="text-[10px] text-rmpg-400 font-mono tracking-wide">
           {sourceCount}+ sources
         </span>
@@ -640,6 +685,13 @@ export default function NationalWarrantSearchPage() {
             {searchValidationError}
           </div>
         )}
+        {searchError && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-950/40 border border-red-800/50 text-red-400 text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{searchError}</span>
+            <button type="button" className="toolbar-btn ml-auto" onClick={() => { void handleSearch(); }}>Retry</button>
+          </div>
+        )}
 
         {/* ─── US Coverage Map ────────────────────────── */}
         <div className="panel-raised p-3">
@@ -727,7 +779,7 @@ export default function NationalWarrantSearchPage() {
                         style={{
                           fontSize: 11,
                           fontWeight: 600,
-                          fontFamily: 'JetBrains Mono, monospace',
+                          fontFamily: 'Arial, sans-serif',
                           fill: isSelected ? 'var(--text-secondary)' : coverageTextColor(status),
                         }}
                       >

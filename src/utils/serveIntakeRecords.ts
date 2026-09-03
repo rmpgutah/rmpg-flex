@@ -28,7 +28,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
-import { execute, query, queryFirst } from './db';
+import { execute, query, queryFirst, columnExists } from './db';
 import { geocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
@@ -40,14 +40,17 @@ import {
   planAttemptWindows, escalatePriorityForDeadline,
   clusterByProximity, applyUrgencyTier, daysUntilDeadline,
 } from './serveDiligencePlanner';
-import type { AttemptWindow } from './serveDiligencePlanner';
+import type { AttemptWindow, UrgencyTier } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { resolveAddressClass } from './serveAddressClass';
+import { inferVenueKind, buildOutputTree } from './serveIntakeOutputTree';
+import { coerceVenueKind, normalizeServeJobOps } from './serveJobOps';
 import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
 import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
+import { encodePsoServiceWindows } from './serveIntakeExtract';
 import type { FieldConflict } from './serveIntakeArbitrate';
 import { toDisplayLabel } from './displayLabel';
 
@@ -374,6 +377,87 @@ export function cadPriority(p: ServePriority): 'P1' | 'P2' | 'P3' | 'P4' {
   }
 }
 
+const SERVE_QUEUE_INTAKE_COPY_COLS = new Set([
+  'recipient_phone', 'recipient_dob', 'recipient_type',
+  'business_name', 'registered_agent_name', 'registered_office_address',
+  'serve_type', 'serve_fee', 'time_window',
+  'attorney_phone', 'attorney_email', 'attorney_bar_number',
+]);
+
+const CFS_INTAKE_COPY_COLS = new Set([
+  'attorney_name', 'jurisdiction', 'deadline', 'time_window',
+  'service_instructions', 'plaintiff_name',
+]);
+
+/** Copy intake fields onto dedicated serve_queue columns Process Server reads. */
+async function patchServeQueueIntakeCopy(
+  db: D1Database,
+  queueId: number,
+  row: QueueRow,
+): Promise<void> {
+  const pairs: Array<[string, unknown]> = [
+    ['recipient_phone', row.recipient_phone],
+    ['recipient_dob', row.recipient_dob],
+    ['recipient_type', row.recipient_type],
+    ['business_name', row.business_name],
+    ['registered_agent_name', row.registered_agent_name],
+    ['registered_office_address', row.registered_office_address],
+    ['serve_type', row.serve_type],
+    ['serve_fee', row.serve_fee],
+    ['time_window', row.time_window],
+    ['attorney_phone', row.attorney_phone],
+    ['attorney_email', row.attorney_email],
+    ['attorney_bar_number', row.attorney_bar_number],
+  ];
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  for (const [col, val] of pairs) {
+    if (!SERVE_QUEUE_INTAKE_COPY_COLS.has(col)) continue;
+    if (val == null || val === '') continue;
+    try {
+      if (!(await columnExists(db, 'serve_queue', col))) continue;
+    } catch {
+      continue;
+    }
+    sets.push(`${col} = ?`);
+    args.push(val);
+  }
+  if (!sets.length) return;
+  try {
+    args.push(queueId);
+    await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  } catch (err) {
+    log.warn('serve_queue copy patch skipped', { queueId, error: String(err) });
+  }
+}
+
+async function patchCfsExtIntakeCopy(
+  db: D1Database,
+  callId: number,
+  fields: Record<string, string | null>,
+): Promise<void> {
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  for (const [col, val] of Object.entries(fields)) {
+    if (!CFS_INTAKE_COPY_COLS.has(col)) continue;
+    if (val == null || val === '') continue;
+    try {
+      if (!(await columnExists(db, 'calls_for_service_ext', col))) continue;
+    } catch {
+      continue;
+    }
+    sets.push(`${col} = COALESCE(NULLIF(?, ''), ${col})`);
+    args.push(val);
+  }
+  if (!sets.length) return;
+  try {
+    args.push(callId);
+    await execute(db, `UPDATE calls_for_service_ext SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  } catch (err) {
+    log.warn('CFS ext copy patch skipped', { callId, error: String(err) });
+  }
+}
+
 // ── Call creation ────────────────────────────────────────────
 export interface ServiceCallInput {
   call_number: string;
@@ -392,6 +476,7 @@ export interface ServiceCallInput {
   officer_safety_caution: 0 | 1;         // red caution badge / Flags tab
   domestic_violence: 0 | 1;              // Flags tab (protective orders)
   dispatcher_id: number | null;
+  client_id?: number | null;
   // ── Geo enrichment (parity with a dispatcher-created call) ──
   // All optional + best-effort. The base columns are the SAME ones
   // dispatch/calls.ts populates (they exist on live calls_for_service);
@@ -437,13 +522,13 @@ export async function createServiceCall(db: D1Database, c: ServiceCallInput): Pr
       caller_name, caller_phone, location_address, property_id,
       latitude, longitude, description,
       notes, scene_safety, officer_safety_caution, domestic_violence,
-      source, dispatcher_id
-    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'intake', ?)`,
+      source, dispatcher_id, client_id
+    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'intake', ?, ?)`,
     c.call_number, c.incident_type, c.priority,
     c.caller_name, c.caller_phone, c.location_address, c.property_id,
     c.latitude, c.longitude, c.description,
     c.notes, c.scene_safety, c.officer_safety_caution, c.domestic_violence,
-    c.dispatcher_id,
+    c.dispatcher_id, c.client_id ?? null,
   );
   const id = Number(result.meta.last_row_id);
 
@@ -701,7 +786,11 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   // ── Deadline-driven priority escalation + diligence plan ──
   // ≤3 days to deadline → urgent, ≤7 → rush (raise-only). Computed BEFORE
   // the briefing/call/queue writes so every consumer sees the same value.
-  queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
+  // ONLY escalate if priority was not explicitly set or overridden by operator (confidence === 1.0).
+  const hasExplicitPriority = fields['priority']?.confidence === 1.0;
+  if (!hasExplicitPriority) {
+    queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
+  }
 
   const isBusiness = get('recipient_type').toLowerCase() === 'business';
   const businessName = get('recipient_business_name') || (isBusiness ? get('recipient_last_name') : '');
@@ -819,7 +908,6 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         middle_name: parts.middle,
         last_name: parts.last,
         address: addr || null,
-        phone: recipientPhone || null,
       });
       // For the queue's recipient_person_id, point at the agent —
       // that's who the officer needs to find on the door.
@@ -897,10 +985,14 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   // prevent. Auto-created rows are excluded from confirming.
   const businessRecordIsIndependent = !!businessRecord && !isAutoCreatedBusinessRecord(businessRecord);
   const addressClassResult = resolveAddressClass({
+    operatorOverride: get('address_class') || undefined,
     propertyRecordClass: undefined,
     businessRecordMatched: businessRecordIsIndependent && isBusiness,
     instructionsText: queueRow.service_instructions || '',
     extracted: get('address_class'),
+    serviceAddress: fullLocation || addr,
+    entityName: queueRow.recipient_name || get('recipient_business_name') || queueRow.business_name,
+    recipientType: queueRow.recipient_type || (isBusiness ? 'business' : null),
   });
 
   const rawClientSchedule = get('client_attempt_schedule');
@@ -925,6 +1017,13 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     });
   }
 
+  const inferredVenue = inferVenueKind(
+    fullLocation || addr,
+    queueRow.recipient_name || get('recipient_business_name') || queueRow.business_name,
+    queueRow.service_instructions,
+  );
+  const venueKind = coerceVenueKind(get('venue_kind')) ?? inferredVenue;
+
   const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
     isBusiness,
     addressClass: addressClassResult.klass,
@@ -933,6 +1032,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     allowedDays,
     startNotBefore,
     locationNote,
+    venueKind,
   });
 
   // Finding 3 FIX: `clientBands.length || 3` didn't match selectWindows'
@@ -963,7 +1063,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   let callId: number | null = null;
   let callNumber: string | null = null;
   if (fullLocation || addr) {
-    const caller_name = queueRow.client_name || queueRow.attorney_name;
+    const caller_name = queueRow.attorney_name || queueRow.client_name;
     const caller_phone = get('attorney_phone') || null;
 
     // ── PSO pre-arrival briefing ──────────────────────────────
@@ -1000,7 +1100,18 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         timestamp: nowIso,
       });
     }
-    const description = briefing.descriptionPrefix + input.documentSummary;
+    // SERVICE INSTRUCTIONS copied verbatim into the call's Description (the
+    // dispatch "Call Details" field) so the PSO/dispatcher sees the client's
+    // exact service requirements (rush timing, sub-service rules, diligence
+    // windows) on the CFS without opening the serve queue row. Appended after
+    // the structured summary so the one-line queue picture stays intact.
+    const instructions = (queueRow.service_instructions || '').trim();
+    const summaryText = briefing.descriptionPrefix + input.documentSummary;
+    // Dedupe guard: if the summary ever embeds the instructions itself,
+    // appending again would print the client's rule twice on one call.
+    const description = instructions && !summaryText.includes(instructions)
+      ? `${summaryText}\n\nSERVICE INSTRUCTIONS: ${instructions}`
+      : summaryText;
 
     try {
       // call_number is UNIQUE — re-mint + retry on a collision so a concurrent
@@ -1024,6 +1135,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
           officer_safety_caution: briefing.officerSafetyCaution,
           domestic_violence: briefing.domesticViolence,
           dispatcher_id: userId,
+          client_id: input.clientId ?? null,
           // Geo enrichment — parity with a dispatcher-created call.
           cross_street: crossStreet || null,
           location_building: locParts.building || null,
@@ -1050,10 +1162,15 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       // dispatch detail "PSO Client Request Details" and "Process Service
       // Details" sections are pre-populated from OCR rather than blank.
       try {
-        const psoServiceWindows = get('service_windows') || queueRow.service_instructions || null;
+        const windowsJson = encodePsoServiceWindows(get('service_windows'));
         const psoServiceType = queueRow.document_type || get('process_type') || null;
         const recipientFullName = queueRow.recipient_name ||
           [recipientFirst, recipientLast].filter(Boolean).join(' ').trim() || null;
+        const servedTo = isBusiness && agentFullName
+          ? `${recipientFullName} c/o ${agentFullName}`
+          : recipientFullName;
+        // Attorney is the operational callback; client is the billing party.
+        const requestorName = queueRow.attorney_name || queueRow.client_name || null;
         await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
         await execute(
           db,
@@ -1063,24 +1180,36 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
             pso_requestor_email   = COALESCE(NULLIF(?, ''), pso_requestor_email),
             pso_service_type      = COALESCE(NULLIF(?, ''), pso_service_type),
             pso_service_windows   = COALESCE(NULLIF(?, ''), pso_service_windows),
+            pso_authorization     = COALESCE(NULLIF(?, ''), pso_authorization),
             process_service_type  = COALESCE(NULLIF(?, ''), process_service_type),
             process_served_to     = COALESCE(NULLIF(?, ''), process_served_to),
             process_served_address = COALESCE(NULLIF(?, ''), process_served_address),
             case_number           = COALESCE(NULLIF(?, ''), case_number),
             court_name            = COALESCE(NULLIF(?, ''), court_name)
            WHERE id = ?`,
-          queueRow.client_name || queueRow.attorney_name || null,
+          requestorName,
           get('attorney_phone') || null,
           get('attorney_email') || null,
           psoServiceType,
-          psoServiceWindows,
+          windowsJson,
+          queueRow.sm_job_id || null,
           psoServiceType,
-          recipientFullName,
+          servedTo,
           fullLocation || addr || null,
           queueRow.case_number || null,
           queueRow.court_name || null,
           callId,
         );
+        // Extra Dispatch fields (migration 0269). Best-effort — a missing
+        // column on drifted D1 must not abort the intake.
+        await patchCfsExtIntakeCopy(db, callId, {
+          attorney_name: queueRow.attorney_name,
+          jurisdiction: queueRow.jurisdiction,
+          deadline: queueRow.deadline,
+          time_window: queueRow.time_window,
+          service_instructions: queueRow.service_instructions,
+          plaintiff_name: queueRow.plaintiff,
+        });
       } catch (err) {
         console.warn('[commitOneIntake] PSO ext write skipped (non-fatal):', err);
       }
@@ -1097,10 +1226,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   if (queueRow.recipient_name || queueRow.recipient_address) {
     // Catch-all: persist EVERY extracted field as flat {field: value} JSON so no
     // OCR'd data is lost on commit. fieldsToQueueRow maps the hot query paths to
-    // dedicated columns; parsed_data covers the long tail the queue has no column
-    // for (attorney_phone/email/bar, filing_date, documents_to_serve,
-    // recipient_phone/county, job_number, fee_amount, process_type, server_name,
-    // registered_agent_name) — queryable via json_extract(parsed_data, '$.field').
+    // dedicated columns Process Server and Dispatch read; parsed_data remains
+    // the long-tail audit copy.
     const parsedData = JSON.stringify({
       ...Object.fromEntries(
         Object.entries(fields)
@@ -1123,6 +1250,37 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
           confirmed: addressClassResult.confirmed,
           source: addressClassResult.source,
         },
+        venue: venueKind,
+        output_tree: (() => {
+          const tree = buildOutputTree({
+            addressClass: addressClassResult.klass,
+            addressClassConfirmed: addressClassResult.confirmed,
+            isBusiness,
+            fields,
+            queueRow,
+            agentName: agentFullName,
+            fullLocation: fullLocation || addr,
+            docCount: input.docCount,
+            nowIso,
+            gateCode: get('gate_code') || propertyRecord?.gate_code,
+            hazardNotes: propertyRecord?.hazard_notes,
+            venueOverride: coerceVenueKind(get('venue_kind')),
+            dogsOnSite: /^(1|true|yes)$/i.test(get('dogs_on_site')),
+            camerasOnSite: /^(1|true|yes)$/i.test(get('cameras_on_site')),
+            noSunday: /^(1|true|yes)$/i.test(get('no_sunday')) || /do not serve on sunday/i.test(queueRow.service_instructions || ''),
+            authorizedAcceptor: get('authorized_acceptor') || null,
+            languageNeeded: get('language_needed') || null,
+            physicalDescription: get('physical_description') || null,
+          });
+          return {
+            venue: tree.venue,
+            venue_label: tree.venueLabel,
+            catalog_size: tree.catalogSize,
+            fired_ids: tree.firedIds,
+            fired_count: tree.features.length,
+            windows: attemptPlan.map((w) => ({ window: w.window, authority: w.authority, focus: w.focus })),
+          };
+        })(),
         attempt_plan: attemptPlan,
         conflicts: input.conflicts ?? [],
         validation_issues: input.validationIssues ?? [],
@@ -1135,6 +1293,22 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
           missing_critical: ocrContext.missingCritical,
         } : {}),
       },
+      _ops: normalizeServeJobOps({
+        documents_to_serve: get('documents_to_serve'),
+        venue_kind: get('venue_kind'),
+        gate_code: get('gate_code'),
+        dogs_on_site: get('dogs_on_site'),
+        cameras_on_site: get('cameras_on_site'),
+        language_needed: get('language_needed'),
+        authorized_acceptor: get('authorized_acceptor'),
+        photo_required: get('photo_required'),
+        physical_description: get('physical_description'),
+        vehicle_description: get('vehicle_description'),
+        best_contact_window: get('best_contact_window'),
+        no_sunday: get('no_sunday'),
+        no_saturday: get('no_saturday'),
+        sub_service_first: get('sub_service_authorized_first_attempt'),
+      }),
     });
     // Queue notes = extracted service windows + a compact provenance line so
     // the serve-queue views carry the OCR context without the full markdown.
@@ -1149,12 +1323,15 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       coords?.lng ?? null,
       queueRow.recipient_zip ?? null,
     );
-    const urgencyTier = applyUrgencyTier(
-      queueRow.deadline ?? null,
-      0,                                // intake = no attempts yet
-      3,                                // QueueRow has no max_attempts; use default
-      nowIso,
-    );
+    const rawTier = fields['urgency_tier']?.value;
+    const urgencyTier: UrgencyTier = (rawTier === 'critical' || rawTier === 'tight' || rawTier === 'standard')
+      ? rawTier
+      : applyUrgencyTier(
+          queueRow.deadline ?? null,
+          0,                                // intake = no attempts yet
+          3,                                // QueueRow has no max_attempts; use default
+          nowIso,
+        );
     const urgencyComputedAt = nowIso;
     const ins = await execute(
       db,
@@ -1169,7 +1346,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         plaintiff_name, defendant_name, court_date, parsed_data, status,
         geo_cluster_id, urgency_tier, urgency_computed_at,
         quality_status, judge_run_id, sm_job_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -1186,6 +1363,10 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       input.qualityStatus ?? 'clean', input.judgeRunId ?? null, queueRow.sm_job_id ?? null,
     );
     queueId = Number(ins.meta.last_row_id);
+
+    if (queueId) {
+      await patchServeQueueIntakeCopy(db, queueId, queueRow);
+    }
 
     // Auto-link the billing contract. When an explicit client was selected on
     // intake, go straight to the contract lookup; otherwise fall back to

@@ -687,7 +687,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     inner = (
       <div onPointerDown={onPointerDown}
         title={linked ? `Link → ${ann.url}` : undefined}
-        style={{ ...baseStyle, color: linked ? '#0046a1' : (ann.color ?? '#0a0a0a'), fontSize: ann.fontSize * zoom, fontWeight: ann.bold ? 700 : 400, fontStyle: ann.italic ? 'italic' : 'normal', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'nowrap', userSelect: 'none', padding: 1, textDecoration: linked ? 'underline' : undefined, border: ann.showBorder ? `1px solid ${ann.color ?? '#d4a017'}` : undefined }}>
+        style={{ ...baseStyle, color: linked ? '#0046a1' : (ann.color ?? '#0a0a0a'), fontSize: ann.fontSize * zoom, fontWeight: ann.bold ? 700 : 400, fontStyle: ann.italic ? 'italic' : 'normal', fontFamily: 'Arial, sans-serif', whiteSpace: 'nowrap', userSelect: 'none', padding: 1, textDecoration: linked ? 'underline' : undefined, border: ann.showBorder ? `1px solid ${ann.color ?? '#d4a017'}` : undefined }}>
         {ann.text}
       </div>
     );
@@ -712,7 +712,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         title={ann.reason ? `Redaction — ${ann.reason}` : 'Redaction'}
         style={{ ...baseStyle, background: whiteOut ? '#fff' : '#000', border: whiteOut ? '1px solid #888' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         {ann.reason && (
-          <span style={{ color: whiteOut ? '#000' : '#fff', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(7, Math.min(ann.h * zoom * 0.5, 11)), letterSpacing: '0.02em', whiteSpace: 'nowrap', userSelect: 'none', padding: '0 2px' }}>
+          <span style={{ color: whiteOut ? '#000' : '#fff', fontFamily: 'Arial, sans-serif', fontSize: Math.max(7, Math.min(ann.h * zoom * 0.5, 11)), letterSpacing: '0.02em', whiteSpace: 'nowrap', userSelect: 'none', padding: '0 2px' }}>
             {formatEnumValue(ann.reason)}
           </span>
         )}
@@ -816,7 +816,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     const ink = ann.color ?? cat?.ink ?? '#0a0a0a';
     inner = (
       <div onPointerDown={onPointerDown} title={cat ? `${cat.label}: ${ann.text}` : ann.text}
-        style={{ ...baseStyle, background: paper, color: ink, border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0 0 0 / 0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
+        style={{ ...baseStyle, background: paper, color: ink, border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0 0 0 / 0.25)', padding: '4px 6px', fontFamily: 'Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
         {cat && (
           <span aria-hidden="true" style={{ position: 'absolute', top: 1, right: 3, fontWeight: 700, fontSize: Math.max(9, ann.h * zoom * 0.16), color: ink, opacity: 0.7 }}>{cat.glyph}</span>
         )}
@@ -825,7 +825,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     );
   } else if (ann.type === 'link') {
     inner = (
-      <div onPointerDown={onPointerDown} style={{ ...baseStyle, color: '#0046a1', textDecoration: 'underline', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.6), padding: 1, overflow: 'hidden', userSelect: 'none' }}
+      <div onPointerDown={onPointerDown} style={{ ...baseStyle, color: '#0046a1', textDecoration: 'underline', fontFamily: 'Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.6), padding: 1, overflow: 'hidden', userSelect: 'none' }}
         title={`Link → ${ann.url}`}>
         {ann.text}
       </div>
@@ -833,14 +833,14 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   } else if (ann.type === 'stamp') {
     const fontSize = Math.max(10, ann.h * zoom * 0.45);
     inner = (
-      <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${2.5 * zoom}px solid ${ann.color ?? '#555555'}`, color: ann.color ?? '#555555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif', fontWeight: 800, fontSize, letterSpacing: '0.05em' }}>
+      <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${2.5 * zoom}px solid ${ann.color ?? '#555555'}`, color: ann.color ?? '#555555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', fontWeight: 800, fontSize, letterSpacing: '0.05em' }}>
         {String(ann.label).toUpperCase()}
       </div>
     );
   } else if (ann.type === 'formText') {
     inner = (
       <div onPointerDown={onPointerDown} title={`Form field: ${ann.fieldName}`}
-        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
+        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', padding: '0 4px', fontFamily: 'Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
         {ann.defaultValue || ann.label || ann.fieldName}
       </div>
     );
@@ -866,7 +866,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     const fs = Math.max(7, (ann.h * zoom) / Math.max(opts.length, 1) * 0.5);
     inner = (
       <div onPointerDown={onPointerDown} title={`Radio group: ${ann.fieldName}`}
-        style={{ ...baseStyle, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-around', padding: '1px 3px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: fs, color: '#999', userSelect: 'none', overflow: 'hidden' }}>
+        style={{ ...baseStyle, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-around', padding: '1px 3px', fontFamily: 'Arial, sans-serif', fontSize: fs, color: '#999', userSelect: 'none', overflow: 'hidden' }}>
         {opts.map((o, i) => (
           <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
             <span style={{ color: 'var(--field-label-color)' }}>{ann.defaultValue === o ? '◉' : '○'}</span>{o}
@@ -877,7 +877,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   } else if (ann.type === 'formDate') {
     inner = (
       <div onPointerDown={onPointerDown} title={`Date field: ${ann.fieldName}`}
-        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
+        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontFamily: 'Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
         <span>{ann.defaultValue || 'MM/DD/YYYY'}</span>
         <span aria-hidden="true" style={{ color: 'var(--field-label-color)' }}>📅</span>
       </div>

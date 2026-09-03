@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { WifiOff, RefreshCw, Trash2, CheckCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { withAlpha } from '../utils/withAlpha';
 import { parseTimestamp } from '../utils/dateUtils';
+import { filterByQuery, syncItemsToCsv } from '../utils/queueWorkbench';
+import { downloadTextFile } from '../utils/intelHitExport';
+import { useSlashFocus } from '../hooks/useSlashFocus';
 
 interface SyncQueueItem {
   id: string;
@@ -55,15 +58,25 @@ export default function OfflineQueuePage() {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [q, setQ] = useState('');
+  const [methodFilter, setMethodFilter] = useState('');
+  const [queueError, setQueueError] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const fetchQueue = useCallback(async () => {
-    const electronQueue = await window.electron?.getSyncQueueDetail?.();
-    if (Array.isArray(electronQueue)) {
-      setQueue(electronQueue as SyncQueueItem[]);
-    } else {
-      setQueue([]);
+    try {
+      const electronQueue = await window.electron?.getSyncQueueDetail?.();
+      if (Array.isArray(electronQueue)) {
+        setQueue(electronQueue as SyncQueueItem[]);
+      } else {
+        setQueue([]);
+      }
+      setLocalCount(getLocalQueueCount());
+      setQueueError(false);
+    } catch {
+      setQueueError(true);
     }
-    setLocalCount(getLocalQueueCount());
   }, []);
 
   useEffect(() => {
@@ -118,6 +131,10 @@ export default function OfflineQueuePage() {
 
   const totalPending = queue.length > 0 ? queue.length : localCount;
   const failedCount = queue.filter(i => i.status === 'failed').length;
+  const visible = useMemo(() => {
+    const byMethod = methodFilter ? queue.filter((i) => i.method === methodFilter) : queue;
+    return filterByQuery(byMethod, q, (i) => `${i.method} ${i.endpoint} ${i.status}`);
+  }, [queue, q, methodFilter]);
 
   return (
     <div
@@ -208,9 +225,44 @@ export default function OfflineQueuePage() {
           >
             <RefreshCw size={11} />
           </button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={() => downloadTextFile('offline-queue.csv', syncItemsToCsv(visible))}
+          >
+            CSV
+          </button>
         </div>
       </div>
 
+      <div className="flex gap-2 px-4 py-2 items-center">
+        <input
+          ref={searchRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Filter endpoint… (/)"
+          aria-label="Filter sync queue"
+          className="flex-1 text-[11px] px-2 py-1 bg-surface-sunken border border-border-subtle rounded-[2px] text-rmpg-100"
+        />
+        {['', 'POST', 'PUT', 'DELETE', 'GET'].map((m) => (
+          <button
+            key={m || 'all'}
+            type="button"
+            onClick={() => setMethodFilter(m)}
+            className="text-[8px] px-2 py-0.5 border border-border-subtle rounded-[2px]"
+            style={{ background: methodFilter === m ? 'var(--brand-400)' : 'transparent', color: methodFilter === m ? 'var(--surface-base)' : 'var(--text-secondary)' }}
+          >
+            {m || 'ALL'}
+          </button>
+        ))}
+      </div>
+
+      {queueError && (
+        <div className="px-4 py-2 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load sync queue.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { void fetchQueue(); }}>Retry</button>
+        </div>
+      )}
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {queue.length === 0 ? (
@@ -225,6 +277,10 @@ export default function OfflineQueuePage() {
               </span>
             )}
           </div>
+        ) : visible.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs" style={{ color: 'var(--text-secondary)' }}>
+            No queue items match the current filter
+          </div>
         ) : (
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -238,7 +294,7 @@ export default function OfflineQueuePage() {
                 }}
               >
                 <th className="text-left px-4 py-[3px]">METHOD</th>
-                <th className="text-left px-3 py-[3px]">ENDPOINT</th>
+                <th className="text-left px-3 py-1">ENDPOINT</th>
                 <th className="text-left px-3 py-[3px]">CREATED</th>
                 <th className="text-left px-3 py-[3px]">RETRIES</th>
                 <th className="text-left px-3 py-[3px]">STATUS</th>
@@ -246,7 +302,7 @@ export default function OfflineQueuePage() {
               </tr>
             </thead>
             <tbody>
-              {queue.map((item, idx) => (
+              {visible.map((item, idx) => (
                 <tr
                   key={item.id}
                   style={{

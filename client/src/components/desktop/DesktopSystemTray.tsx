@@ -1,8 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import { Wifi, WifiOff, Battery, BatteryCharging, BatteryLow, Navigation, RefreshCw, Cpu, Satellite, Radio } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
+import WifiSelector from './WifiSelector';
+import ClockInOutMileageModal from '../time/ClockInOutMileageModal';
 
 interface BatteryStatus {
   charging: boolean;
@@ -184,7 +188,7 @@ function useTrayPolling() {
   // Radio channel from unit assignment
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ radio_channel?: string; channel?: string }>('/units/my-assignment')
+    apiFetch<{ radio_channel?: string; channel?: string }>('/dispatch/units/my-assignment')
       .then(res => {
         if (!cancelled) setRadioChannel(res?.radio_channel ?? res?.channel ?? null);
       })
@@ -252,28 +256,19 @@ export interface DesktopSystemTrayProps {
 }
 
 export default function DesktopSystemTray({ className }: DesktopSystemTrayProps) {
+  const navigate = useNavigate();
   const { battery, connectivity, connectivityDetail, gps, syncPending, cpuPercent, onDuty, setOnDuty, radioChannel, isElectron } = useTrayPolling();
   const { user } = useAuth();
   const { addToast } = useToast();
-  const [connPanelOpen, setConnPanelOpen] = useState(false);
+  const [connPanelOpen, setConnPanelOpen]   = useState(false);
+  const [wifiSelectorOpen, setWifiSelectorOpen] = useState(false);
+  const [clockMileageModalOpen, setClockMileageModalOpen] = useState(false);
   const dutyBusyRef = useRef(false);
 
-  const toggleDuty = useCallback(async () => {
+  const toggleDuty = useCallback(() => {
     if (!user?.id || dutyBusyRef.current) return;
-    dutyBusyRef.current = true;
-    const wasOnDuty = onDuty;
-    try {
-      await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
-        method: 'POST',
-        body: JSON.stringify({ officer_id: user.id }),
-      });
-      setOnDuty(v => !v);
-    } catch (err: any) {
-      addToast(err?.message || (wasOnDuty ? 'Failed to clock out' : 'Failed to clock in'), 'error');
-    } finally {
-      dutyBusyRef.current = false;
-    }
-  }, [onDuty, setOnDuty, user, addToast]);
+    setClockMileageModalOpen(true);
+  }, [user]);
 
   return (
     <div
@@ -336,12 +331,16 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
         </div>
       )}
 
-      {/* Network — clickable, opens connectivity detail panel */}
+      {/* Network — Electron: opens WifiSelector; browser: opens ConnectivityPanel */}
       <div style={{ position: 'relative' }}>
         <button
           type="button"
-          title={connectivity === 'online' ? 'Online — click for details' : connectivity === 'degraded' ? 'Network degraded' : 'Offline'}
-          onClick={() => setConnPanelOpen(v => !v)}
+          title={
+            connectivity === 'online'   ? (isElectron ? 'Wi-Fi — click to manage' : 'Online — click for details')
+            : connectivity === 'degraded' ? 'Network degraded'
+            : 'Offline'
+          }
+          onClick={() => isElectron ? setWifiSelectorOpen(v => !v) : setConnPanelOpen(v => !v)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
           aria-label={connectivity === 'online' ? 'Online' : connectivity === 'degraded' ? 'Network degraded' : 'Offline'}
         >
@@ -353,10 +352,26 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
             <WifiOff className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical)' }} />
           )}
         </button>
+        {wifiSelectorOpen && (
+          <WifiSelector onClose={() => setWifiSelectorOpen(false)} />
+        )}
         {connPanelOpen && (
           <ConnectivityPanel detail={connectivityDetail} onClose={() => setConnPanelOpen(false)} />
         )}
       </div>
+
+      {/* Device Scanner — Electron only */}
+      {isElectron && (
+        <button
+          type="button"
+          title="Device Capture Scanner — scan surrounding devices"
+          onClick={() => navigate('/device-scanner')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
+          aria-label="Device capture scanner"
+        >
+          <Radio className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+        </button>
+      )}
 
       {/* Battery */}
       {battery != null && (
@@ -396,6 +411,27 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
             {onDuty ? 'ON DUTY' : 'OFF DUTY'}
           </span>
         </button>
+      )}
+
+      {/* Clock In / Clock Out Mileage Modal */}
+      {clockMileageModalOpen && user?.id && (
+        <ClockInOutMileageModal
+          isOpen={clockMileageModalOpen}
+          isClockingOut={!!onDuty}
+          officerId={user.id}
+          onClose={() => setClockMileageModalOpen(false)}
+          onSuccess={(punch) => {
+            const wasOnDuty = onDuty;
+            setOnDuty(v => !v);
+            setClockMileageModalOpen(false);
+            if (!wasOnDuty) {
+              addToast('Clocked in — starting mileage recorded & vehicle assigned', 'success');
+              toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
+            } else {
+              addToast('Clocked out — ending mileage recorded & DAR generated', 'success');
+            }
+          }}
+        />
       )}
     </div>
   );

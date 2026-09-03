@@ -13,8 +13,9 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import type { FieldInterview } from '../types';
 import { parseTimestamp } from './dateUtils';
 import { formatEnumValue, toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -88,24 +89,12 @@ export function generateFiCardPdf(fi: FieldInterview): jsPDF {
   const M = 36;
   let y = 36;
 
-  // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`FIELD INTERVIEW — ${fi.fi_number}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Created ${fmtDateTime(fi.created_at)}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Field Operations', M, y);
-  doc.text(`Officer: ${fi.officer_name || fi.officer_display_name || '—'}`, W - M, y, { align: 'right' });
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: `FIELD INTERVIEW CARD — ${fi.fi_number || fi.id}`,
+    subtitle: 'Field Operations',
+    rightLine1: `Created ${fmtDateTime(fi.created_at)}`,
+    rightLine2: `Officer: ${fi.officer_name || fi.officer_display_name || '—'}`,
+  });
 
   // Active-warrant banner (red bar, only when subject has one)
   if (hasActiveWarrant(fi.person_flags)) {
@@ -238,6 +227,6 @@ export function generateFiCardPdf(fi: FieldInterview): jsPDF {
 
 export function openFiCardPdf(fi: FieldInterview): void {
   const doc = generateFiCardPdf(fi);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'FI Card');
 }

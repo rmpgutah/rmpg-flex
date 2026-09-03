@@ -93,6 +93,7 @@ impounds.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, any>>();
     const updatable = new Set([
       'vehicle_year', 'vehicle_make', 'vehicle_model', 'vehicle_color', 'vehicle_vin',
@@ -122,6 +123,7 @@ impounds.put('/:id/release', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<{ released_to?: string; release_notes?: string }>().catch(() => ({} as { released_to?: string; release_notes?: string }));
     const row = await queryFirst<{ impound_date: string; daily_fee: number; tow_fee: number }>(
       db, 'SELECT impound_date, daily_fee, tow_fee FROM impounds WHERE id = ?', id);

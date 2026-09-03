@@ -13,17 +13,44 @@ interface CallTimelineProps {
  * the correct box-shadow glow effect.
  */
 const ACTION_LED_CLASS: Record<string, string> = {
+  // Call lifecycle — chronological order
   call_created: 'led-green',
   dispatched: 'led-gray',
   unit_dispatched: 'led-gray',
+  unit_assigned: 'led-gray',
   enroute: 'led-amber',
   onscene: 'led-amber',
   cleared: 'led-green',
   closed: 'led-green',
-  note_added: 'led-off',
-  incident_created: 'led-purple',
   call_archived: 'led-off',
   call_unarchived: 'led-green',
+
+  // Notes + evidence
+  note_added: 'led-off',
+  photo_attached: 'led-off',
+  document_attached: 'led-off',
+
+  // Priority / escalation
+  priority_changed: 'led-amber',
+  call_escalated: 'led-red',
+  call_merged: 'led-purple',
+
+  // Redispatch / service
+  call_redispatched: 'led-gray',
+  call_created_from_redispatch: 'led-gray',
+  call_undo_redispatch: 'led-green',
+
+  // Incident linkage
+  incident_created: 'led-purple',
+  merge_call: 'led-purple',
+
+  // AI / auto
+  ai_analysis: 'led-purple',
+  ai_suggested_units: 'led-purple',
+
+  // Retention / admin
+  call_deleted: 'led-off',
+  status_change: 'led-gray',
 };
 
 function getLedClass(action: string): string {

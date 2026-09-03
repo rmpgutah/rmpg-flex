@@ -13,7 +13,7 @@ export default defineConfig({
     // preventing the transform-cache accumulation that OOMs threads mode
     // on the 7 GB CI runner (~440 test files × heavy JSX transforms).
     pool: 'forks',
-    maxWorkers: 2,
+    maxWorkers: 1,
     // Vitest's 5s default is too tight here. Rendering a heavy page under jsdom
     // (MdtPage, the document-writer action suite) can exceed it purely from
     // parallel-worker contention — these files pass comfortably in isolation
@@ -28,6 +28,10 @@ export default defineConfig({
     exclude: [
       // → vitest.desktop.config.ts
       'src/components/desktop/**',
+      // DesktopPage.test.tsx pulls the full desktop shell into the main suite.
+      // After PromptDialog landed, the extra transform left the Vite cache
+      // over the 8 GB heap (~23 min GC then FATAL ERROR after 464/465 files).
+      'src/pages/DesktopPage.test.tsx',
       // → vitest.pdf.config.ts
       // jsPDF and pdf-lib are each ~10 MB parsed AST. 17 PDF tests per shard
       // × those libraries = ~4 GB transform cache → OOM after tests complete.

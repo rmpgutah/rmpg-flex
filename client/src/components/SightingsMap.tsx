@@ -56,7 +56,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) ClearPath no-fix
   // signature so a pre-GPS-lock sighting never anchors a dot off the African coast.
@@ -80,6 +80,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
           attributionControl: false,
         });
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+        map.on('load', () => { if (!cancelled) onMapLoaded(map); });
         mapRef.current = map;
         registerMapInstance(map);
         webglRecoveryCleanupRef.current = attach(map, 'SightingsMap');

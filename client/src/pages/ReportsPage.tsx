@@ -46,6 +46,7 @@ import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
 import { chartSeriesColors, chartPriorityColor } from '../utils/chartPalette';
+import { downloadTextFile, reportCatalogToCsv } from '../utils/rmsListExport';
 
 // ============================================================
 // Types
@@ -118,7 +119,7 @@ function chartTooltipStyle() {
       borderRadius: '2px',
       color: 'var(--text-primary)',
       fontSize: '11px',
-      fontFamily: 'monospace',
+      fontFamily: 'Arial, sans-serif',
       boxShadow: '0 4px 12px rgb(0 0 0 / 0.4)',
     },
     cursor: { fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 12%, transparent)` },
@@ -999,6 +1000,7 @@ export default function ReportsPage() {
   const [customEndDate, setCustomEndDate] = useState(initialCustomEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   // ── URL deep-link: scroll-to-card ─────────────────────────────────
   // Consumes ?card=<id> by scrolling that card into view once the page has
@@ -1187,7 +1189,7 @@ export default function ReportsPage() {
 
     fetchAllData();
     return () => { cancelled = true; };
-  }, [dateRange, customStartDate, customEndDate]);
+  }, [dateRange, customStartDate, customEndDate, reloadTick]);
 
   // Compute stats
   const stats = {
@@ -1372,6 +1374,13 @@ export default function ReportsPage() {
         >
           <Download className="w-3.5 h-3.5" /> Export
         </button>
+        <button
+          type="button"
+          className="toolbar-btn"
+          onClick={() => downloadTextFile('report-catalog.csv', reportCatalogToCsv(
+            [...SCROLLABLE_CARDS].map((id) => ({ id, name: id, category: 'dashboard' })),
+          ))}
+        >CSV</button>
       </PanelTitleBar>}
 
       {/* Mobile control bar — desktop hides this and uses the PanelTitleBar above */}
@@ -1447,6 +1456,7 @@ export default function ReportsPage() {
         <div className="bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 text-xs flex items-center gap-2 rounded-sm">
           <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
           <span className="flex-1">{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setError(null); setReloadTick((n) => n + 1); }}>Retry</button>
           <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-300 ml-2 text-[10px]">Dismiss</button>
         </div>
       )}
@@ -1573,7 +1583,7 @@ export default function ReportsPage() {
                         <LabelList
                           dataKey="value"
                           position="right"
-                          style={{ fill: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}
+                          style={{ fill: 'var(--text-secondary)', fontSize: 10, fontFamily: 'Arial, sans-serif' }}
                         />
                       </Bar>
                     </BarChart>
@@ -1634,7 +1644,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'Arial, sans-serif' }} />
                   <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
@@ -1662,7 +1672,7 @@ export default function ReportsPage() {
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
                   <Tooltip {...chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'Arial, sans-serif' }} />
                   <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -1722,7 +1732,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'Arial, sans-serif' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
                       <Cell key={i} fill={chartPriorityColor(item.priority)} />

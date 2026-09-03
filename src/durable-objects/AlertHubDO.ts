@@ -277,7 +277,10 @@ export class AlertHubDO {
         try {
           await execute(
             getDb(this.env as any),
-            'UPDATE panic_alerts SET escalation_level = ?, updated_at = datetime(\'now\') WHERE id = ? AND status = \'active\'',
+            // MAX() keeps the write monotonic — the per-minute D1 sweep
+            // (panicEscalationSweep) also raises this column with faster
+            // semantics; without the guard this write could downgrade it.
+            'UPDATE panic_alerts SET escalation_level = MAX(escalation_level, ?), updated_at = datetime(\'now\') WHERE id = ? AND status = \'active\'',
             targetLevel, a.panicId,
           );
         } catch (err) {

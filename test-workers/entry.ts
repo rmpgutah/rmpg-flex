@@ -17,8 +17,10 @@ import businessPhotos from '../src/routes/business/photos';
 import propertyPhotos from '../src/routes/property/photos';
 import workOrders from '../src/routes/workOrders';
 import serveIntake from '../src/routes/serveIntake';
+import evidence from '../src/routes/evidence';
 import records from '../src/routes/records';
 import reports from '../src/routes/reports';
+import dailyEmailAdmin from '../src/routes/dailyEmailAdmin';
 import { authMiddleware } from '../src/middleware/auth';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
@@ -27,6 +29,12 @@ app.use('*', async (c, next) => {
   c.set('user', { id: 1, role: 'admin', username: 'test-officer' });
   c.set('userId', 1);
   await next();
+});
+// Mirror src/index.ts: convert uncaught handler throws into 500 responses so
+// workerd/vitest does not treat them as process-killing unhandled rejections.
+app.onError((err, c) => {
+  const message = err instanceof Error ? err.message : String(err);
+  return c.json({ error: message }, 500);
 });
 app.route('/api/alpr', alpr);
 app.route('/api/redactions', redactions);
@@ -41,6 +49,7 @@ app.route('/api/business-photos', businessPhotos);
 app.route('/api/property-photos', propertyPhotos);
 app.route('/api/work-orders', workOrders);
 app.route('/api/serve-intake', serveIntake);
+app.route('/api/evidence', evidence);
 app.route('/api/records', records);
 
 // /api/reports is mounted with the REAL authMiddleware (not the fake-user
@@ -51,5 +60,9 @@ app.route('/api/records', records);
 // DB-backed identity once a valid token is presented.
 app.use('/api/reports/*', authMiddleware);
 app.route('/api/reports', reports);
+
+// Daily email admin — mounted with real authMiddleware for role-based gating.
+app.use('/api/admin/daily-email/*', authMiddleware);
+app.route('/api/admin/daily-email', dailyEmailAdmin);
 
 export default app;

@@ -1,22 +1,15 @@
-// ============================================================
-// RMPG FlexOS — Dynamic Lock / Login Screen
-// Dual-mode: OS-level user picker (when no session or switching)
-// + per-user credential card (password / PIN).
-// Handles: auto-lock idle, progressive lockout, switch user.
-// ============================================================
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Lock, Eye, EyeOff, Shield, Loader2, ChevronLeft, Users, RefreshCw } from 'lucide-react';
+import { Lock, Eye, EyeOff, Shield, Loader2, ChevronLeft, Users, RefreshCw, AlertTriangle, WifiOff } from 'lucide-react';
 import { useClock } from '../../hooks/useClock';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../hooks/useApi';
+import DesktopEmergencyAccessModal from './DesktopEmergencyAccessModal';
+import { verifyOfflinePin } from '../../utils/DesktopOfflineAuthVault';
 
 const AGENCY_NAME = 'Rocky Mountain Protective Group';
 const AGENCY_SHORT = 'RMPG';
 const MAX_ATTEMPTS = 5;
 const LAST_USER_KEY = 'rmpg_last_login_user';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface UserCard {
   id: number;
@@ -34,8 +27,6 @@ export interface DesktopLockScreenProps {
   onUnlock: () => void;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function makeInitials(u: UserCard): string {
   return `${u.first_name?.[0] ?? ''}${u.last_name?.[0] ?? ''}`.toUpperCase() || '?';
 }
@@ -44,7 +35,6 @@ function roleLabel(role: string): string {
   return role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// Deterministic avatar color per username — picks from navy/slate palette, never red/green.
 const AVATAR_PALETTE = ['#2d5a8c', '#3e74a8', '#1e4a72', '#4a6fa5', '#25527a', '#365e8c', '#2a4f7c'];
 function avatarColor(username: string): string {
   let h = 0;
@@ -52,32 +42,41 @@ function avatarColor(username: string): string {
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-
 export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScreenProps) {
   const { time, date } = useClock();
   const { user, login } = useAuth();
 
-  // User picker state
   const [users, setUsers] = useState<UserCard[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserCard | null>(null);
   const [switchingUser, setSwitchingUser] = useState(false);
 
-  // Credential state
   const [mode, setMode] = useState<UnlockMode>('password');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [networkError, setNetworkError] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // On lock: pre-select the currently logged-in user (lock mode) or the
-  // last remembered user. Falls back to the picker on first boot / switch.
+  // Keyboard shortcut listener for Ctrl+Alt+Shift+F12
+  useEffect(() => {
+    if (!isLocked) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'F12' || e.code === 'F12')) {
+        e.preventDefault();
+        setEmergencyModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isLocked]);
+
   useEffect(() => {
     if (!isLocked) return;
     setPassword('');
@@ -85,41 +84,38 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
     setError('');
     setSwitchingUser(false);
 
-    // Build a user card from the active session, if one exists.
     const fromSession: UserCard | null = user
       ? { id: Number(user.id), username: user.username, first_name: user.first_name ?? '', last_name: user.last_name ?? '', badge_number: user.badge_number, role: user.role ?? '' }
       : null;
 
     if (fromSession) {
-      // Remember for next time (e.g. after a sign-out and re-lock).
       try { localStorage.setItem(LAST_USER_KEY, JSON.stringify(fromSession)); } catch { /* ignore */ }
       setSelectedUser(fromSession);
       return;
     }
 
-    // No active session — try restoring the last logged-in user.
     try {
       const saved = localStorage.getItem(LAST_USER_KEY);
       if (saved) { setSelectedUser(JSON.parse(saved)); return; }
     } catch { /* ignore */ }
 
-    // No remembered user — show the picker.
     setSelectedUser(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocked]);
+  }, [isLocked, user]);
 
-  // Focus input when a user is selected
   useEffect(() => {
     if (selectedUser) setTimeout(() => inputRef.current?.focus(), 120);
   }, [selectedUser?.username]);
 
-  // Load user list for the picker
   const loadUsers = useCallback(() => {
     setUsersLoading(true);
     setUsersError('');
+    setNetworkError('');
     apiFetch<{ users: UserCard[] }>('/auth/users/list')
       .then(res => setUsers(res.users ?? []))
-      .catch(() => setUsersError('Could not load user list'))
+      .catch(() => {
+        setUsersError('Could not load user list');
+        setNetworkError('Unable to reach server — check network connection');
+      })
       .finally(() => setUsersLoading(false));
   }, []);
 
@@ -127,7 +123,6 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
     if (isLocked && (!selectedUser || switchingUser)) loadUsers();
   }, [isLocked, selectedUser, switchingUser, loadUsers]);
 
-  // Lockout timer
   const isLockedOut = lockoutUntil !== null && Date.now() < lockoutUntil;
   const lockoutSecsLeft = lockoutUntil ? Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000)) : 0;
   useEffect(() => {
@@ -137,8 +132,6 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
     }, 1000);
     return () => clearInterval(id);
   }, [lockoutUntil]);
-
-  // ── Auth handlers ───────────────────────────────────────────────────────────
 
   const handleFailedAttempt = useCallback(() => {
     const next = attempts + 1;
@@ -159,6 +152,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
     if (!password.trim() || isLockedOut || !selectedUser) return;
     setBusy(true);
     setError('');
+    setNetworkError('');
     try {
       const result = await login(selectedUser.username, password);
       if (result.success && !result.requires2FA) {
@@ -170,7 +164,15 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
         handleFailedAttempt();
       }
     } catch {
-      handleFailedAttempt();
+      // Offline fallback verification
+      const offlineRes = await verifyOfflinePin(selectedUser.username, password);
+      if (offlineRes.ok) {
+        setAttempts(0);
+        onUnlock();
+      } else {
+        setNetworkError('Unable to reach server — check network connection');
+        handleFailedAttempt();
+      }
     } finally {
       setBusy(false);
     }
@@ -180,6 +182,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
     if (pin.length < 4 || isLockedOut || !selectedUser) return;
     setBusy(true);
     setError('');
+    setNetworkError('');
     try {
       const res = await apiFetch<{ ok: boolean }>('/auth/verify-pin', {
         method: 'POST',
@@ -188,7 +191,14 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       if (res?.ok) { setAttempts(0); setSwitchingUser(false); onUnlock(); }
       else handleFailedAttempt();
     } catch {
-      handleFailedAttempt();
+      const offlineRes = await verifyOfflinePin(selectedUser.username, pin);
+      if (offlineRes.ok) {
+        setAttempts(0);
+        onUnlock();
+      } else {
+        setNetworkError('Unable to reach server — check network connection');
+        handleFailedAttempt();
+      }
     } finally {
       setBusy(false);
     }
@@ -227,7 +237,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
         background: 'linear-gradient(160deg, var(--surface-sunken) 0%, var(--surface-raised) 60%, var(--surface-overlay) 100%)',
         backdropFilter: 'blur(20px)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'inherit', overflow: 'hidden',
+        fontFamily: 'Arial, sans-serif', overflow: 'hidden',
       }}
     >
       {/* Subtle grid texture */}
@@ -444,6 +454,13 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
             </div>
           )}
 
+          {/* Network Error Banner (matches media_1787226375289.jpg) */}
+          {networkError && (
+            <div style={{ width: '100%', fontSize: 12, color: '#f87171', fontWeight: 600, textAlign: 'center', marginTop: 2 }}>
+              {networkError}
+            </div>
+          )}
+
           {/* Unlock button */}
           <button
             type="button"
@@ -461,8 +478,8 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
               : <><Lock style={{ width: 14, height: 14 }} /> Unlock</>}
           </button>
 
-          {/* Switch user / Other account */}
-          <div style={{ display: 'flex', gap: 16 }}>
+          {/* Switch user / Emergency Access prompt */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, width: '100%' }}>
             <button
               type="button"
               onClick={handleSwitchUser}
@@ -470,14 +487,33 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
             >
               <ChevronLeft style={{ width: 11, height: 11 }} /> Switch user
             </button>
+
+            <button
+              type="button"
+              onClick={() => setEmergencyModalOpen(true)}
+              style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 10, cursor: 'pointer', letterSpacing: '0.04em', textDecoration: 'underline' }}
+            >
+              Press Ctrl+Alt+Shift+F12 for emergency access
+            </button>
           </div>
         </div>
       )}
 
       {/* Footer */}
-      <div style={{ position: 'absolute', bottom: 16, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(var(--accent-silver-400-rgb),0.2)', letterSpacing: '0.06em' }}>
-        RMPG Flex — Secured Workstation
+      <div style={{ position: 'absolute', bottom: 16, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(var(--accent-silver-400-rgb),0.3)', letterSpacing: '0.06em' }}>
+        Press Ctrl+Alt+Shift+F12 for emergency access | RMPG Flex — Secured Workstation
       </div>
+
+      {/* Emergency Access Modal */}
+      <DesktopEmergencyAccessModal
+        isOpen={emergencyModalOpen}
+        onClose={() => setEmergencyModalOpen(false)}
+        onEmergencyUnlock={(reason, supervisorName) => {
+          setEmergencyModalOpen(false);
+          setAttempts(0);
+          onUnlock();
+        }}
+      />
     </div>
   );
 }

@@ -89,7 +89,7 @@ export default function DesktopRadioLogWidget() {
                 alignItems: 'flex-start',
               }}
             >
-              <span style={{ color: 'var(--text-secondary)', flexShrink: 0, fontFamily: 'monospace', fontSize: 8 }}>
+              <span style={{ color: 'var(--text-secondary)', flexShrink: 0, fontFamily: 'Arial, sans-serif', fontSize: 8 }}>
                 {formatTime(e.updated_at ?? e.created_at)}
               </span>
               <span style={{ color: 'var(--accent-silver-400)', flexShrink: 0, fontWeight: 700 }}>

@@ -11,6 +11,19 @@ import { formatEnumValue } from '../../utils/formatters';
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
 
+// Defined outside the parent component so React sees a stable identity across renders.
+// Previously defined inside an IIFE in render, which caused remount on every parent
+// re-render and prevented useWatchToggle's internal state from persisting.
+function WatchBtn({ personId, initialWatched }: { personId: number; initialWatched: boolean }) {
+  const { watched, toggle } = useWatchToggle('person', personId, initialWatched);
+  return (
+    <button onClick={toggle}
+      className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-brand-400 text-brand-300' : 'border-border-subtle text-fg-muted'}`}>
+      {watched ? '★ Watching' : '☆ Watch'}
+    </button>
+  );
+}
+
 interface DossierLite {
   person: { id: number; first_name?: string; middle_name?: string; last_name?: string };
   flags?: string[];
@@ -30,9 +43,14 @@ export default function IntelContextPanel() {
 
   useEffect(() => {
     if (!selected || selected.type !== 'person' || panelMode !== 'dossier') { setDossier(null); return; }
+    let cancelled = false;
     setLoading(true); setDossier(null); setAiSummary(null);
-    apiFetch<DossierLite>(`/intel/dossier/person/${selected.id}`)
-      .then(setDossier).catch(() => setDossier(null)).finally(() => setLoading(false));
+    const ctrl = new AbortController();
+    apiFetch<DossierLite>(`/intel/dossier/person/${selected.id}`, { signal: ctrl.signal })
+      .then((d) => { if (!cancelled) setDossier(d); })
+      .catch(() => { if (!cancelled) setDossier(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; ctrl.abort(); };
   }, [selected, panelMode]);
 
   // Claude summary of the loaded dossier. Sends the sections the panel already
@@ -92,16 +110,7 @@ export default function IntelContextPanel() {
             {dossier && (() => {
               const p = dossier.person;
               const name = [p.first_name, p.middle_name, p.last_name].filter(real).join(' ') || selected.label;
-              const WatchBtn = () => {
-                const { watched, toggle } = useWatchToggle('person', p.id, !!dossier.watched);
                 return (
-                  <button onClick={toggle}
-                    className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-brand-400 text-brand-300' : 'border-border-subtle text-fg-muted'}`}>
-                    {watched ? '★ Watching' : '☆ Watch'}
-                  </button>
-                );
-              };
-              return (
                 <div className="space-y-3">
                   <div>
                     <div className="text-[13px] text-rmpg-100 font-bold">{name}</div>
@@ -166,7 +175,7 @@ export default function IntelContextPanel() {
                   )}
 
                   <div className="flex gap-[6px] pt-1">
-                    <WatchBtn />
+                    <WatchBtn personId={p.id} initialWatched={!!dossier.watched} />
                     <button onClick={() => setPanelMode('graph')} className="flex-1 text-center font-mono text-[8px] tracking-wide text-rmpg-200 border border-border-subtle rounded-[2px] py-[6px] uppercase">Graph</button>
                   </div>
                   <div className="flex gap-[6px]">

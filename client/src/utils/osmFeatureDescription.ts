@@ -19,6 +19,7 @@
 
 import { OSM_EXTRACT_DATE } from '../config/osmLayers.generated';
 import { parseTimestamp } from './dateUtils';
+import { formatCameraBearing, formatConeRadius } from './osmCamera';
 
 // ── Unit conversion ─────────────────────────────────────────
 
@@ -62,14 +63,34 @@ export function formatElevation(raw: unknown): string | null {
   return `${Math.round(m * 3.28084).toLocaleString()} ft`;
 }
 
-/** Degrees clockwise from north -> compass point plus the raw bearing. */
 export function formatBearing(raw: unknown): string | null {
-  const d = Number(String(raw ?? '').trim());
-  if (!Number.isFinite(d)) return null;
-  const pts = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-    'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-  const norm = ((d % 360) + 360) % 360;
-  return `${pts[Math.round(norm / 22.5) % 16]} (${Math.round(norm)}°)`;
+  return formatCameraBearing(raw);
+}
+
+/** OSM fire_hydrant:diameter — bare number is millimetres. */
+export function formatHydrantDiameter(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  if (/in|inch|"/i.test(s)) return s;
+  const mm = Number(s.replace(/\s*mm$/i, ''));
+  if (!Number.isFinite(mm) || mm <= 0) return s;
+  const inches = mm / 25.4;
+  const shown = inches >= 10 ? inches.toFixed(0) : inches.toFixed(1);
+  return `${shown}" (${Math.round(mm)} mm)`;
+}
+
+/** OSM flow_rate — litres/second unless a unit is already present. NFPA talks GPM. */
+export function formatFlowRate(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  if (/gpm|gal/i.test(s)) return s;
+  const n = Number(s.replace(/\s*l\/s$/i, '').replace(/\s*lps$/i, ''));
+  if (!Number.isFinite(n) || n <= 0) return s;
+  // A bare number on hydrants is almost always L/s in OSM. 1 L/s ≈ 15.85 GPM.
+  if (/l\/s|lps/i.test(s) || n < 200) {
+    return `${Math.round(n * 15.8503)} GPM (${n} L/s)`;
+  }
+  return `${Math.round(n)} GPM`;
 }
 
 /** Volts -> kV once it stops being readable in volts. */
@@ -118,13 +139,27 @@ const FIELDS: Array<[string, FieldDef]> = [
   ['camera:direction', { label: 'Facing', format: formatBearing }],
   ['camera:mount', { label: 'Mount', format: humanValue }],
   ['camera:type', { label: 'Optics', format: humanValue }],
+  ['camera:fov', { label: 'Field of view', format: (v) => {
+    const n = Number(String(v).trim());
+    return Number.isFinite(n) && n > 0 ? `${Math.round(n)}°` : humanValue(v);
+  } }],
+  ['camera:angle', { label: 'Field of view', format: (v) => {
+    const n = Number(String(v).trim());
+    return Number.isFinite(n) && n > 0 ? `${Math.round(n)}°` : humanValue(v);
+  } }],
+  ['camera:range', { label: 'Range', format: formatConeRadius }],
+  ['cone_fov_deg', { label: 'Cone width', format: (v) => `${String(v).trim()}°` }],
+  ['cone_radius_m', { label: 'Cone range', format: formatConeRadius }],
+  ['manufacturer', { label: 'Manufacturer' }],
+  ['brand', { label: 'Brand' }],
+  ['model', { label: 'Model' }],
 
   // Fire & life safety
   ['fire_hydrant:type', { label: 'Hydrant type', format: humanValue }],
   ['colour', { label: 'Bonnet colour', format: humanValue }],
   ['couplings', { label: 'Couplings' }],
-  ['fire_hydrant:diameter', { label: 'Main diameter' }],
-  ['flow_rate', { label: 'Flow rate' }],
+  ['fire_hydrant:diameter', { label: 'Main diameter', format: formatHydrantDiameter }],
+  ['flow_rate', { label: 'Flow rate', format: formatFlowRate }],
   ['emergency', { label: 'Emergency type', format: humanValue }],
 
   // Traffic & drivability
@@ -189,6 +224,7 @@ const FIELDS: Array<[string, FieldDef]> = [
 /** Tags handled structurally (title/provenance) rather than as detail rows. */
 const HANDLED_ELSEWHERE = new Set([
   'cat', 'name', 'osm_id', 'osm_version', 'osm_timestamp', 'parent_cat',
+  'camera:bearing',
   // Markers injected by mergeOverride — rendered as structured UI below, never
   // as raw key/value rows.
   '__rmpg_note', '__rmpg_verified', '__rmpg_verified_at', '__rmpg_overridden',
@@ -273,8 +309,19 @@ export function describeOsmFeature(
 
   const editedDate = formatOsmTimestamp(props.osm_timestamp) ?? undefined;
 
+  const cat = String(props.cat ?? '');
+  const parent = String(props.parent_cat ?? '');
+  let fallbackTitle = opts.categoryLabel || 'Feature';
+  if (!name) {
+    if (cat === 'alpr') fallbackTitle = 'ALPR camera';
+    else if (cat === 'camera') fallbackTitle = 'Public camera';
+    else if (cat === 'camera_cone') {
+      fallbackTitle = parent === 'alpr' ? 'ALPR view cone' : 'Camera view cone';
+    }
+  }
+
   return {
-    title: name || opts.categoryLabel || 'Feature',
+    title: name || fallbackTitle,
     categoryLabel: opts.categoryLabel,
     groupLabel: opts.groupLabel,
     rows,

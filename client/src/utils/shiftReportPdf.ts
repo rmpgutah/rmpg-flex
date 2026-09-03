@@ -18,8 +18,9 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -113,33 +114,17 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
   const M = 36;
   let y = 36;
 
-  // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('END-OF-SHIFT REPORT', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Date: ${fmtDate(input.date)}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
   // Officer/unit strap
   const officerName = input.officer?.full_name || input.officerNameFallback || 'Unknown Officer';
   const badge = input.officer?.badge_number || '—';
   const unitCallSign = input.unitCallSign || '—';
 
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Dispatch Operations', M, y);
-  y += 14;
-  doc.setFontSize(10);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`Officer: ${officerName}`, M, y);
-  doc.text(`Badge: ${badge}`, M + 240, y);
-  doc.text(`Unit: ${unitCallSign}`, M + 380, y);
-  y += 20;
+  y = drawNavyBanner(doc, {
+    title: `SHIFT REPORT — ${fmtDate(input.date)}`,
+    subtitle: 'Dispatch Operations',
+    rightLine1: `Badge: ${badge}  ·  Unit: ${unitCallSign}`,
+    rightLine2: `Officer: ${officerName}`,
+  });
 
   // Summary tiles (5-up)
   const tiles: Array<{ label: string; value: number }> = [
@@ -318,6 +303,6 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
 /** Generate + open in a new tab so the operator gets the print dialog. */
 export function openShiftReportPdf(input: ShiftReportInput): void {
   const doc = generateShiftReportPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Shift Report');
 }

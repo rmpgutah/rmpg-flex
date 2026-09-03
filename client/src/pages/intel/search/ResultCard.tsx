@@ -28,7 +28,7 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
           ? <img src={authedImageUrl(h.photo_url)} alt="" className="w-9 h-11 object-cover rounded-[2px] border border-border-default shrink-0" />
           : <div className="w-9 h-11 bg-surface-sunken border border-border-default rounded-[2px] shrink-0" />
       )}
-      <button className="flex-1 min-w-0 text-left" onClick={() => onSelect(h.type, h.id, h.label)}>
+      <button type="button" className="flex-1 min-w-0 text-left" onClick={() => onSelect(h.type, h.id, h.label)}>
         <div className="flex items-center gap-2">
           <span className={`font-mono text-[8px] uppercase ${TYPE_TAG[h.type] || 'text-rmpg-400'}`}>{formatEnumValue(h.type)}</span>
           {clustered.linkedCount > 1 && (

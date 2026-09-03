@@ -15,7 +15,13 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 # Skip when nothing to push (rebase/force-push flows, already-pushed branches).
-if [ "$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo 0)" = "0" ]; then
+# Fail closed: if origin/main is missing (fresh worktree, fetch failure), run
+# the full gate rather than silently skipping — a broken ref and a legitimate
+# no-op are indistinguishable without the remote ref.
+AHEAD=$(git rev-list --count HEAD ^origin/main 2>/dev/null)
+if [ $? -ne 0 ]; then
+  echo "⚠ pre-push: origin/main not available locally — running full gate as safety fallback"
+elif [ "$AHEAD" = "0" ]; then
   echo "⤷ pre-push: no commits ahead of origin/main — skipping gate"
   exit 0
 fi
@@ -31,33 +37,39 @@ ensure_deps() {
   fi
 }
 
-printf '⤷ pre-push: quality gate (worker types + client types + client tests + desktop tests)\n'
+printf '⤷ pre-push: quality gate (worker types + proxy types + client types + client tests + desktop tests)\n'
 START=$(date +%s)
 
 ensure_deps "$ROOT"
 ensure_deps "$ROOT/client"
 ensure_deps "$ROOT/desktop"
 
-echo "  [1/4] Worker TypeScript..."
+echo "  [1/5] Worker TypeScript..."
 (cd "$ROOT" && npx tsc --noEmit) || {
   echo "✗ pre-push: worker typecheck failed — run 'npx tsc --noEmit' to see errors"
   exit 1
 }
 
-echo "  [2/4] Client TypeScript..."
+echo "  [2/5] Proxy TypeScript..."
+(cd "$ROOT/proxy" && npx tsc --noEmit) || {
+  echo "✗ pre-push: proxy typecheck failed — run 'cd proxy && npx tsc --noEmit' to see errors"
+  exit 1
+}
+
+echo "  [3/5] Client TypeScript..."
 (cd "$ROOT/client" && npx tsc --noEmit) || {
   echo "✗ pre-push: client typecheck failed — run 'cd client && npx tsc --noEmit' to see errors"
   exit 1
 }
 
-echo "  [3/4] Client vitest..."
-(cd "$ROOT/client" && npx vitest run --reporter=dot) || {
+echo "  [4/5] Client vitest..."
+(cd "$ROOT/client" && NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}" npx vitest run --reporter=dot) || {
   echo "✗ pre-push: client tests failed — run 'cd client && npx vitest run' to see failures"
   echo "           (use 'git push --no-verify' to bypass in an emergency; CI will still gate the PR)"
   exit 1
 }
 
-echo "  [4/4] Desktop tests..."
+echo "  [5/5] Desktop tests..."
 # desktop/'s postinstall (electron-rebuild) normally leaves better-sqlite3
 # compiled for Electron's ABI, not Node's — the DB-backed tests in
 # desktop/__tests__/ run under plain `node --test` and need the Node ABI, so
@@ -83,8 +95,7 @@ fi
 
 (cd "$ROOT/desktop" && npm test --silent) || {
   echo "✗ pre-push: desktop tests failed — run 'cd desktop && npm test' to see failures"
-  echo "           (no CI job runs desktop/ tests today — this hook is the only gate;"
-  echo "           'git push --no-verify' bypasses it with nothing else to catch a regression)"
+  echo "           (desktop-tests.yml also gates PRs that touch desktop/; --no-verify still skips this hook)"
   exit 1
 }
 

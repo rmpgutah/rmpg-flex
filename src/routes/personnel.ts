@@ -6,6 +6,8 @@ import { getDb, query, queryFirst, execute, queryInChunks, ensureTimeEntryColumn
 import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
 import { nowDualStamp } from '../utils/denverTime';
+import { CLOCK_ON_BEHALF_ROLES, resolveClockOfficerId, capBreakMinutes, isFatigueRisk, FATIGUE_REST_HOURS } from '../utils/corporateOps';
+import { enrichTimeEntryOnClockIn, finalizeTimeEntryOnClockOut, recordTardyIfLate, ensureCorporateOpsSchema } from '../utils/corporateWorkflows';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 // Side-effect import: registers upload + stream handlers on
 // bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
@@ -252,7 +254,10 @@ personnel.put('/credentials/:id', async (c) => {
 personnel.delete('/credentials/:id', async (c) => {
   const denied = requireManager(c); if (denied) return denied;
   try {
-    await execute(getDb(c.env), 'DELETE FROM officer_credentials WHERE id = ?', c.req.param('id'));
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(getDb(c.env), 'DELETE FROM officer_credentials WHERE id = ?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/credentials/:id failed:', err);
@@ -385,7 +390,10 @@ personnel.put('/equipment/:id', async (c) => {
 personnel.delete('/equipment/:id', async (c) => {
   const denied = requireManager(c); if (denied) return denied;
   try {
-    await execute(getDb(c.env), 'DELETE FROM officer_equipment WHERE id = ?', c.req.param('id'));
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(getDb(c.env), 'DELETE FROM officer_equipment WHERE id = ?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/equipment/:id failed:', err);
@@ -607,11 +615,12 @@ personnel.get('/schedules', async (c) => {
     // Backfill missing officer_name in one query rather than N lookups.
     const needsName = expanded.filter(r => !r.officer_name);
     if (needsName.length > 0 && officerIds.size > 0) {
-      const placeholders = Array.from(officerIds).map(() => '?').join(',');
-      const users = await query<{ id: number; full_name: string; badge_number: string | null }>(
+      // officerIds is already a Set (deduped); chunk the IN-list so >100 ids
+      // can't blow D1's 100-bound-parameter cap.
+      const users = await queryInChunks<{ id: number; full_name: string; badge_number: string | null }>(
         db,
-        `SELECT id, full_name, badge_number FROM users WHERE id IN (${placeholders})`,
-        ...Array.from(officerIds)
+        Array.from(officerIds),
+        (placeholders) => `SELECT id, full_name, badge_number FROM users WHERE id IN (${placeholders})`,
       );
       const nameById = new Map(users.map(u => [u.id, u.full_name]));
       for (const r of needsName) {
@@ -719,6 +728,7 @@ personnel.get('/time', async (c) => {
 
   try {
     const db = getDb(c.env);
+    await ensureCorporateOpsSchema(db);
     const startParam = c.req.query('start_date');
     const endParam = c.req.query('end_date');
     const officerIdParam = c.req.query('officer_id');
@@ -732,9 +742,10 @@ personnel.get('/time', async (c) => {
     // against `YYYY-MM-DD` boundaries (lex-sortable for ISO).
     const bindings: unknown[] = [start, end + 'T23:59:59'];
     let sql = `
-      SELECT te.id, te.officer_id, te.schedule_id,
+      SELECT te.id, te.officer_id, te.schedule_id, te.unit_id, te.vehicle_id,
              te.clock_in, te.clock_out, te.clock_in_latitude, te.clock_in_longitude,
              te.total_hours, te.break_start, te.break_minutes, te.status,
+             te.starting_mileage, te.ending_mileage, te.total_miles, te.clock_source,
              te.notes, te.created_at,
              u.full_name AS officer_name
         FROM time_entries te
@@ -832,19 +843,58 @@ personnel.post('/time/clock-in', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
-    const existing = await queryFirst<{ id: number }>(db,
-      `SELECT id FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
-    if (existing) return c.json({ error: 'Already clocked in', entry_id: existing.id }, 409);
+    const existing = await queryFirst<Record<string, unknown>>(db,
+      `SELECT * FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (existing) {
+      return c.json({
+        error: 'Already clocked in',
+        code: 'ALREADY_CLOCKED_IN',
+        entry_id: existing.id,
+        entry: existing,
+        vehicle_id: existing.vehicle_id ?? null,
+        unit_id: existing.unit_id ?? null,
+      }, 409);
+    }
 
+    const lastShift = await queryFirst<{ clock_out: string }>(
+      db, 'SELECT clock_out FROM time_entries WHERE officer_id = ? AND clock_out IS NOT NULL ORDER BY clock_out DESC LIMIT 1', officerId,
+    ).catch(() => null);
+    if (lastShift?.clock_out) {
+      const hoursSince = Math.round((Date.now() - new Date(lastShift.clock_out).getTime()) / 3600000 * 10) / 10;
+      if (isFatigueRisk(hoursSince, FATIGUE_REST_HOURS) && c.req.query('override_fatigue') !== '1') {
+        return c.json({
+          warning: 'fatigue_risk',
+          message: `Only ${hoursSince}h since last shift ended. Add ?override_fatigue=1 to proceed.`,
+          hours_since_last_shift: hoursSince,
+          code: 'FATIGUE_RISK',
+        }, 409);
+      }
+    }
+
+    const lat = body.latitude ?? body.clock_in_latitude;
+    const lng = body.longitude ?? body.clock_in_longitude;
+    const vehicleId = body.vehicle_id != null ? Number(body.vehicle_id) : null;
+    const startingMileage = body.starting_mileage != null ? Number(body.starting_mileage) : null;
     const stamp = nowDualStamp();
     const result = await execute(db,
       `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now'))`,
       officerId, stamp.utc, stamp.local);
-    const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', Number(result.meta.last_row_id));
-    return c.json(entry, 201);
+    const entryId = Number(result.meta.last_row_id);
+    const linked = await enrichTimeEntryOnClockIn(db, entryId, officerId, {
+      clockSource: 'personnel',
+      lat: lat != null ? Number(lat) : null,
+      lng: lng != null ? Number(lng) : null,
+      vehicle_id: vehicleId,
+      starting_mileage: startingMileage,
+    });
+    await recordTardyIfLate(db, officerId, stamp.utc, selfId ?? null);
+    const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entryId);
+    return c.json({ ...(entry ?? {}), ...linked }, 201);
   } catch (err) {
     console.error('POST /personnel/time/clock-in failed:', err);
     return dbErrorResponse(c, err, 'Clock in failed');
@@ -858,21 +908,20 @@ personnel.post('/time/clock-out', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
-    const entry = await queryFirst<{ id: number; clock_in: string; break_minutes: number }>(db,
-      `SELECT id, clock_in, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
-    if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
+    const entry = await queryFirst<{
+      id: number; officer_id: number; clock_in: string; break_minutes: number | null; break_start: string | null;
+      starting_mileage: number | null; vehicle_id: number | null; status: string;
+    }>(db,
+      `SELECT id, officer_id, clock_in, break_minutes, break_start, starting_mileage, vehicle_id, status
+         FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (!entry) return c.json({ error: 'No active clock-in found', code: 'NO_ACTIVE_CLOCK' }, 404);
 
-    const stamp = nowDualStamp();
-    const a = new Date(entry.clock_in).getTime();
-    const b = new Date(stamp.utc).getTime();
-    const hrs = Number.isFinite(a) && Number.isFinite(b) && b > a
-      ? Math.round(((b - a) / 3_600_000 - (entry.break_minutes || 0) / 60) * 100) / 100
-      : 0;
-
-    await execute(db, `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp.utc, stamp.local, hrs, entry.id);
+    await finalizeTimeEntryOnClockOut(db, { ...entry, officer_id: officerId }, body.ending_mileage);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {
@@ -888,8 +937,10 @@ personnel.post('/time/start-break', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
     const entry = await queryFirst<{ id: number; status: string }>(db,
       `SELECT id, status FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
@@ -913,8 +964,10 @@ personnel.post('/time/end-break', async (c) => {
     await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
-    const officerId = Number(body.officer_id) || selfId;
-    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    const who = resolveClockOfficerId({ selfId, requested: body.officer_id, role, onBehalfRoles: CLOCK_ON_BEHALF_ROLES });
+    if (!who.ok) return c.json({ error: who.error, code: who.code }, who.status);
+    const officerId = who.officerId;
 
     const entry = await queryFirst<{ id: number; break_start: string | null; break_minutes: number }>(db,
       `SELECT id, break_start, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
@@ -924,7 +977,7 @@ personnel.post('/time/end-break', async (c) => {
     const breakStart = new Date(entry.break_start).getTime();
     const now = Date.now();
     const addedMinutes = Number.isFinite(breakStart) ? Math.round((now - breakStart) / 60000) : 0;
-    const totalBreak = (entry.break_minutes || 0) + addedMinutes;
+    const totalBreak = capBreakMinutes((entry.break_minutes || 0) + addedMinutes);
 
     await execute(db, `UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`, totalBreak, entry.id);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
@@ -1385,11 +1438,11 @@ personnel.get('/coverage-gaps', async (c) => {
     }
     const missingNameIds = Array.from(allPropertyIds).filter(pid => pid && !propertyById.get(pid));
     if (missingNameIds.length > 0) {
-      const placeholders = missingNameIds.map(() => '?').join(',');
-      const rows = await query<{ id: number; name: string }>(
+      // Dedupe + chunk so >100 property ids can't blow D1's 100-bound-parameter cap.
+      const rows = await queryInChunks<{ id: number; name: string }>(
         db,
-        `SELECT id, name FROM properties WHERE id IN (${placeholders})`,
-        ...missingNameIds
+        Array.from(new Set(missingNameIds)),
+        (placeholders) => `SELECT id, name FROM properties WHERE id IN (${placeholders})`,
       );
       for (const r of rows) propertyById.set(String(r.id), r.name);
     }
@@ -2555,6 +2608,168 @@ personnel.post('/training-bulk-assign', async (c) => {
   } catch (err) {
     console.error('POST /personnel/training-bulk-assign error:', err);
     return c.json({ error: 'Failed to bulk assign training' }, 500);
+  }
+});
+
+// GET /personnel/cert-expiration-warnings
+// Used by DashboardWidgets.tsx CertWarningsPanel. Queries officer_credentials
+// for expiring/expired entries and groups them into 30/60/90-day buckets.
+personnel.get('/cert-expiration-warnings', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      credential_id: number;
+      officer_name: string;
+      credential_type: string;
+      days_until: number;
+      severity: string;
+    }>(db, `
+      SELECT
+        oc.id AS credential_id,
+        u.full_name AS officer_name,
+        oc.credential_type,
+        CAST(julianday(oc.expiry_date) - julianday('now') AS INTEGER) AS days_until,
+        CASE
+          WHEN julianday(oc.expiry_date) < julianday('now') THEN 'expired'
+          WHEN julianday(oc.expiry_date) <= julianday('now', '+30 days') THEN 'critical'
+          WHEN julianday(oc.expiry_date) <= julianday('now', '+60 days') THEN 'warning'
+          ELSE 'notice'
+        END AS severity
+      FROM officer_credentials oc
+      JOIN users u ON u.id = oc.officer_id
+      WHERE oc.expiry_date IS NOT NULL
+        AND oc.expiry_date != ''
+        AND julianday(oc.expiry_date) <= julianday('now', '+90 days')
+        AND u.status = 'active'
+      ORDER BY julianday(oc.expiry_date) ASC
+    `);
+
+    const expired = rows.filter(r => r.severity === 'expired').length;
+    const within_30 = rows.filter(r => r.severity === 'critical').length;
+    const within_60 = rows.filter(r => r.severity === 'warning').length;
+    const within_90 = rows.filter(r => r.severity === 'notice').length;
+
+    return c.json({
+      summary: { expired, within_30, within_60, within_90 },
+      warnings: rows,
+    });
+  } catch (err) {
+    console.error('GET /personnel/cert-expiration-warnings error:', err);
+    return c.json({ summary: { expired: 0, within_30: 0, within_60: 0, within_90: 0 }, warnings: [] }, 200);
+  }
+});
+
+// ── Officer activity feed ────────────────────────────────────
+// GET /api/personnel/activity/:id?limit=50 — the officer's recent audited
+// actions. Unions the two live activity tables (audit_log + activity_log,
+// identical columns) so the feed is complete regardless of which subsystem
+// wrote the entry. Shapes to the client ActivityEntry contract.
+personnel.get('/activity/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json([]);
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 200);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, src, action, details, entity_type, created_at, user_name FROM (
+        SELECT 'audit-' || a.id AS id, 'audit' AS src, a.action, a.details, a.entity_type,
+               a.created_at, u.full_name AS user_name
+          FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.user_id = ?
+        UNION ALL
+        SELECT 'act-' || l.id AS id, 'activity' AS src, l.action, l.details, l.entity_type,
+               l.created_at, u.full_name AS user_name
+          FROM activity_log l LEFT JOIN users u ON u.id = l.user_id
+         WHERE l.user_id = ?
+      )
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `, officerId, officerId, limit);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/activity/:id error:', err);
+    return c.json([], 200);
+  }
+});
+
+// ── Physical fitness tracking ────────────────────────────────
+// GET /api/personnel/fitness/:id — fitness scores, newest first.
+personnel.get('/fitness/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json([]);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, date, score, run_time, pushups, situps, notes, created_at
+        FROM personnel_fitness WHERE officer_id = ?
+       ORDER BY COALESCE(date, created_at) DESC, id DESC
+    `, officerId);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/fitness/:id error:', err);
+    return c.json([], 200);
+  }
+});
+
+// POST /api/personnel/fitness/:id — record a fitness score.
+personnel.post('/fitness/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+    const recordedBy = c.get('userId') as number | undefined;
+    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const num = (v: unknown) => (v === '' || v == null ? null : Number(v));
+    const result = await execute(db, `
+      INSERT INTO personnel_fitness (officer_id, date, score, run_time, pushups, situps, notes, recorded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, officerId, b.date ?? null, num(b.score), b.run_time ?? null, num(b.pushups), num(b.situps), b.notes ?? null, recordedBy ?? null);
+    return c.json({ success: true, id: result.meta?.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/fitness/:id error:', err);
+    return c.json({ error: 'Failed to record fitness score' }, 500);
+  }
+});
+
+// ── Commendations ────────────────────────────────────────────
+// GET /api/personnel/commendations/:id — commendations, newest first.
+personnel.get('/commendations/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json([]);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT cm.id, cm.date, cm.type, cm.description, cm.created_at,
+             u.full_name AS awarded_by_name
+        FROM personnel_commendations cm
+        LEFT JOIN users u ON u.id = cm.awarded_by
+       WHERE cm.officer_id = ?
+       ORDER BY COALESCE(cm.date, cm.created_at) DESC, cm.id DESC
+    `, officerId);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/commendations/:id error:', err);
+    return c.json([], 200);
+  }
+});
+
+// POST /api/personnel/commendations/:id — add a commendation.
+personnel.post('/commendations/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+    const awardedBy = c.get('userId') as number | undefined;
+    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    if (!b.description || !String(b.description).trim()) return c.json({ error: 'Description is required' }, 400);
+    const result = await execute(db, `
+      INSERT INTO personnel_commendations (officer_id, date, type, description, awarded_by)
+      VALUES (?, ?, ?, ?, ?)
+    `, officerId, b.date ?? null, b.type ?? 'commendation', String(b.description).trim(), awardedBy ?? null);
+    return c.json({ success: true, id: result.meta?.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/commendations/:id error:', err);
+    return c.json({ error: 'Failed to add commendation' }, 500);
   }
 });
 

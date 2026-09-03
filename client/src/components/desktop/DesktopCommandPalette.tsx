@@ -57,10 +57,21 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
   const moduleResults = useMemo((): PaletteResult[] => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return allFunctions
+    const items: PaletteResult[] = [];
+    if ('500+ features system control hud'.includes(q) || 'hud'.includes(q) || 'kiosk'.includes(q) || 'hardware'.includes(q) || '500'.includes(q) || 'radar'.includes(q)) {
+      items.push({
+        type: 'module' as const,
+        id: 'kiosk-hud',
+        primary: '500+ Features System Control HUD',
+        secondary: 'FZ-55 Telemetry · Kiosk Shell · Radar360 · CAD Suite',
+        path: '__kiosk_hud__'
+      });
+    }
+    const matched = allFunctions
       .filter(fn => fn.label.toLowerCase().includes(q) || fn.path.toLowerCase().includes(q))
       .slice(0, 5)
       .map(fn => ({ type: 'module' as const, id: fn.path, primary: fn.label, secondary: fn.path, path: fn.path }));
+    return [...items, ...matched];
   }, [query, allFunctions]);
 
   useEffect(() => {
@@ -73,7 +84,7 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
         const q = encodeURIComponent(query);
         const [calls, persons, units, warrants] = await Promise.allSettled([
           apiFetch<{ id: number; incident_type: string; location_address: string }[]>(`/dispatch/calls?status=active&q=${q}`),
-          apiFetch<{ id: number; full_name: string; date_of_birth?: string }[]>(`/persons?q=${q}`),
+          apiFetch<{ id: number; full_name: string; date_of_birth?: string }[]>(`/records/persons?q=${q}`),
           apiFetch<{ id: number; unit_id: string; full_name?: string; status: string }[]>(`/dispatch/units?q=${q}`),
           apiFetch<{ id: number; defendant_name: string; charge_description?: string }[]>(`/warrants?q=${q}`),
         ]);
@@ -113,7 +124,11 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
   useEffect(() => { setSelectedIdx(0); }, [allResults.length]);
 
   const handleSelect = useCallback((result: PaletteResult) => {
-    if (result.path) onNavigate(result.path);
+    if (result.path === '__kiosk_hud__') {
+      window.dispatchEvent(new CustomEvent('flexos:open-kiosk-hud'));
+    } else if (result.path) {
+      onNavigate(result.path);
+    }
     onClose();
   }, [onNavigate, onClose]);
 
@@ -239,9 +254,9 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
 
         {/* Footer hint */}
         <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text-muted)' }}>
-          <span><kbd style={{ fontFamily: 'monospace' }}>↑↓</kbd> navigate</span>
-          <span><kbd style={{ fontFamily: 'monospace' }}>↵</kbd> open</span>
-          <span><kbd style={{ fontFamily: 'monospace' }}>Esc</kbd> dismiss</span>
+          <span><kbd style={{ fontFamily: 'Arial, sans-serif' }}>↑↓</kbd> navigate</span>
+          <span><kbd style={{ fontFamily: 'Arial, sans-serif' }}>↵</kbd> open</span>
+          <span><kbd style={{ fontFamily: 'Arial, sans-serif' }}>Esc</kbd> dismiss</span>
         </div>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

@@ -12,9 +12,10 @@ import {
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
   FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
+  Settings,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
-import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
+import { computeArrivalsInOrder } from '../components/serve/ServeRoutePlanner';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useToast } from '../components/ToastProvider';
@@ -25,6 +26,10 @@ import AnalyticsTab from './serve/AnalyticsTab';
 import SubjectFileTab from './serve/SubjectFileTab';
 import CollectionDatabaseTab from './serve/CollectionDatabaseTab';
 import { apiFetch } from '../hooks/useApi';
+import {
+  ADDRESS_CLASS_OPTIONS, VENUE_OPTIONS, parseServeJobMeta, EMPTY_SERVE_JOB_OPS, ensureServeJobOps,
+} from '../utils/serveJobIntake';
+import ServeJobOpsPanel from '../components/serve/ServeJobOpsPanel';
 import { useOptimizationV2 } from '../hooks/useOptimizationV2';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -32,10 +37,13 @@ import { importWithRetry } from '../utils/importWithRetry';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
+import { formatServerAssignLabel, type CorporateServer } from '../utils/corporateOpsClient';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
-import { toDisplayLabel } from '../utils/formatters';
+import { toDisplayLabel, formatEnumValue } from '../utils/formatters';
+import { autoSaveServePdfToSubjectFile } from '../utils/saveServePdfToSubjectFile';
 import { ORGANIZATION } from '../constants/organizationConstants';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
@@ -45,6 +53,7 @@ import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import ServeAuditLogModal from '../components/serve/ServeAuditLogModal';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
+import DocumentTypeSelector from '../components/serve/DocumentTypeSelector';
 import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress, ServeFolder } from '../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../types';
 import ExportButton from '../components/ExportButton';
@@ -59,11 +68,36 @@ import { clusterByGrid, type ClusterableItem, type ClusterPositionCache } from '
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../utils/mapboxRouting';
 import { exportServeMapSheet } from '../utils/serveMapExport';
+import {
+  gallonsForMiles,
+  googleMapsNavUrl,
+  hasEveningWindow,
+  hoursUntilDeadline,
+  nextUnservedJob,
+} from '../utils/routePlannerEngine';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics', 'Subject File', 'Collections'] as const;
+const FIELD_TABS = ['Queue', 'My Run', 'Route', 'Map'] as const;
+const RECORDS_TABS = ['Subject File', 'Stats', 'Assign', 'Performance', 'Analytics', 'Collections'] as const;
+const TABS = [...FIELD_TABS, ...RECORDS_TABS] as const;
 type Tab = typeof TABS[number];
+
+function serveTabVisible(tab: Tab, role: string): boolean {
+  if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
+  if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
+  if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
+  if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
+  return true;
+}
+
+function serveTabClass(active: boolean): string {
+  return `flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors border-b-2 whitespace-nowrap ${
+    active
+      ? 'text-text-primary border-accent-silver-400 bg-surface-raised'
+      : 'text-text-secondary border-transparent hover:text-text-primary hover:bg-surface-hover'
+  }`;
+}
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
@@ -143,7 +177,7 @@ function buildServeClusterMarkerElement(cluster: { count: number; dominantPriori
     width:28px;height:28px;border-radius:50%;
     background:${color};border:2px solid rgba(255,255,255,0.85);
     display:flex;align-items:center;justify-content:center;
-    font-family:monospace;font-weight:700;font-size:11px;color:#fff;
+    font-family:'Arial, sans-serif';font-weight:700;font-size:11px;color:#fff;
     cursor:pointer;
   `;
   el.textContent = String(cluster.count);
@@ -195,6 +229,9 @@ const EMPTY_FORM = {
   defendant_name: '',
   client_name: '',
   attorney_name: '',
+  attorney_phone: '',
+  attorney_email: '',
+  attorney_bar_number: '',
   // ── Service details (feature 6-10) ─────────────────────────────────────
   serve_type: 'personal' as ServeJob['serve_type'],
   case_type: '' as ServeJob['case_type'] | '',
@@ -209,7 +246,7 @@ const EMPTY_FORM = {
   time_window: 'anytime' as ServeJob['time_window'],
   deadline: '',
   max_attempts: 3,
-  urgency_tier: '' as '' | 'normal' | 'high' | 'critical',
+  urgency_tier: '' as '' | 'standard' | 'tight' | 'critical',
   // ── Billing (feature 11-13) ─────────────────────────────────────────────
   serve_fee: '' as string | number,
   rush_fee: '' as string | number,
@@ -233,6 +270,10 @@ const EMPTY_FORM = {
   registered_agent_name: '',
   registered_agent_title: '',
   registered_office_address: '',
+  court_date: '',
+  address_class: '' as string,
+  address_class_confirmed: false,
+  ops: { ...EMPTY_SERVE_JOB_OPS },
 };
 
 // ─── Stats Summary Type ─────────────────────────────────────────────────
@@ -289,7 +330,7 @@ export default function ServePage() {
   // Pending deep-link target — resolved once jobs hydrate.
   // ?serve_id= and ?job_id= are interchangeable; ?case_id= is stored separately.
   const pendingJobIdRef = useRef<string | null>(
-    searchParams.get('serve_id') ?? searchParams.get('job_id'),
+    searchParams.get('serve_id') ?? searchParams.get('job_id') ?? searchParams.get('queue_id'),
   );
   const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
   // Delete-job confirm replaces the v480 window.confirm(). Carries the
@@ -297,7 +338,7 @@ export default function ServePage() {
   const [deleteJob, setDeleteJob] = useState<ServeJob | null>(null);
   const [deleting, setDeleting] = useState(false);
   // ── Officers for route planner ──────────────────────────────────────
-  const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  const [officers, setOfficers] = useState<{ id: number; name: string; onDuty?: boolean; vehicle?: string | null; milesToday?: number | null }[]>([]);
   // ── Clients (hiring parties) for the Add Job form selector ──────────
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
   // ── Saved route state ───────────────────────────────────────────────
@@ -339,7 +380,14 @@ export default function ServePage() {
     defaultValue: EMPTY_FORM,
     isActive: createJobOpen,
   });
+  const formOps = ensureServeJobOps(formData.ops);
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [opsPreview, setOpsPreview] = useState<{
+    venue_label?: string;
+    windows?: { window: string; authority?: string; focus?: string }[];
+    fired_ids?: string[];
+    note?: string;
+  } | null>(null);
 
   // ── Feature 12: Deadline Tracking ──
   const [deadlines, setDeadlines] = useState<any>(null);
@@ -354,7 +402,7 @@ export default function ServePage() {
   // download/edit flow AND the new preview-modal flow (which regenerates
   // the doc every time the office/mobile toggle changes) share one source
   // of truth instead of duplicating the attempt-filtering logic.
-  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string }) | null> => {
+  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string; latestAttemptId?: number }) | null> => {
     // GET /:id returns the job row + its serve_attempts (joined w/ officer).
     const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
     const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -425,19 +473,33 @@ export default function ServePage() {
       attempts,
       nextAttemptNote,
       filename: `Notice-of-Attempt-${job.case_number || job.id}.pdf`,
-    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string };
+      latestAttemptId: latestAttempt.id,
+    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string; latestAttemptId?: number };
   };
 
   const handleNoticeOfAttempt = async (jobId: number, editBeforePrint?: boolean) => {
     try {
       const data = await buildNoticeOfAttemptData(jobId);
       if (!data) return;
-      const { filename, ...noticeData } = data;
+      const { filename, latestAttemptId, ...noticeData } = data;
       const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
       // Notice of Attempt is always printed in the field from the in-vehicle
       // Brother PJ thermal printer — never a desk laser — so this always
       // renders mobile-safe margins, no office option.
       const pdf = await generateNoticeOfAttempt(noticeData, { printTarget: 'mobile' });
+
+      // Automatically save the generated Notice of Attempt to the Subject File
+      if (latestAttemptId) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: latestAttemptId,
+          pdf,
+          filename,
+          title: 'Notice of Attempt to Serve (NOA)',
+          documentType: 'notice',
+          description: `Auto-generated Notice of Attempt for attempt #${data.attempts.length}`,
+        });
+      }
 
       if (editBeforePrint) {
         const { storePdfForEditor } = await importWithRetry(() => import('../utils/openPdfDocument'));
@@ -644,8 +706,21 @@ export default function ServePage() {
         signature: serviceAttempt.signature_data || undefined,
       });
 
+      const filename = `Affidavit-of-Service-${job.case_number || job.id}.pdf`;
+      if (serviceAttempt.id) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: serviceAttempt.id,
+          pdf,
+          filename,
+          title: 'Affidavit of Service (AOS)',
+          documentType: 'affidavit',
+          description: `Sworn Affidavit of Service (${method}) filed for record`,
+        });
+      }
+
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Affidavit-of-Service-${job.case_number || job.id}.pdf`);
+      openPdfDocument(pdf, filename);
     } catch (err) {
       console.error('[serve] Affidavit of Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Service — please try again.');
@@ -710,8 +785,22 @@ export default function ServePage() {
         signature: (user as any)?.signature_data || undefined,
       });
 
+      const filename = `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`;
+      const latestUnsuccessful = (job.attempts || []).filter(a => (a.result || '').toLowerCase() !== 'served').pop();
+      if (latestUnsuccessful?.id) {
+        void autoSaveServePdfToSubjectFile({
+          queueId: jobId,
+          attemptId: latestUnsuccessful.id,
+          pdf,
+          filename,
+          title: 'Affidavit of Due Diligence / Non-Service (AONS)',
+          documentType: 'affidavit',
+          description: `Sworn Affidavit of Non-Service (${attempts.length} attempts documented)`,
+        });
+      }
+
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`);
+      openPdfDocument(pdf, filename);
     } catch (err) {
       console.error('[serve] Affidavit of Non-Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Non-Service — please try again.');
@@ -752,6 +841,8 @@ export default function ServePage() {
   const [mapReady, setMapReady] = useState(false);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
+  const [isServeMapRecovering, setIsServeMapRecovering] = useState(false);
+  const [serveMapNeedsManualReload, setServeMapNeedsManualReload] = useState(false);
   const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const serveMapRectangleSelectCleanupRef = useRef<(() => void) | null>(null);
   const serveGeoWatchId = useRef<number | null>(null);
@@ -890,7 +981,27 @@ export default function ServePage() {
         const res = await apiFetch<any>('/personnel?status=active');
         if (cancelled) return;
         const list = Array.isArray(res) ? res : res?.data ?? [];
-        setOfficers(list.map((u: any) => ({ id: u.id, name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
+        const roster: { id: number; name: string; onDuty: boolean; vehicle: string | null; milesToday: number | null }[] = list.map((u: Record<string, unknown>) => ({
+          id: Number(u.id),
+          name: String(u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || ''),
+          onDuty: false,
+          vehicle: null,
+          milesToday: null,
+        }));
+        try {
+          const servers = await apiFetch<{ officers?: CorporateServer[] }>('/corporate-ops/servers');
+          const byId = new Map((servers.officers ?? []).map((s) => [Number(s.officer_id), s]));
+          for (const o of roster) {
+            const s = byId.get(o.id);
+            if (s) {
+              o.onDuty = true;
+              o.vehicle = s.vehicle_number ?? s.call_sign ?? null;
+              o.milesToday = s.miles_today ?? null;
+            }
+          }
+          roster.sort((a, b) => Number(b.onDuty) - Number(a.onDuty) || a.name.localeCompare(b.name));
+        } catch { /* snapshot is manager-tier; keep personnel fallback */ }
+        if (!cancelled) setOfficers(roster);
       } catch { /* non-critical */ }
     })();
     return () => { cancelled = true; };
@@ -1062,6 +1173,8 @@ export default function ServePage() {
     const result = await apiFetch<{
       queue_status: string;
       attempt_number: number;
+      due_diligence_complete?: boolean;
+      attempt_threshold_reached?: boolean;
     }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       // Stamp from the officer's own device, not the server's receipt time.
@@ -1094,7 +1207,7 @@ export default function ServePage() {
     return {
       attemptNumber: result.attempt_number,
       jobStatus: result.queue_status,
-      dueDiligenceComplete: (result as any).due_diligence_complete,
+      dueDiligenceComplete: Boolean(result.due_diligence_complete || result.attempt_threshold_reached),
     };
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
@@ -1152,7 +1265,7 @@ export default function ServePage() {
       officer_unit_id: Number(user.id),
       shift_start: shiftStart,
       shift_end: shiftEnd,
-      ref_id: savedRoute.id,
+      ref_id: savedRoute?.id ?? null,
     });
   }, [user?.id, savedRoute?.id, pendingJobIds, optimization]);
 
@@ -1162,10 +1275,25 @@ export default function ServePage() {
     }
   }, [optimization.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
-    // Could update the job's address — for now just close and refresh
-    refreshJobs();
-  }, [refreshJobs]);
+  const handleSkipTraceAddToRoute = useCallback(async (addr: ServeSkipAddress) => {
+    if (!skipTraceJob) return;
+    try {
+      await apiFetch(`/process-server/${skipTraceJob.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          recipient_address: addr.address,
+          recipient_city: addr.city,
+          recipient_state: addr.state,
+          recipient_zip: addr.zip,
+        }),
+      });
+      addToast('Serve job address updated from skip trace', 'success');
+      refreshJobs();
+      setSkipTraceJob(null);
+    } catch {
+      addToast('Could not update job address', 'error');
+    }
+  }, [skipTraceJob, refreshJobs, addToast]);
 
   // ── Create / Edit Job ──────────────────────────────────────────────
 
@@ -1197,6 +1325,9 @@ export default function ServePage() {
       defendant_name: job.defendant_name || '',
       client_name: job.client_name || '',
       attorney_name: job.attorney_name || '',
+      attorney_phone: job.attorney_phone || '',
+      attorney_email: job.attorney_email || '',
+      attorney_bar_number: job.attorney_bar_number || '',
       officer_id: job.officer_id ?? null,
       serve_date: job.serve_date || '',
       status: job.status,
@@ -1204,7 +1335,7 @@ export default function ServePage() {
       time_window: job.time_window,
       deadline: job.deadline || '',
       max_attempts: job.max_attempts,
-      urgency_tier: (job.urgency_tier as '' | 'normal' | 'high' | 'critical') || '',
+      urgency_tier: (job.urgency_tier as '' | 'standard' | 'tight' | 'critical') || '',
       service_instructions: job.service_instructions || '',
       notes: job.notes || '',
       next_attempt_note: job.next_attempt_note || '',
@@ -1236,6 +1367,10 @@ export default function ServePage() {
       registered_agent_name: job.registered_agent_name || '',
       registered_agent_title: job.registered_agent_title || '',
       registered_office_address: job.registered_office_address || '',
+      court_date: job.court_date || '',
+      address_class: parseServeJobMeta(job.parsed_data).addressClass,
+      address_class_confirmed: parseServeJobMeta(job.parsed_data).addressClassConfirmed,
+      ops: { ...EMPTY_SERVE_JOB_OPS, ...parseServeJobMeta(job.parsed_data).ops },
     });
     setCreateJobOpen(true);
     snapshotForm();
@@ -1249,12 +1384,23 @@ export default function ServePage() {
       if (editJob) {
         await apiFetch(`/process-server/${editJob.id}`, {
           method: 'PUT',
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            ...formData,
+            address_class: formData.address_class,
+            address_class_confirmed: formData.address_class_confirmed,
+            ops: formOps,
+          }),
         });
       } else {
         await apiFetch('/process-server', {
           method: 'POST',
-          body: JSON.stringify({ ...formData, serve_date: formData.serve_date || selectedDate }),
+          body: JSON.stringify({
+            ...formData,
+            serve_date: formData.serve_date || selectedDate,
+            address_class: formData.address_class,
+            address_class_confirmed: formData.address_class_confirmed,
+            ops: formOps,
+          }),
         });
       }
       setCreateJobOpen(false);
@@ -1266,11 +1412,60 @@ export default function ServePage() {
     } finally {
       setFormSubmitting(false);
     }
-  }, [formData, editJob, selectedDate, clearFormDraft, refreshJobs]);
+  }, [formData, formOps, editJob, selectedDate, clearFormDraft, refreshJobs]);
 
   const handleFormChange = useCallback((field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-  }, []);
+  }, [setFormData]);
+
+  useEffect(() => {
+    if (!createJobOpen) { setOpsPreview(null); return; }
+    const t = window.setTimeout(() => {
+      apiFetch<{
+        venue_label?: string;
+        windows?: { window: string; authority?: string; focus?: string }[];
+        fired_ids?: string[];
+        note?: string;
+      }>('/process-server/preview-ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          address_class: formData.address_class,
+          address_class_confirmed: formData.address_class_confirmed,
+          recipient_name: formData.recipient_name,
+          recipient_address: formData.recipient_address,
+          recipient_city: formData.recipient_city,
+          recipient_state: formData.recipient_state,
+          recipient_zip: formData.recipient_zip,
+          recipient_type: formData.recipient_type,
+          business_name: formData.business_name,
+          registered_agent_name: formData.registered_agent_name,
+          document_type: formData.document_type,
+          case_number: formData.case_number,
+          court_name: formData.court_name,
+          jurisdiction: formData.jurisdiction,
+          client_name: formData.client_name,
+          attorney_name: formData.attorney_name,
+          priority: formData.priority,
+          deadline: formData.deadline,
+          service_instructions: formData.service_instructions,
+          notes: formData.notes,
+          plaintiff_name: formData.plaintiff_name,
+          defendant_name: formData.defendant_name,
+          court_date: formData.court_date,
+          ops: formOps,
+        }),
+      }).then(setOpsPreview).catch(() => {});
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [
+    createJobOpen, formData.address_class, formData.address_class_confirmed,
+    formData.recipient_name, formData.recipient_address, formData.recipient_city,
+    formData.recipient_state, formData.recipient_zip, formData.recipient_type,
+    formData.business_name, formData.registered_agent_name, formData.document_type,
+    formData.case_number, formData.court_name, formData.jurisdiction, formData.client_name,
+    formData.attorney_name, formData.priority, formData.deadline, formData.service_instructions,
+    formData.notes, formData.plaintiff_name, formData.defendant_name, formData.court_date, formOps,
+  ]);
 
   // ── Feature 31: Clone job ────────────────────────────────────────────
   const handleCloneJob = useCallback(async (jobId: number) => {
@@ -1299,6 +1494,9 @@ export default function ServePage() {
           defendant_name: source.defendant_name,
           client_name: source.client_name,
           attorney_name: source.attorney_name,
+          attorney_phone: source.attorney_phone,
+          attorney_email: source.attorney_email,
+          attorney_bar_number: source.attorney_bar_number,
           serve_type: source.serve_type,
           case_type: source.case_type,
           co_defendants: source.co_defendants,
@@ -1328,16 +1526,54 @@ export default function ServePage() {
   // ── Navigate to next unserved stop ─────────────────────────────────
 
   const handleNavigateToNext = useCallback(() => {
-    const unserved = routeData
-      ? routeData.orderedIds
-          .map(id => jobs.find(j => j.id === id))
-          .filter((j): j is ServeJob => !!j && j.status !== 'served' && j.status !== 'failed')
-      : jobs.filter(j => j.status === 'pending' || j.status === 'in_progress');
+    const orderIds: number[] = (() => {
+      if (savedRoute?.optimized_order_json) {
+        try {
+          const parsed = typeof savedRoute.optimized_order_json === 'string'
+            ? JSON.parse(savedRoute.optimized_order_json)
+            : savedRoute.optimized_order_json;
+          if (Array.isArray(parsed)) return parsed;
+        } catch { /* fall through */ }
+      }
+      return routeData?.orderedIds ?? [];
+    })();
+    const ordered = (orderIds.length
+      ? orderIds.map((id) => jobs.find((j) => j.id === id)).filter((j): j is ServeJob => !!j)
+      : jobs.filter((j) => j.status === 'pending' || j.status === 'in_progress'));
+    const next = nextUnservedJob(ordered);
+    if (next) handleNavigate(next.id);
+  }, [jobs, routeData, savedRoute, handleNavigate]);
 
-    if (unserved.length > 0) {
-      handleNavigate(unserved[0].id);
+  const handleMarkArrived = useCallback(async (jobId: number) => {
+    if (!savedRoute?.id) {
+      addToast('Apply a route in the planner first', 'error');
+      return;
     }
-  }, [jobs, routeData, handleNavigate]);
+    const orderIds: number[] = (() => {
+      try {
+        const parsed = typeof savedRoute.optimized_order_json === 'string'
+          ? JSON.parse(savedRoute.optimized_order_json)
+          : savedRoute.optimized_order_json;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    })();
+    const visited = [
+      ...jobs.filter((j) => orderIds.includes(j.id) && (j.status === 'served' || j.status === 'failed')).map((j) => j.id),
+      jobId,
+    ];
+    try {
+      await apiFetch('/serve-queue/route-progress', {
+        method: 'POST',
+        body: JSON.stringify({
+          route_id: savedRoute.id,
+          visited_queue_ids: [...new Set(visited)],
+        }),
+      });
+      addToast('Arrived — stop marked on today’s route', 'success');
+    } catch {
+      addToast('Could not save arrival progress', 'error');
+    }
+  }, [savedRoute, jobs, addToast]);
 
   // ══════════════════════════════════════════════════════════════════════
   // Filtered Jobs
@@ -1638,6 +1874,8 @@ export default function ServePage() {
       serveMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'ServePage',
         onRebuild: () => {
+          setIsServeMapRecovering(false);
+          setServeMapNeedsManualReload(false);
           if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
           if (serveMapRectangleSelectCleanupRef.current) { serveMapRectangleSelectCleanupRef.current(); serveMapRectangleSelectCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
@@ -1649,6 +1887,9 @@ export default function ServePage() {
           setMapReady(false);
           setServeMapRecoverNonce((n) => n + 1);
         },
+        onContextLost: () => setIsServeMapRecovering(true),
+        onContextRestored: () => setIsServeMapRecovering(false),
+        onGiveUp: () => { setIsServeMapRecovering(false); setServeMapNeedsManualReload(true); },
       });
 
       map.on('load', () => {
@@ -1752,8 +1993,8 @@ export default function ServePage() {
                 <div style="font-size:11px;color:var(--text-secondary);">${escapeHtml(fullAddr) || 'No address'}</div>
                 <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${escapeHtml(toDisplayLabel(job.status))} &middot; ${escapeHtml(toDisplayLabel(job.document_type || ''))}</div>
                 <div style="margin-top:8px;display:flex;gap:6px;">
-                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">History</button>
-                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:monospace;">Preview drive time</button>
+                  <button data-action="trail" data-job-id="${job.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">History</button>
+                  <button data-action="preview" data-job-id="${job.id}" data-lng="${job.recipient_lng}" data-lat="${job.recipient_lat}" style="flex:1;padding:3px 6px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);border-radius:2px;color:#86efac;font-size:10px;cursor:pointer;font-family:'Arial, sans-serif';">Preview drive time</button>
                 </div>
               </div>
             `).addTo(mapRef.current!);
@@ -2050,11 +2291,20 @@ export default function ServePage() {
         if (deleteJob || attemptJob || editAttempt || skipTraceJob || routePlannerOpen || createJobOpen) return;
         e.preventDefault();
         openCreate();
+        return;
       }
+      if (deleteJob || attemptJob || editAttempt || skipTraceJob || routePlannerOpen || createJobOpen) return;
+      const focused = expandedJobId != null ? jobs.find((j) => j.id === expandedJobId) : null;
+      if (!focused) return;
+      const k = e.key.toLowerCase();
+      if (k === 'a') { e.preventDefault(); setAttemptJob(focused); }
+      else if (k === 'e') { e.preventDefault(); openEdit(focused.id); }
+      else if (k === 'g') { e.preventDefault(); void handleNavigate(focused.id); }
+      else if (k === 't') { e.preventDefault(); setSkipTraceJob(focused); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate]);
+  }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate, expandedJobId, jobs, handleNavigate, openEdit, canManage]);
 
   // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the params \u2500\u2500
   useEffect(() => {
@@ -2090,6 +2340,7 @@ export default function ServePage() {
     const next = new URLSearchParams(searchParams);
     next.delete('job_id');
     next.delete('serve_id');
+    next.delete('queue_id');
     next.delete('case_id');
     setSearchParams(next, { replace: true });
   }, [jobs, loading, searchParams, setSearchParams, addToast]);
@@ -2212,11 +2463,14 @@ export default function ServePage() {
         </div>
       )}
       {/* ─── Header Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Process Server controls">
-        <div className="flex items-center gap-1.5">
-          <Briefcase size={16} className="text-brand-gold-500" />
-          {!isMobile && <span className="text-sm font-semibold text-rmpg-100 tracking-wider">PROCESS SERVER</span>}
-          {!isMobile && <span className="block h-px w-full bg-brand-400/30 mt-0.5" />}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface-raised flex-wrap" role="toolbar" aria-label="Process Server controls">
+        <div className="flex items-center gap-2">
+          <Briefcase size={16} style={{ color: 'var(--panel-header-color)' }} />
+          {!isMobile && (
+            <span className="text-sm font-semibold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+              PROCESS SERVER
+            </span>
+          )}
         </div>
 
         {/* Date picker + route stats */}
@@ -2242,7 +2496,7 @@ export default function ServePage() {
             const mins = savedRoute.total_time_minutes;
             if (stopCount === 0) return null;
             return (
-              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px] text-brand-gold-500" style={{ background: "rgb(var(--brand-gold-rgb)/0.06)", border: "1px solid rgb(var(--brand-gold-rgb)/0.15)" }}>
+              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px] text-accent-silver-400 border border-border-subtle bg-surface-sunken">
                 {stopCount} stops
                 {dist ? ` / ${Number(dist).toFixed(0)} mi` : ''}
                 {mins ? ` / ~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : ''}
@@ -2284,54 +2538,83 @@ export default function ServePage() {
           </button>
           )}
           <ExportButton exportUrl="/api/process-server/export/csv" exportFilename="serve-jobs.csv" />
+          {['admin', 'manager'].includes(user?.role ?? '') && (
+            <button type="button"
+              onClick={() => routerNavigate('/admin?tab=servemanager')}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-fg-muted bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
+              title="Process Server & ServeManager setup"
+              aria-label="Process Server setup"
+            >
+              <Settings size={12} />
+              {!isMobile && 'Setup'}
+            </button>
+          )}
         </div>
       </div>
 
+      <CorporateLinkageStrip />
+
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken" role="tablist" aria-label="Process Server views">
-        {TABS.filter(tab => {
-          const role = user?.role ?? '';
-          if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
-          if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
-          if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
-          if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
-          // Queue, Route, Map, Stats, My Run, Subject File — visible to all
-          return true;
-        }).map(tab => {
-          const Icon =
-            tab === 'Queue' ? List :
-            tab === 'Route' ? Route :
-            tab === 'Map' ? MapIcon :
-            tab === 'Stats' ? BarChart3 :
-            tab === 'Assign' ? Users :
-            tab === 'Performance' ? BarChart3 :
-            tab === 'Analytics' ? LineChart :
-            tab === 'Subject File' ? ScrollText :
-            tab === 'Collections' ? DollarSign :
-            Route; // My Run
-          return (
-            <button type="button"
-              key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
-                activeTab === tab
-                  ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
-                  : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
-              }`}
-            >
-              <Icon size={14} />
-              {tab}
-              {/* Feature 30: Overdue badge on Queue tab */}
-              {tab === 'Queue' && overdueCount > 0 && (
-                <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 text-[8px] font-bold bg-red-600 text-white rounded-full">
-                  {overdueCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <div className="border-b border-border-subtle bg-surface-sunken">
+        <div className="flex items-center gap-1 px-2 overflow-x-auto tab-scroll" role="tablist" aria-label="Field views">
+          {!isMobile && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-2 shrink-0" style={{ color: 'var(--field-label-color)' }}>
+              Field
+            </span>
+          )}
+          {FIELD_TABS.map(tab => {
+            const Icon =
+              tab === 'Queue' ? List :
+              tab === 'My Run' ? Users :
+              tab === 'Route' ? Route :
+              MapIcon;
+            return (
+              <button type="button"
+                key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={serveTabClass(activeTab === tab)}
+              >
+                <Icon size={13} />
+                {tab}
+                {tab === 'Queue' && overdueCount > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 text-[8px] font-bold bg-red-600 text-white rounded-[2px]">
+                    {overdueCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-1 px-2 border-t border-border-subtle overflow-x-auto tab-scroll" role="tablist" aria-label="Records views">
+          {!isMobile && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-2 shrink-0" style={{ color: 'var(--field-label-color)' }}>
+              Records
+            </span>
+          )}
+          {RECORDS_TABS.filter(tab => serveTabVisible(tab, user?.role ?? '')).map(tab => {
+            const Icon =
+              tab === 'Subject File' ? FolderOpen :
+              tab === 'Stats' ? BarChart3 :
+              tab === 'Assign' ? ClipboardCheck :
+              tab === 'Performance' ? Gauge :
+              tab === 'Analytics' ? LineChart :
+              DollarSign;
+            return (
+              <button type="button"
+                key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={serveTabClass(activeTab === tab)}
+              >
+                <Icon size={13} />
+                {tab}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ─── Tab Content ───────────────────────────────────────────── */}
@@ -2340,7 +2623,7 @@ export default function ServePage() {
         {activeTab === 'Queue' && (
           <div className="h-full flex flex-col">
             {/* Filter buttons */}
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border-subtle bg-surface-raised overflow-x-auto tab-scroll">
               {/* Search box. The filter it drives (recipient / case # / client /
                   address, see filteredJobs) was fully implemented but had NO
                   input bound to it anywhere — searchQuery could only ever be
@@ -2558,7 +2841,7 @@ export default function ServePage() {
                         <Briefcase size={20} className="text-rmpg-500" />
                       </div>
                       <p className="text-sm text-rmpg-400 font-medium">
-                        No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd>, or add manually.
+                        No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd> to add, or expand a job then <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">A</kbd> attempt / <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">E</kbd> edit / <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">G</kbd> navigate / <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">T</kbd> skip trace.
                       </p>
                     </div>
                   ) : (
@@ -2586,6 +2869,7 @@ export default function ServePage() {
                                 onEdit={openEdit}
                                 onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
                                 onAudit={setAuditJobId}
+                                onOpsSaved={refreshJobs}
                                 isExpanded={expandedJobId === job.id}
                                 onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                                 isSelected={selectedJobIds.has(job.id)}
@@ -2635,6 +2919,7 @@ export default function ServePage() {
                           onEdit={openEdit}
                           onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
                           onAudit={setAuditJobId}
+                          onOpsSaved={refreshJobs}
                           isExpanded={expandedJobId === job.id}
                           onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                           isSelected={selectedJobIds.has(job.id)}
@@ -2671,13 +2956,7 @@ export default function ServePage() {
               const totalStops = routeJobs.length;
               const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
 
-              // Per-stop ETA estimates: run haversine nearest-neighbor on the
-              // ordered job list so the Route tab shows arrival times without
-              // another API call. Plain IIFE (not useMemo) because this runs
-              // inside a conditional render expression where hooks are banned.
-              // Anchor ETAs to the saved planned start time when available so
-              // the Route tab shows future wall-clock times rather than
-              // "from now". Parse as local time (same logic as ServeRoutePlanner).
+              // Per-stop ETAs walk the saved visit order (not nearest-neighbor).
               const routeStartMs = (() => {
                 const t = savedRoute?.planned_start_time;
                 const d = savedRoute?.route_date;
@@ -2693,11 +2972,12 @@ export default function ServePage() {
                 const geocoded = routeJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
                 if (geocoded.length < 1) return new Map<number, number>();
                 const stopItems = geocoded.map((j, i) => ({ job: j, selected: true, order: i }));
-                const { ordered, perStopArrivalMs } = nearestNeighborOrder(stopItems, null, routeStartMs);
-                const map = new Map<number, number>();
-                ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) map.set(s.job.id, perStopArrivalMs[i]); });
-                return map;
+                const origin = savedRoute?.start_lat != null && savedRoute?.start_lng != null
+                  ? { lat: Number(savedRoute.start_lat), lng: Number(savedRoute.start_lng) }
+                  : null;
+                return computeArrivalsInOrder(stopItems, origin, routeStartMs, savedRoute?.route_date).arrivals;
               })();
+              const eveningOnRun = routeJobs.some(j => hasEveningWindow(j.time_window, j.next_attempt_window));
 
               return (
                 <>
@@ -2708,44 +2988,67 @@ export default function ServePage() {
                       <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span>
                       <span>stops</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                      <Navigation size={12} className="text-emerald-400" />
-                      <span className="font-mono tabular-nums text-rmpg-100">
-                        {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                      <Calendar size={12} className="text-amber-400" />
-                      <span className="font-mono tabular-nums text-rmpg-100">
-                        {savedRoute.total_time_minutes
-                          ? `~${Math.floor(savedRoute.total_time_minutes / 60)}h ${Math.round(savedRoute.total_time_minutes % 60)}m`
-                          : '--'}
-                      </span>
-                    </div>
-                    {savedRoute?.total_distance_miles && (
-                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                        <span className="text-[color:var(--field-label-color)] font-mono">$</span>
-                        <span className="font-mono tabular-nums text-rmpg-100">
-                          ${(Number(savedRoute.total_distance_miles) * serveMileageRate).toFixed(2)}
-                        </span>
-                        <span className="text-fg-muted text-[9px]">fuel</span>
-                      </div>
-                    )}
-                    {savedRoute?.total_distance_miles && totalStops > 0 && (
-                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                        <Gauge size={11} className="text-fg-muted" />
-                        <span className="font-mono tabular-nums text-rmpg-100">
-                          {(totalStops / Number(savedRoute.total_distance_miles)).toFixed(1)}
-                        </span>
-                        <span className="text-fg-muted text-[9px]">stops/mi</span>
-                      </div>
-                    )}
+                    {(() => {
+                      const distMiles = savedRoute?.total_distance_miles ?? routeData?.totalDistance ?? null;
+                      const timeMins = savedRoute?.total_time_minutes ?? routeData?.totalDuration ?? null;
+                      return (
+                        <>
+                          <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                            <Navigation size={12} className="text-emerald-400" />
+                            <span className="font-mono tabular-nums text-rmpg-100">
+                              {distMiles != null && !isNaN(Number(distMiles)) ? `${Number(distMiles).toFixed(1)} mi` : '--'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                            <Calendar size={12} className="text-amber-400" />
+                            <span className="font-mono tabular-nums text-rmpg-100">
+                              {timeMins != null && !isNaN(Number(timeMins))
+                                ? `~${Math.floor(Number(timeMins) / 60)}h ${Math.round(Number(timeMins) % 60)}m`
+                                : '--'}
+                            </span>
+                          </div>
+                          {distMiles != null && !isNaN(Number(distMiles)) && Number(distMiles) > 0 && (
+                            <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                              <span className="text-[color:var(--field-label-color)] font-mono">$</span>
+                              <span className="font-mono tabular-nums text-rmpg-100">
+                                ${(Number(distMiles) * serveMileageRate).toFixed(2)}
+                              </span>
+                              <span className="text-fg-muted text-[9px]">fuel</span>
+                            </div>
+                          )}
+                          {distMiles != null && !isNaN(Number(distMiles)) && gallonsForMiles(Number(distMiles)) > 0 && (
+                            <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                              <span className="text-fg-muted text-[9px]">est.</span>
+                              <span className="font-mono tabular-nums text-rmpg-100">
+                                {gallonsForMiles(Number(distMiles)).toFixed(1)} gal
+                              </span>
+                              <span className="text-fg-muted text-[9px]">@ 18 mpg</span>
+                            </div>
+                          )}
+                          {distMiles != null && !isNaN(Number(distMiles)) && Number(distMiles) > 0 && totalStops > 0 && (
+                            <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                              <Gauge size={11} className="text-fg-muted" />
+                              <span className="font-mono tabular-nums text-rmpg-100">
+                                {(totalStops / Number(distMiles)).toFixed(1)}
+                              </span>
+                              <span className="text-fg-muted text-[9px]">stops/mi</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="flex items-center gap-1.5 text-fg-secondary text-xs sm:ml-auto col-span-2 sm:col-span-1">
                       <span className="font-mono tabular-nums text-[color:var(--field-label-color)]">
                         {completedCount}/{totalStops} done ({progressPct}%)
                       </span>
                     </div>
                   </div>
+
+                  {eveningOnRun && (
+                    <div className="px-3 py-2 text-[10px] text-purple-300 bg-purple-900/20 border border-purple-700/40 rounded-[2px]">
+                      Evening-window stops (17:00–21:00) are on this run — plan lighting, gated access, and a last knock before 21:00.
+                    </div>
+                  )}
 
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
@@ -2859,6 +3162,16 @@ export default function ServePage() {
                             {deadlineDate && (
                               <div className={`text-[9px] font-mono mt-0.5 ${isOverdue ? 'text-red-400' : 'text-fg-muted'}`}>
                                 {isOverdue ? '⚠ ' : ''}Deadline: {deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {/* new-date-ok — from DB */}
+                                {(() => {
+                                  const hrs = hoursUntilDeadline(job.deadline);
+                                  if (hrs == null) return null;
+                                  return <span className="ml-1">({hrs < 0 ? `${Math.abs(Math.round(hrs))}h past` : `${hrs < 10 ? hrs.toFixed(1) : Math.round(hrs)}h left`})</span>;
+                                })()}
+                              </div>
+                            )}
+                            {(job.building_access_notes || job.contact_restrictions) && (
+                              <div className="text-[9px] text-amber-300/90 truncate mt-0.5" title={[job.contact_restrictions, job.building_access_notes].filter(Boolean).join(' · ')}>
+                                {job.contact_restrictions ? `Restrict: ${job.contact_restrictions}` : job.building_access_notes}
                               </div>
                             )}
                             {(job as any).case_number && (
@@ -2891,6 +3204,16 @@ export default function ServePage() {
                                 <Navigation size={9} /> Nav
                               </button>
                             )}
+                            {!isCompleted && !isFailed && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkArrived(job.id)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono text-rmpg-200 bg-surface-sunken border border-rmpg-700 rounded-[2px] hover:border-rmpg-500"
+                                aria-label={`Mark arrived at ${job.recipient_name}`}
+                              >
+                                Arrived
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2920,7 +3243,7 @@ export default function ServePage() {
                           Optimizing… {Math.round(optimization.elapsedMs / 1000)}s
                         </>
                       ) : (
-                        'Optimize Route'
+                        'Re-optimize remaining'
                       )}
                     </button>
                     {optimization.status === 'error' && (
@@ -2932,19 +3255,19 @@ export default function ServePage() {
                     )}
                     <button type="button"
                       onClick={() => {
-                        // Build navigation URL with all waypoints
-                        const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
-                        if (geocoded.length === 0) return;
-                        const dest = geocoded[geocoded.length - 1];
-                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lng},${j.recipient_lat}`).join(';');
-                        const url = `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&via=${encodeURIComponent(waypoints)}` : ''}`;
-                        window.open(url, '_blank', 'noopener,noreferrer');
+                        const next = nextUnservedJob(routeJobs);
+                        if (!next) return;
+                        if (next.recipient_lat != null && next.recipient_lng != null) {
+                          window.open(googleMapsNavUrl(next.recipient_lat, next.recipient_lng), '_blank', 'noopener,noreferrer');
+                          return;
+                        }
+                        handleNavigate(next.id);
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(16,185,129,0.15)] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                      aria-label="Start Navigation"
+                      aria-label="Navigate to next unserved stop"
                     >
                       <Navigation size={12} />
-                      Start Navigation
+                      Nav next stop
                     </button>
                   </div>
                 </>
@@ -3013,11 +3336,29 @@ export default function ServePage() {
 
             <div className="flex-1 relative min-h-0">
               <div ref={mapContainerRef} className="absolute inset-0" />
-              {!mapReady && (
+              {!mapReady && !isServeMapRecovering && (
                 <div className="absolute inset-0 flex items-center justify-center bg-surface-sunken">
                   <div className="flex items-center gap-2 text-xs text-rmpg-400">
                     <Loader2 size={14} className="animate-spin" />
                     Loading map...
+                  </div>
+                </div>
+              )}
+              {isServeMapRecovering && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 size={16} className="animate-spin text-brand-400" />
+                    <span className="text-rmpg-300 text-[10px] font-mono">MAP RECONNECTING…</span>
+                  </div>
+                </div>
+              )}
+              {serveMapNeedsManualReload && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+                  <div className="flex flex-col items-center gap-2 text-center px-4">
+                    <span className="text-rmpg-100 text-xs font-mono">MAP GPU CRASH</span>
+                    <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+                      RELOAD PAGE
+                    </button>
                   </div>
                 </div>
               )}
@@ -3101,7 +3442,7 @@ export default function ServePage() {
             {/* Mileage / efficiency */}
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
-                <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
+                <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-1">Mileage Today</div>
                 {/* Falls back to the PLANNED distance stored on serve_routes for
                     the day. Previously this only read `routeData` — ephemeral
                     state set after using the Route Planner in this session — so
@@ -3129,7 +3470,7 @@ export default function ServePage() {
                 )}
               </div>
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
-                <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
+                <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-1">Route Efficiency</div>
                 {/* Efficiency is planned ÷ actual, so it genuinely cannot be
                     computed without DRIVEN miles — and nothing on serve_routes
                     or serve_attempts records an odometer, so `stats.mileage` is
@@ -3153,7 +3494,7 @@ export default function ServePage() {
 
             {/* Feature 5: Cost Calculator */}
             <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px]">
-              <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
+              <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-2">Job Cost Calculator</div>
               <div className="flex items-center gap-2">
                 <select id="ff-servepage-1"
                   value={costJobId || ''}
@@ -3200,7 +3541,7 @@ export default function ServePage() {
             {deadlines && (
               <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px] space-y-2">
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider">Deadline Tracker ({deadlines.total} active)</div>
+                  <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)]">Deadline Tracker ({deadlines.total} active)</div>
                   <button type="button" onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close deadline tracker">Close</button>
                 </div>
                 {deadlines.overdue?.length > 0 && (
@@ -3234,7 +3575,7 @@ export default function ServePage() {
             {successRates && (
               <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px] space-y-2">
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider">Success Rates ({successRates.period_days}d)</div>
+                  <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)]">Success Rates ({successRates.period_days}d)</div>
                   <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close success rates">Close</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
@@ -3285,7 +3626,9 @@ export default function ServePage() {
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
         {activeTab === 'Analytics' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AnalyticsTab />}
         {activeTab === 'Subject File' && (
-          <SubjectFileTab jobs={jobs} selectedJobId={expandedJobId ?? undefined} />
+          <div className="h-full min-h-0">
+            <SubjectFileTab jobs={jobs} selectedJobId={expandedJobId ?? undefined} />
+          </div>
         )}
         {activeTab === 'Collections' && ['admin','manager','supervisor'].includes(user?.role ?? '') && (
           <CollectionDatabaseTab />
@@ -3333,6 +3676,7 @@ export default function ServePage() {
         // open job". Empty selectedJobIds falls back to the planner's own
         // default (every non-served/failed geocoded job).
         preselectedJobIds={selectedJobIds}
+        onVerifyAddress={openEdit}
         mileageRate={serveMileageRate}
         initialDate={selectedDate}
       />
@@ -3376,7 +3720,10 @@ export default function ServePage() {
         />
       )}
 
-      {/* Create / Edit Job Modal */}
+      {/* Create / Edit Job Modal — only mount when open so a missing
+          formData.ops on a restored draft cannot crash the Queue tab
+          (JSX children are evaluated even when FormModal returns null). */}
+      {createJobOpen && (
       <FormModal
         isOpen={createJobOpen}
         onClose={() => { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }}
@@ -3385,7 +3732,7 @@ export default function ServePage() {
         icon={Briefcase}
         submitLabel={editJob ? 'Update' : 'Create'}
         isSubmitting={formSubmitting}
-        maxWidth="max-w-3xl"
+        maxWidth="max-w-4xl"
         isDirty={formIsDirty}
         draftRestored={formWasRestored}
         onDiscardDraft={clearFormDraft}
@@ -3622,10 +3969,18 @@ export default function ServePage() {
                   <input id="ff-servepage-defendant" type="text"
                     value={formData.defendant_name}
                     onChange={e => handleFormChange('defendant_name', e.target.value)}
-                    placeholder="Party being sued"
+                    placeholder="Named defendant"
                     className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                   />
                 </div>
+              </div>
+              <div>
+                <label htmlFor="ff-srv-court-date" className="block text-[11px] text-fg-muted mb-1">Court / Hearing Date</label>
+                <input id="ff-srv-court-date" type="date"
+                  value={formData.court_date}
+                  onChange={e => handleFormChange('court_date', e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -3670,6 +4025,32 @@ export default function ServePage() {
                   placeholder="Counsel of record"
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label htmlFor="ff-servepage-atty-phone" className="block text-[11px] text-fg-muted mb-1">Attorney Phone</label>
+                  <input id="ff-servepage-atty-phone" type="tel"
+                    value={formData.attorney_phone}
+                    onChange={e => handleFormChange('attorney_phone', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-servepage-atty-email" className="block text-[11px] text-fg-muted mb-1">Attorney Email</label>
+                  <input id="ff-servepage-atty-email" type="email"
+                    value={formData.attorney_email}
+                    onChange={e => handleFormChange('attorney_email', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-servepage-atty-bar" className="block text-[11px] text-fg-muted mb-1">Bar #</label>
+                  <input id="ff-servepage-atty-bar" type="text"
+                    value={formData.attorney_bar_number}
+                    onChange={e => handleFormChange('attorney_bar_number', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -3819,7 +4200,11 @@ export default function ServePage() {
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 >
                   <option value="">— Unassigned —</option>
-                  {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  {officers.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {formatServerAssignLabel(o)}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -3898,8 +4283,8 @@ export default function ServePage() {
                       className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                     >
                       <option value="">— Auto —</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
+                      <option value="standard">Standard</option>
+                      <option value="tight">Tight</option>
                       <option value="critical">Critical</option>
                     </select>
                   </div>
@@ -3943,6 +4328,20 @@ export default function ServePage() {
                   {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                 </select>
               </div>
+            </div>
+          </div>
+
+          {/* Document type + priority */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div>
+              <label htmlFor="ff-servepage-7" className="block text-[11px] text-rmpg-400 mb-1">
+                Document Type / Legal Statement
+              </label>
+              <DocumentTypeSelector
+                id="ff-servepage-7"
+                value={formData.document_type}
+                onChange={val => handleFormChange('document_type', val)}
+              />
             </div>
           </div>
 
@@ -3994,53 +4393,149 @@ export default function ServePage() {
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
                 />
               </div>
-              {editJob && (() => {
-                let ac: { klass?: string; confirmed?: boolean } = {};
-                try { ac = JSON.parse(editJob.parsed_data ?? '{}')._intake?.address_class ?? {}; } catch { /* ignore */ }
-                const klass = ac.klass ?? 'unknown';
-                const confirmed = !!ac.confirmed;
-                return (
-                  <div>
-                    <label className="block text-[11px] text-fg-muted mb-1">
-                      Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
-                    </label>
-                    <div className="flex items-center gap-2">
-                      {(['residential', 'unknown', 'business'] as const).map(k => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => handleAddressClassChange(editJob.id, k, k !== 'unknown')}
-                          className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
-                            klass === k
-                              ? k === 'business'
-                                ? 'bg-brand-800/60 border-brand-500 text-brand-200'
-                                : k === 'residential'
-                                ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
-                                : 'bg-surface-raised border-rmpg-600 text-fg-muted'
-                              : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
-                          }`}
-                        >
-                          {k.charAt(0).toUpperCase() + k.slice(1)}
-                        </button>
-                      ))}
-                      {klass !== 'unknown' && (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-[2px] border ${
-                          confirmed
-                            ? 'text-green-300 border-green-800/50 bg-green-900/20'
-                            : 'text-amber-300 border-amber-800/50 bg-amber-900/20'
-                        }`}>
-                          {confirmed ? 'Confirmed' : 'Unconfirmed'}
-                        </span>
-                      )}
-                    </div>
-                    {klass === 'business' && !confirmed && (
-                      <p className="text-[10px] text-amber-400 mt-1">
-                        Unconfirmed — residential windows apply until confirmed. Select Business again to confirm.
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
+              <div>
+                <label className="block text-[11px] text-fg-muted mb-1">
+                  Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
+                </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {ADDRESS_CLASS_OPTIONS.map(([k, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        handleFormChange('address_class', k);
+                        handleFormChange('address_class_confirmed', k !== 'unknown');
+                        if (editJob) void handleAddressClassChange(editJob.id, k, k !== 'unknown');
+                      }}
+                      className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
+                        (formData.address_class || 'unknown') === k
+                          ? k === 'unknown'
+                            ? 'bg-surface-raised border-rmpg-600 text-fg-muted'
+                            : k === 'residential'
+                            ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
+                            : 'bg-brand-800/60 border-brand-500 text-brand-200'
+                          : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {formData.address_class === 'business' && !formData.address_class_confirmed && (
+                  <p className="text-[10px] text-amber-400 mt-1">
+                    Unconfirmed generic business — residential windows apply until confirmed.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Scene / Packet</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-fg-muted mb-1">Venue overlay</label>
+                  <select
+                    value={formOps.venue_kind}
+                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), venue_kind: e.target.value } }))}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                  >
+                    {VENUE_OPTIONS.map(([v, l]) => <option key={v || 'auto'} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-fg-muted mb-1">Best contact window</label>
+                  <input
+                    value={formOps.best_contact_window}
+                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), best_contact_window: e.target.value } }))}
+                    placeholder="e.g. after 14:00 weekdays"
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-fg-muted mb-1">Documents in packet</label>
+                <textarea
+                  value={formOps.documents_to_serve}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), documents_to_serve: e.target.value } }))}
+                  rows={2}
+                  placeholder="20 DAY SUMMONS; VERIFIED COMPLAINT; …"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={formOps.gate_code}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), gate_code: e.target.value } }))}
+                  placeholder="Gate / call-box code"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formOps.authorized_acceptor}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), authorized_acceptor: e.target.value } }))}
+                  placeholder="Who may accept (name/title)"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formOps.language_needed}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), language_needed: e.target.value } }))}
+                  placeholder="Language needed"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formOps.physical_description}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), physical_description: e.target.value } }))}
+                  placeholder="Physical description"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formOps.vehicle_description}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), vehicle_description: e.target.value } }))}
+                  placeholder="Vehicle (plate / color / make)"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-rmpg-200">
+                {([
+                  ['dogs_on_site', 'Dogs on site'],
+                  ['cameras_on_site', 'Cameras'],
+                  ['no_sunday', 'No Sunday'],
+                  ['no_saturday', 'No Saturday'],
+                  ['photo_required', 'Photo required'],
+                  ['sub_service_first', 'Sub-serve 1st attempt'],
+                ] as const).map(([k, lab]) => (
+                  <label key={k} className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!formOps[k]}
+                      onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), [k]: e.target.checked } }))}
+                      className="w-3.5 h-3.5 rounded-[2px] border-rmpg-600 bg-surface-deep"
+                    />
+                    {lab}
+                  </label>
+                ))}
+              </div>
+              {opsPreview && (
+                <div className="p-2 border border-rmpg-700/40 rounded-[2px] bg-surface-sunken/50">
+                  <div className="text-[9px] font-bold uppercase mb-1" style={{ color: 'var(--panel-header-color)' }}>Live playbook</div>
+                  <ServeJobOpsPanel
+                    meta={{
+                      addressClass: formData.address_class || 'unknown',
+                      addressClassConfirmed: formData.address_class_confirmed,
+                      venue: opsPreview.venue_label ? formOps.venue_kind || 'inferred' : null,
+                      venueLabel: opsPreview.venue_label || null,
+                      ops: formOps,
+                      firedIds: opsPreview.fired_ids || [],
+                      windows: opsPreview.windows || [],
+                    }}
+                    note={opsPreview.note}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -4088,6 +4583,7 @@ export default function ServePage() {
 
         </div>
       </FormModal>
+      )}
 
       {/* Delete-job confirm — replaces the v480 window.confirm + window.alert. */}
       {/* Same destructive-action contract as Code Enforcement / Cases: pre-     */}
@@ -4147,7 +4643,7 @@ function StatCard({
 }) {
   return (
     <div className={`px-4 py-3 rounded-[2px] border ${bg} ${border} transition-all duration-150 hover:shadow-md hover:scale-[1.01]`}>
-      <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">{label}</div>
+      <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-1">{label}</div>
       <div className={`text-2xl font-bold font-mono tabular-nums ${color}`} style={{ textShadow: '0 0 4px currentColor' }}>{value}</div>
     </div>
   );

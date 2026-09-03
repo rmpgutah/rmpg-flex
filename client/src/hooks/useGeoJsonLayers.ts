@@ -12,7 +12,7 @@ import type { FeatureCollection } from 'geojson';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
-import { getSectorColor, getZoneColor, formatBeatLabel } from '../utils/geographyLabels';
+import { getSectorColor, getZoneColor, getBeatColor, formatBeatLabel } from '../utils/geographyLabels';
 import { toDisplayLabel } from '../utils/formatters';
 
 // Tactical-dark fallback when a config color won't parse as a Mapbox color
@@ -208,30 +208,29 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
 function getLayerSourceId(layerId: string): string { return `geojson-${layerId}`; }
 function getFillLayerId(layerId: string): string { return `geojson-${layerId}-fill`; }
 function getLineLayerId(layerId: string): string { return `geojson-${layerId}-line`; }
+const BEAT_LABEL_LAYER = 'geojson-beat-label';
 
-// Build a Mapbox `match` expression that resolves a beat feature's color
-// from its `city_code` property. All districts within a city share a color
-// (the lookup is keyed `${cityCode}::${distLetter}` but the colors collapse
-// per city), so we match on city_code alone to keep the expression small.
-//
-// `pickColor` lets the caller pick fill vs stroke from the same lookup.
-// Returns a flat string if the lookup is empty (no `match` overhead).
-function buildBeatColorExpression(
-  lookup: Map<string, BeatStyleEntry> | undefined,
-  pickColor: (entry: BeatStyleEntry) => string,
+// Build a Mapbox `match` expression that assigns a distinct color to every
+// individual beat, keyed on the `beat_code` feature property. Colors are
+// deterministic (same beat_code → same color across reloads) and come from
+// the 32-color BEAT_COLOR_PALETTE via getBeatColor(). Falls back to the
+// static fallback string when no GeoJSON features are available.
+function buildPerBeatColorExpression(
+  geojson: object | undefined,
   fallback: string,
 ): string | unknown[] {
-  if (!lookup || lookup.size === 0) return fallback;
-  const cityColors = new Map<string, string>();
-  for (const [key, entry] of lookup) {
-    const cityCode = key.split('::')[0];
-    if (!cityColors.has(cityCode)) cityColors.set(cityCode, pickColor(entry));
+  if (!geojson) return fallback;
+  const features: any[] = (geojson as any).features;
+  if (!Array.isArray(features) || features.length === 0) return fallback;
+  const expr: unknown[] = ['match', ['to-string', ['get', 'beat_code']]];
+  const seen = new Set<string>();
+  for (const f of features) {
+    const bc = f?.properties?.beat_code;
+    if (!bc || seen.has(String(bc))) continue;
+    seen.add(String(bc));
+    expr.push(String(bc), getBeatColor(String(bc)));
   }
-  if (cityColors.size === 0) return fallback;
-  const expr: unknown[] = ['match', ['to-string', ['get', 'city_code']]];
-  for (const [cityCode, color] of cityColors) {
-    expr.push(cityCode, color);
-  }
+  if (seen.size === 0) return fallback;
   expr.push(fallback);
   return expr;
 }
@@ -386,8 +385,9 @@ export function useGeoJsonLayers({
       }
 
       // For beats specifically, use a data-driven color expression keyed
-      // on city_code so each city renders in its own color (per
-      // beatDistrictMap). All other layers use the static config color.
+      // on beat_code so each individual beat renders in its own distinct
+      // color (32-color palette, deterministic via getBeatColor). All other
+      // layers use the static config color.
       //
       // safeMapboxColor is the boundary guard: a leaked `var(--…)` string
       // or empty value here crashes the whole layer and renders nothing.
@@ -395,10 +395,10 @@ export function useGeoJsonLayers({
       const safeFill = safeMapboxColor(cfg.style.fillColor, COLOR_FALLBACK_FILL);
       const safeStroke = safeMapboxColor(cfg.style.strokeColor, COLOR_FALLBACK_STROKE);
       const fillColorExpr = cfg.id === 'beat'
-        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.fillColor, COLOR_FALLBACK_FILL), safeFill)
+        ? buildPerBeatColorExpression(geojson, safeFill)
         : safeFill;
       const lineColorExpr = cfg.id === 'beat'
-        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.strokeColor, COLOR_FALLBACK_STROKE), safeStroke)
+        ? buildPerBeatColorExpression(geojson, safeStroke)
         : safeStroke;
 
       // Add fill layer for polygon features
@@ -417,19 +417,52 @@ export function useGeoJsonLayers({
         });
       }
 
-      // Add line layer for stroke
+      // Add line layer for stroke. Beats use a slight dash pattern for a
+      // cleaner polygon-border look that distinguishes them from solid fills.
       if (!hasLayer(map, getLineLayerId(cfg.id))) {
+        const linePaint: Record<string, unknown> = {
+          'line-color': lineColorExpr as any,
+          'line-opacity': cfg.style.strokeOpacity,
+          'line-width': cfg.style.strokeWeight,
+        };
+        if (cfg.id === 'beat') {
+          (linePaint as any)['line-dasharray'] = [4, 2];
+        }
         map.addLayer({
           id: getLineLayerId(cfg.id),
           type: 'line',
           source: sourceId,
-          paint: {
-            'line-color': lineColorExpr as any,
-            'line-opacity': cfg.style.strokeOpacity,
-            'line-width': cfg.style.strokeWeight,
-          },
+          paint: linePaint as any,
           layout: {
             visibility: cfg.visible ? 'visible' : 'none',
+          },
+        });
+      }
+
+      // Beat label symbol layer — renders the beat code centered on each
+      // polygon. Shown at z9+ to avoid label crowding at city-level zoom.
+      if (cfg.id === 'beat' && !hasLayer(map, BEAT_LABEL_LAYER)) {
+        map.addLayer({
+          id: BEAT_LABEL_LAYER,
+          type: 'symbol',
+          source: sourceId,
+          minzoom: 9,
+          layout: {
+            'text-field': ['get', 'beat_code'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 12, 14, 14],
+            'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+            'text-allow-overlap': false,
+            'text-ignore-placement': false,
+            'text-anchor': 'center',
+            'text-max-width': 6,
+            'symbol-placement': 'point',
+            'visibility': cfg.visible ? 'visible' : 'none',
+          } as any,
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': '#0a1525',
+            'text-halo-width': 1.5,
+            'text-opacity': 0.92,
           },
         });
       }
@@ -459,33 +492,60 @@ export function useGeoJsonLayers({
 
           if (!popup) return;
 
-          let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
+          let html = `<div style="font-family:system-ui,sans-serif;color:#d4d4d4;font-size:11px;min-width:160px;max-width:240px;">`;
 
           const entry = cfg.id === 'beat'
             ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)
             : undefined;
 
-          if (entry) {
-            const sColor = getSectorColor(entry.sectionId);
-            html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
-            html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(formatBeatLabel(entry.beatName, entry.beatDescriptor))}</div>`;
-            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Sector:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
-            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
-            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
+          if (cfg.id === 'beat') {
+            const beatCode = String(props.beat_code || fKey || '');
+            const beatColor = getBeatColor(beatCode);
+            // Beat header: color swatch + beat code
+            html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;border-bottom:1px solid #333;padding-bottom:5px;">`;
+            html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${beatColor};flex-shrink:0;"></span>`;
+            html += `<span style="font-weight:700;font-size:13px;color:#fff;letter-spacing:0.5px;">${escapeForHtml(beatCode)}</span>`;
+            if (entry) {
+              html += `<span style="margin-left:auto;font-size:9px;font-weight:700;color:${beatColor};letter-spacing:1px;text-transform:uppercase;">${escapeForHtml(entry.dispatchCode)}</span>`;
+            }
+            html += `</div>`;
+
+            if (entry) {
+              const sColor = getSectorColor(entry.sectionId);
+              const beatLabel = formatBeatLabel(entry.beatName, entry.beatDescriptor);
+              if (beatLabel) {
+                html += `<div style="color:#f0f4f9;font-size:11px;font-weight:600;margin-bottom:5px;">${escapeForHtml(beatLabel)}</div>`;
+              }
+              html += `<div style="font-size:10px;margin-top:3px;display:flex;gap:4px;align-items:baseline;">`;
+              html += `<span style="color:${sColor};font-weight:600;min-width:40px;">Sector</span>`;
+              html += `<span style="color:#e0e0e0;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span>`;
+              html += `</div>`;
+              html += `<div style="font-size:10px;margin-top:2px;display:flex;gap:4px;align-items:baseline;">`;
+              html += `<span style="color:#a0adbd;min-width:40px;">Zone</span>`;
+              html += `<span style="color:#c3ccd6;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span>`;
+              html += `</div>`;
+            } else {
+              // BeatDistrictEntry not yet loaded — show what we have from GeoJSON props
+              if (props.city) {
+                html += `<div style="font-size:10px;color:#a0adbd;margin-top:2px;">${escapeForHtml(String(props.city))}</div>`;
+              }
+              if (props.district_letter) {
+                html += `<div style="font-size:10px;color:#a0adbd;margin-top:1px;">District ${escapeForHtml(String(props.district_letter))}</div>`;
+              }
+            }
           } else {
             html += buildDefaultInfoHtml(name, cfg, props);
           }
 
           const compositeKey = makeCompositeKey(cfg.id, fKey);
           if (assignedFeaturesRef.current?.has(compositeKey)) {
-            html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:bold;">● ASSIGNED</div>`;
+            html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:700;letter-spacing:0.5px;">● ASSIGNED</div>`;
           }
 
           html += `</div>`;
           popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
         });
       }
-      }); // end whenStyleReady
 
       // REGRESSION-GUARD: in-flight flag cleared INSIDE whenStyleReady (not
       // in a finally block outside it). whenStyleReady may defer via
@@ -494,32 +554,16 @@ export function useGeoJsonLayers({
       // callback's addSource/addLayer mutations complete, causing a
       // "Layer with id '...' already exists" duplicate-layer error.
       inFlightLayersRef.current.delete(cfg.id);
-
       setLayerStates((prev) => ({
         ...prev,
         [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
-    }));
+      }));
+      }); // end whenStyleReady
   }, [map, popup]);
 
-  // Keep the beat layer's paint in sync with beatStyleLookup. The layer's
-  // initial paint is set inside loadLayer using whatever lookup was
-  // present at first load — but the district map is fetched async, so it
-  // often arrives AFTER the beat layer is already on the map. This effect
-  // re-applies the expression whenever the lookup changes (and the beat
-  // layer is present).
-  useEffect(() => {
-    if (!map) return;
-    const beatCfg = GEO_LAYER_CONFIGS.find(c => c.id === 'beat');
-    if (!beatCfg) return;
-    const fillId = getFillLayerId('beat');
-    const lineId = getLineLayerId('beat');
-    if (!hasLayer(map, fillId) && !hasLayer(map, lineId)) return;
-
-    const fillExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.fillColor, beatCfg.style.fillColor);
-    const lineExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.strokeColor, beatCfg.style.strokeColor);
-    try { if (hasLayer(map, fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
-    try { if (hasLayer(map, lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
-  }, [map, beatStyleLookup]);
+  // Beat colors are set per-beat-code from the GeoJSON at load time and are
+  // stable — no runtime sync needed. beatStyleLookup is retained for popup
+  // data (BeatDistrictEntry lookup) only.
 
   const ensureLayerLoaded = useCallback(async (layerId: string) => {
     const cfg = GEO_LAYER_CONFIGS.find((c) => c.id === layerId);
@@ -546,6 +590,9 @@ export function useGeoJsonLayers({
       if (map) {
         try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
         try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
+        if (layerId === 'beat') {
+          try { if (hasLayer(map, BEAT_LABEL_LAYER)) map.setLayoutProperty(BEAT_LABEL_LAYER, 'visibility', vis); } catch {}
+        }
       }
 
       // Show/hide label markers
@@ -592,6 +639,12 @@ export function useGeoJsonLayers({
         const viz = !cfg.minZoom || zoom >= cfg.minZoom ? 'visible' : 'none';
         try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
         try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
+        // Beat label layer has its own minzoom (9) baked into the layer spec;
+        // additionally respect the beat layer's own visibility toggle.
+        if (cfg.id === 'beat') {
+          const labelViz = zoom >= 9 ? viz : 'none';
+          try { if (hasLayer(map, BEAT_LABEL_LAYER)) map.setLayoutProperty(BEAT_LABEL_LAYER, 'visibility', labelViz); } catch {}
+        }
       }
     };
     map.on('zoomend', onZoomEnd);
@@ -607,6 +660,9 @@ export function useGeoJsonLayers({
         for (const m of markers) m.remove();
       }
       labelMarkerRefs.current = {};
+      if (map && hasLayer(map, BEAT_LABEL_LAYER)) {
+        try { safeRemoveLayer(map, BEAT_LABEL_LAYER); } catch {}
+      }
     };
   }, [map]);
 

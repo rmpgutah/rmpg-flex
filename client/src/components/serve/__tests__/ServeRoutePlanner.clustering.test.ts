@@ -83,12 +83,12 @@ describe('nearestNeighborOrder', () => {
     expect(one.ordered).toHaveLength(1);
   });
 
-  it('duration is drive time PLUS per-stop dwell time (7 min/individual stop)', () => {
+  it('duration is drive time PLUS per-stop dwell time (18 min/individual stop)', () => {
     // Duration includes a per-stop dwell (knock/serve/paperwork) on top of
-    // drive time. Individual stops default to 7 minutes each.
+    // drive time. Individual stops default to 18 minutes each.
     const stops = [stop(1, 40.5, -111.9), stop(2, 40.9, -111.9)];
     const r = nearestNeighborOrder(stops, null);
-    expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles) + 2 * 7, 6);
+    expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles) + 2 * 18, 6);
   });
 
   it('never flags a job with no deadline as missed', () => {
@@ -145,38 +145,38 @@ describe('buildRouteStopsFromJobs', () => {
     };
   }
 
-  it('excludes unselected stops', () => {
+  it('excludes unselected stops', async () => {
     const stops = [makeStop(1, 40.7, -111.9, true), makeStop(2, 40.8, -111.9, false)];
-    const result = buildRouteStopsFromJobs(stops);
+    const result = await buildRouteStopsFromJobs(stops);
     expect(result).toHaveLength(1);
     expect(result[0].jobId).toBe(1);
   });
 
-  it('excludes stops with null coordinates', () => {
+  it('excludes stops with null coordinates', async () => {
     const stops = [makeStop(1, 40.7, -111.9, true)];
     stops[0].job.recipient_lat = null as any;
-    const result = buildRouteStopsFromJobs(stops);
+    const result = await buildRouteStopsFromJobs(stops);
     expect(result).toHaveLength(0);
   });
 
-  it('maps deadline to deadlineAt', () => {
+  it('maps deadline to deadlineAt', async () => {
     const deadline = '2026-08-13T18:00:00-06:00';
     const stops = [makeStop(1, 40.7, -111.9, true, deadline)];
-    const result = buildRouteStopsFromJobs(stops);
+    const result = await buildRouteStopsFromJobs(stops);
     expect(result[0].deadlineAt).toBe(deadline);
   });
 
-  it('maps defendant name and address', () => {
+  it('maps defendant name and address', async () => {
     const stops = [makeStop(42, 40.7, -111.9)];
-    const result = buildRouteStopsFromJobs(stops);
+    const result = await buildRouteStopsFromJobs(stops);
     expect(result[0].jobId).toBe(42);
     expect(result[0].defendant).toBe('Defendant 42');
     expect(result[0].address).toBe('42 Main St');
   });
 
-  it('defaults to individual defendantType', () => {
+  it('defaults to individual defendantType', async () => {
     const stops = [makeStop(1, 40.7, -111.9)];
-    const result = buildRouteStopsFromJobs(stops);
+    const result = await buildRouteStopsFromJobs(stops);
     expect(result[0].defendantType).toBe('individual');
   });
 });
@@ -213,29 +213,29 @@ describe('buildRouteStopsFromJobs — terminal status filtering for traffic poll
     };
   }
 
-  it('includes pending stops in the payload', () => {
+  it('includes pending stops in the payload', async () => {
     const stops = [makeStopWithStatus(1, 'pending'), makeStopWithStatus(2, 'in_progress')];
     // Filter mirrors the polling effect: exclude terminal statuses
     const TERMINAL = new Set(['served', 'failed', 'skipped', 'archived']);
     const remaining = stops.filter(s => !TERMINAL.has(s.job.status));
-    const payload = buildRouteStopsFromJobs(remaining);
+    const payload = await buildRouteStopsFromJobs(remaining);
     expect(payload).toHaveLength(2);
   });
 
-  it('excludes served stops from the traffic poll payload', () => {
+  it('excludes served stops from the traffic poll payload', async () => {
     const stops = [makeStopWithStatus(1, 'served'), makeStopWithStatus(2, 'pending')];
     const TERMINAL = new Set(['served', 'failed', 'skipped', 'archived']);
     const remaining = stops.filter(s => !TERMINAL.has(s.job.status));
-    const payload = buildRouteStopsFromJobs(remaining);
+    const payload = await buildRouteStopsFromJobs(remaining);
     expect(payload).toHaveLength(1);
     expect(payload[0].jobId).toBe(2);
   });
 
-  it('returns empty payload when all stops are terminal — poll should not fire', () => {
+  it('returns empty payload when all stops are terminal — poll should not fire', async () => {
     const stops = [makeStopWithStatus(1, 'served'), makeStopWithStatus(2, 'failed')];
     const TERMINAL = new Set(['served', 'failed', 'skipped', 'archived']);
     const remaining = stops.filter(s => !TERMINAL.has(s.job.status));
-    const payload = buildRouteStopsFromJobs(remaining);
+    const payload = await buildRouteStopsFromJobs(remaining);
     expect(payload).toHaveLength(0);
   });
 });

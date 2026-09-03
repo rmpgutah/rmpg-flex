@@ -39,6 +39,7 @@ import {
   fieldsFromSpecsResult,
   fieldsFromHistoryResult,
   normalizeId,
+  parseVehicleYear,
   type VehicleIdentity,
 } from '../utils/carxe/vehicleRecords';
 import type { CarxePlateResult, CarxeSpecsResult, CarxeHistoryResult } from '../utils/carxe/types';
@@ -243,7 +244,9 @@ async function recordCarxeTheftHit(
     {
       make: lienTheft.make ?? null,
       model: lienTheft.model ?? null,
-      year: lienTheft.year ?? null,
+      // CarsXE returns strings/ranges like "2014-2015"; a raw bind into the
+      // INTEGER year column stores 0. Same parse as the plate/specs paths.
+      year: parseVehicleYear(lienTheft.year),
     },
     'Created from CarsXE lien/theft lookup',
   );
@@ -453,7 +456,14 @@ carxe.post('/lien-theft', operational, async (c) => {
   let screening: { vehicleId: number | null; hits: unknown[] } | undefined;
   if (hasActiveTheft) {
     const user = c.get('user') as { id?: number } | undefined;
-    screening = await recordCarxeTheftHit(db, identity, lienTheft, user?.id);
+    // A vehicle-record write must never fail the officer's lookup — degrade
+    // like every other upsert site in this file. The theft finding itself is
+    // still in `result`; only the record stamp/notification is lost.
+    try {
+      screening = await recordCarxeTheftHit(db, identity, lienTheft, user?.id);
+    } catch (err: any) {
+      log.error('[carxe] theft hit record write failed', { vin, error: err?.message });
+    }
   }
 
   // Non-theft liens: the spec says these are "stored as informational data
@@ -470,7 +480,7 @@ carxe.post('/lien-theft', operational, async (c) => {
       lienRecord = await upsertVehicleFromCarxe(
         db,
         identity,
-        { lien_holder: lienholder, make: lienTheft.make ?? null, model: lienTheft.model ?? null, year: lienTheft.year ?? null },
+        { lien_holder: lienholder, make: lienTheft.make ?? null, model: lienTheft.model ?? null, year: parseVehicleYear(lienTheft.year) },
         'Created from CarsXE lien/theft lookup',
       );
     } catch (err: any) {

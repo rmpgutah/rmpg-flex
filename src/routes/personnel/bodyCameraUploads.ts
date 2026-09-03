@@ -243,7 +243,10 @@ bodycamVideosRouter.post('/upload-chunk', async (c) => {
     if (!sessionRaw) {
       return c.json({ error: 'Upload session not found or expired' }, 410);
     }
-    const session = JSON.parse(sessionRaw) as UploadSession;
+    let session: UploadSession;
+    try { session = JSON.parse(sessionRaw) as UploadSession; } catch {
+      return c.json({ error: 'Upload session data corrupted' }, 422);
+    }
     if (chunkIndex >= session.totalChunks) {
       return c.json({ error: 'chunkIndex out of range' }, 400);
     }
@@ -308,7 +311,10 @@ bodycamVideosRouter.post('/upload-complete', async (c) => {
     if (!sessionRaw) {
       return c.json({ error: 'Upload session not found or expired' }, 410);
     }
-    const session = JSON.parse(sessionRaw) as UploadSession;
+    let session: UploadSession;
+    try { session = JSON.parse(sessionRaw) as UploadSession; } catch {
+      return c.json({ error: 'Upload session data corrupted' }, 422);
+    }
 
     if (session.parts.length !== session.totalChunks) {
       return c.json({
@@ -374,7 +380,12 @@ bodycamVideosRouter.delete('/upload-abort/:uploadId', async (c) => {
     const sessionRaw = await c.env.KV.get(`${UPLOAD_SESSION_PREFIX}${uploadId}`);
     if (!sessionRaw) return c.json({ ok: true, already_gone: true });
 
-    const session = JSON.parse(sessionRaw) as UploadSession;
+    let session: UploadSession;
+    try { session = JSON.parse(sessionRaw) as UploadSession; } catch {
+      // Corrupted session — clean up KV so it doesn't block future attempts, then fail
+      await c.env.KV.delete(`${UPLOAD_SESSION_PREFIX}${uploadId}`).catch(() => undefined);
+      return c.json({ error: 'Upload session data corrupted; session cleared' }, 422);
+    }
     const mp = c.env.UPLOADS.resumeMultipartUpload(session.r2Key, uploadId);
     await mp.abort().catch((err) => {
       // R2 returns a 404-equivalent if the multipart already expired

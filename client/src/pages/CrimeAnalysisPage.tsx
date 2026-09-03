@@ -24,6 +24,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { crimeOffensesToCsv, crimeHotspotsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 /* ── Custom Tooltip ─────────────────────────────────────────── */
 const ChartTooltip = ({ active, payload, label, formatter }: any) => {
@@ -31,14 +32,14 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
     <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{label}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'Arial, sans-serif', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
 
 /* ── Shared axis / grid props ───────────────────────────────── */
-const AXIS_STYLE = { fill: 'var(--text-secondary)', fontSize: 9, fontFamily: 'monospace' };
+const AXIS_STYLE = { fill: 'var(--text-secondary)', fontSize: 9, fontFamily: 'Arial, sans-serif' };
 const GRID_PROPS = { stroke: 'var(--border-subtle)', strokeDasharray: '3 3' } as const;
 
 export default function CrimeAnalysisPage() {
@@ -50,6 +51,7 @@ export default function CrimeAnalysisPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // Deep-link seed: ?days=30|90|180|365|custom or ?date_range= alias — read
   // once on mount, then strip the param so the URL stays clean.
@@ -74,6 +76,7 @@ export default function CrimeAnalysisPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       let url = '/reports/crime-analysis';
       if (dateRange === 'custom' && startDate && endDate) {
@@ -84,10 +87,13 @@ export default function CrimeAnalysisPage() {
       const res = await apiFetch<{ data: any }>(url);
       if (mountedRef.current) setData(res.data);
     } catch {
-      if (mountedRef.current) addToast('Failed to load crime analysis data', 'error');
+      if (mountedRef.current) {
+        setLoadError(true);
+        addToast('Failed to load crime analysis data', 'error');
+      }
     }
     finally { if (mountedRef.current) setLoading(false); }
-  }, [dateRange, startDate, endDate]);
+  }, [dateRange, startDate, endDate, addToast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('incidents', fetchData);
@@ -180,6 +186,16 @@ export default function CrimeAnalysisPage() {
       </div>
     );
   }
+  if (loadError && !data) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-xs text-red-400 flex items-center gap-3">
+          <span>Failed to load crime analysis.</span>
+          <button type="button" className="toolbar-btn" onClick={() => void fetchData()}>Retry</button>
+        </div>
+      </div>
+    );
+  }
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -235,6 +251,18 @@ export default function CrimeAnalysisPage() {
               exportFilename="crime_analysis.csv"
             />
           )}
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={!offenseData.length}
+            onClick={() => downloadTextFile('crime-offenses.csv', crimeOffensesToCsv(data?.topOffenses ?? []))}
+          >Offenses CSV</button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            disabled={!hotspotData.length}
+            onClick={() => downloadTextFile('crime-hotspots.csv', crimeHotspotsToCsv(data?.hotspots ?? []))}
+          >Hotspots CSV</button>
           <button type="button" onClick={fetchData} className="toolbar-btn">
             <RefreshCw style={{ width: 11, height: 11 }} />
           </button>

@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, ChevronLeft, ChevronRight, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route, Activity, ScanSearch,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus } from '../../types';
@@ -94,6 +94,9 @@ import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
 import CallDocumentsPanel from './components/CallDocumentsPanel';
+import AssignmentProposalModal from './components/AssignmentProposalModal';
+import { useDispatchOptimization } from './hooks/useDispatchOptimization';
+import OptimizationV2StatusBadge from '../../components/OptimizationV2StatusBadge';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useLinkOptions } from '../../hooks/useLinkOptions';
@@ -103,13 +106,19 @@ import {
   WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS,
   SCENE_SAFETY_OPTIONS, DIRECTION_OPTIONS,
 } from '../../utils/callOptions';
+import { CfsWeatherStrip, WeatherQuickChips } from '../../components/CfsWeatherStrip';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
+import CallFilterBar, { type QuickFilter } from '../../components/dispatch/CallFilterBar';
+import ShiftStatsBar from '../../components/dispatch/ShiftStatsBar';
+import ActivityFeed from '../../components/dispatch/ActivityFeed';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
+import StartingMileageModal from '../../components/dispatch/StartingMileageModal';
 import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
+import PlateScanModal from '../../components/PlateScanModal';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { withAlpha } from '../../utils/withAlpha';
@@ -248,7 +257,7 @@ const UNIT_STATUS_EDIT_OPTIONS = [
   { value: 'enroute', label: 'En Route' },
   { value: 'onscene', label: 'On Scene' },
 ] as const;
-const STATUS_BAR_STYLE: React.CSSProperties = { background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" };
+const STATUS_BAR_STYLE: React.CSSProperties = { background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: 'Arial, sans-serif' };
 const SCROLL_CONTAIN_STYLE: React.CSSProperties = { overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties;
 
 const PROCESS_SERVICE_RESULT_GROUPS = [
@@ -345,6 +354,7 @@ function buildCallEditBody(
     scene_safety: ed.scene_safety,
     weather_conditions: ed.weather_conditions,
     lighting_conditions: ed.lighting_conditions,
+    weather_manual: ed.weather_manual ? 1 : 0,
     alcohol_involved: ed.alcohol_involved,
     drugs_involved: ed.drugs_involved,
     domestic_violence: ed.domestic_violence,
@@ -423,6 +433,7 @@ export default function DispatchPage() {
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
   const dispatchOptimization = useOptimizationV2();
   const [showAssignmentOverlay, setShowAssignmentOverlay] = useState(false);
+  const dispatchOpt = useDispatchOptimization();
   const [calls, setCalls] = useState<CallForService[]>([]);
   // Mirror `calls` into a ref so the mount-only WebSocket effect (deps exclude
   // `calls` to avoid re-subscribing on every list change) can read current
@@ -453,20 +464,40 @@ export default function DispatchPage() {
   const unitsRef = useRef<Unit[]>([]);
   useEffect(() => { unitsRef.current = units; }, [units]);
 
+  // Destructure the stable submit ref so this callback only changes when units/calls
+  // change — not every render (dispatchOptimization as a whole was a new object every
+  // render before useOptimizationV2 memoized its return value, which caused this
+  // useCallback to be recreated on every render).
   const handleOptimizeAssignments = useCallback(async () => {
-    const availableUnitIds = units
-      .filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status))
-      .map((u) => Number(u.id));
-    const openCallIds = calls
-      .filter((c) => ['active', 'dispatched', 'pending'].includes(c.status))
-      .map((c) => Number(c.id));
+    const availableUnits = units.filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status));
+    const availableUnitIds = availableUnits.map((u) => Number(u.id));
+    const openCalls = calls.filter((c) => ['active', 'dispatched', 'pending'].includes(c.status));
+    const openCallIds = openCalls.map((c) => Number(c.id));
     if (!availableUnitIds.length || !openCallIds.length) return;
+
+    // Build context maps for the rich proposal builder
+    const callDetails = new Map(openCalls.map((c) => [
+      Number(c.id),
+      {
+        incidentNumber: c.call_number || String(c.id),
+        address: c.location || '',
+        priority: c.priority || 'P3',
+      },
+    ]));
+    const callAssignments = new Map(openCalls.map((c) => [
+      Number(c.id),
+      Array.isArray(c.assigned_units) ? c.assigned_units : [],
+    ]));
+    const unitsBySign = new Map(availableUnits.map((u) => [u.call_sign, Number(u.id)]));
+
+    // Drive both: legacy simple overlay (kept for compat) + new proposal modal
     await dispatchOptimization.submit({
       job_type: 'multi_unit_dispatch',
       call_ids: openCallIds,
       unit_ids: availableUnitIds,
     });
-  }, [units, calls, dispatchOptimization]);
+    await dispatchOpt.startOptimization(openCallIds, availableUnitIds);
+  }, [units, calls, dispatchOptimization.submit, dispatchOpt]);
 
   useEffect(() => {
     if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
@@ -485,6 +516,7 @@ export default function DispatchPage() {
     });
   };
   const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showPlateScanModal, setShowPlateScanModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [reportingIssue, setReportingIssue] = useState(false);
 
@@ -598,6 +630,9 @@ export default function DispatchPage() {
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [duplicateWarning, setDuplicateWarning] = useState<{ message: string; callNumber?: string; callId?: string } | null>(null);
 
   // Queue sort mode. Persisted via two layers:
   //   1. localStorage (fast first-render hint — used while the /user/preferences
@@ -747,6 +782,12 @@ export default function DispatchPage() {
   // ── Linked Persons / Vehicles on call ──
   const [callPersons, setCallPersons] = useState<any[]>([]);
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
+  // ── BOLOs linked to the selected call ──
+  const [callBolos, setCallBolos] = useState<any[]>([]);
+  const [bolosLoading, setBolosLoading] = useState(false);
+  const [showBoloSearch, setShowBoloSearch] = useState(false);
+  const [boloSearchQ, setBoloSearchQ] = useState('');
+  const [boloSearchResults, setBoloSearchResults] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
   const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
@@ -758,6 +799,9 @@ export default function DispatchPage() {
   const [involvedVehicles, setInvolvedVehicles] = useState<any[]>([]);
   const [callNarrative, setCallNarrative] = useState<string>('');
   const [narrativeSaving, setNarrativeSaving] = useState(false);
+  const [startingMileagePrompt, setStartingMileagePrompt] = useState<{ callId: string; callNumber: string; unitId?: string | number | null } | null>(null);
+  const [submitNarrativeConfirmOpen, setSubmitNarrativeConfirmOpen] = useState(false);
+  const [submittingNarrative, setSubmittingNarrative] = useState(false);
   const [showAddInvPerson, setShowAddInvPerson] = useState(false);
   const [showAddInvVehicle, setShowAddInvVehicle] = useState(false);
   const [newInvPerson, setNewInvPerson] = useState({ name: '', dob: '', id_number: '', role: 'witness' });
@@ -1024,6 +1068,12 @@ export default function DispatchPage() {
       fetchInvolvedPersons(cid);
       fetchInvolvedVehicles(cid);
       fetchCallNarrative(cid);
+      // Fetch linked BOLOs for the selected call
+      setBolosLoading(true);
+      apiFetch<any[]>(`/dispatch/calls/${cid}/bolos`)
+        .then((data) => setCallBolos(Array.isArray(data) ? data : []))
+        .catch(() => setCallBolos([]))
+        .finally(() => setBolosLoading(false));
     } else {
       setCallPersons([]);
       setCallVehicles([]);
@@ -1031,7 +1081,10 @@ export default function DispatchPage() {
       setInvolvedPersons([]);
       setInvolvedVehicles([]);
       setCallNarrative('');
+      setCallBolos([]);
+      setShowBoloSearch(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses, fetchInvolvedPersons, fetchInvolvedVehicles, fetchCallNarrative]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
@@ -1090,15 +1143,58 @@ export default function DispatchPage() {
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
   // Map engine detection (ensure minimap knows whether to use Mapbox or MapLibre)
   const [mapEngine, setMapEngine] = useState<MapEngine | null>(getResolvedEngine);
-  useEffect(() => { detectMapEngine().then(setMapEngine); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    detectMapEngine().then((e) => { if (!cancelled) setMapEngine(e); });
+    return () => { cancelled = true; };
+  }, []);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
   const [routeInfo, setRouteInfo] = useState<{ unitCallSign: string; callNumber: string; eta: string; distance: string } | null>(null);
+  // Per-unit ETA for enroute units (keyed by unitId string)
+  const [unitEtas, setUnitEtas] = useState<Record<string, number>>({});
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string; contact_name: string; contact_phone: string; address: string }[]>([]);
   // Properties list for property selector (non-archived)
   const [propertiesList, setPropertiesList] = useState<{ id: string; name: string }[]>([]);
+
+  // ── Unit ETA fetch for enroute units (every 30s) ──────────────────────────
+  // Read units through a ref: the effect deliberately doesn't re-run on the
+  // units poll (deps below), so a closure over `units` froze the snapshot from
+  // when the call was selected — a unit going enroute AFTER selection never
+  // matched the filter and its ETA badge never appeared.
+  const unitsRefForEta = useRef(units);
+  unitsRefForEta.current = units;
+  useEffect(() => {
+    if (!selectedCall?.id) { setUnitEtas({}); return; }
+    const callId = selectedCall.id;
+    let cancelled = false;
+
+    const fetchEtas = async () => {
+      const enrouteUnits = (selectedCall.assigned_units || []).filter((uid: string) => {
+        const u = unitsRefForEta.current.find((u) => String(u.id) === String(uid));
+        return u?.status === 'enroute';
+      });
+      if (!enrouteUnits.length) { if (!cancelled) setUnitEtas({}); return; }
+      const etaMap: Record<string, number> = {};
+      await Promise.allSettled(
+        enrouteUnits.map(async (uid: string) => {
+          try {
+            const data = await apiFetch<{ eta_seconds?: number; eta_minutes?: number }>(`/dispatch/units/${uid}/eta?call_id=${callId}`);
+            const mins = data?.eta_minutes ?? (data?.eta_seconds != null ? Math.ceil(data.eta_seconds / 60) : null);
+            if (mins != null && !cancelled) etaMap[String(uid)] = mins;
+          } catch { /* best-effort */ }
+        }),
+      );
+      if (!cancelled) setUnitEtas(etaMap);
+    };
+
+    void fetchEtas();
+    const iv = setInterval(() => { void fetchEtas(); }, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCall?.id, selectedCall?.assigned_units, selectedCall?.status]);
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -1196,13 +1292,15 @@ export default function DispatchPage() {
   }, [addToast]);
 
   useEffect(() => {
+    let cancelled = false;
     fetchData();
     // Fetch quick dispatch templates
     apiFetch<any[]>('/admin/call-templates')
-      .then((data) => setTemplates((data || []).filter((t: any) => t.is_active !== 0)))
+      .then((data) => { if (!cancelled) setTemplates((data || []).filter((t: any) => t.is_active !== 0)); })
       .catch(() => { /* silent — template dropdown just stays empty */ });
     // Fetch disposition codes from admin config
     apiFetch('/admin/config').then((cfg: any) => {
+      if (cancelled) return;
       const disps = (cfg.dispositions || [])
         .filter((d: any) => d.is_active)
         .map((d: any) => {
@@ -1213,12 +1311,13 @@ export default function DispatchPage() {
     }).catch((err) => { console.warn('[DispatchPage] fetch disposition codes failed:', err); });
     // Fetch clients list for client selector
     apiFetch<any[]>('/admin/clients')
-      .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name, contact_name: c.contact_name || '', contact_phone: c.contact_phone || '', address: c.address || '' }))))
+      .then((data) => { if (!cancelled) setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name, contact_name: c.contact_name || '', contact_phone: c.contact_phone || '', address: c.address || '' }))); })
       .catch((err) => { console.warn('[DispatchPage] fetch clients list failed:', err); });
     // Fetch properties list (non-archived) for property selector
     apiFetch<any[]>('/records/properties')
-      .then((data) => setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))))
+      .then((data) => { if (!cancelled) setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))); })
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
+    return () => { cancelled = true; };
   }, [fetchData]);
 
   // ── Deep-link auto-select: /dispatch?call_id=<id> ──
@@ -1232,6 +1331,15 @@ export default function DispatchPage() {
   // so manually clicking a different call after the auto-select never gets
   // reverted on the next /calls poll.
   const [searchParams, setSearchParams] = useSearchParams();
+  // Keep a ref to the current searchParams so the deep-link effect can read
+  // it without listing it as a dependency. useSearchParams() returns a NEW
+  // URLSearchParams object every render (React Router guarantees only value
+  // equality, not referential equality), so including searchParams in the
+  // effect dep array caused the effect to re-run on every render — not just
+  // when the URL actually changed. The ref avoids that while still letting
+  // the effect see the latest URL when it runs.
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => { searchParamsRef.current = searchParams; });
   const pendingDeepLinkRef = useRef<string | null>(
     searchParams.get('call_id') || searchParams.get('callId') || null,
   );
@@ -1240,6 +1348,11 @@ export default function DispatchPage() {
     if (!targetId) return;
     const tryFind = (list: CallForService[]) => list.find((c) => String(c.id) === String(targetId));
     const fromActive = tryFind(calls);
+    const stripDeepLink = () => {
+      const next = new URLSearchParams(searchParamsRef.current);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+    };
     if (fromActive) {
       setSelectedCall(fromActive);
       // Map status → tab so the call is visible in the left rail.
@@ -1253,9 +1366,7 @@ export default function DispatchPage() {
       pendingDeepLinkRef.current = null;
       // Strip the query so a refresh doesn't re-select after the user
       // navigates away from this call.
-      const next = new URLSearchParams(searchParams);
-      next.delete('call_id'); next.delete('callId');
-      setSearchParams(next, { replace: true });
+      stripDeepLink();
       return;
     }
     // Not in active list — try archived. Trigger its load if it hasn't yet.
@@ -1268,18 +1379,14 @@ export default function DispatchPage() {
       setSelectedCall(fromArchive);
       setFilterTab('archived');
       pendingDeepLinkRef.current = null;
-      const next = new URLSearchParams(searchParams);
-      next.delete('call_id'); next.delete('callId');
-      setSearchParams(next, { replace: true });
+      stripDeepLink();
       return;
     }
     // Both lists hydrated, no match — surface once + give up.
     addToast(`Call ${targetId} not found`, 'warning');
     pendingDeepLinkRef.current = null;
-    const next = new URLSearchParams(searchParams);
-    next.delete('call_id'); next.delete('callId');
-    setSearchParams(next, { replace: true });
-  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
+    stripDeepLink();
+  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, setSearchParams, addToast]);
 
   // Open NewCallModal on mount if ?newCall=1 is present (used by Tools menu, Records, etc.)
   useEffect(() => {
@@ -1922,6 +2029,16 @@ export default function DispatchPage() {
     if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
     if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
     return true;
+  }).filter((call) => {
+    // Quick filter bar — client-side status/priority chips
+    if (quickFilter === 'all') return true;
+    if (quickFilter === 'P1') return call.priority === 'P1';
+    if (quickFilter === 'P2') return call.priority === 'P2';
+    if (quickFilter === 'pending') return call.status === 'pending';
+    if (quickFilter === 'dispatched') return call.status === 'dispatched';
+    if (quickFilter === 'onscene') return call.status === 'onscene';
+    if (quickFilter === 'mybeat') return !!(user as any)?.beat_id && String(call.beat_id ?? '') === String((user as any).beat_id);
+    return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
     if (filterTab === 'archived') {
@@ -1965,7 +2082,7 @@ export default function DispatchPage() {
     const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap, quickFilter, (user as any)?.beat_id]);
 
   // The "Search calls" box lives in the shared toolbar above both the CAD
   // board and the classic list, but was only ever wired into filteredCalls
@@ -2188,6 +2305,22 @@ export default function DispatchPage() {
     setShowNewCallModal(true);
   };
 
+  // Feature: Quick unit status change from unit board — PATCH /api/dispatch/units/:id/status
+  const handleQuickUnitStatus = useCallback(async (unitId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/dispatch/units/${unitId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setUnits((prev) =>
+        prev.map((u) => (String(u.id) === String(unitId) ? { ...u, status: newStatus as any } : u)),
+      );
+      addToast('Saved', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to update unit status', 'error');
+    }
+  }, [setUnits, addToast]);
+
   const handleNewCall = async (callData: Partial<CallForService> & Record<string, any>) => {
     setIsSaving(true);
     try {
@@ -2223,6 +2356,7 @@ export default function DispatchPage() {
         scene_safety: callData.scene_safety || null,
         weather_conditions: callData.weather_conditions || null,
         lighting_conditions: callData.lighting_conditions || null,
+        weather_manual: callData.weather_manual ? 1 : 0,
         alcohol_involved: callData.alcohol_involved ?? false,
         drugs_involved: callData.drugs_involved ?? false,
         domestic_violence: callData.domestic_violence ?? false,
@@ -2273,6 +2407,14 @@ export default function DispatchPage() {
         ...(callData.closed_at ? { closed_at: callData.closed_at } : {}),
       };
       const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
+      // Surface duplicate warning if backend detected a nearby active call
+      if (result?.duplicate_warning) {
+        setDuplicateWarning({
+          message: result.duplicate_warning.message || 'Similar call already active nearby.',
+          callNumber: result.duplicate_warning.call_number,
+          callId: result.duplicate_warning.call_id ? String(result.duplicate_warning.call_id) : undefined,
+        });
+      }
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
       rememberRecentId(newCall.id);
@@ -2405,6 +2547,7 @@ export default function DispatchPage() {
       scene_safety: selectedCallForEdit.scene_safety || '',
       weather_conditions: selectedCallForEdit.weather_conditions || '',
       lighting_conditions: selectedCallForEdit.lighting_conditions || '',
+      weather_manual: !!selectedCallForEdit.weather_manual,
       alcohol_involved: !!selectedCallForEdit.alcohol_involved,
       drugs_involved: !!selectedCallForEdit.drugs_involved,
       domestic_violence: !!selectedCallForEdit.domestic_violence,
@@ -2602,8 +2745,55 @@ export default function DispatchPage() {
   // update every render guarantees the shortcut always invokes the latest
   // closure with fresh selectedCall in scope. Same pattern as
   // handleArchiveRef above.
-  const handleStatusChangeRef = useRef(handleStatusChange);
-  useEffect(() => { handleStatusChangeRef.current = handleStatusChange; }, [handleStatusChange]);
+  const triggerStatusChange = useCallback(async (
+    callId: string,
+    newStatus: CallStatus,
+    extraBody?: Record<string, any>,
+  ) => {
+    if (newStatus === 'enroute') {
+      const call = calls.find((c) => c.id === callId);
+      const firstUnitId = call?.assigned_units?.[0] ?? selectedCall?.assigned_units?.[0];
+      setStartingMileagePrompt({
+        callId,
+        callNumber: call?.call_number ?? selectedCall?.call_number ?? callId,
+        unitId: firstUnitId,
+      });
+      return;
+    }
+
+    if (newStatus === 'onscene') {
+      const call = calls.find((c) => c.id === callId) ?? selectedCall;
+      const startMi = call?.starting_mileage ? Number(call.starting_mileage) : null;
+      // Auto-calculate ending mileage from GPS → call location (no popup — "without interference")
+      if (startMi != null && startMi > 0 && call?.latitude && call?.longitude) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000, maximumAge: 30000 }),
+          );
+          const toRad = (d: number) => (d * Math.PI) / 180;
+          const R = 3958.8; // Earth radius in miles
+          const dLat = toRad(Number(call.latitude) - pos.coords.latitude);
+          const dLon = toRad(Number(call.longitude) - pos.coords.longitude);
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(pos.coords.latitude)) *
+              Math.cos(toRad(Number(call.latitude))) *
+              Math.sin(dLon / 2) ** 2;
+          const distMiles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const endingMileage = Math.round((startMi + distMiles) * 10) / 10;
+          await handleStatusChange(callId, newStatus, { ...extraBody, ending_mileage: endingMileage });
+          return;
+        } catch {
+          // GPS unavailable — proceed without ending mileage
+        }
+      }
+    }
+
+    await handleStatusChange(callId, newStatus, extraBody);
+  }, [calls, selectedCall, handleStatusChange]);
+
+  const handleStatusChangeRef = useRef(triggerStatusChange);
+  useEffect(() => { handleStatusChangeRef.current = triggerStatusChange; }, [triggerStatusChange]);
   const handleClearWithDispositionRef = useRef(handleClearWithDisposition);
   useEffect(() => { handleClearWithDispositionRef.current = handleClearWithDisposition; }, [handleClearWithDisposition]);
   const handleHoldCallRef = useRef(handleHoldCall);
@@ -2838,7 +3028,7 @@ export default function DispatchPage() {
                 )}
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
-                    onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
+                    onClick={() => triggerStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
@@ -2847,7 +3037,7 @@ export default function DispatchPage() {
                 )}
                 {selectedCall.status === 'enroute' && (
                   <button type="button"
-                    onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
+                    onClick={() => triggerStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
@@ -3472,7 +3662,7 @@ export default function DispatchPage() {
                           const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
-                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                             confirmLabel: 'Schedule Visit',
                             run: async () => {
                               try {
@@ -3484,7 +3674,7 @@ export default function DispatchPage() {
                                   const mapped = mapDbCall(result);
                                   setCalls(prev => [mapped, ...prev]);
                                   setSelectedCall(mapped);
-                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                  addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
                               } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                             },
@@ -3516,7 +3706,7 @@ export default function DispatchPage() {
                         onClick={() => {
                           setPendingConfirm({
                             title: 'Undo Return Visit',
-                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call. The Process Server job stays on the original matter.`,
                             confirmLabel: 'Undo Visit',
                             run: async () => {
                               try {
@@ -3563,6 +3753,36 @@ export default function DispatchPage() {
         >
           <Shield style={{ width: 20, height: 20 }} />
         </button>
+
+        {/* Duplicate call warning banner — shown when POST /dispatch/calls returns duplicate_warning */}
+        {duplicateWarning && (
+          <div
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] flex items-start gap-2 px-3 py-2 max-w-sm w-[90%] text-[11px] font-bold"
+            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+            role="alert"
+          >
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span>&#9888; {duplicateWarning.message}</span>
+              {duplicateWarning.callNumber && duplicateWarning.callId && (
+                <button
+                  type="button"
+                  className="ml-2 underline hover:no-underline"
+                  onClick={() => {
+                    const c = calls.find((x) => String(x.id) === duplicateWarning.callId);
+                    if (c) setSelectedCall(c);
+                    setDuplicateWarning(null);
+                  }}
+                >
+                  View #{duplicateWarning.callNumber}
+                </button>
+              )}
+            </div>
+            <button type="button" aria-label="Dismiss duplicate warning" onClick={() => setDuplicateWarning(null)} className="text-yellow-300 hover:text-yellow-100 ml-1">
+              <X style={{ width: 12, height: 12 }} />
+            </button>
+          </div>
+        )}
 
         {/* New Call Modal (shared with desktop) */}
         <NewCallModal
@@ -3629,6 +3849,15 @@ export default function DispatchPage() {
             <Hash style={{ width: 10, height: 10 }} />
             Codes
           </button>
+          {/* Activity Feed toggle */}
+          <button type="button"
+            onClick={() => setShowActivityFeed(prev => !prev)}
+            className={`toolbar-btn ${showActivityFeed ? 'text-brand-400 border-brand-700/40 bg-brand-900/20' : ''}`}
+            title={showActivityFeed ? 'Close activity feed' : 'Open activity feed'}
+          >
+            <Activity style={{ width: 10, height: 10 }} />
+            Activity
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {/* Cleared-tab supervisor: one-click end-of-shift PDF summary.
@@ -3690,6 +3919,10 @@ export default function DispatchPage() {
           <button type="button" onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 10, height: 10 }} />
             New Call
+          </button>
+          <button type="button" onClick={() => setShowPlateScanModal(true)} className="toolbar-btn" title="Plate Scan — scan a license plate or create a vehicle record">
+            <ScanSearch style={{ width: 10, height: 10 }} />
+            Plate Scan
           </button>
           {/* Quick Dispatch dropdown */}
           <div className="relative" ref={templateDropdownRef} style={{ display: 'inline-block' }}>
@@ -3768,6 +4001,22 @@ export default function DispatchPage() {
             <Shield style={{ width: 10, height: 10 }} />
             PSO
           </button>
+          {/* Optimize Assignments — supervisor+ only, requires pending calls + available units */}
+          {isSupervisorPlus && calls.some(c => c.status === 'pending' || c.status === 'on_hold') && units.some(u => u.status === 'available') && (
+            dispatchOpt.status === 'idle' || dispatchOpt.status === 'error' ? (
+              <button
+                type="button"
+                onClick={handleOptimizeAssignments}
+                className="toolbar-btn"
+                title="Suggest optimal unit assignments for pending calls"
+              >
+                <Route style={{ width: 10, height: 10 }} />
+                Optimize
+              </button>
+            ) : (dispatchOpt.status === 'pending' || dispatchOpt.status === 'processing') ? (
+              <OptimizationV2StatusBadge status={dispatchOpt.status} elapsedMs={dispatchOpt.elapsedMs} />
+            ) : null
+          )}
           <button type="button"
             onClick={toggleCadBoardView}
             className="toolbar-btn"
@@ -3954,6 +4203,16 @@ export default function DispatchPage() {
         {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
         <DispatchAnalyticsStrip />
 
+        {/* Shift Stats Bar — calls/incidents/active units this shift, polls every 60s */}
+        <ShiftStatsBar activeUnits={units.filter((u) => u.status !== 'off_duty').length} />
+
+        {/* Quick filter bar — chips for All / P1 / P2 / status / my beat */}
+        <CallFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          myBeat={(user as any)?.beat_id ?? null}
+        />
+
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
@@ -4116,6 +4375,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* RIGHT PANEL - Call Detail + Map (top), USB (bottom shorter) */}
       {/* ============================================================ */}
+      <div className="flex-1 flex min-w-0">
       <div className="flex-1 flex flex-col min-w-0">
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
@@ -4498,7 +4758,7 @@ export default function DispatchPage() {
                           const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
-                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                             confirmLabel: 'Schedule Visit',
                             run: async () => {
                               try {
@@ -4510,13 +4770,13 @@ export default function DispatchPage() {
                                   const mapped = mapDbCall(result);
                                   setCalls(prev => [mapped, ...prev]);
                                   setSelectedCall(mapped);
-                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                  addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
                               } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
-                        title="Schedule a return visit — creates a new linked call"
+                        title="Schedule a return visit — new CFS, same Process Server job"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
@@ -4542,7 +4802,7 @@ export default function DispatchPage() {
                         onClick={() => {
                           setPendingConfirm({
                             title: 'Undo Return Visit',
-                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call. The Process Server job stays on the original matter.`,
                             confirmLabel: 'Undo Visit',
                             run: async () => {
                               try {
@@ -4649,12 +4909,12 @@ export default function DispatchPage() {
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'dispatched' && (
-                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => triggerStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
                         <Navigation style={{ width: 10, height: 10 }} /> En Route
                       </button>
                     )}
                     {!isEditing && selectedCall.status === 'enroute' && (
-                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
+                      <button type="button" onClick={() => triggerStatusChange(selectedCall.id, 'onscene')} className="toolbar-btn toolbar-btn-primary">
                         <Eye style={{ width: 10, height: 10 }} /> On Scene
                       </button>
                     )}
@@ -4963,13 +5223,17 @@ export default function DispatchPage() {
                           <span className="text-rmpg-300">X-St: {selectedCall.cross_street}</span>
                         </p>
                       )}
-                      {/* Weather at call location — officer safety indicator */}
-                      {!isEditing && selectedCall.weather_conditions && (
-                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
-                          <Thermometer style={{ width: 10, height: 10 }} />
-                          <span className="text-rmpg-300">{toDisplayLabel(selectedCall.weather_conditions)}</span>
-                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {toDisplayLabel(selectedCall.lighting_conditions)}</span>}
-                        </p>
+                      {/* Weather at call location — stamped at dispatch / entry time */}
+                      {!isEditing && (selectedCall.weather_snapshot || selectedCall.weather_conditions) && (
+                        <div className="ml-5 mt-1">
+                          <CfsWeatherStrip
+                            snapshot={selectedCall.weather_snapshot}
+                            conditions={selectedCall.weather_conditions}
+                          />
+                          {selectedCall.lighting_conditions && (
+                            <span className="text-[10px] text-rmpg-400">Lighting: {toDisplayLabel(selectedCall.lighting_conditions)}</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div>
@@ -5311,6 +5575,11 @@ export default function DispatchPage() {
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
+                                {unitObj?.status === 'enroute' && unitEtas[String(unitIdStr)] != null && (
+                                  <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>
+                                    ETA ~{unitEtas[String(unitIdStr)]} min
+                                  </span>
+                                )}
                                 {!isEditing && unitObj && !TERMINAL_STATUSES.has(selectedCall.status) && (
                                   <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
@@ -5755,7 +6024,12 @@ export default function DispatchPage() {
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
-                                <WarrantBadge flags={cp.flags} size="sm" />
+                                <WarrantBadge flags={cp.flags ?? cp.warrant_hits ?? []} size="sm" />
+                                {(!cp.flags && cp.warrant_hits && Array.isArray(cp.warrant_hits) && cp.warrant_hits.length > 0) && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-700 px-1.5 py-px rounded-sm">
+                                    WARRANT ({cp.warrant_hits.length})
+                                  </span>
+                                )}
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{toDisplayLabel(cp.race)}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{toDisplayLabel(cp.sex)}</span>}
@@ -5777,6 +6051,80 @@ export default function DispatchPage() {
                             ))}
                           </div>
                         )}
+                        {/* ── Linked BOLOs ── */}
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">
+                              Linked BOLOs{callBolos.length > 0 ? ` (${callBolos.length})` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-400"
+                              onClick={() => setShowBoloSearch((v) => !v)}
+                            >
+                              {showBoloSearch ? 'Cancel' : 'Link BOLO'}
+                            </button>
+                          </div>
+                          {bolosLoading && <span className="text-[9px] text-fg-muted italic">Loading…</span>}
+                          {callBolos.map((bolo: any) => (
+                            <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
+                              <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-rmpg-100">{bolo.title || bolo.description || '—'}</span>
+                                {bolo.vehicle_description && <span className="ml-1 text-brand-400">{bolo.vehicle_description}</span>}
+                                {bolo.subject_description && <span className="ml-1 text-fg-secondary">{bolo.subject_description}</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {showBoloSearch && (
+                            <div className="mt-1 space-y-1">
+                              <input
+                                type="text"
+                                className="input-dark text-xs w-full"
+                                placeholder="Search BOLO by title, subject, or vehicle…"
+                                value={boloSearchQ}
+                                onChange={(e) => {
+                                  setBoloSearchQ(e.target.value);
+                                  if (e.target.value.length >= 2) {
+                                    apiFetch<any[]>(`/dispatch/bolos?q=${encodeURIComponent(e.target.value)}`)
+                                      .then((r) => setBoloSearchResults(Array.isArray(r) ? r : []))
+                                      .catch(() => setBoloSearchResults([]));
+                                  } else {
+                                    setBoloSearchResults([]);
+                                  }
+                                }}
+                              />
+                              {boloSearchResults.length > 0 && (
+                                <div className="bg-rmpg-800 border border-rmpg-600 max-h-32 overflow-y-auto">
+                                  {boloSearchResults.map((bolo: any) => (
+                                    <button
+                                      key={bolo.id}
+                                      type="button"
+                                      className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0"
+                                      onClick={async () => {
+                                        try {
+                                          await apiFetch(`/dispatch/calls/${selectedCall.id}/bolos`, {
+                                            method: 'POST',
+                                            body: JSON.stringify({ bolo_id: bolo.id }),
+                                          });
+                                          setCallBolos((prev) => [...prev, bolo]);
+                                          setShowBoloSearch(false);
+                                          setBoloSearchQ('');
+                                          setBoloSearchResults([]);
+                                        } catch { /* best-effort */ }
+                                      }}
+                                    >
+                                      <span className="font-semibold text-amber-400">BOLO</span>
+                                      {' '}{bolo.title || bolo.description || '—'}
+                                      {bolo.vehicle_description && <span className="ml-1 text-brand-400 text-[9px]">{bolo.vehicle_description}</span>}
+                                      {bolo.subject_description && <span className="ml-1 text-fg-muted text-[9px]">{bolo.subject_description}</span>}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -5976,35 +6324,114 @@ export default function DispatchPage() {
 
                 {/* ── NARRATIVE / INCIDENT SUMMARY ─── */}
                 {(detailTab === 'info' || detailTab === 'persons') && (
-                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">Narrative / Incident Summary</span>
-                      {narrativeSaving && <span className="text-[8px] text-rmpg-500 italic">Saving…</span>}
-                    </div>
-                    <textarea
-                      className="textarea-dark text-xs w-full"
-                      rows={4}
-                      placeholder="Enter structured narrative or incident summary…"
-                      value={callNarrative}
-                      onChange={e => setCallNarrative(e.target.value)}
-                      onBlur={async () => {
-                        if (!selectedCall?.id) return;
-                        setNarrativeSaving(true);
-                        try {
-                          await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
-                            method: 'PATCH',
-                            body: JSON.stringify({ narrative: callNarrative }),
-                          });
-                        } catch { addToast('Failed to save narrative', 'error'); }
-                        finally { setNarrativeSaving(false); }
+                  <div
+                    className="mt-3 rounded-sm shadow-sm"
+                    style={{
+                      border: selectedCall?.status === 'cleared'
+                        ? '1px solid rgba(34,197,94,0.45)'
+                        : '1px solid var(--spm-border)',
+                      background: selectedCall?.status === 'cleared'
+                        ? 'color-mix(in srgb, var(--surface-raised) 92%, rgba(34,197,94,0.12))'
+                        : 'var(--surface-raised)',
+                    }}
+                  >
+                    {/* Header bar */}
+                    <div
+                      className="flex items-center justify-between px-3 py-2 border-b"
+                      style={{
+                        borderColor: selectedCall?.status === 'cleared'
+                          ? 'rgba(34,197,94,0.3)'
+                          : 'var(--spm-border)',
+                        background: 'var(--surface-deep)',
                       }}
-                    />
-                    <p className="text-[8px] text-rmpg-500 mt-0.5">Auto-saves on blur. Separate from call description / notes log.</p>
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5" style={{ color: 'var(--field-label-color)' }} />
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                            Narrative / Incident Summary
+                          </span>
+                          <span className="ml-2 text-[8px] font-normal uppercase tracking-widest text-rmpg-500">
+                            Official Report
+                          </span>
+                        </div>
+                        {narrativeSaving && <span className="text-[9px] text-brand-400 animate-pulse italic ml-1">Saving…</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] text-fg-muted font-mono tabular-nums">
+                          {callNarrative.trim() ? `${callNarrative.trim().split(/\s+/).length} words` : '0 words'}
+                        </span>
+                        {selectedCall?.status === 'cleared' && (
+                          <button
+                            type="button"
+                            onClick={() => setSubmitNarrativeConfirmOpen(true)}
+                            disabled={!callNarrative.trim() || submittingNarrative}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-sm transition-colors shadow-xs"
+                            style={{
+                              background: callNarrative.trim() ? 'rgb(22 163 74)' : 'rgba(22,163,74,0.3)',
+                              color: '#fff',
+                              opacity: submittingNarrative ? 0.5 : 1,
+                            }}
+                            title="Submit narrative and close this CFS"
+                          >
+                            <CheckCircle style={{ width: 12, height: 12 }} />
+                            Submit Narrative
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cleared-state call-to-action strip */}
+                    {selectedCall?.status === 'cleared' && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-medium text-green-300" style={{ background: 'rgba(34,197,94,0.07)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}>
+                        <CheckCircle style={{ width: 10, height: 10 }} />
+                        CFS Cleared — complete the narrative below and click Submit Narrative to close this call and queue it for archiving.
+                      </div>
+                    )}
+
+                    {/* Textarea body */}
+                    <div className="p-3">
+                      <textarea
+                        className="textarea-dark text-xs w-full font-sans leading-relaxed"
+                        rows={selectedCall?.status === 'cleared' ? 7 : 5}
+                        placeholder={
+                          selectedCall?.status === 'cleared'
+                            ? 'Document what occurred, actions taken, persons involved, and outcome. This becomes the official incident summary on file.'
+                            : 'Narrative / incident summary (replaces Action Taken — auto-saves on blur)…'
+                        }
+                        value={callNarrative}
+                        onChange={e => {
+                          setCallNarrative(e.target.value);
+                          updateEditField('action_taken', e.target.value);
+                        }}
+                        onBlur={async () => {
+                          if (!selectedCall?.id) return;
+                          setNarrativeSaving(true);
+                          try {
+                            await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ narrative: callNarrative }),
+                            });
+                            setSelectedCall(prev => prev ? { ...prev, action_taken: callNarrative } : prev);
+                          } catch { addToast('Failed to save narrative', 'error'); }
+                          finally { setNarrativeSaving(false); }
+                        }}
+                      />
+                      <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1.5">
+                        <span>Auto-saves on blur · Official Incident Summary & Action Taken of record</span>
+                        {selectedCall?.status === 'cleared' && callNarrative.trim() && (
+                          <span className="text-green-400 font-semibold">Ready to Submit</span>
+                        )}
+                        {selectedCall?.status === 'cleared' && !callNarrative.trim() && (
+                          <span className="text-amber-400/80 font-medium">Narrative required before closing</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
+                {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.weather_snapshot || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
@@ -6022,9 +6449,15 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Weather</label>
-                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => { updateEditField('weather_conditions', e.target.value); updateEditField('weather_manual', true); }}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
+                            <div className="mt-1">
+                              <WeatherQuickChips
+                                value={editData.weather_conditions}
+                                onSelect={(v) => { updateEditField('weather_conditions', v); updateEditField('weather_manual', true); }}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Lighting</label>
@@ -6058,7 +6491,6 @@ export default function DispatchPage() {
                           <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
                           <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-[color:var(--field-label-color)]">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
                           <label className="text-[9px] text-[color:var(--field-label-color)]">Responding Officer</label>
                           <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
@@ -6074,8 +6506,13 @@ export default function DispatchPage() {
                       );
                     })() : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
+                        {selectedCall.weather_snapshot && (
+                          <div className="basis-full">
+                            <CfsWeatherStrip snapshot={selectedCall.weather_snapshot} conditions={selectedCall.weather_conditions} />
+                          </div>
+                        )}
                         {selectedCall.scene_safety && <span className="text-rmpg-200"><span className="text-rmpg-400">Scene:</span> {selectedCall.scene_safety}</span>}
-                        {selectedCall.weather_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Weather:</span> {selectedCall.weather_conditions}</span>}
+                        {!selectedCall.weather_snapshot && selectedCall.weather_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Weather:</span> {selectedCall.weather_conditions}</span>}
                         {selectedCall.lighting_conditions && <span className="text-rmpg-200"><span className="text-rmpg-400">Lighting:</span> {selectedCall.lighting_conditions}</span>}
                         {selectedCall.alcohol_involved && <span className="text-amber-400 font-semibold">ALCOHOL</span>}
                         {selectedCall.drugs_involved && <span className="text-red-400 font-semibold">DRUGS</span>}
@@ -6084,7 +6521,7 @@ export default function DispatchPage() {
                         {selectedCall.le_notified && <span className="text-brand-400">LE Notified{selectedCall.le_agency ? ` (${selectedCall.le_agency})` : ''}{selectedCall.le_case_number ? ` #${selectedCall.le_case_number}` : ''}</span>}
                         {selectedCall.damage_estimate && <span className="text-rmpg-200"><span className="text-rmpg-400">Damage:</span> ${selectedCall.damage_estimate}</span>}
                         {selectedCall.damage_description && <span className="text-rmpg-200 basis-full">{selectedCall.damage_description}</span>}
-                        {selectedCall.action_taken && <span className="text-rmpg-200 basis-full"><span className="text-rmpg-400">Action:</span> {selectedCall.action_taken}</span>}
+                        {/* action_taken is now the Narrative / Incident Summary field above — not shown here */}
                         {selectedCall.responding_officer && <span className="text-rmpg-200"><span className="text-rmpg-400">Resp. Officer:</span> {selectedCall.responding_officer}</span>}
                       </div>
                     )}
@@ -6154,7 +6591,7 @@ export default function DispatchPage() {
                             const ordinal = formatOrdinal(attempt);
                             setPendingConfirm({
                               title: 'Schedule Return Visit',
-                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                               confirmLabel: 'Schedule Visit',
                               run: async () => {
                                 try {
@@ -6165,14 +6602,16 @@ export default function DispatchPage() {
                                   if (result) {
                                     const mapped = mapDbCall(result);
                                     setSelectedCall(mapped);
-                                    setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                                    addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                                    setCalls(prev => prev.some(c => c.id === mapped.id)
+                                      ? prev.map(c => c.id === mapped.id ? mapped : c)
+                                      : [mapped, ...prev]);
+                                    addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                   }
                                 } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                               },
                             });
                           }}
-                          title="Re-dispatch this PSO call with a new visit number"
+                          title="Schedule a return visit — new CFS, same Process Server job"
                         >
                           <RotateCcw style={{ width: 9, height: 9, display: 'inline', marginRight: 3 }} />
                           Schedule Return Visit
@@ -6416,6 +6855,12 @@ export default function DispatchPage() {
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.court_name && <span className="text-rmpg-200"><span className="text-fg-muted">Court:</span> {selectedCall.court_name}</span>}
                         {selectedCall.case_number && <span className="text-rmpg-200"><span className="text-fg-muted">Case #:</span> {selectedCall.case_number}</span>}
+                        {selectedCall.plaintiff_name && <span className="text-rmpg-200"><span className="text-fg-muted">Plaintiff:</span> {selectedCall.plaintiff_name}</span>}
+                        {selectedCall.attorney_name && <span className="text-rmpg-200"><span className="text-fg-muted">Attorney:</span> {selectedCall.attorney_name}</span>}
+                        {selectedCall.jurisdiction && <span className="text-rmpg-200"><span className="text-fg-muted">Jurisdiction:</span> {selectedCall.jurisdiction}</span>}
+                        {selectedCall.deadline && <span className="text-rmpg-200"><span className="text-fg-muted">Due:</span> {selectedCall.deadline}</span>}
+                        {selectedCall.time_window && <span className="text-rmpg-200"><span className="text-fg-muted">Window:</span> {selectedCall.time_window}</span>}
+                        {selectedCall.service_instructions && <span className="text-rmpg-200"><span className="text-fg-muted">Instructions:</span> {selectedCall.service_instructions}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {formatTime(selectedCall.process_served_at)}</span>}
                         {!isDetailLoading && !selectedCall.process_service_type && !selectedCall.process_served_to && (
                           <span className="text-rmpg-500 italic">No process service details entered yet</span>
@@ -6961,9 +7406,13 @@ export default function DispatchPage() {
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               unitWorkload={unitWorkload}
               onAssignUnit={selectedCall && !TERMINAL_STATUSES.has(selectedCall.status) ? handleAssignUnit : undefined}
+              onStatusChange={handleQuickUnitStatus}
             />
           </div>
         </div>
+      </div>
+      {/* Activity Feed collapsible sidebar */}
+      <ActivityFeed isOpen={showActivityFeed} onClose={() => setShowActivityFeed(false)} />
       </div>
 
       {/* Keyboard-shortcut cheat sheet (toggle with "?") */}
@@ -7240,6 +7689,12 @@ export default function DispatchPage() {
         onSubmit={handleNewCall}
         onExpandToFullForm={handlePsoExpandToFullForm}
       />
+
+      {showPlateScanModal && (
+        <PlateScanModal
+          onClose={() => setShowPlateScanModal(false)}
+        />
+      )}
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
@@ -7868,8 +8323,8 @@ export default function DispatchPage() {
         </div>
       </div>
 
-      {/* Optimize Assignments result overlay */}
-      {showAssignmentOverlay && dispatchOptimization.solution && (
+      {/* Optimize Assignments result overlay — legacy simple view (kept for backwards compat) */}
+      {showAssignmentOverlay && dispatchOptimization.solution && !dispatchOpt.showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-surface-base border border-rmpg-600 p-4 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col gap-3" style={{ borderRadius: 2 }}>
             <div className="flex items-center justify-between">
@@ -7904,6 +8359,103 @@ export default function DispatchPage() {
                     ))}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Optimize Assignments — rich proposal modal */}
+      {dispatchOpt.showModal && (
+        <AssignmentProposalModal
+          proposals={dispatchOpt.proposals}
+          droppedServices={dispatchOpt.droppedServices}
+          accepted={dispatchOpt.accepted}
+          onToggle={dispatchOpt.toggleAccepted}
+          onApplyAll={() => dispatchOpt.applyProposals(async (callId, unitId) => {
+            await apiFetch(`/dispatch/calls/${callId}/assign-unit`, {
+              method: 'POST',
+              body: JSON.stringify({ unit_id: unitId }),
+            });
+            await refreshUnits();
+          })}
+          onClose={() => { dispatchOpt.closeModal(); dispatchOpt.reset(); }}
+          applying={dispatchOpt.applying}
+        />
+      )}
+
+      {/* Starting Mileage Prompt Modal for En Route transition */}
+      {startingMileagePrompt && (
+        <StartingMileageModal
+          isOpen={!!startingMileagePrompt}
+          onClose={() => setStartingMileagePrompt(null)}
+          callId={startingMileagePrompt.callId}
+          callNumber={startingMileagePrompt.callNumber}
+          unitId={startingMileagePrompt.unitId}
+          onConfirm={async (mileage) => {
+            await handleStatusChange(startingMileagePrompt.callId, 'enroute', { starting_mileage: mileage });
+            setStartingMileagePrompt(null);
+            addToast(`CFS ${startingMileagePrompt.callNumber} is En Route (Starting Mileage: ${mileage})`, 'success');
+          }}
+        />
+      )}
+
+      {/* Submit Narrative Confirmation Modal */}
+      {submitNarrativeConfirmOpen && selectedCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div
+            className="w-full max-w-sm rounded-lg border border-[var(--spm-border)] p-4 shadow-2xl space-y-3 max-h-[90vh] overflow-y-auto"
+            style={{ background: 'var(--surface-base)' }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center gap-2 border-b border-[var(--spm-border)] pb-2">
+              <div className="p-1.5 rounded-sm bg-green-500/20 text-green-400">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-fg-primary uppercase tracking-wider">
+                  Submit Narrative & Close CFS
+                </h3>
+                <p className="text-[10px] text-fg-muted">CFS {selectedCall.call_number}</p>
+              </div>
+            </div>
+            <p className="text-xs text-fg-secondary leading-relaxed">
+              Are you sure you want to submit this narrative report? Submitting will save the report as the official incident summary, mark CFS {selectedCall.call_number} as <strong>Closed</strong>, and queue it for automated archiving on the next 5-minute interval.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--spm-border)]">
+              <button
+                type="button"
+                onClick={() => setSubmitNarrativeConfirmOpen(false)}
+                disabled={submittingNarrative}
+                className="px-3 py-1.5 text-xs text-fg-secondary hover:text-fg-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submittingNarrative}
+                onClick={async () => {
+                  setSubmittingNarrative(true);
+                  try {
+                    // Save latest narrative
+                    await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ narrative: callNarrative }),
+                    });
+                    // Advance status to closed
+                    await handleStatusChange(selectedCall.id, 'closed');
+                    setSubmitNarrativeConfirmOpen(false);
+                    addToast(`Narrative submitted. CFS ${selectedCall.call_number} closed and scheduled for archiving.`, 'success');
+                  } catch (err: any) {
+                    addToast(err?.message || 'Failed to submit narrative', 'error');
+                  } finally {
+                    setSubmittingNarrative(false);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-fg-primary bg-green-600 hover:bg-green-500 rounded-sm disabled:opacity-50 transition-colors"
+              >
+                {submittingNarrative ? 'Submitting...' : 'Confirm & Close CFS'}
+              </button>
             </div>
           </div>
         </div>

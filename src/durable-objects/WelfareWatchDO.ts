@@ -30,11 +30,17 @@ interface WatchState {
   last_activity_at: number;     // epoch ms — bumped by recordActivity
   started_at: number;
   fired_at: number | null;      // ms when current stage fired (for next alarm offset)
+  prompt_after_ms: number;      // Stage-1 silence threshold — configurable per watch (see handleStart)
 }
 
-const PROMPT_AFTER_MS    = 15 * 60 * 1000;  // 15 min
+const PROMPT_AFTER_MS    = 15 * 60 * 1000;  // 15 min — default/fallback
 const ALERT_AFTER_MS     =  2 * 60 * 1000;  //  +2 min
 const EMERGENCY_AFTER_MS =  5 * 60 * 1000;  //  +5 min
+
+// Guardrails on the caller-supplied Stage-1 threshold: below 1 min it's not a
+// meaningful welfare check, above 4 hours it's not really "welfare" anymore.
+const MIN_PROMPT_AFTER_MS = 60 * 1000;
+const MAX_PROMPT_AFTER_MS = 4 * 60 * 60 * 1000;
 
 export class WelfareWatchDO {
   state: DurableObjectState;
@@ -71,10 +77,23 @@ export class WelfareWatchDO {
     else await this.state.storage.put('watch', s);
   }
 
-  // POST /start { user_id, call_sign, call_id, call_number }
-  // Begin watching. Stage = 0. Alarm set for PROMPT_AFTER_MS from now.
+  // POST /start { user_id, call_sign, call_id, call_number, timer_ms? }
+  // Begin watching. Stage = 0. Alarm set for prompt_after_ms from now.
+  //
+  // timer_ms is the Stage-1 silence threshold. It arrives from the
+  // trigger_welfare_check automation action's cfg.timer_ms (see
+  // src/utils/automationEngine.ts's fireAction) — previously this handler
+  // ignored it entirely and always armed with the fixed 15-minute
+  // PROMPT_AFTER_MS, so every automation rule's configured welfare-check
+  // interval was silently overridden to the same default regardless of what
+  // an admin/officer set. Clamped to a sane range and persisted on the watch
+  // so alarm()'s later stages compute their offsets from the same value.
   private async handleStart(body: any): Promise<Response> {
     const now = Date.now();
+    const requestedMs = Number(body.timer_ms);
+    const promptAfterMs = Number.isFinite(requestedMs) && requestedMs > 0
+      ? Math.min(Math.max(requestedMs, MIN_PROMPT_AFTER_MS), MAX_PROMPT_AFTER_MS)
+      : PROMPT_AFTER_MS;
     const next: WatchState = {
       user_id: Number(body.user_id),
       call_sign: body.call_sign || null,
@@ -84,10 +103,11 @@ export class WelfareWatchDO {
       last_activity_at: now,
       started_at: now,
       fired_at: null,
+      prompt_after_ms: promptAfterMs,
     };
     await this.setState(next);
-    await this.state.storage.setAlarm(now + PROMPT_AFTER_MS);
-    return Response.json({ success: true, started_at: now, next_alarm_in_ms: PROMPT_AFTER_MS });
+    await this.state.storage.setAlarm(now + promptAfterMs);
+    return Response.json({ success: true, started_at: now, next_alarm_in_ms: promptAfterMs });
   }
 
   // POST /ack — officer responded Code 4. Clear state + cancel alarm.
@@ -111,7 +131,7 @@ export class WelfareWatchDO {
     // and handleStop() — keeps a reader from having to internalize the
     // overwrite contract to be confident the activity path is safe.
     await this.state.storage.deleteAlarm();
-    await this.state.storage.setAlarm(now + PROMPT_AFTER_MS);
+    await this.state.storage.setAlarm(now + (s.prompt_after_ms ?? PROMPT_AFTER_MS));
     return Response.json({ success: true, reset: true });
   }
 
@@ -158,8 +178,10 @@ export class WelfareWatchDO {
 
       const now = Date.now();
       const silentMs = now - s.last_activity_at;
+      // Fall back for watches persisted before prompt_after_ms existed.
+      const promptAfterMs = s.prompt_after_ms ?? PROMPT_AFTER_MS;
 
-      if (s.stage === 0 && silentMs >= PROMPT_AFTER_MS) {
+      if (s.stage === 0 && silentMs >= promptAfterMs) {
         // Stage 1 — prompt
         s.stage = 1;
         s.fired_at = now;
@@ -168,7 +190,7 @@ export class WelfareWatchDO {
         await this.state.storage.setAlarm(now + ALERT_AFTER_MS);
         return;
       }
-      if (s.stage === 1 && silentMs >= PROMPT_AFTER_MS + ALERT_AFTER_MS) {
+      if (s.stage === 1 && silentMs >= promptAfterMs + ALERT_AFTER_MS) {
         // Stage 2 — supervisor alert
         s.stage = 2;
         s.fired_at = now;
@@ -177,7 +199,7 @@ export class WelfareWatchDO {
         await this.state.storage.setAlarm(now + EMERGENCY_AFTER_MS);
         return;
       }
-      if (s.stage === 2 && silentMs >= PROMPT_AFTER_MS + ALERT_AFTER_MS + EMERGENCY_AFTER_MS) {
+      if (s.stage === 2 && silentMs >= promptAfterMs + ALERT_AFTER_MS + EMERGENCY_AFTER_MS) {
         // Stage 3 — emergency
         s.stage = 3;
         s.fired_at = now;

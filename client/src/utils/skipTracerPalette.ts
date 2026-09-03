@@ -13,6 +13,7 @@ export const INPUT_BADGE_COLORS: Record<string, string> = {
   Phone: '#f59e0b',
   Email: '#f472b6',
   Address: '#34d399',
+  Vehicle: '#60a5fa',
 };
 
 /** Source category colors — one stable color per data-source category. */

@@ -51,6 +51,7 @@ import { isCircuitOpen } from './warrantSources/resilience';
 // skew this helper exists to normalize. Its own docblock argues for centralizing
 // it instead of keeping parallel copies.
 import { parseD1TimestampMs } from './fleetio/sync';
+import { confirmIdentity } from './identityConfirm';
 
 // Source key tying this poller to its warrant_scraper_config row + the
 // scraper_events WebSocket channel + the dispatcher-facing display name
@@ -121,7 +122,7 @@ interface PersonRow {
  * The search endpoint returns duplicate rows per personId (name-spelling
  * variants, multiple addresses on file) — callers must dedup by personId.
  */
-interface PersonStub {
+export interface PersonStub {
   personId: number;
   firstName: string;
   middleName?: string;
@@ -167,57 +168,28 @@ export interface WatchRunResult {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Whole-years age from an ISO-ish dob string, or null if unparseable. */
-function ageFromDob(dob: string | null): number | null {
-  if (!dob) return null;
-  const born = new Date(dob);
-  if (isNaN(born.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - born.getFullYear();
-  const m = now.getMonth() - born.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
-  return age >= 0 && age < 130 ? age : null;
-}
-
-// How many years the local DOB-derived age may differ from the upstream
-// `age` field and still count as the same person. ±1 absorbs the
-// birthday-timing gap between when the state computed `age` and now.
-const AGE_MATCH_TOLERANCE = 1;
-
 /**
- * Decide whether an upstream candidate is plausibly the SAME human as the
- * local person — the guard against attributing a namesake's warrant to the
- * wrong local file. "John Smith" returns 8 distinct people; without this
- * filter every one of their warrants lands on a single local person_id.
- *
- * Confident path: local DOB present → derive age, require the upstream
- * `age` to be within AGE_MATCH_TOLERANCE years. Middle-initial agreement
- * (when both sides have one) further confirms.
- *
- * Ambiguous path: local person has NO dob, so age can't disambiguate.
- * That branch is a deliberate policy decision — see TODO below.
+ * Decide whether an upstream candidate is the SAME human as the local person.
+ * "John Smith" returns many people; we require name + DOB/age confirmation
+ * (and reject a city conflict) before attributing any warrant. A local
+ * person with no DOB is never auto-linked to a namesake.
  */
 function isLikelyMatch(local: PersonRow, candidate: PersonStub): boolean {
-  const localAge = ageFromDob(local.dob);
-  const upstreamAge = candidate.age;
-
-  if (localAge != null && typeof upstreamAge === 'number' && Number.isFinite(upstreamAge)) {
-    if (Math.abs(localAge - upstreamAge) > AGE_MATCH_TOLERANCE) return false;
-    // Age agrees. If BOTH have a middle name, require first-initial match
-    // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
-    const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
-    const um = candidate.middleName?.trim()?.[0]?.toUpperCase();
-    if (lm && um && lm !== um) return false;
-    return true;
-  }
-
-  // Policy (operator decision 2026-05-24): when the local record has no DOB,
-  // age-matching is impossible, so attribute the namesake rather than skip
-  // the person entirely. Age-from-DOB remains the PRIMARY matcher above —
-  // this branch only runs for DOB-less local records (≈25% of the roster).
-  // Tradeoff accepted: some namesake false-positives on DOB-less records,
-  // in exchange for never silently leaving a person unchecked. Backfilling
-  // DOBs on those records upgrades them to the confident path automatically.
+  const verdict = confirmIdentity(
+    { first: local.first_name, last: local.last_name, dob: local.dob },
+    {
+      first: candidate.firstName,
+      last: candidate.lastName,
+      age: candidate.age,
+      city: candidate.city,
+    },
+  );
+  if (!verdict.matched) return false;
+  // Age agrees. If BOTH have a middle name, require first-initial match
+  // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
+  const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
+  const um = candidate.middleName?.trim()?.[0]?.toUpperCase();
+  if (lm && um && lm !== um) return false;
   return true;
 }
 
@@ -241,10 +213,10 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * Earlier versions counted and discarded — see git blame for the count-only
  * implementation prior to migration 0035.
  */
-export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
+export async function searchUtahCandidates(firstName: string, lastName: string): Promise<PersonStub[]> {
   const params = new URLSearchParams();
-  params.set('firstName', person.first_name.toUpperCase());
-  params.set('lastName', person.last_name.toUpperCase());
+  params.set('firstName', firstName.toUpperCase());
+  params.set('lastName', lastName.toUpperCase());
 
   const searchRes = await fetchWithTimeout(`${API_BASE}/search?${params.toString()}`, {
     method: 'GET',
@@ -262,23 +234,17 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
   }
 
   const allCandidates = (await searchRes.json()) as PersonStub[];
-  if (allCandidates.length === 0) return [];
+  if (!Array.isArray(allCandidates) || allCandidates.length === 0) return [];
 
-  // Reject namesakes BEFORE fetching their warrants — saves rate budget and
-  // prevents attributing a stranger's warrant to this local person.
-  const matched = allCandidates.filter((c) => isLikelyMatch(person, c));
-  if (matched.length === 0) return [];
-
-  // The search endpoint returns duplicate rows per personId (name-spelling
-  // variants, multiple addresses on file) — dedup before hitting /detail so
-  // we don't re-fetch (and double-count) the same person's warrants.
   const seenPersonIds = new Set<number>();
-  const candidates = matched.filter((c) => {
-    if (seenPersonIds.has(c.personId)) return false;
+  return allCandidates.filter((c) => {
+    if (!c?.personId || seenPersonIds.has(c.personId)) return false;
     seenPersonIds.add(c.personId);
     return true;
   });
+}
 
+export async function fetchWarrantsForCandidates(candidates: PersonStub[]): Promise<FetchedWarrant[]> {
   const out: FetchedWarrant[] = [];
   for (const candidate of candidates) {
     const detailRes = await fetchWithTimeout(
@@ -291,9 +257,6 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
     for (const w of detail.warrant ?? []) {
       out.push({
         utah_person_id: String(candidate.personId),
-        // warrantNumber is the closest upstream analog to a stable warrant
-        // id; fall back to a composite key on the rare row missing it so we
-        // never insert a null/empty primary identifier.
         utah_warrant_id: w.warrantNumber || `${candidate.personId}:${w.courtCaseNumber ?? ''}:${w.issueDate ?? ''}`,
         first_name: candidate.firstName,
         middle_name: candidate.middleName ?? null,
@@ -308,6 +271,17 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
     }
   }
   return out;
+}
+
+export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
+  const allCandidates = await searchUtahCandidates(person.first_name, person.last_name);
+  if (allCandidates.length === 0) return [];
+
+  // Reject namesakes BEFORE fetching their warrants — saves rate budget and
+  // prevents attributing a stranger's warrant to this local person.
+  const matched = allCandidates.filter((c) => isLikelyMatch(person, c));
+  if (matched.length === 0) return [];
+  return fetchWarrantsForCandidates(matched);
 }
 
 /**
@@ -573,36 +547,53 @@ async function markClearedWarrants(
   db: D1Database,
   runStartedAt: string,
   runId: string,
+  checkedPersonIds: number[],
 ): Promise<number> {
-  // Identify the rows that are about to clear BEFORE flipping them, so we can
-  // emit a per-warrant notification and archive the canonical record. (A bulk
-  // UPDATE alone loses the identity of what cleared.)
-  const clearing = await query<{
-    person_id: number | null; first_name: string | null; last_name: string | null;
-    utah_person_id: string; utah_warrant_id: string; court_name: string | null;
-    case_id: string | null; charges: string | null; issue_date: string | null;
-  }>(
-    db,
-    `SELECT person_id, first_name, last_name, utah_person_id, utah_warrant_id,
-            court_name, case_id, charges, issue_date
-       FROM utah_warrants
-      WHERE is_active = 1 AND datetime(last_seen_at) < datetime(?)`,
-    runStartedAt,
-  );
-  if (clearing.length === 0) return 0;
+  // SCOPED to the persons this run actually (successfully) checked. Runs are
+  // cursor-sliced (LIMIT max_persons_per_run), so "unseen since run start"
+  // is only meaningful for people whose warrants this run refreshed — an
+  // unscoped sweep after a tail slice cleared LIVE warrants belonging to
+  // everyone in the head slice (their last_seen_at predates this run's
+  // started_at by design). Persons whose fetch errored are excluded too:
+  // their rows weren't refreshed, so "unseen" would be a false clear.
+  if (checkedPersonIds.length === 0) return 0;
+  let clearedTotal = 0;
+  const CHUNK = 90; // stay under D1's 100-bound-parameter cap (+1 for the timestamp)
+  for (let i = 0; i < checkedPersonIds.length; i += CHUNK) {
+    const chunk = checkedPersonIds.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(',');
+    // Identify the rows that are about to clear BEFORE flipping them, so we can
+    // emit a per-warrant notification and archive the canonical record. (A bulk
+    // UPDATE alone loses the identity of what cleared.)
+    const clearing = await query<{
+      person_id: number | null; first_name: string | null; last_name: string | null;
+      utah_person_id: string; utah_warrant_id: string; court_name: string | null;
+      case_id: string | null; charges: string | null; issue_date: string | null;
+    }>(
+      db,
+      `SELECT person_id, first_name, last_name, utah_person_id, utah_warrant_id,
+              court_name, case_id, charges, issue_date
+         FROM utah_warrants
+        WHERE is_active = 1 AND datetime(last_seen_at) < datetime(?)
+          AND person_id IN (${placeholders})`,
+      runStartedAt, ...chunk,
+    );
+    if (clearing.length === 0) continue;
 
-  // Flip the cache rows inactive — RETAINED, never deleted, so the warrant
-  // survives in our DB after Utah drops it from their public feed.
-  await execute(
-    db,
-    `UPDATE utah_warrants
-        SET is_active = 0
-      WHERE is_active = 1
-        AND datetime(last_seen_at) < datetime(?)`,
-    runStartedAt,
-  );
+    // Flip the cache rows inactive — RETAINED, never deleted, so the warrant
+    // survives in our DB after Utah drops it from their public feed.
+    await execute(
+      db,
+      `UPDATE utah_warrants
+          SET is_active = 0
+        WHERE is_active = 1
+          AND datetime(last_seen_at) < datetime(?)
+          AND person_id IN (${placeholders})`,
+      runStartedAt, ...chunk,
+    );
+    clearedTotal += clearing.length;
 
-  for (const r of clearing) {
+    for (const r of clearing) {
     // Archive the canonical record (if one was auto-created for a confirmed
     // hit). 'recalled' = no longer in force per the source; archived_at marks
     // the soft-archive; the row is RETAINED for the permanent record.
@@ -622,8 +613,9 @@ async function markClearedWarrants(
     }
     // Notification: warrant no longer active on the source DB.
     await logWatchEvent(db, 'warrant_cleared', r, r.person_id, runId);
+    }
   }
-  return clearing.length;
+  return clearedTotal;
 }
 
 /**
@@ -712,9 +704,10 @@ export async function runUtahWarrantScan(
 
   const config = await queryFirst<{
     max_persons_per_run: number | null; persons_cursor_id: number | null; consecutive_errors: number | null;
+    last_run_at: string | null;
   }>(
     db,
-    'SELECT max_persons_per_run, persons_cursor_id, consecutive_errors FROM warrant_scraper_config WHERE source_name = ?',
+    'SELECT max_persons_per_run, persons_cursor_id, consecutive_errors, last_run_at FROM warrant_scraper_config WHERE source_name = ?',
     SOURCE_KEY,
   );
   const maxPersonsPerRun = config?.max_persons_per_run ?? DEFAULT_MAX_PERSONS_PER_RUN;
@@ -728,7 +721,18 @@ export async function runUtahWarrantScan(
   // upstream every 4 hours forever. Wire it below (post-run) and gate here:
   // if 5+ consecutive whole-run failures, skip the actual scan (no upstream
   // calls, no rate-budget burn) and report a failed run immediately.
-  if (isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1))) {
+  // Half-open recovery: the skip path below never reaches the post-run config
+  // update (the only place consecutive_errors resets), so a pure streak-count
+  // circuit could NEVER close — a multi-day upstream outage would disable Utah
+  // scanning permanently until someone hand-edited the DB. Allow one probe run
+  // once the last REAL attempt (last_run_at is only written by real runs, not
+  // by these skips) is older than the probe window; a failed probe re-opens
+  // the circuit for another window, a successful one resets the streak to 0.
+  const CIRCUIT_PROBE_WINDOW_MS = 6 * 60 * 60 * 1000;
+  const lastRealRunMs = config?.last_run_at ? Date.parse(config.last_run_at) : 0;
+  const probeAllowed = !Number.isFinite(lastRealRunMs) || lastRealRunMs === 0
+    || Date.now() - lastRealRunMs >= CIRCUIT_PROBE_WINDOW_MS;
+  if (isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1)) && !probeAllowed) {
     error_message = `Circuit open after ${config?.consecutive_errors} consecutive failed runs — skipping this scan.`;
     const completed_at = new Date().toISOString();
     await execute(
@@ -817,6 +821,9 @@ export async function runUtahWarrantScan(
         ? 0
         : persons[persons.length - 1].id;
     let lastProcessedId: number | null = null;
+    // Persons whose fetch SUCCEEDED this run — the only population the
+    // cleared-warrant sweep may legally reason about (see markClearedWarrants).
+    const successfullyCheckedIds: number[] = [];
 
     for (const person of persons) {
       // Hard wall-budget guard. Stop BEFORE starting another person (each costs
@@ -841,6 +848,7 @@ export async function runUtahWarrantScan(
           if (isNew) await logWatchEvent(db, 'warrant_found', w, person.id, run_id);
         }
         new_warrants_found += fetched.length;
+        successfullyCheckedIds.push(person.id);
       } catch (err) {
         errors++;
         console.warn(
@@ -871,19 +879,17 @@ export async function runUtahWarrantScan(
       }
     }
 
-    // Sweep: anything whose last_seen_at predates this run is cleared —
-    // archives the canonical record + emits a warrant_cleared notification.
-    //
-    // MUST NOT run on a budget-truncated pass. The sweep's premise is "this run
-    // saw everyone, so anything unseen is gone"; on a partial pass that premise
-    // is false and it would clear live warrants belonging to people we simply
-    // never got to. Skipping it only defers clearing to a pass that completes.
+    // Sweep: warrants belonging to persons THIS RUN successfully checked whose
+    // last_seen_at predates the run are cleared — archives the canonical record
+    // + emits a warrant_cleared notification. Scoping to the checked set makes
+    // the sweep safe on sliced AND budget-truncated passes alike; the old
+    // unscoped sweep ("this run saw everyone") mass-cleared live warrants for
+    // every person outside the current slice.
+    warrants_cleared = await markClearedWarrants(db, started_at, run_id, successfullyCheckedIds);
     if (budgetExhausted) {
       console.warn(
-        `[Utah Warrants] wall budget (${wallBudgetMs}ms) reached after ${persons_checked}/${persons.length} persons — skipping cleared-warrant sweep, resuming next tick`,
+        `[Utah Warrants] wall budget (${wallBudgetMs}ms) reached after ${persons_checked}/${persons.length} persons — resuming next tick`,
       );
-    } else {
-      warrants_cleared = await markClearedWarrants(db, started_at, run_id);
     }
 
     // Advance the resume cursor so the next run covers a fresh slice of

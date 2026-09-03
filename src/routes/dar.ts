@@ -179,7 +179,7 @@ dar.post('/', async (c): Promise<Response> => {
     number, officerId, b.shift_date, b.shift_start ?? null, b.shift_end ?? null,
     JSON.stringify(ap.calls), JSON.stringify(ap.incidents), JSON.stringify(ap.citations), JSON.stringify(ap.patrols),
     narrative, b.notable_events ?? null, b.safety_concerns ?? null);
-  const created = await queryFirst(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, r.meta.last_row_id);
+  const created = await queryFirst(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, Number(r.meta.last_row_id));
   return c.json({ data: created }, 201);
 });
 
@@ -202,8 +202,12 @@ dar.put('/:id', async (c): Promise<Response> => {
   const userId = c.get('userId') as number;
   const actor = c.get('user') as { role: string } | undefined;
   const isOwner = existing.officer_id === userId;
-  if (!isOwner && !(actor && REVIEW_ROLES.has(actor.role))) {
+  const isSupervisor = actor && REVIEW_ROLES.has(actor.role);
+  if (!isOwner && !isSupervisor) {
     return c.json({ error: 'Not authorized to edit this DAR', code: 'FORBIDDEN' }, 403);
+  }
+  if (!isSupervisor && !['draft', 'returned'].includes(existing.status)) {
+    return c.json({ error: 'DAR cannot be edited in its current status', code: 'INVALID_STATUS' }, 409);
   }
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const sets: string[] = []; const vals: unknown[] = [];

@@ -51,7 +51,7 @@ export interface WebglRecoveryOptions {
   onContextRestored?: () => void;
   /** Fired when the loop-guard trips (too many rebuilds). Surface should prompt a manual reload. */
   onGiveUp?: () => void;
-  /** ms to wait for a self-restore before forcing a rebuild. Default 1500. */
+  /** ms to wait for a self-restore before forcing a rebuild. Default 2500. */
   restoreGraceMs?: number;
   /** Max rebuilds allowed within rebuildWindowMs before giving up. Default 4. */
   maxRebuilds?: number;
@@ -105,7 +105,7 @@ export function installWebglContextRecovery(
     onContextLost,
     onContextRestored,
     onGiveUp,
-    restoreGraceMs = 1500,
+    restoreGraceMs = 2500,
     maxRebuilds = 4,
     rebuildWindowMs = 60_000,
   } = opts;
@@ -176,11 +176,33 @@ export function installWebglContextRecovery(
     devLog(`[webglRecovery:${label}] webglcontextrestored fired`);
   };
 
+  // On devices that sleep/wake (in-vehicle Toughbooks, tablets) the browser may
+  // suppress `webglcontextlost` while the page is hidden. When the page becomes
+  // visible again, the context can be silently dead with no events ever fired.
+  // This watchdog catches that case by checking context health on visibility
+  // restore and starting the grace timer if the context is already gone.
+  const handleVisibilityChange = () => {
+    if (disposed || document.hidden) return;
+    if (!isContextHealthy(map)) {
+      devWarn(`[webglRecovery:${label}] context dead on page-visible — triggering recovery`);
+      if (restoreTimer) return; // grace timer already running
+      lastCamera = captureCamera();
+      onContextLost?.();
+      restoreTimer = setTimeout(() => {
+        restoreTimer = null;
+        if (disposed) return;
+        if (isContextHealthy(map)) { devLog(`[webglRecovery:${label}] context recovered on visibility`); onContextRestored?.(); return; }
+        triggerRebuild();
+      }, restoreGraceMs);
+    }
+  };
+
   // Mapbox surfaces these as map events (a MapContextEvent that wraps the DOM
   // WebGLContextEvent on .originalEvent). map.remove() drops them, but we also
   // detach explicitly in cleanup.
   map.on('webglcontextlost', handleLost as any);
   map.on('webglcontextrestored', handleRestored as any);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   return () => {
     disposed = true;
@@ -188,6 +210,7 @@ export function installWebglContextRecovery(
     _recoverable.delete(entry);
     try { map.off('webglcontextlost', handleLost as any); } catch { /* map already removed */ }
     try { map.off('webglcontextrestored', handleRestored as any); } catch { /* map already removed */ }
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
   };
 }
 

@@ -10,24 +10,28 @@
 import { parseTimestamp } from './dateUtils';
 
 /** Validate an email address (RFC 5322 simplified). */
-export function isValidEmail(email: string): boolean {
+export function isValidEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 }
 
 /** Validate a US phone number (10 digits, with or without formatting). */
-export function isValidPhone(phone: string): boolean {
+export function isValidPhone(phone: string | null | undefined): boolean {
+  if (!phone) return false;
   const digits = phone.replace(/\D/g, '');
   // 10 digits, or 11 digits starting with 1
   return digits.length === 10 || (digits.length === 11 && digits[0] === '1');
 }
 
 /** Validate a VIN (17 alphanumeric, excluding I, O, Q). */
-export function isValidVIN(vin: string): boolean {
+export function isValidVIN(vin: string | null | undefined): boolean {
+  if (!vin) return false;
   return /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin.trim());
 }
 
 /** Validate a US license plate (2–8 alphanumeric characters). */
-export function isValidPlate(plate: string): boolean {
+export function isValidPlate(plate: string | null | undefined): boolean {
+  if (!plate) return false;
   return /^[A-Z0-9]{2,8}$/i.test(plate.trim().replace(/[\s-]/g, ''));
 }
 
@@ -35,12 +39,14 @@ export function isValidPlate(plate: string): boolean {
  * Validate a US driver's license number.
  * Format varies by state; this accepts 4–20 alphanumeric chars.
  */
-export function isValidDLNumber(dl: string): boolean {
+export function isValidDLNumber(dl: string | null | undefined): boolean {
+  if (!dl) return false;
   return /^[A-Z0-9]{4,20}$/i.test(dl.trim().replace(/[\s-]/g, ''));
 }
 
 /** Validate a US SSN pattern (XXX-XX-XXXX, with or without dashes). */
-export function isValidSSN(ssn: string): boolean {
+export function isValidSSN(ssn: string | null | undefined): boolean {
+  if (!ssn) return false;
   const digits = ssn.replace(/\D/g, '');
   if (digits.length !== 9) return false;
   // SSA rules: no area 000, 666, 900-999; no group 00; no serial 0000
@@ -51,18 +57,20 @@ export function isValidSSN(ssn: string): boolean {
 }
 
 /** Validate a badge number (1–10 alphanumeric characters). */
-export function isValidBadge(badge: string): boolean {
+export function isValidBadge(badge: string | null | undefined): boolean {
+  if (!badge) return false;
   return /^[A-Z0-9]{1,10}$/i.test(badge.trim());
 }
 
 /** Validate a US ZIP code (5 digits or ZIP+4 format). */
-export function isValidZip(zip: string): boolean {
+export function isValidZip(zip: string | null | undefined): boolean {
+  if (!zip) return false;
   return /^\d{5}(-\d{4})?$/.test(zip.trim());
 }
 
 /** Validate a date string (YYYY-MM-DD format, must be a real date). */
-export function isValidDate(dateStr: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+export function isValidDate(dateStr: string | null | undefined): boolean {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return false;
   // Verify the date components match (catches invalid dates like Feb 30)
@@ -71,35 +79,39 @@ export function isValidDate(dateStr: string): boolean {
 }
 
 /** Validate that a date is not in the future. */
-export function isNotFutureDate(dateStr: string): boolean {
+export function isNotFutureDate(dateStr: string | null | undefined): boolean {
   if (!isValidDate(dateStr)) return false;
-  const d = parseTimestamp(dateStr);
+  const d = parseTimestamp(dateStr!);
   return d.getTime() <= Date.now();
 }
 
 /** Validate that a date range is valid (start <= end). */
-export function isValidDateRange(start: string, end: string): boolean {
+export function isValidDateRange(start: string | null | undefined, end: string | null | undefined): boolean {
   if (!isValidDate(start) || !isValidDate(end)) return false;
-  return parseTimestamp(start) <= parseTimestamp(end);
+  return parseTimestamp(start!) <= parseTimestamp(end!);
 }
 
 /** Validate an incident/case number format (e.g., RKY26-00001-BURG). */
-export function isValidCaseNumber(caseNum: string): boolean {
+export function isValidCaseNumber(caseNum: string | null | undefined): boolean {
+  if (!caseNum) return false;
   return /^[A-Z]{2,4}\d{2}-\d{4,6}(-[A-Z]{2,6})?$/i.test(caseNum.trim());
 }
 
 /** Validate a warrant number. */
-export function isValidWarrantNumber(warrantNum: string): boolean {
+export function isValidWarrantNumber(warrantNum: string | null | undefined): boolean {
+  if (!warrantNum) return false;
   return /^[A-Z0-9-]{3,30}$/i.test(warrantNum.trim());
 }
 
 /** Validate age (0–150 years). */
-export function isValidAge(age: number): boolean {
+export function isValidAge(age: number | null | undefined): boolean {
+  if (age == null) return false;
   return Number.isInteger(age) && age >= 0 && age <= 150;
 }
 
 /** Validate a URL. */
-export function isValidUrl(url: string): boolean {
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
   try {
     new URL(url);
     return true;
@@ -109,7 +121,8 @@ export function isValidUrl(url: string): boolean {
 }
 
 /** Validate a US state abbreviation. */
-export function isValidState(state: string): boolean {
+export function isValidState(state: string | null | undefined): boolean {
+  if (!state) return false;
   const states = [
     'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
     'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',

@@ -265,27 +265,6 @@ export default function CustomReportBuilder() {
     return () => window.removeEventListener('keydown', handler);
   }, [step, navigate, resetConfirmOpen]);
 
-  // Esc cascade: results \u2192 filters \u2192 columns \u2192 source \u2192 back to /reports.
-  // Mirrors the pattern used on Dispatch/Patrol/Evidence/Court Tracker pages.
-  useEffect(() => {
-    const isTyping = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) return false;
-      const tag = target.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
-    };
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (isTyping(e.target)) return;
-      if (step === 'preview') { setStep('filters'); return; }
-      if (step === 'filters') { setStep('columns'); return; }
-      if (step === 'columns') { setStep('source'); return; }
-      // At source step or no source selected \u2014 go back to Reports dashboard.
-      navigate('/reports');
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [step, navigate]);
-
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {!isMobile && <PanelTitleBar title="Custom Report Builder" icon={Database}>

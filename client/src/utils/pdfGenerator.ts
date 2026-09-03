@@ -15,7 +15,7 @@ import { toNum } from './sentinel';
 import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined, sectionPrefix } from './dispatchCodeParts';
-import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { loadSealBase64, loadLogoDarkBase64, loadLogoPrintBase64, loadLogoLightBase64, getCachedSealBase64, getCachedLogoPrint as getCachedLogoPrintFromAssets, applyLogoFadeToAllPages, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
 import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
@@ -34,7 +34,7 @@ import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
   getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
-  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
+  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget, getPrintTarget,
 } from './pdfTokens';
 import { brandingFromSystemSettings } from './brandConfig';
 
@@ -612,6 +612,7 @@ function getPdfTextLineHeight(fontSize: number, readable = false): number {
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
 let cachedLogoDark: string | null = null;
+let cachedLogoPrint: string | null = null;
 
 // Active form key for footer form numbers
 let activeFormKey = '';
@@ -635,11 +636,21 @@ export async function loadPdfAssets(): Promise<void> {
   if (cachedLogoDark === null) {
     cachedLogoDark = await loadLogoDarkBase64() || '';
   }
+  if (cachedLogoPrint === null) {
+    cachedLogoPrint = await loadLogoPrintBase64() || '';
+  }
+  // Light/white logo — recolored silhouette for dark header bars in pdfFormHelpers
+  await loadLogoLightBase64();
 }
 
 /** Access cached dark logo (for record generators) */
 export function getCachedLogoDark(): string | null {
   return cachedLogoDark || null;
+}
+
+/** Access cached print-quality logo (BW/clean, for document headers) */
+export function getCachedLogoPrint(): string | null {
+  return cachedLogoPrint || null;
 }
 
 // ── Base Helpers ─────────────────────────────────────────────
@@ -1183,6 +1194,33 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 }
 
 /**
+ * A field the subject (or officer) fills in by hand: label in the normal
+ * position, a writable rule where the value would be.
+ *
+ * addFieldPair() renders "N/A" for an empty value, which is right on a
+ * report of established fact and exactly wrong on a form someone is
+ * meant to complete — it reads as an instruction NOT to write there.
+ * Geometry matches addFieldPair (2.7mm label height, 0.8mm inner pad)
+ * so blank and printed fields sit on the same grid.
+ */
+export function addWritableFieldPair(
+  doc: jsPDF, label: string, x: number, y: number, width: number,
+): number {
+  const labelH = 2.7;
+  const innerPad = 0.8;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(sanitizePdfText(label.toUpperCase()), x + innerPad, y + 1.8);
+
+  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.line(x + innerPad, y + labelH + 1.6, x + width - innerPad, y + labelH + 1.6);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + labelH + SPACING.FIELD_ROW_ADVANCE + 0.6;
+}
+
+/**
  * Alias for addFieldPair — used by recordPdfGenerator for narrative-style
  * long-text fields. Same signature: (doc, label, value, x, y, width).
  */
@@ -1586,11 +1624,11 @@ export function addSignatureBlock(
       doc.setLineWidth(BORDER.SIGNATURE_LINE);
       doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
 
-      const maxW = Math.min(width * 0.5, 70);
+      const maxW = Math.min(width * 0.75, 100);
       const maxH = sigRowH - 3.5; // breathing room inside the row
       // Align the ink to the rule's own left edge rather than an arbitrary
       // +4 offset, so a signed block and an unsigned one share a left edge.
-      const imgX = x + SPACING.MD + 1;
+      const imgX = x + SPACING.MD;
       // Dynamic, aspect-preserving fit via computeSignatureRect (was a
       // fixed-box stretch) with a bounded overshoot so ink can realistically
       // run slightly past the box — hardLimits keeps it inside the
@@ -1608,7 +1646,7 @@ export function addSignatureBlock(
             {
               anchor: 'bottom',
               align: 'left',
-              hardLimits: { x: x + SPACING.MD, y: row1Y + 0.5, w: width - SPACING.MD * 2, h: sigLineY + 0.5 - (row1Y + 0.5) },
+              hardLimits: { x: x, y: row1Y + 0.5, w: width, h: sigLineY + 1 - (row1Y + 0.5) },
             },
           );
         }
@@ -1662,7 +1700,7 @@ export function addSignatureBlock(
   doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
-  const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
+  const hasSigData = !!(sigData?.printedName || sigData?.badgeNumber || sigData?.date);
   if (hasSigData) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
@@ -1670,19 +1708,27 @@ export function addSignatureBlock(
     const valY = row2Y + infoRowH - 1.5;
     if (sigData!.printedName) doc.text(fitPdfText(doc, sigData!.printedName, colW - SPACING.MD * 2), x + SPACING.MD, valY);
     if (sigData!.badgeNumber) doc.text(fitPdfText(doc, sigData!.badgeNumber, colW - SPACING.MD * 2), x + colW + SPACING.MD, valY);
-    const now = new Date();
-    // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
-    // Legal documents require the correct local timestamp — UTC drift corrupts records.
-    // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
-    // does not say which zone it means. Only the AUTO-generated value is
-    // stamped -- a caller-supplied sigData.date is left exactly as passed so
-    // it can never be double-labelled.
-    const dateStr = sigData!.date || `${now.toLocaleString('en-US', {
-      timeZone: 'America/Denver',
-      month: '2-digit', day: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).replace(', ', ' ')} MT`;
-    doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    // Auto-stamp "now" only when the caller omitted `date` entirely.
+    // An explicit empty string means "leave the cell blank for wet ink" —
+    // stamping the moment of PRINTING as the moment of signature is a
+    // false fact on a form completed at the door (PS-314 leave-behind).
+    if (sigData!.date) {
+      doc.text(sanitizePdfText(sigData!.date), x + colW * 2 + SPACING.MD, valY);
+    } else if (sigData!.date === undefined) {
+      const now = new Date();
+      // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
+      // Legal documents require the correct local timestamp — UTC drift corrupts records.
+      // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
+      // does not say which zone it means. Only the AUTO-generated value is
+      // stamped -- a caller-supplied sigData.date is left exactly as passed so
+      // it can never be double-labelled.
+      const dateStr = `${now.toLocaleString('en-US', {
+        timeZone: 'America/Denver',
+        month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).replace(', ', ' ')} MT`;
+      doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    }
   }
 
   // Outer border
@@ -2569,6 +2615,7 @@ export interface PdfImage {
   height: number;
   format: 'JPEG' | 'PNG';
   name: string;
+  stampLines?: string[];
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
@@ -2659,13 +2706,14 @@ export function addImageGrid(
   const gap = SPACING.MD;
   const imgMaxW = (cw - 2 * SPACING.CONTENT_INSET - gap) / 2;
   const imgMaxH = 55;
-  const captionH = 4;
+  const captionH = 12;
 
   let y = startY;
 
   for (let i = 0; i < images.length; i += 2) {
     const rowImages = images.slice(i, i + 2);
-    y = checkPageBreak(doc, y, imgMaxH + captionH + SPACING.SM, priority);
+    const extraCaption = Math.max(0, ...rowImages.map((im) => (im.stampLines?.length ?? 0))) * 3.2;
+    y = checkPageBreak(doc, y, imgMaxH + captionH + extraCaption + SPACING.SM, priority);
 
     let maxRowH = 0;
     for (let j = 0; j < rowImages.length; j++) {
@@ -2679,11 +2727,17 @@ export function addImageGrid(
 
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
-      doc.text(fitPdfText(doc, caption, imgMaxW), x, y + h + 3);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const lines = (img.stampLines && img.stampLines.length > 0)
+        ? img.stampLines
+        : [img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name];
+      let cy = y + h + 3;
+      for (const line of lines) {
+        doc.text(fitPdfText(doc, line, imgMaxW), x, cy);
+        cy += 3.2;
+      }
 
-      maxRowH = Math.max(maxRowH, h);
+      maxRowH = Math.max(maxRowH, h + (lines.length * 3.2));
     }
 
     y += maxRowH + captionH + SPACING.LG;
@@ -2716,6 +2770,11 @@ export function addAttachmentsSection(
  * Page break with continuation header on new pages.
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
+  // Recipient-facing Notice of Attempt is a one-sheet door notice — never
+  // spill onto a second page (which would print a mostly-blank CONTINUED
+  // sheet on the PJ-700 roll). Compression tiers handle overflow instead.
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) return y;
+
   const pageHeight = doc.internal.pageSize.getHeight();
   // Bottom reserve: footer height + safe print zone + BARCODE CLEARANCE.
   // Barcode is placed at y ∈ [pageH-20, pageH-12], so content must stop
@@ -2797,6 +2856,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
 /** Page break handler for drawFormSection — forces a page break with continuation header */
 export function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
+  if ((doc as { __singlePageOnly?: boolean }).__singlePageOnly) {
+    return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0) + LAYOUT.HEADER_HEIGHT;
+  }
   // Force a page break by passing a Y beyond the page
   return checkPageBreak(doc, doc.internal.pageSize.getHeight(), 1);
 }
@@ -5063,6 +5125,14 @@ export function finalizePoliceReport(
   doc: jsPDF,
   opts: PoliceReportFinalizeOptions = {},
 ): void {
+  // 0. Logo background fade — ghost brand mark centered behind all content.
+  //    Uses the print-quality (BW/clean) logo at ~6% opacity. Applied before
+  //    the text watermark so the watermark wins in z-order when both are used.
+  const printLogo = getCachedLogoPrintFromAssets();
+  if (printLogo) {
+    applyLogoFadeToAllPages(doc, printLogo);
+  }
+
   // 1. Watermark (goes under everything else)
   if (opts.watermark) {
     applyWatermarkToAllPages(doc, opts.watermark);

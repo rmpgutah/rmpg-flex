@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { exportServeMapSheet } from '../serveMapExport';
 
-const saveMock = vi.fn();
+const { openPdfDocumentMock } = vi.hoisted(() => ({
+  openPdfDocumentMock: vi.fn(),
+}));
+
+vi.mock('../openPdfDocument', () => ({
+  openPdfDocument: openPdfDocumentMock,
+  openPdfBlob: vi.fn(),
+}));
 
 vi.mock('jspdf', () => ({
   jsPDF: vi.fn(function () {
@@ -16,8 +23,9 @@ vi.mock('jspdf', () => ({
       rect: vi.fn(),
       line: vi.fn(),
       addPage: vi.fn(),
-      getTextWidth: vi.fn(() => 10),
-      save: saveMock,
+      getTextWidth: vi.fn((t: string) => t.length * 2),
+      save: vi.fn(),
+      output: vi.fn(() => new Blob()),
       internal: {
         pageSize: {
           getWidth: vi.fn(() => 216),
@@ -47,7 +55,10 @@ describe('exportServeMapSheet', () => {
     await exportServeMapSheet([
       { id: 1, recipient_name: 'Jane Doe', recipient_address: '123 Main St', priority: 'urgent', deadline: '2026-08-01' },
     ]);
-    expect(saveMock).toHaveBeenCalledWith(expect.stringContaining('serve-route-sheet'));
+    expect(openPdfDocumentMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('serve-route-sheet'),
+    );
   });
 
   it('handles an empty list without throwing', async () => {

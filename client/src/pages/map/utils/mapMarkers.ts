@@ -58,7 +58,7 @@ function buildEnRouteTagEl(callSign: string, enRoute: EnRouteEta): HTMLDivElemen
   tag.style.cssText = `
     background:#000;border:1px solid #1d4ed8;border-radius:2px;
     padding:3px 6px;display:grid;grid-template-columns:auto auto;gap:0 8px;
-    font-family:ui-monospace,monospace;white-space:nowrap;
+    font-family:'Arial, sans-serif';white-space:nowrap;
   `;
   const rows: Array<[string, string]> = [
     [callSign.slice(0, 6), 'ENROUTE'],
@@ -190,7 +190,7 @@ export function buildUnitMarkerEl(unit: Unit, enRoute?: EnRouteEta | null): HTML
   label.style.cssText = `
     background:#101820;border:1.2px solid ${color};border-radius:2px;
     padding:1px 6px;font-size:9px;font-weight:700;color:${color};
-    font-family:ui-monospace,monospace;white-space:nowrap;
+    font-family:'Arial, sans-serif';white-space:nowrap;
   `;
   label.textContent = unit.call_sign.slice(0, 6);
   inner.appendChild(label);
@@ -202,7 +202,7 @@ export function buildUnitMarkerEl(unit: Unit, enRoute?: EnRouteEta | null): HTML
     const mph = Math.round(unit.gps_speed * 2.237);
     const speedColor = mph >= 75 ? '#ef4444' : mph >= 55 ? '#f97316' : mph >= 45 ? '#eab308' : '#93c5fd';
     speedEl.style.cssText = `
-      font-size:8px;font-weight:700;font-family:ui-monospace,monospace;
+      font-size:8px;font-weight:700;font-family:'Arial, sans-serif';
       color:${speedColor};white-space:nowrap;line-height:1;
     `;
     speedEl.textContent = `${mph} mph`;
@@ -286,7 +286,7 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit, enRoute?: EnRo
       const speedEl = document.createElement('div');
       speedEl.setAttribute('data-role', 'speed-label');
       speedEl.style.cssText = `
-        font-size:8px;font-weight:700;font-family:ui-monospace,monospace;
+        font-size:8px;font-weight:700;font-family:'Arial, sans-serif';
         color:${speedColor};white-space:nowrap;line-height:1;
       `;
       speedEl.textContent = `${mph} mph`;
@@ -372,7 +372,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
   // `style.borderRadius` to read back correctly.
   square.style.borderRadius = '2px';
   const priorityText = document.createElement('span');
-  priorityText.style.cssText = `font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:ui-monospace,monospace;`;
+  priorityText.style.cssText = `font-size:8px;font-weight:700;color:${CALL_MARKER_INK};font-family:'Arial, sans-serif';`;
   // priorityLabel, not `P${call.priority}` — live rows store 'P1'..'P4', so the
   // hand-built prefix rendered "PP1" on the map.
   priorityText.textContent = priorityLabel(call.priority);
@@ -384,7 +384,7 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
   numberLabel.style.cssText = `
     background:#101820;border:1.2px solid ${color};
     padding:1px 5px;font-size:8px;font-weight:700;
-    font-family:ui-monospace,monospace;white-space:nowrap;
+    font-family:'Arial, sans-serif';white-space:nowrap;
   `;
   // Discrete assignments for the same jsdom cssText-voiding reason as above —
   // border-radius and color must not ride in the same cssText blob as `background`.
@@ -612,7 +612,7 @@ export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
       'font-size': '9px',
       'font-weight': '700',
       color,
-      'font-family': '"JetBrains Mono",monospace',
+      'font-family': "'Arial, sans-serif'",
       'white-space': 'nowrap',
     });
     labelEl.textContent = opts.label;

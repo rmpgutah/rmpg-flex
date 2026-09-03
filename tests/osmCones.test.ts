@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error - untyped .mjs module
-import { conePolygon, coneFeature } from '../scripts/osm/cones.mjs';
+import { conePolygon, coneFeature, coneFeatures } from '../scripts/osm/cones.mjs';
 
 const ORIGIN: [number, number] = [-111.891, 40.7608]; // Salt Lake City
 
@@ -104,6 +104,29 @@ describe('coneFeature', () => {
 
   it('accepts a cardinal-free numeric string with whitespace', () => {
     expect(coneFeature(cam({ cat: 'camera', 'camera:direction': ' 180 ' }))).not.toBeNull();
+  });
+
+  it('accepts OSM cardinals (NE) rather than dropping them', () => {
+    const f = coneFeature(cam({ cat: 'camera', 'camera:direction': 'NE' }))!;
+    expect(f).not.toBeNull();
+    expect(f.properties['camera:bearing']).toBe('45');
+  });
+
+  it('does not invent a wedge for a dome housing', () => {
+    expect(coneFeature(cam({ cat: 'camera', 'camera:type': 'dome', 'camera:direction': '90' }))).toBeNull();
+  });
+
+  it('emits one wedge per look-direction on a semicolon list', () => {
+    const many = coneFeatures(cam({ cat: 'alpr', 'camera:direction': '45;225' }));
+    expect(many).toHaveLength(2);
+    expect(many[0].properties.parent_cat).toBe('alpr');
+  });
+
+  it('uses a longer narrower default for ALPR than for public CCTV', () => {
+    const alpr = coneFeature(cam({ cat: 'alpr', 'camera:direction': '90' }))!;
+    const cctv = coneFeature(cam({ cat: 'camera', 'camera:direction': '90' }))!;
+    expect(Number(alpr.properties.cone_radius_m)).toBeGreaterThan(Number(cctv.properties.cone_radius_m));
+    expect(Number(alpr.properties.cone_fov_deg)).toBeLessThan(Number(cctv.properties.cone_fov_deg));
   });
 
   it('returns null for a non-point geometry', () => {

@@ -9,7 +9,8 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
-import { fetchRecentJobs, extractJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
+import { log } from './logger';
+import { fetchRecentJobs, extractJobAttempts, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
 import { recordAuditCore } from './auditLog';
 
@@ -70,7 +71,7 @@ async function upsertJobAttempts(db: D1Database, job: SmJob): Promise<number> {
       String(a.id), String(job.id), a.description ?? null, a.success == null ? null : (a.success ? 1 : 0),
       a.service_status ?? null, a.serve_type ?? null, a.served_at ?? null,
       a.lat ?? a.latitude ?? null, a.lng ?? a.longitude ?? null, a.gps_timestamp ?? null,
-      a.server_name ?? a.employee_process_server?.name ?? a.employee_process_server?.full_name ?? null,
+      a.server_name ?? a.employee_process_server?.name ?? null,
       a.recipient_name ?? null, JSON.stringify(a.attachments ?? []),
       a.created_at ?? null, a.updated_at ?? null,
     );
@@ -82,11 +83,21 @@ async function upsertJobAttempts(db: D1Database, job: SmJob): Promise<number> {
 // employee_process_server (in-house server) uses first_name/last_name, while
 // process_server_company/process_server_contact (external server) are name-
 // keyed like every other confirmed ServeManager resource. Confirmed live
-// 2026-08-09 against a real in-house-served job.
+// 2026-08-09 against a real in-house-served job. Attempts also embed an
+// employee_process_server; its name field is first_name/last_name as well.
 function getProcessServerName(job: SmJob): string | null {
   const emp = job.employee_process_server;
-  if (emp?.first_name || emp?.last_name) return [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+  if (emp?.first_name || emp?.last_name) {
+    return [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+  }
   return job.process_server_company?.name || job.process_server_contact?.name || null;
+}
+
+// Normalize the `rush` field — ServeManager returns boolean or 0/1 integer
+// depending on API version. Store as SQLite INTEGER (1/0/null).
+function rushToInt(rush: boolean | number | undefined | null): number | null {
+  if (rush == null) return null;
+  return rush ? 1 : 0;
 }
 
 function mapSmJobToCallData(job: SmJob) {
@@ -111,12 +122,16 @@ function mapSmJobToCallData(job: SmJob) {
   return {
     call_number: null as string | null, // generated after insert
     incident_type: 'pso_client_request',
-    priority: job.rush ? 'P2' : 'P3',
+    priority: (job.rush) ? 'P2' : 'P3',
     status: 'pending',
     source: 'servemanager',
     location_address: locAddress,
     latitude: lat,
-    longitude: lat && lng ? lng : null,
+    // Latitude and longitude are independent — only omit longitude if it is
+    // genuinely absent. The original `lat && lng ? lng : null` expression used
+    // lat's truthiness as the guard for lng, so a job with lat=0 (impossible
+    // for Utah but logically wrong) or a null lat would zero out both.
+    longitude: lng,
     description: descParts.join(' | '),
     caller_name: job.client_company?.name || null,
     caller_phone: null,
@@ -135,28 +150,67 @@ function mapSmJobToCallData(job: SmJob) {
 // call already set for the same job.
 async function cacheJob(db: D1Database, job: SmJob, linkedCallId?: number): Promise<void> {
   const clientName = job.client_company?.name || '';
-  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', job.id);
+  const recipientName = (job.recipient?.name || job.recipient?.full_name) || null;
   const processType = guessProcessType(job.documents || []);
+  const rushVal = rushToInt(job.rush);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', job.id);
   if (existing) {
-    const sets = ['job_status=?', 'service_status=?', 'sm_job_number=?', 'process_server_name=?', 'client_job_number=?', "updated_at=datetime('now')"];
-    const vals: unknown[] = [job.job_status ?? null, job.service_status ?? null, job.servemanager_job_number ?? null, getProcessServerName(job), job.client_job_number || null];
+    // Refresh ALL mutable fields on update — addresses, documents, status,
+    // recipient, and rush can all change between syncs. Omitting them (as
+    // the original code did) meant a job cached before a location correction
+    // in SM would forever show the wrong address in RMPG.
+    const sets = [
+      'job_status=?', 'service_status=?', 'sm_job_number=?',
+      'process_server_name=?', 'client_job_number=?',
+      'client_company_name=?', 'recipient_name=?',
+      'due_date=?', 'rush=?', 'service_instructions=?',
+      'addresses_json=?', 'documents_json=?',
+      'court_case_number=?',
+      "sm_updated_at=?", "updated_at=datetime('now')",
+    ];
+    const vals: unknown[] = [
+      job.job_status ?? null, job.service_status ?? null,
+      job.servemanager_job_number ?? null,
+      getProcessServerName(job), job.client_job_number || null,
+      clientName, recipientName,
+      job.due_date || null, rushVal, job.service_instructions || null,
+      JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
+      job.court_case?.number || null,
+      job.updated_at || null,
+    ];
     if (linkedCallId != null) { sets.push('linked_call_id=?'); vals.push(linkedCallId); }
     await execute(db, `UPDATE sm_jobs SET ${sets.join(', ')} WHERE sm_job_id=?`, ...vals, job.id);
     return;
   }
   await execute(db,
-    `INSERT INTO sm_jobs (sm_job_id, sm_job_number, client_company_name, recipient_name,
-       job_status, service_status, court_case_number, due_date, linked_call_id,
-       process_type, addresses_json, documents_json, process_server_name,
-       client_job_number, synced_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
-    job.id, job.servemanager_job_number ?? null, clientName, (job.recipient?.name || job.recipient?.full_name) || null,
+    `INSERT INTO sm_jobs (
+       sm_job_id, sm_job_number, client_company_name, recipient_name,
+       recipient_description, job_status, service_status, court_case_number,
+       due_date, rush, service_instructions, linked_call_id, process_type,
+       addresses_json, documents_json, process_server_name, client_job_number,
+       sm_created_at, sm_updated_at, synced_at
+     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+    job.id, job.servemanager_job_number ?? null, clientName, recipientName,
+    job.recipient?.description || null,
     job.job_status ?? null, job.service_status ?? null, job.court_case?.number || null,
-    job.due_date || null, linkedCallId ?? null,
-    processType,
+    job.due_date || null, rushVal, job.service_instructions || null,
+    linkedCallId ?? null, processType,
     JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
     getProcessServerName(job), job.client_job_number || null,
+    job.created_at || null, job.updated_at || null,
   );
+}
+
+// After upserting attempts, keep sm_jobs.attempt_count in sync so the
+// Cached Jobs table shows an accurate attempt tally without a separate query.
+async function syncAttemptCount(db: D1Database, jobId: number | string): Promise<void> {
+  const row = await queryFirst<{ n: number }>(
+    db, 'SELECT COUNT(*) AS n FROM sm_attempts WHERE job_id = ?', String(jobId),
+  );
+  if (row != null) {
+    await execute(db, 'UPDATE sm_jobs SET attempt_count = ? WHERE sm_job_id = ?', row.n, jobId);
+  }
 }
 
 // Creates the dispatch call + linked serve_queue row for a job, and upserts
@@ -186,15 +240,20 @@ export async function createDispatchCallForJob(
   };
   callData.call_number = await nextCallNumber();
 
+  // `contract_id` is a FK to a PSO contracts table row, not a free-text job
+  // number — storing job.servemanager_job_number there caused FK violations on
+  // accounts where the column has a FK constraint, and placed a text identifier
+  // in a numeric FK column. SM job number belongs in `pso_billing_code` (a text
+  // field that already carries client billing references).
   const colNames = ['call_number', 'incident_type', 'priority', 'status', 'source',
-    'location_address', 'latitude', 'longitude', 'description', 'caller_name', 'contract_id',
+    'location_address', 'latitude', 'longitude', 'description', 'caller_name',
     'pso_requestor_name', 'pso_requestor_email', 'pso_billing_code', 'pso_service_type'];
   const values = [callData.call_number, callData.incident_type, callData.priority,
     callData.status, callData.source, callData.location_address,
     callData.latitude, callData.longitude, callData.description,
-    callData.caller_name, job.servemanager_job_number ?? null,
+    callData.caller_name,
     job.attorney_name || clientName || null, job.attorney_email || null,
-    job.client_job_number || null, callData.process_type];
+    job.servemanager_job_number ?? null, callData.process_type];
   const placeholders = colNames.map(() => '?').join(',');
   let result;
   for (let attempt = 0; ; attempt++) {
@@ -266,7 +325,6 @@ export async function createDispatchCallForJob(
 
 export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: number; callsCreated: number; attemptsSynced: number; error?: string }> {
   const db = env.DB;
-  const jwtSecret = env.JWT_SECRET;
 
   try {
     const enabled = await getSmConfig(db, 'servemanager_poller_enabled');
@@ -275,8 +333,14 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     const targetClient = await getTargetClient(db);
     const lastPoll = await getSmConfig(db, 'servemanager_last_poll_at');
 
-    const jobs = await fetchRecentJobs(db, jwtSecret, lastPoll || undefined);
+    const jobs = await fetchRecentJobs(db, env, lastPoll || undefined);
     if (jobs.length === 0) return { synced: 0, callsCreated: 0, attemptsSynced: 0 };
+
+    // Hoist the auto-create config read outside the loop — fetching it per job
+    // burns one D1 round-trip per job and was the primary reason large syncs
+    // were slow. One read at cycle start is sufficient; admin changes take effect
+    // on the next poll cycle (acceptable for a 5-min+ interval setting).
+    const autoCreate = await getSmConfig(db, 'servemanager_auto_create_calls');
 
     let synced = 0;
     let callsCreated = 0;
@@ -284,43 +348,42 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
 
     for (const job of jobs) {
       // Skip non-target-client jobs — an empty targetClient (admin explicitly
-      // cleared the field) means "no filter", not "match nothing". The real
-      // payload has no top-level `client` object (confirmed live 2026-08-08)
-      // — the client company lives under the nested `client_company.name`.
+      // cleared the field) means "no filter", not "match nothing".
       const clientName = job.client_company?.name || '';
       if (targetClient && !clientName.toLowerCase().includes(targetClient.toLowerCase())) continue;
 
       // Sync attempts regardless of whether the job's call already exists —
       // a job can accrue new service attempts after its call was created.
-      attemptsSynced += await upsertJobAttempts(db, job);
+      const newAttempts = await upsertJobAttempts(db, job);
+      attemptsSynced += newAttempts;
+      // Keep sm_jobs.attempt_count in sync so the Cached Jobs table is accurate.
+      if (newAttempts > 0) await syncAttemptCount(db, job.id);
 
       // Check if this job is already cached and/or already has a linked call.
       const existing = await queryFirst<{ linked_call_id: number | null }>(
         db, 'SELECT linked_call_id FROM sm_jobs WHERE sm_job_id = ?', job.id,
       );
       if (existing?.linked_call_id) {
-        // Refresh the cached fields only — sm_job_number is included here
-        // (not just on first cache) because a row cached before the
-        // servemanager_job_number field-name fix landed would otherwise be
-        // stuck showing a blank "Job #" forever. Confirmed live 2026-08-09.
+        // Refresh ALL mutable cached fields — the original code omitted
+        // addresses, documents, rush, and other fields on subsequent syncs.
         await cacheJob(db, job);
         synced++;
         continue;
       }
 
       // Not yet linked to a call — cache it regardless of auto-create so it
-      // shows up in the Cached Jobs list either way (a job matching the
-      // target client but with auto-create off previously never got cached
-      // at all, so there was nothing for the manual "Create Dispatch" action
-      // to act on — confirmed live 2026-08-09).
+      // shows up in the Cached Jobs list and can be manually dispatched.
       if (!existing) await cacheJob(db, job);
 
-      const autoCreate = await getSmConfig(db, 'servemanager_auto_create_calls');
       if (autoCreate !== 'true') { synced++; continue; }
 
-      await createDispatchCallForJob(env, job);
+      try {
+        await createDispatchCallForJob(env, job);
+        callsCreated++;
+      } catch (callErr) {
+        log.error('createDispatchCallForJob failed for job', { jobId: job.id }, callErr as Error);
+      }
       synced++;
-      callsCreated++;
     }
 
     // Update last poll timestamp. system_config has a UNIQUE(config_key,

@@ -173,7 +173,7 @@ skiptracer.get('/search/byname', async (c) => {
     ).join(' AND ');
     const params: unknown[] = [];
     for (const t of tokens) {
-      const wild = `%${t}%`;
+      const wild = `%${t.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
       params.push(wild, wild, wild, wild, wild);
     }
 
@@ -213,7 +213,7 @@ skiptracer.get('/search/byaddress', async (c) => {
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
     const offset = (page - 1) * PER_PAGE;
 
-    const wild = `%${addr}%`;
+    const wild = `%${addr.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
     const total = (await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) as n FROM persons
@@ -260,8 +260,9 @@ skiptracer.get('/search/bynameaddress', async (c) => {
       : '1=1';
     const addrWhere = '(address LIKE ? OR city LIKE ?)';
     const params: unknown[] = [];
-    for (const t of tokens) { const w = `%${t}%`; params.push(w, w, w); }
-    const aw = `%${addr}%`;
+    // D1 LIKE cap: pattern >50 chars silently returns nothing
+    for (const t of tokens) { const w = `%${t.slice(0, 48)}%`; params.push(w, w, w); }
+    const aw = `%${addr.slice(0, 48)}%`;
     params.push(aw, aw);
 
     const where = `${nameWhere} AND ${addrWhere}`;
@@ -314,7 +315,8 @@ skiptracer.get('/search/byphone', async (c) => {
       'REPLACE(REPLACE(REPLACE(REPLACE(phone_secondary,\'-\',\'\'),\' \',\'\'),\'(\',\'\'),\')\',\'\') LIKE ?)'
     ).join(' OR ');
     const params: unknown[] = [];
-    for (const c2 of candidates) { params.push(`%${c2}%`, `%${c2}%`); }
+    // D1 LIKE cap: pattern >50 chars silently returns nothing
+    for (const c2 of candidates) { const w = `%${String(c2).slice(0, 48)}%`; params.push(w, w); }
 
     const total = (await queryFirst<{ n: number }>(
       db, `SELECT COUNT(*) as n FROM persons WHERE ${where}`, ...params,
@@ -352,7 +354,7 @@ skiptracer.get('/search/byemail', async (c) => {
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
     const offset = (page - 1) * PER_PAGE;
 
-    const wild = `%${email}%`;
+    const wild = `%${email.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
     const total = (await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) as n FROM persons WHERE email LIKE ? OR email_secondary LIKE ?`,
@@ -495,7 +497,8 @@ skiptracer.get('/dossiers', async (c) => {
     const search = q('search');
     if (search) {
       conditions.push('(subject_name LIKE ? OR notes LIKE ?)');
-      params.push(`%${search}%`, `%${search}%`);
+      const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+      params.push(s, s);
     }
     const where = `WHERE ${conditions.join(' AND ')}`;
 

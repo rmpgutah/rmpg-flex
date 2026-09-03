@@ -7,6 +7,8 @@ import {
   BACKOFF_SECONDS,
   getQueueHealth,
   isFleetioQueueUnhealthy,
+  coerceScalarForD1,
+  PACE_MS,
   shouldFireUnhealthyAlert,
   isPermanentFleetioFailure,
   isPermanentFailureMessage,
@@ -251,7 +253,7 @@ describe('retry backoff gate', () => {
       async updateVehicle() { calls++; return { id: 999 }; },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(calls).toBe(0);
     expect(result.attempted).toBe(0);
     expect(state.events[0].status).toBe('pending');   // untouched, not consumed
@@ -284,7 +286,7 @@ describe('retry backoff gate', () => {
       async updateVehicle() { calls++; return { id: 999 }; },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(calls).toBe(1);
     expect(result.completed).toBe(1);
   });
@@ -324,7 +326,7 @@ describe('applyOutbound', () => {
       },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.attempted).toBe(1);
     expect(result.completed).toBe(1);
     expect(updateCalls).toBe(1);
@@ -344,7 +346,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new FleetioHttpError('Fleet.io 503', 503, 'unavailable'); },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.attempted).toBe(1);
     expect(result.completed).toBe(0);
     expect(result.errors).toHaveLength(1);
@@ -375,7 +377,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new Error('not used'); },
       async createFuelEntry() { createCalls++; return { id: 999999 }; },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
 
     // The whole point: no duplicate POST to Fleet.io.
     expect(createCalls).toBe(0);
@@ -401,7 +403,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new Error('not used'); },
       async createFuelEntry() { createCalls++; return { id: 777 }; },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(createCalls).toBe(1);
     expect(result.completed).toBe(1);
     expect(state.links.find(l => l.rmpg_table === 'fleet_fuel_log' && l.rmpg_id === 200)?.fleetio_id).toBe(777);
@@ -420,7 +422,7 @@ describe('applyOutbound', () => {
       },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
 
     expect(state.events[0].status).toBe('failed');
     expect(state.events[0].attempts).toBe(1);     // NOT maxAttempts()
@@ -456,7 +458,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new FleetioHttpError('Internal', 500, 'down'); },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.failed).toBe(1);
     expect(state.events[0].status).toBe('failed');
     expect(state.events[0].attempts).toBe(maxAttempts());
@@ -477,7 +479,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new FleetioRateLimitError(60); },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.attempted).toBe(1);    // bail after the first failure
     expect(result.skipped).toBe(2);
   });
@@ -493,7 +495,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new FleetioConfigError('FLEETIO_API_KEY is unset'); },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.attempted).toBe(1);
     expect(result.skipped).toBe(1);
   });
@@ -512,7 +514,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { throw new Error('should not be called'); },
       async createFuelEntry() { throw new Error('should not be called'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].error).toMatch(/Unsupported outbound/);
   });
@@ -529,7 +531,7 @@ describe('applyOutbound', () => {
       async updateVehicle() { updateCalled = true; return {} as never; },
       async createFuelEntry() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(updateCalled).toBe(false);
     expect(result.completed).toBe(1);
     expect(state.events[0].status).toBe('completed');
@@ -556,7 +558,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('not used'); },
       async createWorkOrder() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(createCalls).toBe(1);
     expect(result.completed).toBe(1);
     expect(state.events[0].status).toBe('completed');
@@ -585,7 +587,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('not used'); },
       async createWorkOrder() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(createCalls).toBe(0);                          // no duplicate push
     expect(result.completed).toBe(1);
     expect(state.events[0].status).toBe('completed');
@@ -612,7 +614,7 @@ describe('applyOutbound', () => {
       async createWorkOrder() { throw new Error('not used'); },
     };
     const fixedNow = () => new Date('2026-06-21T22:43:51Z');
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig, now: fixedNow });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig, now: fixedNow });
     expect(result.completed).toBe(1);
     expect(archivedAtSeen).toBe('2026-06-21T22:43:51.000Z');
   });
@@ -632,7 +634,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('not used'); },
       async createWorkOrder() { throw new Error('not used'); },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(archiveCalls).toBe(0);
     expect(result.completed).toBe(1);
     expect(state.events[0].status).toBe('completed');
@@ -660,7 +662,7 @@ describe('applyOutbound', () => {
         return { id: 8888, vehicle_id: 99999 } as never;
       },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(woCalls).toBe(1);
     expect(result.completed).toBe(1);
     expect(state.links.some(l => l.rmpg_table === 'work_orders' && l.rmpg_id === 1 && l.fleetio_id === 8888)).toBe(true);
@@ -684,7 +686,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('not used'); },
       async createWorkOrder() { woCalls++; return {} as never; },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(woCalls).toBe(0);                              // never reached Fleet.io
     expect(result.completed).toBe(1);                     // marked completed (no-op)
     expect(state.events[0].status).toBe('completed');
@@ -709,7 +711,7 @@ describe('applyOutbound', () => {
         return { id: 9000 } as never;
       },
     };
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
     expect(sentPayload).not.toBeNull();
     expect(sentPayload!.vehicle_id).toBe(99999);            // translated
@@ -742,7 +744,7 @@ describe('applyOutbound', () => {
       async createWorkOrder() { throw new Error('nu'); },
       async updateWorkOrder() { throw new Error('nu'); },
     };
-    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
     expect(seen.fleetioId).toBe(555);
     expect(seen.payload!.vehicle_id).toBe(99999);    // translated
@@ -764,7 +766,7 @@ describe('applyOutbound', () => {
       async updateFuelEntry() { calls++; return {} as never; },
       async createWorkOrder() { throw new Error('nu'); }, async updateWorkOrder() { throw new Error('nu'); },
     };
-    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
     expect(calls).toBe(0);
     expect(result.completed).toBe(1);
   });
@@ -789,7 +791,7 @@ describe('applyOutbound', () => {
         seen = args; return { id: args.fleetioId } as never;
       },
     };
-    const r1 = await applyOutbound({ db: makeDb(linkedState).db, adapter: adapter as never, config: stubConfig });
+    const r1 = await applyOutbound({ paceMs: 0, db: makeDb(linkedState).db, adapter: adapter as never, config: stubConfig });
     expect(r1.completed).toBe(1);
     expect(seen.fleetioId).toBe(8888);
     expect(seen.payload!.description).toBe('Updated summary'); // `summary` mapped to Fleet.io's `description`
@@ -809,7 +811,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('nu'); }, async updateFuelEntry() { throw new Error('nu'); },
       async createWorkOrder() { throw new Error('nu'); }, async updateWorkOrder() { calls++; return {} as never; },
     };
-    const r2 = await applyOutbound({ db: makeDb(orphanState).db, adapter: adapter2 as never, config: stubConfig });
+    const r2 = await applyOutbound({ paceMs: 0, db: makeDb(orphanState).db, adapter: adapter2 as never, config: stubConfig });
     expect(calls).toBe(0);
     expect(r2.completed).toBe(1);
   });
@@ -830,7 +832,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { throw new Error('nu'); }, async updateFuelEntry() { throw new Error('nu'); },
       async createWorkOrder() { throw new Error('nu'); }, async updateWorkOrder() { throw new Error('nu'); },
     };
-    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(2);                        // both events drained as no-op
     expect(state.events.every(e => e.status === 'completed')).toBe(true);
   });
@@ -850,7 +852,7 @@ describe('applyOutbound', () => {
       async createWorkOrder() { throw new Error('nu'); },
     };
     const linkedHarness = makeDb(stateLinked);
-    const r1 = await applyOutbound({ db: linkedHarness.db, adapter: adapterOk as never, config: stubConfig });
+    const r1 = await applyOutbound({ paceMs: 0, db: linkedHarness.db, adapter: adapterOk as never, config: stubConfig });
     expect(r1.completed).toBe(1);
     expect(sent!.vehicle_id).toBe(99999);
     expect(sent!.us_gallons).toBe(12.4);   // mapped from RMPG's `gallons`
@@ -875,7 +877,7 @@ describe('applyOutbound', () => {
       async createFuelEntry() { calls++; return {} as never; },
       async createWorkOrder() { throw new Error('nu'); },
     };
-    const r2 = await applyOutbound({ db: makeDb(stateOrphan).db, adapter: adapterCount as never, config: stubConfig });
+    const r2 = await applyOutbound({ paceMs: 0, db: makeDb(stateOrphan).db, adapter: adapterCount as never, config: stubConfig });
     expect(calls).toBe(0);
     expect(r2.completed).toBe(1);
   });
@@ -897,7 +899,7 @@ describe('applyOutbound', () => {
         return { id: args.fleetioId } as never;
       },
     };
-    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
     expect(sentPayload).toEqual({ name: 'AutoZone' });
   });
@@ -921,7 +923,7 @@ describe('applyOutbound', () => {
       async archiveVendor() { throw new FleetioHttpError('Fleet.io 404', 404); },
     };
     const { db } = makeDb(state);
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
     expect(result.failed).toBe(0);
     expect(state.links.some(l => l.rmpg_table === 'ref_vendors' && l.rmpg_id === 2)).toBe(false);
@@ -941,7 +943,7 @@ describe('applyOutbound', () => {
       async archiveVendor() { throw new FleetioHttpError('Fleet.io 500', 500); },
     };
     const { db } = makeDb(state);
-    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db, adapter: adapter as never, config: stubConfig });
     expect(result.failed).toBe(1);
     expect(state.links.some(l => l.rmpg_table === 'ref_vendors' && l.rmpg_id === 3)).toBe(true);
   });
@@ -962,7 +964,7 @@ describe('applyOutbound', () => {
         return { id: 9001 } as never;
       },
     };
-    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    const result = await applyOutbound({ paceMs: 0, db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
     expect(result.completed).toBe(1);
     // `name` has no Fleet.io equivalent (Parts are identified by `number`, not a display name) — dropped.
     expect(sentPayload).toEqual({ number: 'PF-46', unit_cost: 8.5 });
@@ -1149,5 +1151,24 @@ describe('applyInbound', () => {
     const { db } = makeDb(state);
     const result = await applyInbound({ db }, 'fleetio-evt-1');
     expect(result.status).toBe('no_op');
+  });
+});
+
+describe('coerceScalarForD1', () => {
+  it('passes scalars through untouched', () => {
+    expect(coerceScalarForD1('abc')).toBe('abc');
+    expect(coerceScalarForD1(42)).toBe(42);
+    expect(coerceScalarForD1(null)).toBe(null);
+  });
+
+  it('JSON-stringifies objects and arrays so D1 bind() cannot throw', () => {
+    expect(coerceScalarForD1({ a: 1 })).toBe('{"a":1}');
+    expect(coerceScalarForD1([1, 2])).toBe('[1,2]');
+  });
+});
+
+describe('outbound pacing constant', () => {
+  it('exports the shared 1.2s pace', () => {
+    expect(PACE_MS).toBe(1200);
   });
 });

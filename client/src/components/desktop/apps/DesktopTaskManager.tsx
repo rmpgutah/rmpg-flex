@@ -4,6 +4,8 @@ import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import { useDesktopWindows } from '../DesktopWindowManager';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../hooks/useApi';
+import { sessionsToCsv, downloadTextFile } from '../../../utils/rmsListExport';
+import { copyToClipboard } from '../../../utils/contextMenuActions';
 import { safeTimeStr } from '../../../utils/dateUtils';
 
 interface ActiveSession {
@@ -33,6 +35,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
 
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [sessionsLoading, setSessLoading] = useState(false);
+  const [windowQuery, setWindowQuery] = useState('');
 
   useEffect(() => {
     if (tab !== 'sessions' || !isAdmin) return;
@@ -42,6 +45,14 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
       .catch(() => setSessions([]))
       .finally(() => setSessLoading(false));
   }, [tab, isAdmin]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const handleForceSignOut = (sessionId: number) => {
     apiFetch(`/admin/sessions/${sessionId}`, { method: 'DELETE' })
@@ -119,8 +130,22 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
         {tab === 'windows' && (
-          windows.length === 0 ? (
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>No open windows</p>
+          <>
+            <input
+              value={windowQuery}
+              onChange={(e) => setWindowQuery(e.target.value)}
+              placeholder="Search windows…"
+              aria-label="Search windows"
+              style={{ width: '100%', marginBottom: 8, fontSize: 11, padding: '4px 8px', borderRadius: 2, border: '1px solid var(--border-default)', background: 'var(--surface-sunken)', color: 'var(--text-primary)' }}
+            />
+          {windows.filter((w) => {
+            const q = windowQuery.trim().toLowerCase();
+            if (!q) return true;
+            return w.title.toLowerCase().includes(q) || w.path.toLowerCase().includes(q);
+          }).length === 0 ? (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>
+              {windows.length === 0 ? 'No open windows' : 'No windows match the search'}
+            </p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
@@ -133,10 +158,14 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                 </tr>
               </thead>
               <tbody>
-                {windows.map(w => (
+                {windows.filter((w) => {
+                  const q = windowQuery.trim().toLowerCase();
+                  if (!q) return true;
+                  return w.title.toLowerCase().includes(q) || w.path.toLowerCase().includes(q);
+                }).map(w => (
                   <tr key={w.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
                     <td style={{ padding: '4px 8px', color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title}</td>
-                    <td style={{ padding: '4px 8px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 10 }}>{w.path}</td>
+                    <td style={{ padding: '4px 8px', color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{w.path}</td>
                     <td style={{ padding: '4px 8px', color: 'var(--text-muted)' }}>{elapsed(w.id)}</td>
                     <td style={{ padding: '4px 8px' }}>
                       <button
@@ -156,7 +185,8 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                 ))}
               </tbody>
             </table>
-          )
+          )}
+          </>
         )}
 
         {tab === 'sessions' && isAdmin && (
@@ -165,6 +195,12 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
           ) : sessions.length === 0 ? (
             <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>No active sessions</p>
           ) : (
+            <>
+            <button
+              type="button"
+              onClick={() => downloadTextFile('sessions.csv', sessionsToCsv(sessions))}
+              style={{ fontSize: 10, marginBottom: 8, padding: '3px 8px', border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+            >CSV</button>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700 }}>
@@ -177,7 +213,10 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
               <tbody>
                 {sessions.map(s => (
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
-                    <td style={{ padding: '4px 8px', color: 'var(--text-primary)' }}>{s.username}</td>
+                    <td style={{ padding: '4px 8px', color: 'var(--text-primary)' }}>
+                      {s.username}
+                      <button type="button" aria-label={`Copy ${s.username}`} onClick={() => void copyToClipboard(s.username)} style={{ marginLeft: 8, fontSize: 9, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>Copy</button>
+                    </td>
                     <td style={{ padding: '4px 8px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{s.role}</td>
                     <td style={{ padding: '4px 8px', color: 'var(--text-muted)' }}>{safeTimeStr(s.last_active)}</td>
                     <td style={{ padding: '4px 8px' }}>
@@ -193,6 +232,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                 ))}
               </tbody>
             </table>
+            </>
           )
         )}
 
@@ -228,7 +268,7 @@ function SystemTab() {
             {rows.map(([k, v]) => (
               <tr key={k} style={{ borderBottom: '1px solid var(--border-default)' }}>
                 <td style={{ padding: '4px 8px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', width: 140, fontWeight: 700 }}>{k}</td>
-                <td style={{ padding: '4px 8px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: 10 }}>{v}</td>
+                <td style={{ padding: '4px 8px', color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>{v}</td>
               </tr>
             ))}
           </tbody>

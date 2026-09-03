@@ -9,6 +9,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import { asArray } from '../../../utils/asArray';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 
 interface UserOption {
   id: string;
@@ -19,7 +20,7 @@ interface UserOption {
 interface Grievance {
   id?: number;
   against_user_id: string | null;
-  grievance_type: string;
+  type: string;
   subject: string;
   description: string;
   priority: string;
@@ -50,7 +51,7 @@ const PRIORITY_LEVELS = [
 
 const EMPTY_FORM = {
   against_user_id: '' as string,
-  grievance_type: 'workplace' as string,
+  type: 'workplace' as string,
   subject: '' as string,
   description: '' as string,
   priority: 'normal' as string,
@@ -72,13 +73,14 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   useEffect(() => {
     apiFetch<UserOption[]>('/personnel').then(d => setUsers(asArray(d))).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
     if (grievance) {
       setForm({
         against_user_id: grievance.against_user_id || '',
-        grievance_type: grievance.grievance_type || 'workplace',
+        type: grievance.type || 'workplace',
         subject: grievance.subject || '',
         description: grievance.description || '',
         priority: grievance.priority || 'normal',
@@ -90,16 +92,18 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !saving) {
-        if (isDirty) {
-          if (window.confirm('You have unsaved changes. Close anyway?')) onClose();
-        } else {
-          onClose();
-        }
+        if (isDirty) setDiscardOpen(true);
+        else onClose();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [saving, onClose, isDirty]);
+
+  const guardedClose = () => {
+    if (isDirty && !saving) setDiscardOpen(true);
+    else onClose();
+  };
 
   const handleSubmit = async () => {
     if (!form.subject.trim() || !form.description.trim()) {
@@ -111,7 +115,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
     try {
       const payload = {
         against_user_id: form.against_user_id || null,
-        grievance_type: form.grievance_type,
+        type: form.type,
         subject: form.subject.trim(),
         description: form.description.trim(),
         priority: form.priority,
@@ -142,7 +146,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   return (
     <>
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
-      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={guardedClose}>
       <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
@@ -152,7 +156,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
               {grievance?.id ? 'Edit Grievance' : 'File Grievance'}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close">
+          <button type="button" onClick={guardedClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -191,7 +195,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="ff-grievancemodal-1" className={labelClass}>Type *</label>
-              <select id="ff-grievancemodal-1" value={form.grievance_type} onChange={e => setForm(f => ({ ...f, grievance_type: e.target.value }))} className={inputClass}>
+              <select id="ff-grievancemodal-1" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={inputClass}>
                 {GRIEVANCE_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
@@ -235,7 +239,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100">
+          <button type="button" onClick={guardedClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100">
             Cancel
           </button>
           <button type="button"
@@ -248,6 +252,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
         </div>
       </div>
     </div>
+    <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={() => { setDiscardOpen(false); onClose(); }} message="You have unsaved changes. Close anyway?" />
     </>
   );
 }

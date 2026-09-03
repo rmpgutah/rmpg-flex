@@ -36,31 +36,10 @@ import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 import { clientIp } from '../utils/requestIp';
 import { upsertPersonFromAos, storeIdPhotos, linkReceiptToPerson } from '../utils/serveReceiptPersons';
+import { formatServiceAddress } from '../utils/formatServiceAddress';
 import { broadcastAll } from './ws';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
-
-/**
- * Address of service as a conventional two-line block:
- *
- *     1234 Wisconsin Street
- *     South Salt Lake, UT 85194
- *
- * Mirrors formatServiceAddress in client/src/utils/serveReceiptVariant.ts.
- * A comma-joined single string wrapped mid-city on the 2026-07-27 service
- * and put a comma between the state and the ZIP, which no postal or court
- * address block does.
- */
-function formatServiceAddress(p: {
-  address?: string | null; city?: string | null;
-  state?: string | null; zip?: string | null;
-}): string {
-  const street = (p.address ?? '').trim();
-  const locality = [(p.city ?? '').trim(),
-    [(p.state ?? '').trim(), (p.zip ?? '').trim()].filter(Boolean).join(' ')]
-    .filter(Boolean).join(', ');
-  return [street, locality].filter(Boolean).join('\n');
-}
 
 /** Default life of a printed QR. Printed sheets outlive their usefulness. */
 const DEFAULT_TOKEN_TTL_DAYS = 30;
@@ -520,7 +499,8 @@ serveReceipt.get('/:token', async (c) => {
     db,
     `SELECT id, case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
             document_type, recipient_name, recipient_address, recipient_city,
-            recipient_state, recipient_zip, status, assigned_officer_id, officer_id
+            recipient_state, recipient_zip, status, assigned_officer_id, officer_id,
+            created_by
        FROM serve_queue WHERE id = ?`,
     tok.serve_queue_id,
   );
@@ -901,7 +881,10 @@ serveReceipt.post('/:token', async (c) => {
       WHERE id = ?`,
     channel,
     tok.prefill_variant ?? null,
-    tok.prefill_variant ? (tok.prefill_variant === variant ? 0 : 1) : null,
+    // When no officer prefill exists (tok.prefill_variant is null):
+    //   → store 0 (no conflict, no prefill to disagree with) rather than NULL.
+    // NULL previously made "no prefill" and "agreed" indistinguishable in audits.
+    tok.prefill_variant != null ? (tok.prefill_variant === variant ? 0 : 1) : 0,
     receiptId,
   ).catch((err) => {
     log.error(
@@ -1603,6 +1586,7 @@ serveReceiptAdmin.post(
     }
 
     const attRaw = Array.isArray(body.attestations) ? body.attestations : [];
+    const attestationsTruncated = attRaw.length > 20;
     const attestations = attRaw.slice(0, 20).map((a: any) => ({
       id: String(a?.id ?? '').slice(0, 40),
       text: String(a?.text ?? '').slice(0, 600),
@@ -1610,6 +1594,7 @@ serveReceiptAdmin.post(
     })).filter((a) => a.id && a.text);
 
     const docsRaw = Array.isArray(body.documents) ? body.documents : [];
+    const documentsTruncated = docsRaw.length > 50;
     const documents = docsRaw.slice(0, 50).map((d: any) => ({
       title: String(d?.title ?? 'Court document').slice(0, 200),
       copies: Number.isFinite(Number(d?.copies)) ? Math.max(1, Math.min(99, Number(d.copies))) : 1,
@@ -1681,7 +1666,10 @@ serveReceiptAdmin.post(
     }).catch(() => undefined);
 
     log.info('Paper acknowledgement transcribed', { receiptId, queueId, variant });
-    return c.json({ ok: true, receipt_id: receiptId, form_variant: variant }, 201);
+    const warnings: string[] = [];
+    if (attestationsTruncated) warnings.push(`attestations array exceeded 20 entries — only the first 20 were recorded`);
+    if (documentsTruncated) warnings.push(`documents array exceeded 50 entries — only the first 50 were recorded`);
+    return c.json({ ok: true, receipt_id: receiptId, form_variant: variant, ...(warnings.length ? { warnings } : {}) }, 201);
   },
 );
 
@@ -1735,9 +1723,21 @@ serveReceiptAdmin.post(
     const db = getDb(c.env);
     const user = c.get('user') as { id: number } | undefined;
 
-    const original = await queryFirst<{ serve_queue_id: number; job_status_before: string | null }>(
+    // Also fetch the original token's expiry so the correction token inherits
+    // the remaining window rather than a fresh full TTL. If the original was
+    // nearly expired, the correction shouldn't get more time than was left.
+    const original = await queryFirst<{
+      serve_queue_id: number;
+      job_status_before: string | null;
+      original_token_expires_at: string | null;
+    }>(
       db,
-      "SELECT serve_queue_id, job_status_before FROM serve_receipts WHERE id = ? AND status = 'signed'",
+      `SELECT r.serve_queue_id, r.job_status_before,
+              t.expires_at AS original_token_expires_at
+       FROM serve_receipts r
+       LEFT JOIN serve_receipt_tokens t ON t.serve_queue_id = r.serve_queue_id
+         AND t.used_receipt_id = r.id
+       WHERE r.id = ? AND r.status = 'signed'`,
       id,
     );
     if (!original) return c.json({ error: 'Receipt not found or already voided' }, 404);
@@ -1771,12 +1771,24 @@ serveReceiptAdmin.post(
       original.serve_queue_id,
     ).catch(() => undefined);
 
+    // Correction token TTL: inherit the original token's remaining expiry window
+    // rather than minting a fresh full TTL. A nearly-expired original should not
+    // get more signing time via correction than it was originally granted.
+    // If the original token's expiry is unavailable or already past, use the
+    // default TTL as a safe fallback.
+    const originalExpiresMs = original.original_token_expires_at
+      ? new Date(original.original_token_expires_at).getTime()
+      : null;
+    const remainingMs = originalExpiresMs ? originalExpiresMs - Date.now() : 0;
+    const ttlDays = remainingMs > 0
+      ? Math.ceil(remainingMs / 86_400_000)
+      : DEFAULT_TOKEN_TTL_DAYS;
     const token = randomToken();
     await execute(
       db,
       `INSERT INTO serve_receipt_tokens (serve_queue_id, token, created_by, expires_at)
        VALUES (?, ?, ?, datetime('now', ?))`,
-      original.serve_queue_id, token, user?.id ?? null, `+${DEFAULT_TOKEN_TTL_DAYS} days`,
+      original.serve_queue_id, token, user?.id ?? null, `+${ttlDays} days`,
     );
 
     await recordAudit(c, {
@@ -1848,7 +1860,7 @@ serveReceiptAdmin.get('/receipt/:id/document', requireRole(...RECEIPT_READ_ROLES
 
   const job = await queryFirst<Record<string, any>>(
     db,
-    `SELECT case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
+    `SELECT id, case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
             document_type, assigned_officer_id, officer_id
        FROM serve_queue WHERE id = ?`,
     r.serve_queue_id,
@@ -1884,6 +1896,7 @@ serveReceiptAdmin.get('/receipt/:id/document', requireRole(...RECEIPT_READ_ROLES
 
     courtName: job?.court_name ?? '',
     caseNumber: job?.case_number ?? '',
+    jobId: job?.id ?? r.serve_queue_id,
     jurisdiction: job?.jurisdiction ?? '',
     plaintiffName: job?.plaintiff_name ?? '',
     defendantName: job?.defendant_name ?? '',
@@ -1937,7 +1950,7 @@ serveReceiptAdmin.post('/receipt/:id/void', requireRole('admin', 'manager', 'sup
   const id = parseInt(c.req.param('id') || '', 10);
   if (!id) return c.json({ error: 'Invalid receipt id' }, 400);
   const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({ reason: '' }));
-  if (!reason) return c.json({ error: 'A reason is required to void a signed receipt' }, 400);
+  if (!reason || String(reason).trim().length < 10) return c.json({ error: 'A void reason of at least 10 characters is required (it becomes part of the legal audit trail)' }, 400);
 
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);

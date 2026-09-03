@@ -16,8 +16,8 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import type { CallForService } from '../types';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -129,27 +129,12 @@ export function generateClearedSummaryPdf(input: ClearedSummaryInput): jsPDF {
   const M = 36; // margin
   let y = 36;
 
-  // Header banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('CLEARED CALLS SUMMARY', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
   const range = `${fmtMtDate(windowStart)}  ${fmtMt(windowStart)} – ${fmtMt(windowEnd)}  MT`;
-  doc.text(range, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Dispatch Operations', M, y);
-  if (dispatcherName) {
-    doc.text(`Dispatcher: ${dispatcherName}`, W - M, y, { align: 'right' });
-  }
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: 'CLEARED CALLS SUMMARY',
+    subtitle: 'Dispatch Operations',
+    rightLine1: range,
+  });
 
   // Top stats row
   doc.setDrawColor(BORDER);

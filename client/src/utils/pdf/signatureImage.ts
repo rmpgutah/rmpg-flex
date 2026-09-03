@@ -31,7 +31,7 @@ export interface NaturalImageSize {
  * before any hard clamp is applied. 12% is enough to read as ink overrunning
  * a rule without threatening the row above/below it.
  */
-export const SIGNATURE_OVERSHOOT = 0.12;
+export const SIGNATURE_OVERSHOOT = 0.22;
 
 export interface ComputeSignatureRectOptions {
   /** Fraction of box w/h the fitted image may exceed. Defaults to SIGNATURE_OVERSHOOT. */

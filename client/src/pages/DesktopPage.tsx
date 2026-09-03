@@ -66,6 +66,7 @@ import { applyHighContrast, isHighContrastEnabled } from '../utils/highContrastP
 import DesktopPerfMon from '../components/desktop/apps/DesktopPerfMon';
 import DesktopNetworkDiag from '../components/desktop/apps/DesktopNetworkDiag';
 import DesktopPrivacyScreen from '../components/desktop/DesktopPrivacyScreen';
+import DesktopKioskHUD from '../components/desktop/DesktopKioskHUD';
 import { getStartupWindows } from '../utils/startupPreferences';
 import { setTextScale, getTextScale, setKeyboardNavEnabled, isKeyboardNavEnabled, setReducedMotion, isReducedMotion, applyCursorStyle } from '../utils/accessibilityPreferences';
 
@@ -322,7 +323,24 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [privacyScreenActive, setPrivacyScreenActive] = useState(
     () => localStorage.getItem('rmpg_privacy_screen') === '1'
   );
+  const [kioskHudOpen, setKioskHudOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
+
+  useEffect(() => {
+    const handler = () => setKioskHudOpen(true);
+    const keyHandler = (e: KeyboardEvent) => {
+      if ((e.altKey && e.key.toLowerCase() === 'f') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'h')) {
+        e.preventDefault();
+        setKioskHudOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('flexos:open-kiosk-hud', handler);
+    window.addEventListener('keydown', keyHandler);
+    return () => {
+      window.removeEventListener('flexos:open-kiosk-hud', handler);
+      window.removeEventListener('keydown', keyHandler);
+    };
+  }, []);
 
   // Apply high contrast and accessibility preferences on mount
   useEffect(() => {
@@ -694,6 +712,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
         )}
         {scratchPadOpen && <DesktopEvidenceScratchPad onClose={() => setScratchPadOpen(false)} />}
+        <DesktopKioskHUD isOpen={kioskHudOpen} onClose={() => setKioskHudOpen(false)} onOpenWindow={(path, title, size) => openWindowRef.current?.(path, title, size)} />
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />

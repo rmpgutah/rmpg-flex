@@ -3,6 +3,7 @@ import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
 import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import { apiWsBase } from '../utils/apiOrigin';
 import {
   announceGpsGap,
   announceGpsRecovered,
@@ -188,6 +189,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   const connect = useCallback(() => {
     if (!authRef.current || !tokenRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      markDisconnected();
+      return;
+    }
 
     // Idempotence guard. Four independent triggers call connect() — mount,
     // window 'focus', 'online', and visibilitychange — and on a laptop waking
@@ -260,9 +265,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
+        const wasDisconnected = connectionLost;
         markConnected();
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
         retryCountRef.current = 0;
+
+        if (wasDisconnected && typeof window !== 'undefined') {
+          try { window.dispatchEvent(new CustomEvent('rmpg:ws-reconnected')); } catch { /* silent */ }
+        }
 
         try {
           ws.send(JSON.stringify({ type: 'authenticate', token: tokenRef.current }));
@@ -331,7 +341,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           setConnectionLost(true);
         }
 
-        if (authRef.current) {
+        if (authRef.current && (typeof navigator === 'undefined' || navigator.onLine)) {
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(
               reconnectDelayRef.current + 2000,
@@ -342,9 +352,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      ws.onerror = (err) => {
-        devWarn('[WS] Connection error:', err);
-        // onerror fires before onclose, so retry/limit logic lives there
+      ws.onerror = () => {
+        // Chrome already logs "WebSocket connection to 'wss://…' failed".
+        // Don't duplicate it — especially while offline.
       };
 
       wsRef.current = ws;
@@ -360,6 +370,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   // inbound frames flow through the shared fanInMessage bus.
   const connectAlerts = useCallback(() => {
     if (!authRef.current || !tokenRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const existing = alertsRef.current;
+    if (existing) {
+      if (existing.readyState === WebSocket.OPEN) return;
+      if (existing.readyState === WebSocket.CONNECTING) return;
+    }
     if (alertsReconnectRef.current) { clearTimeout(alertsReconnectRef.current); alertsReconnectRef.current = null; }
     if (alertsRef.current) {
       const old = alertsRef.current;
@@ -368,11 +384,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       alertsRef.current = null;
     }
     try {
-      const host = window.location.hostname;
-      const base = (host === 'localhost' || host === '127.0.0.1')
-        ? `ws://${host}:8787`
-        : 'wss://api.rmpgutah.us';
-      const ws = new WebSocket(`${base}/api/alerts-ws`);
+      const ws = new WebSocket(`${apiWsBase()}/api/alerts-ws`);
 
       ws.onopen = () => {
         alertsDelayRef.current = WS_RECONNECT_DELAY;
@@ -407,7 +419,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           devWarn(`[AlertWS] Max retries (${WS_MAX_RETRIES}) reached`);
           return;
         }
-        if (authRef.current) {
+        if (authRef.current && (typeof navigator === 'undefined' || navigator.onLine)) {
           alertsReconnectRef.current = setTimeout(() => {
             alertsDelayRef.current = Math.min(alertsDelayRef.current + 2000, WS_MAX_RECONNECT_DELAY);
             connectAlerts();
@@ -415,9 +427,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      ws.onerror = (err) => {
-        devWarn('[AlertWS] Connection error:', err);
-      };
+      ws.onerror = () => { /* Chrome already logs the failed wss:// handshake */ };
       alertsRef.current = ws;
     } catch (err) {
       console.warn('[AlertWS] Connection creation failed:', err);

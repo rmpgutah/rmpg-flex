@@ -1,6 +1,6 @@
 import SwiftUI
-import CoreAPI
-import DesignSystem
+
+
 
 // Two-way phone <-> in-vehicle MDT link, using the same message-relay
 // channel the web client's MDTBridge.tsx/MdtPage.tsx already rely on

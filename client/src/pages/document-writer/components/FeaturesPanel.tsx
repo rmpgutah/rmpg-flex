@@ -13,6 +13,8 @@ import {
   startDictation, type DictationSession, type StatuteHit, type PersonHit, type CallHit,
   insertSignatureFromFile, insertQRCode,
 } from '../features';
+import ConfirmDialog from '../../../components/ConfirmDialog';
+import PromptDialog from '../../../components/PromptDialog';
 
 type Tab = 'snippets' | 'statutes' | 'persons' | 'calls' | 'tools' | 'userTemplates';
 
@@ -48,6 +50,8 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
   const [dictation, setDictation] = useState<DictationSession | null>(null);
   const [readout, setReadout] = useState<string | null>(null);
   const [userTpls, setUserTpls] = useState(listUserTemplates());
+  const [deleteTpl, setDeleteTpl] = useState<{ id: string; name: string } | null>(null);
+  const [promptKind, setPromptKind] = useState<'template' | 'qr' | 'footnote' | null>(null);
 
   const toggleFav = (id: string) => {
     setFavs(prev => {
@@ -106,10 +110,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
 
   const doSaveAsTemplate = () => {
     if (!editor) return;
-    const name = window.prompt('Template name:');
-    if (!name) return;
-    saveUserTemplate(name, editor.getHTML());
-    setUserTpls(listUserTemplates());
+    setPromptKind('template');
   };
 
   const doSigUpload = () => {
@@ -119,19 +120,13 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
     inp.click();
   };
 
-  const doQR = async () => {
-    const url = window.prompt('URL to encode (QR linkback):', caseUrl || window.location.href);
-    if (url) await insertQRCode(editor, url);
-  };
+  const doQR = () => setPromptKind('qr');
 
-  const doFootnote = () => {
-    const t = window.prompt('Footnote text:');
-    if (t) insertFootnote(editor, t);
-  };
+  const doFootnote = () => setPromptKind('footnote');
 
   const doDictation = () => {
     if (dictation) { dictation.stop(); setDictation(null); return; }
-    const s = startDictation(editor, (m) => window.alert(m));
+    const s = startDictation(editor, (m) => setReadout(m));
     if (s) setDictation(s);
   };
 
@@ -145,6 +140,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
   ];
 
   return (
+    <>
     <div className="w-[360px] flex-shrink-0 bg-surface-sunken border border-border-default rounded-[2px] flex flex-col text-rmpg-200 text-xs">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
         <span className="font-semibold text-rmpg-100 uppercase tracking-wider text-[10px]">Tools &amp; Snippets</span>
@@ -176,6 +172,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
               'Search calls by # or address...'
             }
             className="w-full bg-surface-sunken border border-border-default rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-accent-silver-500/40 focus:outline-none"
+            aria-label="Search writer tools"
           />
         </div>
       )}
@@ -276,7 +273,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
               <Btn icon={dictation ? <MicOff /> : <Mic />} label={dictation ? 'Stop dictation' : 'Dictate (voice)'} onClick={doDictation} active={!!dictation} />
               <Btn icon={<BarChart3 />} label="Readability score" onClick={doReadability} />
               <Btn icon={<Save />} label="Save as my template" onClick={doSaveAsTemplate} />
-              <Btn icon={<Hash />} label="Reset Bates counter" onClick={() => { resetBates(); window.alert('Bates counter reset to 1.'); }} />
+              <Btn icon={<Hash />} label="Reset Bates counter" onClick={() => { resetBates(); setReadout('Bates counter reset to 1.'); }} />
             </Section>
             {readout && <div className="text-[10px] text-rmpg-300 bg-surface-base border border-border-default p-2 rounded-[2px]">{readout}</div>}
           </div>
@@ -292,7 +289,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
                   <div className="text-[11px] text-rmpg-200">{t.name}</div>
                   <div className="text-[9px] text-rmpg-600">{new Date(t.createdAt).toLocaleString()}</div>
                 </button>
-                <button aria-label="Close" type="button" onClick={() => { if (window.confirm(`Delete "${t.name}"?`)) { deleteUserTemplate(t.id); setUserTpls(listUserTemplates()); } }}
+                <button aria-label={`Delete template ${t.name}`} type="button" onClick={() => setDeleteTpl({ id: t.id, name: t.name })}
                   className="text-rmpg-600 hover:text-red-400 px-1"><X className="w-3 h-3" /></button>
               </div>
             ))}
@@ -300,6 +297,60 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
         )}
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={deleteTpl != null}
+      onClose={() => setDeleteTpl(null)}
+      onConfirm={() => {
+        if (!deleteTpl) return;
+        deleteUserTemplate(deleteTpl.id);
+        setUserTpls(listUserTemplates());
+        setDeleteTpl(null);
+      }}
+      title="Delete template"
+      message={`Delete "${deleteTpl?.name ?? ''}"?`}
+      confirmLabel="Delete"
+      confirmVariant="danger"
+    />
+    <PromptDialog
+      isOpen={promptKind === 'template'}
+      onClose={() => setPromptKind(null)}
+      onSubmit={(name) => {
+        if (!editor) return;
+        saveUserTemplate(name, editor.getHTML());
+        setUserTpls(listUserTemplates());
+        setPromptKind(null);
+      }}
+      title="Save template"
+      message="Name this document template."
+      label="Template name"
+      confirmLabel="Save"
+    />
+    <PromptDialog
+      isOpen={promptKind === 'qr'}
+      onClose={() => setPromptKind(null)}
+      onSubmit={(url) => {
+        void insertQRCode(editor, url);
+        setPromptKind(null);
+      }}
+      title="QR linkback"
+      message="URL to encode in the QR code."
+      label="URL"
+      defaultValue={caseUrl || (typeof window !== 'undefined' ? window.location.href : '')}
+      confirmLabel="Insert"
+    />
+    <PromptDialog
+      isOpen={promptKind === 'footnote'}
+      onClose={() => setPromptKind(null)}
+      onSubmit={(t) => {
+        insertFootnote(editor, t);
+        setPromptKind(null);
+      }}
+      title="Footnote"
+      message="Footnote text inserted at the caret."
+      label="Text"
+      confirmLabel="Insert"
+    />
+    </>
   );
 }
 

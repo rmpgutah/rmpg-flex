@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
 export interface IntelProductData {
   report_number: string;
@@ -40,28 +41,30 @@ export function generateIntelProductPdf(d: IntelProductData): void {
   const handling = HANDLING[d.handling_code] || d.handling_code || 'UNCLASSIFIED';
 
   const stamp = () => {
-    doc.setFillColor(GOLD); doc.rect(0, 0, W, 22, 'F');
-    doc.setTextColor('#000000'); doc.setFont('Arial', 'bold'); doc.setFontSize(9);
-    doc.text(handling, W / 2, 15, { align: 'center' });
+    drawNavyBanner(doc, {
+      title: 'INTELLIGENCE PRODUCT',
+      subtitle: `Grade: ${show(d.grade_label)}  ·  Threat: ${show(d.threat_level).toUpperCase()}`,
+      rightLine1: `Disseminated: ${show(d.disseminated_at)}`,
+      rightLine2: handling,
+      y: 8,
+      marginPt: 0,
+    });
     doc.setFillColor(GOLD); doc.rect(0, H - 22, W, 22, 'F');
+    doc.setTextColor('#000000'); doc.setFont('Arial', 'bold'); doc.setFontSize(9);
     doc.text(handling, W / 2, H - 8, { align: 'center' });
   };
   stamp();
 
-  let y = 50;
-  doc.setTextColor('#000000'); doc.setFont('Arial', 'bold'); doc.setFontSize(16);
-  doc.text('INTELLIGENCE PRODUCT', M, y); y += 20;
-  doc.setFontSize(11); doc.setFont('Arial', 'normal');
-  doc.text(`${show(d.report_number)} — ${show(d.title)}`, M, y); y += 16;
-  doc.text(`Grade: ${show(d.grade_label)}    Threat: ${show(d.threat_level).toUpperCase()}`, M, y); y += 16;
-  doc.text(`Disseminated: ${show(d.disseminated_at)}`, M, y); y += 24;
+  let y = 62;
+  doc.setFontSize(11); doc.setFont('Arial', 'normal'); doc.setTextColor('#000000');
+  doc.text(`${show(d.report_number)} — ${show(d.title)}`, M, y); y += 24;
 
   const block = (heading: string, text: string) => {
-    if (y > H - 80) { doc.addPage(); stamp(); y = 50; }
+    if (y > H - 80) { doc.addPage(); stamp(); y = 62; }
     doc.setFont('Arial', 'bold'); doc.setFontSize(11); doc.text(heading, M, y); y += 16;
     doc.setFont('Arial', 'normal'); doc.setFontSize(10);
     for (const line of doc.splitTextToSize(show(text), W - 2 * M) as string[]) {
-      if (y > H - 40) { doc.addPage(); stamp(); y = 50; }
+      if (y > H - 40) { doc.addPage(); stamp(); y = 62; }
       doc.text(line, M, y); y += 14;
     }
     y += 10;

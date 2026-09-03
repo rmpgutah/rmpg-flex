@@ -24,12 +24,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -196,23 +197,12 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
   const labelOrId = c.lab_number || c.case_number || `FC-${c.id ?? '?'}`;
 
   // ── Banner ────────────────────────────────────────────────
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`FORENSIC CASE — ${labelOrId}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtTimestamp(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // ── Agency strap ──
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Forensic Lab', M, y);
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `FORENSIC CASE — ${labelOrId}`,
+    subtitle: 'Forensic Lab',
+    rightLine1: fmtTimestamp(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // ── Tamper-evidence statement ──
   doc.setFillColor(TAMPER_BG);
@@ -607,6 +597,6 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
 /** Open the generated PDF in a new browser tab. */
 export function openForensicCasePdf(input: ForensicCasePdfInput): void {
   const doc = generateForensicCasePdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Forensic Case Report');
 }

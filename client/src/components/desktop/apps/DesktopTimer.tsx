@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Timer, StopCircle, Copy, RotateCcw, Play, Pause, Flag } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
+import { timerLapsToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 const W = 380;
 const H = 460;
@@ -98,7 +99,7 @@ function CountdownTab() {
     width: 64, padding: '4px 6px', fontSize: 20, textAlign: 'center',
     background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)',
     color: 'var(--text-primary)', borderRadius: 2, outline: 'none',
-    fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums',
+    fontFamily: 'Arial, sans-serif', fontVariantNumeric: 'tabular-nums',
   };
 
   return (
@@ -113,7 +114,7 @@ function CountdownTab() {
           />
           <span style={{ fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>MIN</span>
         </div>
-        <span style={{ fontSize: 24, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>:</span>
+        <span style={{ fontSize: 24, color: 'var(--text-secondary)', fontFamily: 'Arial, sans-serif' }}>:</span>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <input
             type="number" min={0} max={59} value={inputSecs}
@@ -140,7 +141,7 @@ function CountdownTab() {
 
       {/* Display */}
       <div style={{
-        textAlign: 'center', fontFamily: 'monospace', fontSize: 52, fontWeight: 200,
+        textAlign: 'center', fontFamily: 'Arial, sans-serif', fontSize: 52, fontWeight: 200,
         color: expired ? 'var(--sev-critical)' : 'var(--text-primary)',
         letterSpacing: '0.04em', background: 'var(--surface-sunken)',
         borderRadius: 2, padding: '16px 8px', border: '1px solid var(--border-subtle)',
@@ -241,7 +242,7 @@ function StopwatchTab() {
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
       {/* Display */}
-      <div style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 38, fontWeight: 200, color: 'var(--text-primary)', letterSpacing: '0.04em', background: 'var(--surface-sunken)', borderRadius: 2, padding: '12px 8px', border: '1px solid var(--border-subtle)', fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ textAlign: 'center', fontFamily: 'Arial, sans-serif', fontSize: 38, fontWeight: 200, color: 'var(--text-primary)', letterSpacing: '0.04em', background: 'var(--surface-sunken)', borderRadius: 2, padding: '12px 8px', border: '1px solid var(--border-subtle)', fontVariantNumeric: 'tabular-nums' }}>
         {fmtMSS(elapsed)}
       </div>
 
@@ -258,6 +259,9 @@ function StopwatchTab() {
         <button onClick={reset} style={btnBase}><RotateCcw size={12} /> Reset</button>
         {laps.length > 0 && (
           <button onClick={copyLaps} style={btnBase}><Copy size={12} /> Copy laps</button>
+        )}
+        {laps.length > 0 && (
+          <button onClick={() => downloadTextFile('timer-laps.csv', timerLapsToCsv(laps.map((l) => ({ n: l.n, split: fmtMSS(l.split), total: fmtMSS(l.total) }))))} style={btnBase}>CSV</button>
         )}
         {status && <span style={{ fontSize: 10, color: 'var(--text-muted)', alignSelf: 'center' }}>{status}</span>}
       </div>
@@ -276,9 +280,9 @@ function StopwatchTab() {
             <tbody>
               {[...laps].reverse().map(l => (
                 <tr key={l.n} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>#{l.n}</td>
-                  <td style={{ padding: '3px 8px', textAlign: 'right', color: 'var(--text-primary)', fontFamily: 'monospace' }}>{fmtMSS(l.split)}</td>
-                  <td style={{ padding: '3px 8px', textAlign: 'right', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{fmtMSS(l.total)}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', fontFamily: 'Arial, sans-serif' }}>#{l.n}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif' }}>{fmtMSS(l.split)}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: 'var(--text-secondary)', fontFamily: 'Arial, sans-serif' }}>{fmtMSS(l.total)}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus, SquareSigma } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus, SquareSigma, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
 import ContextMenu from '../ContextMenu';
 import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
 import { getQuickLaunchPins, setQuickLaunchPins } from '../../utils/quickLaunchPreferences';
@@ -20,6 +21,7 @@ import { WorkspacePills } from './DesktopVirtualDesktops';
 import FlexOSAppDrawer from './FlexOSAppDrawer';
 import DesktopJumpList from './DesktopJumpList';
 import { TASKBAR_PINNED_ACTIONS } from '../../data/taskbarPinnedActions';
+import ClockInOutMileageModal from '../time/ClockInOutMileageModal';
 
 export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large: 56 };
 
@@ -111,31 +113,20 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
     return () => { cancelled = true; };
   }, [launcherOpen]);
 
+  const [mileageModalOpen, setMileageModalOpen] = useState(false);
+
   const handleClockToggle = useCallback(async () => {
     if (!user?.id || clockBusy || clockToggleInFlightRef.current) return;
-    clockToggleInFlightRef.current = true;
-    setClockBusy(true);
+    setMileageModalOpen(true);
+    setLauncherOpen(false);
+  }, [clockBusy, user?.id]);
+
+  const handleMileageModalSuccess = useCallback((punch: any) => {
     const wasOnDuty = onDuty;
-    try {
-      await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
-        method: 'POST',
-        body: JSON.stringify({ officer_id: user.id }),
-      });
-      setOnDuty(v => !v);
-    } catch (err: any) {
-      // apiFetch has no toast interceptor of its own — on failure it only plays
-      // a best-effort audio chime (nackForApiFailure in actionChimes.ts), so
-      // without this the operator gets zero visible feedback on a real failure
-      // (e.g. the 409 "Already clocked in" from src/routes/personnel.ts, or a
-      // network error). Surface it the same way PersonnelPage.tsx's
-      // handleClockIn/handleClockOut do.
-      addToast(err?.message || (wasOnDuty ? 'Failed to clock out' : 'Failed to clock in'), 'error');
-    } finally {
-      clockToggleInFlightRef.current = false;
-      setClockBusy(false);
-      setLauncherOpen(false);
-    }
-  }, [onDuty, clockBusy, user, addToast]);
+    setOnDuty(v => !v);
+    if (!wasOnDuty) toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
+    addToast(wasOnDuty ? 'Clocked out successfully' : 'Clocked in successfully', 'success');
+  }, [onDuty, addToast]);
 
   const handleSelectResult = useCallback((fn: NavFunction) => {
     let capHit = false;
@@ -474,6 +465,28 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
           )}
         </div>
         <DesktopWelfareCountdown />
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('flexos:open-kiosk-hud'))}
+          title="500+ Features System Control HUD (Win+F / Alt+F)"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '3px 8px',
+            background: 'rgba(212,160,23,0.12)',
+            border: '1px solid rgba(212,160,23,0.4)',
+            borderRadius: 2,
+            color: 'var(--brand-gold)',
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+        >
+          <ShieldCheck style={{ width: 13, height: 13 }} />
+          <span style={{ letterSpacing: '0.04em' }}>500+ HUD</span>
+        </button>
         <QuickSettingsButton />
         <DesktopSystemTray />
         <div style={{ position: 'relative' }}>
@@ -524,6 +537,15 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         onUnpin={() => { unpinApp(jumpList.appKey); setJumpList(null); forceRerender(n => n + 1); }}
         onCloseWindow={jumpList.closeWindowId ? () => { closeWindow(jumpList.closeWindowId!); setJumpList(null); } : undefined}
         onDismiss={() => setJumpList(null)}
+      />
+    )}
+    {user?.id && (
+      <ClockInOutMileageModal
+        isOpen={mileageModalOpen}
+        onClose={() => setMileageModalOpen(false)}
+        isClockingOut={!!onDuty}
+        officerId={user.id}
+        onSuccess={handleMileageModalSuccess}
       />
     )}
     </>

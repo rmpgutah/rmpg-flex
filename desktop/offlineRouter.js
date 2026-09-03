@@ -351,16 +351,17 @@ function handlePostGps(body) {
   });
   tx();
 
-  // Queue the batch for replay when connectivity returns. Previously the
-  // local store was a black hole — points landed here and never made it
-  // back to the server. The sync push loop in syncManager.js drains the
-  // queue via POST /api/offline/sync/push; pushGpsBreadcrumbs() on the
-  // server side understands this payload shape.
-  try {
-    enqueue('POST', '/api/dispatch/gps', { points }, null, 'gps_breadcrumbs');
-  } catch (e) {
-    console.warn('[offlineRouter] failed to enqueue GPS batch:', e?.message || e);
-  }
+  // Replay ownership: syncManager.js's pushGpsBreadcrumbs() is the SOLE
+  // replay path for GPS — it scans gps_breadcrumbs directly for is_synced=0
+  // rows and pushes them. This handler used to ALSO enqueue the same batch
+  // onto the generic sync_queue (table_name 'gps_breadcrumbs' isn't in
+  // ALLOWED_SYNC_TABLES, and the queue item's local_id is null, so the
+  // generic push path never marked anything synced here — meaning every
+  // reconnect sent the batch once via the generic queue drain AND again via
+  // pushGpsBreadcrumbs(), duplicating every offline breadcrumb, doubling
+  // trip mileage, and double-firing geofence/automation transitions for the
+  // same fixes). Local rows are already stored above with is_synced=0, which
+  // is all pushGpsBreadcrumbs() needs — no separate enqueue required.
 
   return { status: 200, data: { stored: points.length, queued: points.length } };
 }

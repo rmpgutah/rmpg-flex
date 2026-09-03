@@ -285,6 +285,20 @@ class InternalGps extends EventEmitter {
       this.gotValidData = true;
       if (this.baudProbeTimer) { clearTimeout(this.baudProbeTimer); this.baudProbeTimer = null; }
       console.log('[INTERNAL-GPS] Locked NMEA stream @', this.baudRate, 'baud');
+      // UBX-CFG-RATE: set measurement period to 200 ms (5 Hz).
+      // Fire-and-forget — if the chip ignores it (pre-M8 firmware) it stays at
+      // 1 Hz; if it accepts, fixes arrive 5× more often, cutting lag from ~6 s
+      // (1 Hz + 5 s batch) to ~1.2 s (5 Hz + 1 s batch).
+      // Checksum DE 6A is Fletcher over Class+ID+Length+Payload (not sync header).
+      if (this.port && this.port.isOpen) {
+        this.port.write(
+          Buffer.from([0xB5,0x62,0x06,0x08,0x06,0x00,0xC8,0x00,0x01,0x00,0x01,0x00,0xDE,0x6A]),
+          (err) => {
+            if (err) console.warn('[INTERNAL-GPS] UBX-CFG-RATE write failed (non-fatal):', err.message);
+            else console.log('[INTERNAL-GPS] Sent UBX-CFG-RATE 5Hz');
+          }
+        );
+      }
       // Schedule dead reckoning to begin if fixes stop arriving (checked 3s later)
       setTimeout(() => {
         if (this._lastFixAt && (Date.now() - this._lastFixAt) > 2000) {

@@ -27,15 +27,17 @@ export default function PatrolBeatPlannerModal({ onClose, onSolutionReady }: Pat
   const optimization = useOptimizationV2();
 
   useEffect(() => {
-    apiFetch<{ results: Beat[] }>('/dispatch/beats')
-      .then((r) => setBeats(r.results ?? []))
+    let cancelled = false;
+    apiFetch<{ results: Beat[] }>('/dispatch/geography/beats')
+      .then((r) => { if (!cancelled) setBeats(r.results ?? []); })
       .catch(() => {});
     apiFetch<Unit[]>('/dispatch/units')
-      .then((r) => setUnits(Array.isArray(r) ? r : []))
+      .then((r) => { if (!cancelled) setUnits(Array.isArray(r) ? r : []); })
       .catch(() => {});
     const today = new Date().toISOString().split('T')[0];
     setShiftStart(`${today}T13:00`);
     setShiftEnd(`${today}T21:00`);
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

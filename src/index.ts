@@ -22,7 +22,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { jsonBodyGuard } from './middleware/jsonBodyGuard';
 import { apiRateLimit } from './middleware/rateLimit';
-import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { handleWebSocket, sendToUser } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -36,6 +36,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 import { log, logErrorToDb } from './utils/logger';
+import { emitAlert } from './utils/alertHub';
 import { initTursoSingleton } from './utils/tursoClient';
 
 // Export Durable Object classes so wrangler can find them at build time.
@@ -57,7 +58,13 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.use('*', logger());
-app.use('*', secureHeaders());
+// Default CORP is `same-origin`. Electron / off-origin clients still POST
+// cross-origin to this Worker (api.rmpgutah.us). CORP same-origin makes Chrome discard the
+// response as a network error — Dispatch's Files tab then shows "Upload failed"
+// with no HTTP status. `cross-origin` is the correct policy for a public API.
+app.use('*', secureHeaders({
+  crossOriginResourcePolicy: 'cross-origin',
+}));
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
@@ -71,6 +78,22 @@ app.use('*', cors({
     return undefined;
   },
   credentials: true,
+  // Explicit allow-list so preflight is answered even when a Cloudflare WAF
+  // challenge stripped Access-Control-Request-Headers (multipart uploads).
+  // X-Offline-Warm is kept allowed so a stray direct-Worker warmer cannot
+  // reproduce the 2026-08-28 CORS storm; the client warmer itself no longer
+  // sends that header.
+  allowHeaders: [
+    'Authorization',
+    'Content-Type',
+    'X-Requested-With',
+    'Accept',
+    'X-Offline-Warm',
+    'X-Trace-Id',
+  ],
+  allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposeHeaders: ['X-Trace-Id', 'X-Request-Id'],
+  maxAge: 86400,
 }));
 
 // Root probe — useful for "is the Worker even reachable" smoke checks
@@ -153,6 +176,32 @@ for (const m of ROUTE_REGISTRY) {
   app.route(m.prefix, m.router);
 }
 
+// ─── Client session event logger ─────────────────────────────
+// DesktopPage.tsx posts session-start / unlock events here (fire-and-forget).
+// Auth-gated so anonymous clients can't spam the error_log table.
+app.post('/api/errors', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{ severity?: string; category?: string; message?: string; source?: string }>();
+    const userId = c.get('userId') as number | undefined;
+    await c.env.DB.prepare(
+      `INSERT INTO error_log (severity, category, message, details, trace_id, user_id, source_route, status_code, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(
+      body.severity ?? 'info',
+      body.category ?? 'client',
+      body.message ?? '',
+      JSON.stringify({ source: body.source ?? 'desktop' }),
+      c.get('traceId') ?? null,
+      userId ?? null,
+      body.source ?? 'desktop',
+      200,
+    ).run();
+    return c.json({ ok: true });
+  } catch {
+    return c.json({ ok: false });
+  }
+});
+
 // ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
@@ -160,7 +209,18 @@ for (const m of ROUTE_REGISTRY) {
 // Lives outside ROUTE_REGISTRY because it's an internal callback,
 // not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  // Constant-time comparison to prevent timing attacks on the secret.
+  // JS string comparison short-circuits on the first differing character,
+  // leaking the mismatch position via response time. Compare SHA-256 hashes
+  // instead — same length, constant-time comparison via timingSafeEqual.
+  const incoming = c.req.header('X-DO-Secret') ?? '';
+  const expected = c.env.JWT_SECRET ?? '';
+  if (incoming.length !== expected.length) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const incomingHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(incoming));
+  const expectedHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(expected));
+  if (!crypto.subtle.timingSafeEqual(incomingHash, expectedHash)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
@@ -173,9 +233,31 @@ app.post('/__welfare-fire', async (c) => {
       message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
     });
   } else if (stage === 'alert') {
-    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+    // broadcastAll only reaches sockets held by THIS isolate's in-memory map —
+    // the live /api/ws client connects to a different (legacy) worker, so that
+    // map is always empty here. And even if delivery worked, the client hooks
+    // (useDispatchVoiceAlerts.ts, useDispatchVoice.ts) subscribe to the
+    // DISCRETE alert type 'welfare_alert', not to 'dispatch_update' with an
+    // action field — so this Stage-2 escalation reached no dispatcher at all.
+    // emitAlert delivers via AlertHubDO under the exact type the client
+    // filters on, matching the already-correct pattern in routes/welfare.ts.
+    await emitAlert(c.env, 'welfare_alert', {
+      action: 'welfare_alert',
+      user_id: watch.user_id,
+      call_sign: watch.call_sign,
+      triggered_by: 'automated_escalation',
+      at: new Date().toISOString(),
+    });
   } else if (stage === 'emergency') {
-    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+    await emitAlert(c.env, 'welfare_emergency', {
+      action: 'welfare_emergency',
+      user_id: watch.user_id,
+      call_sign: watch.call_sign,
+      call_id: watch.call_id,
+      call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      at: new Date().toISOString(),
+    });
   }
   return c.json({ success: true });
 });
@@ -509,7 +591,7 @@ export default {
       // nothing ever advanced it or re-broadcast an unacknowledged alert.
       ctx.waitUntil(
         import('./utils/panicEscalationSweep').then((m) =>
-          m.sweepPanicEscalation(env.DB).then((r) => {
+          m.sweepPanicEscalation(env.DB, env).then((r) => {
             if (r.escalated > 0) log.info(`[panic-escalation] escalated ${r.escalated}`);
           }).catch((err) => log.error('Panic escalation sweep failed:', {}, err)),
         ).catch(() => {}),
@@ -526,9 +608,12 @@ export default {
         ).catch(() => {}),
       );
       // [12] Serve priority auto-escalation — jobs with a deadline ≤ 3 days
-      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'.
+      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'
+      // (including jobs already escalated to 'rush' — the old NOT IN filter
+      // excluded them, so a rush job could never make the final bump).
       // Runs every minute so a crossing detected mid-day gets caught quickly
-      // (capped at 100 rows per sweep to stay within cron budget).
+      // (capped at 100 rows per sweep via the id-subquery — a bare
+      // UPDATE … LIMIT needs a SQLite compile flag D1 doesn't guarantee).
       ctx.waitUntil(
         env.DB.prepare(`
           UPDATE serve_queue
@@ -537,11 +622,17 @@ export default {
                                 ELSE 'rush'
                               END,
                  updated_at = datetime('now')
-           WHERE status NOT IN ('served','failed','cancelled')
-             AND deadline IS NOT NULL
-             AND julianday(deadline) - julianday('now') <= 3
-             AND priority NOT IN ('urgent','rush')
-           LIMIT 100
+           WHERE id IN (
+             SELECT id FROM serve_queue
+              WHERE status NOT IN ('served','failed','cancelled')
+                AND deadline IS NOT NULL
+                AND julianday(deadline) - julianday('now') <= 3
+                AND (
+                  priority NOT IN ('urgent','rush')
+                  OR (priority = 'rush' AND julianday(deadline) - julianday('now') <= 1)
+                )
+              LIMIT 100
+           )
         `).run()
           .then((r) => { if (r.meta.changes > 0) log.info(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
           .catch((err) => log.error('Serve priority auto-escalation failed:', {}, err)),
@@ -572,7 +663,32 @@ export default {
       // `denverHour === 0` gate below would silently never fire, forever.
       const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10) % 24;
       const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
+
+      // Auto-archive closed CFS on every 5th minute of the hour (:00, :05, :10, :15, ... :55)
+      if (denverMinute >= 0 && denverMinute % 5 === 0) {
+        ctx.waitUntil(
+          (async () => {
+            const res = await env.DB.prepare(`
+              UPDATE calls_for_service
+              SET status = 'archived', archived_at = datetime('now')
+              WHERE status = 'closed'
+                AND (closed_at IS NULL OR closed_at <= datetime('now', '-5 minutes'))
+            `).run();
+            if (res.meta.changes > 0) {
+              log.info(`[cfs-auto-archive] auto-archived ${res.meta.changes} closed call(s) on 5th-minute sweep`);
+            }
+          })().catch((err) => log.error('[cfs-auto-archive] 5th-minute archive failed:', {}, err)),
+        );
+      }
+
       if (denverHour === 4 && denverMinute === 0) {
+        ctx.waitUntil(
+          import('./utils/corporateWorkflows').then((m) =>
+            m.runNightlyBundle(env.DB, null, 'cron', { ALERT_HUB: env.ALERT_HUB }).then((r) =>
+              log.info(`[corporate-ops] nightly bundle run=${r.run_id} children=${JSON.stringify(r.children)}`),
+            ).catch((err) => log.error('Corporate ops nightly bundle failed:', {}, err)),
+          ).catch(() => {}),
+        );
         ctx.waitUntil(
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();
@@ -666,6 +782,157 @@ export default {
           }),
         );
       }
+
+      // Daily email reports at 23:55 America/Denver — sends the day's
+      // activity summary to configured recipients (managers, admins,
+      // supervisors). Runs before the blotter (00:05) so the email
+      // goes out while the day is still "today" for the recipient.
+      if (denverHour === 23 && denverMinute === 55) {
+        ctx.waitUntil(
+          (async () => {
+            const resendApiKey = (env as Record<string, unknown>).RESEND_API_KEY as string | undefined;
+            if (!resendApiKey) {
+              log.warn('[daily-email] RESEND_API_KEY unbound; skipping send');
+              return;
+            }
+            const { sendDailyEmails } = await import('./utils/dailyEmail/sendDailyEmails');
+            const { denverToday } = await import('./utils/dailyReport/dates');
+            const today = denverToday(Date.now());
+            const res = await sendDailyEmails(env.DB, resendApiKey, today);
+            if (!res.skipped) {
+              log.info(`[daily-email] sent=${res.sent} failed=${res.failed} date=${today}`);
+            } else {
+              log.info(`[daily-email] skipped reason=${res.reason} date=${today}`);
+            }
+          })().catch((err) => {
+            log.error('[daily-email] send failed:', {}, err);
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: err instanceof Error ? err.message : String(err),
+              source: 'scheduled:daily-email',
+            }, ctx);
+          }),
+        );
+      }
+
+      // Mapbox Optimization V2 background poll — checks 'pending'/'processing'
+      // jobs every minute, writes back the solution, and performs serve_run
+      // write-back when the job is tied to a serve route.
+      ctx.waitUntil(
+        (async () => {
+          const token = (env as Record<string, unknown>).MAPBOX_ACCESS_TOKEN as string | undefined;
+          if (!token || token.startsWith('sk.')) return;
+
+          const db = env.DB;
+          const { results: jobs } = await db
+            .prepare(
+              `SELECT id, job_type, ref_id, created_at
+               FROM mapbox_optimization_v2_jobs
+               WHERE status IN ('pending','processing')
+               ORDER BY created_at ASC
+               LIMIT 10`,
+            )
+            .all<{ id: string; job_type: string; ref_id: number | null; created_at: string }>();
+
+          if (!jobs || jobs.length === 0) return;
+
+          let completed = 0;
+          let errors = 0;
+
+          for (const job of jobs) {
+            try {
+              // Timeout jobs that have been pending/processing for more than 10
+              // minutes. created_at is a zone-less D1 datetime('now') string —
+              // parse via parseD1TimestampMs, not new Date(), which reads it as
+              // host-local and skews the timeout by hours off a UTC host.
+              const { parseD1TimestampMs } = await import('./utils/fleetio/sync');
+              const createdMs = parseD1TimestampMs(job.created_at);
+              const ageMs = createdMs === null ? 0 : Date.now() - createdMs;
+              if (ageMs > 10 * 60 * 1000) {
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='error', error_message='timed_out', updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(job.id)
+                  .run();
+                errors++;
+                continue;
+              }
+
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), 8_000);
+              let res: Response;
+              try {
+                res = await fetch(
+                  `https://api.mapbox.com/optimized-trips/v2/${encodeURIComponent(job.id)}?access_token=${encodeURIComponent(token)}`,
+                  { signal: ctrl.signal },
+                );
+              } finally {
+                clearTimeout(timer);
+              }
+
+              if (res.status === 200) {
+                const body = await res.json() as { routes?: Array<{ stops?: Array<{ type?: string; location?: number; eta?: string; wait?: number }> }> };
+                const solutionJson = JSON.stringify(body);
+
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='complete', solution_json=?, updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(solutionJson, job.id)
+                  .run();
+
+                // Serve-run write-back: ordered stops into serve_routes
+                if (job.job_type === 'serve_run' && job.ref_id != null) {
+                  const stops = body.routes?.[0]?.stops ?? [];
+                  const ordered = stops
+                    .filter((s) => s.type === 'service')
+                    .map((s) => ({ id: Number(s.location), eta: s.eta, wait: s.wait ?? 0 }));
+                  await db
+                    .prepare(
+                      `UPDATE serve_routes
+                       SET optimized_order_json=?, updated_at=datetime('now')
+                       WHERE id=?`,
+                    )
+                    .bind(JSON.stringify(ordered), job.ref_id)
+                    .run();
+                }
+
+                completed++;
+              } else if (res.status === 202) {
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='processing', updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(job.id)
+                  .run();
+              } else {
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='error', error_message=?, updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(`http_${res.status}`, job.id)
+                  .run();
+                errors++;
+              }
+            } catch (err) {
+              log.error('[optv2-poll] job error', { jobId: job.id }, err instanceof Error ? err : new Error(String(err)));
+              errors++;
+            }
+          }
+
+          log.info(`[optv2-poll] checked ${jobs.length}, completed ${completed}, errors ${errors}`);
+        })().catch((err) => log.error('[optv2-poll] sweep failed:', {}, err)),
+      );
     }
 
     // ── 1st of month, 03:00 UTC ──

@@ -11,17 +11,20 @@ import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
+import CorporateFleetShell from './components/CorporateFleetShell';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
 import { lazyRetry } from './utils/importWithRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
+const GlobalPdfViewer = lazy(() => import('./components/GlobalPdfViewer'));
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 import { importDashboard } from './routes/routeModules';
 import LoginPage from './pages/LoginPage';
+import SsoCallbackPage from './pages/SsoCallbackPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
 // bundle — but because they're the most-navigated-to pages, they're also
@@ -70,6 +73,7 @@ const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
 const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
 const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
+const DialerConnectPage = lazyRetry(() => import('./pages/DialerConnectPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
@@ -157,6 +161,7 @@ const IntelAiAnalyst = lazyRetry(() => import('./pages/intel/IntelAiAnalyst'));
 const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
 const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
+const AlprHistoryPage = lazyRetry(() => import('./pages/AlprHistoryPage'));
 const AnalyticsPage = lazyRetry(() => import('./pages/AnalyticsPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -215,6 +220,8 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 // route now redirects to /login?forgot=1 (the working username + security-
 // question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
+const OsintPortalPage = lazyRetry(() => import('./pages/osint/OsintPortalPage'));
+const DeviceScannerPage = lazyRetry(() => import('./pages/DeviceScannerPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const OidcCallbackPage = lazyRetry(() => import('./pages/OidcCallbackPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
@@ -539,10 +546,10 @@ function AppRoutes() {
               on ResetPasswordPage doesn't dead-end on a mismatched contract. */}
           <Route path="/forgot-password" element={<Navigate to="/login?forgot=1" replace />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          {/* Landing page for src/routes/oidc.ts's dialer SSO callback — see
-              OidcCallbackPage.tsx for why the session arrives in the URL
-              fragment instead of via a normal API call. */}
+          {/* Landing page for src/routes/oidc.ts's dialer SSO callback */}
           <Route path="/oidc-callback" element={<OidcCallbackPage />} />
+          {/* Dial Connect SSO redirect landing page — see src/routes/ssoAuth.ts */}
+          <Route path="/sso-callback" element={<SsoCallbackPage />} />
           {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
               per-shift QR on the ShiftCard; the :token IS the credential. */}
           <Route path="/m/shift/:token" element={<MobileShiftPage />} />
@@ -594,6 +601,7 @@ function AppRoutes() {
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
             <Route path="/route-builder" element={<RouteErrorBoundary><RouteBuilderPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
+            <Route path="/dialer-connect" element={<RouteErrorBoundary><DialerConnectPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
@@ -607,9 +615,9 @@ function AppRoutes() {
             {/* /fleet serves the v1 tab-based UI permanently — the v2
                 Fleet.io-style shell was retired 2026-07-17 (see
                 docs/superpowers/specs/2026-07-17-fleet-v1-restoration-foundation-design.md). */}
-            <Route path="/fleet/dashboard" element={<RouteErrorBoundary><FleetDashboardPage /></RouteErrorBoundary>} />
-            <Route path="/fleet/reports" element={<RouteErrorBoundary><FleetReportsPage /></RouteErrorBoundary>} />
-            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/dashboard" element={<RouteErrorBoundary><CorporateFleetShell><FleetDashboardPage /></CorporateFleetShell></RouteErrorBoundary>} />
+            <Route path="/fleet/reports" element={<RouteErrorBoundary><CorporateFleetShell><FleetReportsPage /></CorporateFleetShell></RouteErrorBoundary>} />
+            <Route path="/fleet/*" element={<RouteErrorBoundary><CorporateFleetShell><FleetPage /></CorporateFleetShell></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
@@ -645,6 +653,7 @@ function AppRoutes() {
               <Route path="alerts" element={<RouteErrorBoundary><AlertsSection /></RouteErrorBoundary>} />
               <Route path="jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
               <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
+              <Route path="alpr-history" element={<RouteErrorBoundary><AlprHistoryPage /></RouteErrorBoundary>} />
               <Route path="queues" element={<RouteErrorBoundary><ReviewQueues /></RouteErrorBoundary>} />
               <Route path="map" element={<RouteErrorBoundary><IntelMapPage /></RouteErrorBoundary>} />
               <Route path="ai" element={<RouteErrorBoundary><IntelAiAnalyst /></RouteErrorBoundary>} />
@@ -722,6 +731,8 @@ function AppRoutes() {
             <Route path="/text-editor" element={<RouteErrorBoundary><TextEditorPage /></RouteErrorBoundary>} />
             <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
+            <Route path="/osint" element={<RouteErrorBoundary><OsintPortalPage /></RouteErrorBoundary>} />
+            <Route path="/device-scanner" element={<ProtectedRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
@@ -797,6 +808,7 @@ export default function App() {
                     <MDTBridge />
                     <AndroidUpdateChecker />
                     <ButtonHealthOverlay />
+                    <Suspense fallback={null}><GlobalPdfViewer /></Suspense>
                     <AppRoutes />
                   </ErrorBoundary>
                 </ContextMenuProvider>

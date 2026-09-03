@@ -34,7 +34,7 @@ incidents.get('/', requireRole(...READ_ROLES), async (c) => {
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
     if (status) { where += ' AND status = ?'; params.push(status); }
-    if (officer_id) { where += ' AND officer_id = ?'; params.push(parseInt(officer_id, 10)); }
+    if (officer_id) { const oid = parseInt(officer_id, 10); if (Number.isFinite(oid) && oid > 0) { where += ' AND officer_id = ?'; params.push(oid); } }
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(500, Math.max(1, parseInt(limit || '100', 10)));
     const offset = (pageNum - 1) * limitNum;

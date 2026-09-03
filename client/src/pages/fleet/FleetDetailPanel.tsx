@@ -14,6 +14,8 @@ import type {
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
   FleetPersonnelData,
 } from '../../types';
+import FleetRouteOptimizer from './components/FleetRouteOptimizer';
+import FleetOptimizationHistoryCard from './components/FleetOptimizationHistoryCard';
 import FleetOverviewTab from './tabs/FleetOverviewTab';
 import FleetFuelTab from './tabs/FleetFuelTab';
 import FleetInspectionsTab from './tabs/FleetInspectionsTab';
@@ -39,7 +41,7 @@ import EmailedDocuments from '../../components/EmailedDocuments';
 import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
 import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
-export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards' | 'expenses';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards' | 'expenses' | 'routes';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
@@ -521,6 +523,7 @@ export default function FleetDetailPanel({ data, costs, actions, activeTab, onTa
             tabs: [
               { id: 'analytics', label: 'Analytics' },
               { id: 'dashcam',   label: 'Dash Cam' },
+              { id: 'routes',    label: 'Routes' },
             ],
           },
         ] as ModuleGroupSpec[]}
@@ -605,6 +608,16 @@ export default function FleetDetailPanel({ data, costs, actions, activeTab, onTa
           <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} onPeriodChange={onAnalyticsPeriodChange} />
         )}
         {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
+        {activeTab === 'routes' && (
+          <div className="p-3 space-y-3">
+            <FleetRouteOptimizer
+              vehicleId={detail.id}
+              unitId={detail.assigned_unit_id ?? null}
+              callSign={detail.assigned_unit_call_sign || detail.vehicle_number}
+            />
+            <FleetOptimizationHistoryCard />
+          </div>
+        )}
       </div>
     </div>
   );

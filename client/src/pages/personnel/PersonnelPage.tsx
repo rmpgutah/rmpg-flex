@@ -21,6 +21,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment,
@@ -64,6 +65,7 @@ import type { OfficerFormData } from './modals/OfficerFormModal';
 import TimeEntryEditModal from './modals/TimeEntryEditModal';
 import type { TimeEntryEditData } from './modals/TimeEntryEditModal';
 import ExportButton from '../../components/ExportButton';
+import ClockInOutMileageModal from '../../components/time/ClockInOutMileageModal';
 
 // ============================================================
 // Activity entry type (matches backend activity_log)
@@ -236,6 +238,9 @@ export default function PersonnelPage() {
 
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
+
+  // Clock In / Clock Out Mileage Modal prompt state
+  const [clockMileagePrompt, setClockMileagePrompt] = useState<{ mode: 'in' | 'out'; officerId: string } | null>(null);
 
   // Centralized destructive-action ConfirmDialog state — replaces the six
   // window.confirm() prompts that scattered through the delete handlers.
@@ -417,6 +422,7 @@ export default function PersonnelPage() {
 
   // Lazy-load tab data
   useEffect(() => {
+    let cancelled = false;
     // Command dashboard needs training + deployments + coverage gaps to populate
     // its alert/chart widgets. Each guard is independent so a tab visited earlier
     // doesn't force a refetch here.
@@ -424,9 +430,9 @@ export default function PersonnelPage() {
       if (training.length === 0 && !trainingLoading) {
         setTrainingLoading(true);
         apiFetch<any[]>('/personnel/training')
-          .then(raw => setTraining((Array.isArray(raw) ? raw : []).map(mapTraining)))
+          .then(raw => { if (!cancelled) setTraining((Array.isArray(raw) ? raw : []).map(mapTraining)); })
           .catch(() => { /* dashboard degrades gracefully */ })
-          .finally(() => setTrainingLoading(false));
+          .finally(() => { if (!cancelled) setTrainingLoading(false); });
       }
       if (deployments.length === 0 && !deploymentsLoading) {
         setDeploymentsLoading(true);
@@ -435,11 +441,13 @@ export default function PersonnelPage() {
           apiFetch<any[]>('/personnel/coverage-gaps'),
         ])
           .then(([dRaw, gaps]) => {
-            setDeployments(asArray(dRaw).map(mapDeployment));
-            setCoverageGaps(asArray(gaps));
+            if (!cancelled) {
+              setDeployments(asArray(dRaw).map(mapDeployment));
+              setCoverageGaps(asArray(gaps));
+            }
           })
           .catch(() => { /* dashboard degrades gracefully */ })
-          .finally(() => setDeploymentsLoading(false));
+          .finally(() => { if (!cancelled) setDeploymentsLoading(false); });
       }
     }
     if (activeTab === 'training' && training.length === 0 && !trainingLoading) {
@@ -448,9 +456,14 @@ export default function PersonnelPage() {
         apiFetch<any[]>('/personnel/training'),
         apiFetch<any[]>('/personnel/training-requirements'),
       ])
-        .then(([tRaw, rRaw]) => { setTraining((Array.isArray(tRaw) ? tRaw : []).map(mapTraining)); setTrainingReqs(Array.isArray(rRaw) ? rRaw : []); })
-        .catch(() => addToast('Failed to load training data', 'error'))
-        .finally(() => setTrainingLoading(false));
+        .then(([tRaw, rRaw]) => {
+          if (!cancelled) {
+            setTraining((Array.isArray(tRaw) ? tRaw : []).map(mapTraining));
+            setTrainingReqs(Array.isArray(rRaw) ? rRaw : []);
+          }
+        })
+        .catch(() => { if (!cancelled) addToast('Failed to load training data', 'error'); })
+        .finally(() => { if (!cancelled) setTrainingLoading(false); });
     }
     if (activeTab === 'deployment' && deployments.length === 0 && !deploymentsLoading) {
       setDeploymentsLoading(true);
@@ -460,20 +473,23 @@ export default function PersonnelPage() {
         apiFetch<any[]>('/records/properties'),
       ])
         .then(([dRaw, gaps, propsRaw]) => {
-          setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
-          setCoverageGaps(Array.isArray(gaps) ? gaps : []);
-          setAllProperties((Array.isArray(propsRaw) ? propsRaw : []).map((p: any) => ({ id: String(p.id), name: p.name })));
+          if (!cancelled) {
+            setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
+            setCoverageGaps(Array.isArray(gaps) ? gaps : []);
+            setAllProperties((Array.isArray(propsRaw) ? propsRaw : []).map((p: any) => ({ id: String(p.id), name: p.name })));
+          }
         })
-        .catch(() => addToast('Failed to load deployment data', 'error'))
-        .finally(() => setDeploymentsLoading(false));
+        .catch(() => { if (!cancelled) addToast('Failed to load deployment data', 'error'); })
+        .finally(() => { if (!cancelled) setDeploymentsLoading(false); });
     }
     if (activeTab === 'equipment' && equipment.length === 0 && !equipmentLoading) {
       setEquipmentLoading(true);
       apiFetch<any[]>('/personnel/equipment')
-        .then(raw => setEquipment(Array.isArray(raw) ? raw : []))
-        .catch(() => addToast('Failed to load equipment data', 'error'))
-        .finally(() => setEquipmentLoading(false));
+        .then(raw => { if (!cancelled) setEquipment(Array.isArray(raw) ? raw : []); })
+        .catch(() => { if (!cancelled) addToast('Failed to load equipment data', 'error'); })
+        .finally(() => { if (!cancelled) setEquipmentLoading(false); });
     }
+    return () => { cancelled = true; };
   }, [activeTab]);
 
   // Reset per-officer caches when switching officers. The detail-tab
@@ -497,24 +513,25 @@ export default function PersonnelPage() {
   // Lazy-load detail tab data
   useEffect(() => {
     if (!selectedOfficer) return;
+    let cancelled = false;
     if (detailTab === 'activity') {
       apiFetch<ActivityEntry[]>(`/personnel/activity/${selectedOfficer.id}?limit=50`)
-        .then(raw => setOfficerActivity(Array.isArray(raw) ? raw : []))
-        .catch(() => setOfficerActivity([]));
+        .then(raw => { if (!cancelled) setOfficerActivity(Array.isArray(raw) ? raw : []); })
+        .catch(() => { if (!cancelled) setOfficerActivity([]); });
     }
     if (detailTab === 'training' && training.length === 0 && !trainingLoading) {
       setTrainingLoading(true);
       apiFetch<any[]>('/personnel/training')
-        .then(raw => setTraining((Array.isArray(raw) ? raw : []).map(mapTraining)))
-        .catch(() => addToast('Failed to load training', 'error'))
-        .finally(() => setTrainingLoading(false));
+        .then(raw => { if (!cancelled) setTraining((Array.isArray(raw) ? raw : []).map(mapTraining)); })
+        .catch(() => { if (!cancelled) addToast('Failed to load training', 'error'); })
+        .finally(() => { if (!cancelled) setTrainingLoading(false); });
     }
     if (detailTab === 'equipment' && equipment.length === 0 && !equipmentLoading) {
       setEquipmentLoading(true);
       apiFetch<any[]>('/personnel/equipment')
-        .then(raw => setEquipment(Array.isArray(raw) ? raw : []))
-        .catch(() => addToast('Failed to load equipment', 'error'))
-        .finally(() => setEquipmentLoading(false));
+        .then(raw => { if (!cancelled) setEquipment(Array.isArray(raw) ? raw : []); })
+        .catch(() => { if (!cancelled) addToast('Failed to load equipment', 'error'); })
+        .finally(() => { if (!cancelled) setEquipmentLoading(false); });
     }
     if (detailTab === 'body_cameras' && bodyCameras.length === 0 && !bodyCamerasLoading) {
       setBodyCamerasLoading(true);
@@ -523,11 +540,13 @@ export default function PersonnelPage() {
         apiFetch<any[]>('/personnel/bodycam-videos'),
       ])
         .then(([cams, vids]) => {
-          setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
-          setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+          if (!cancelled) {
+            setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
+            setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+          }
         })
-        .catch(() => addToast('Failed to load body cameras', 'error'))
-        .finally(() => setBodyCamerasLoading(false));
+        .catch(() => { if (!cancelled) addToast('Failed to load body cameras', 'error'); })
+        .finally(() => { if (!cancelled) setBodyCamerasLoading(false); });
     }
     if (detailTab === 'dash_cameras') {
       setOfficerDashcamLoading(true);
@@ -537,31 +556,34 @@ export default function PersonnelPage() {
         apiFetch<any[]>('/clearpathgps/mappings'),
       ])
         .then(([events, mappings]) => {
-          setOfficerDashcamEvents(Array.isArray(events) ? events : []);
-          // Find the mapping for this officer's unit. Match by officer_id
-          // (stable) — the previous name-based match silently failed for
-          // officers with middle names, suffixes, or whitespace differences.
-          // Falls back to a trimmed-name match for older mappings that
-          // haven't had officer_id backfilled yet.
-          const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
-          const fullName = `${selectedOfficer.first_name} ${selectedOfficer.last_name}`.trim();
-          const match = allMappings.find(m => {
-            if (m.officer_id && String(m.officer_id) === String(selectedOfficer.id)) return true;
-            if (m.officer_name && m.officer_name.trim() === fullName) return true;
-            return false;
-          });
-          setOfficerDeviceMapping(match || null);
+          if (!cancelled) {
+            setOfficerDashcamEvents(Array.isArray(events) ? events : []);
+            // Find the mapping for this officer's unit. Match by officer_id
+            // (stable) — the previous name-based match silently failed for
+            // officers with middle names, suffixes, or whitespace differences.
+            // Falls back to a trimmed-name match for older mappings that
+            // haven't had officer_id backfilled yet.
+            const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
+            const fullName = `${selectedOfficer.first_name} ${selectedOfficer.last_name}`.trim();
+            const match = allMappings.find(m => {
+              if (m.officer_id && String(m.officer_id) === String(selectedOfficer.id)) return true;
+              if (m.officer_name && m.officer_name.trim() === fullName) return true;
+              return false;
+            });
+            setOfficerDeviceMapping(match || null);
+          }
         })
-        .catch(() => addToast('Failed to load dash camera data', 'error'))
-        .finally(() => setOfficerDashcamLoading(false));
+        .catch(() => { if (!cancelled) addToast('Failed to load dash camera data', 'error'); })
+        .finally(() => { if (!cancelled) setOfficerDashcamLoading(false); });
     }
     if (detailTab === 'deployment' && deployments.length === 0 && !deploymentsLoading) {
       setDeploymentsLoading(true);
       apiFetch<any[]>('/personnel/deployments')
-        .then(raw => setDeployments((Array.isArray(raw) ? raw : []).map(mapDeployment)))
-        .catch(() => addToast('Failed to load deployments', 'error'))
-        .finally(() => setDeploymentsLoading(false));
+        .then(raw => { if (!cancelled) setDeployments((Array.isArray(raw) ? raw : []).map(mapDeployment)); })
+        .catch(() => { if (!cancelled) addToast('Failed to load deployments', 'error'); })
+        .finally(() => { if (!cancelled) setDeploymentsLoading(false); });
     }
+    return () => { cancelled = true; };
   }, [selectedOfficer?.id, detailTab]);
 
   // ----------------------------------------------------------
@@ -1078,25 +1100,11 @@ export default function PersonnelPage() {
   };
 
   const handleClockIn = async (officerId: string) => {
-    try {
-      await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
-      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
-      addToast('Clocked in', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to clock in', 'error');
-    }
+    setClockMileagePrompt({ mode: 'in', officerId });
   };
 
   const handleClockOut = async (officerId: string) => {
-    try {
-      await apiFetch('/personnel/time/clock-out', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
-      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
-      addToast('Clocked out', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to clock out', 'error');
-    }
+    setClockMileagePrompt({ mode: 'out', officerId });
   };
 
   const handleStartBreak = async (officerId: string) => {
@@ -1833,6 +1841,27 @@ export default function PersonnelPage() {
         confirmVariant="danger"
         isLoading={deleteConfirmLoading}
       />
+
+      {/* Clock In / Clock Out Mileage Modal */}
+      {clockMileagePrompt && (
+        <ClockInOutMileageModal
+          isOpen={!!clockMileagePrompt}
+          isClockingOut={clockMileagePrompt.mode === 'out'}
+          officerId={clockMileagePrompt.officerId}
+          onClose={() => setClockMileagePrompt(null)}
+          onSuccess={async (punch) => {
+            setClockMileagePrompt(null);
+            const raw = await apiFetch<any[]>('/personnel/time');
+            setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+            if (clockMileagePrompt.mode === 'in') {
+              addToast('Clocked in — starting mileage recorded & vehicle assigned', 'success');
+              toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
+            } else {
+              addToast('Clocked out — ending mileage recorded & DAR generated', 'success');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -34,6 +34,10 @@ export interface DockSectionData {
   title: MapLayerGroup;
   items: DockToggleItem[];
   collapsible?: boolean;
+  /** OSM groups start collapsed — 9 groups of ~56 toggles is a scroll wall. */
+  defaultOpen?: boolean;
+  onEnableAll?: () => void;
+  onDisableAll?: () => void;
 }
 
 /** Safety-critical toggles must never hide inside a collapsed section. */
@@ -44,11 +48,10 @@ const NON_COLLAPSIBLE_GROUPS: ReadonlySet<MapLayerGroup> = new Set<MapLayerGroup
 export function buildDockSections(
   groups: MapLayerGroup[],
   bindings: LayerBindingMap,
+  favorites?: { ids: ReadonlySet<string>; onToggle: (id: string) => void },
 ): DockSectionData[] {
-  return groups.map((group) => ({
-    title: group,
-    collapsible: NON_COLLAPSIBLE_GROUPS.has(group) ? false : undefined,
-    items: MAP_LAYER_REGISTRY
+  return groups.map((group) => {
+    const items = MAP_LAYER_REGISTRY
       .filter((layer) => layer.group === group && bindings[layer.id] !== undefined)
       .map((layer): DockToggleItem => {
         const binding = bindings[layer.id];
@@ -63,9 +66,25 @@ export function buildDockSections(
           onToggle: binding.onToggle,
           loading: binding.loading,
           error: binding.error,
+          favorite: favorites?.ids.has(layer.id),
+          onToggleFavorite: favorites ? () => favorites.onToggle(layer.id) : undefined,
         };
-      }),
-  }));
+      });
+    const osm = group.startsWith('OSM');
+    const bulk = osm || group === 'Administrative Boundaries';
+    return {
+      title: group,
+      collapsible: NON_COLLAPSIBLE_GROUPS.has(group) ? false : undefined,
+      defaultOpen: osm ? false : undefined,
+      onEnableAll: bulk && items.length
+        ? () => { for (const i of items) if (!i.active) i.onToggle(); }
+        : undefined,
+      onDisableAll: bulk && items.length
+        ? () => { for (const i of items) if (i.active) i.onToggle(); }
+        : undefined,
+      items,
+    };
+  });
 }
 
 /**

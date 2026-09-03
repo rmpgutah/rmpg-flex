@@ -47,6 +47,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
+import { requireOnDutyForServe, linkServeAttemptToShift } from '../utils/corporateWorkflows';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { broadcastAll } from './ws';
@@ -57,9 +58,26 @@ import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 import { parseD1TimestampMs } from '../utils/fleetio/sync';
 import { computeOfficerMileageForDay, computeOfficerMileageSegments } from '../utils/serveMileage';
-import { hashAddress, shouldRecordDwell, dwellSeconds } from '../utils/serveRouteOptimizer';
+import { hashAddress, shouldRecordDwell, dwellSeconds, attachLearnedDwellSeconds } from '../utils/serveRouteOptimizer';
+import {
+  coerceAttemptResult,
+  defaultPsCodeForResult,
+  parseArrivedAtIso,
+  STAMP_ONSCENE_DURATION_SQL,
+} from '../utils/serveAttemptNormalize';
+import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
+import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
+import serveAttemptFiles from './serveAttemptFiles';
+import { applyUrgencyTier } from '../utils/serveDiligencePlanner';
+import {
+  intakePatchFromPreview,
+  parseServeParsedData,
+  previewServeOps,
+  type ServeJobOps,
+} from '../utils/serveJobOps';
 
 const sv = new Hono<Env>();
+sv.route('/', serveAttemptFiles);
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -87,13 +105,119 @@ function normalizeFees<T extends Record<string, unknown>>(job: T): T {
   };
 }
 
+async function persistJobOps(
+  db: D1Database,
+  id: number,
+  body: Record<string, unknown>,
+) {
+  const row = await queryFirst<{
+    parsed_data: string | null;
+    recipient_name: string | null;
+    recipient_address: string | null;
+    recipient_city: string | null;
+    recipient_state: string | null;
+    recipient_zip: string | null;
+    recipient_type: string | null;
+    business_name: string | null;
+    registered_agent_name: string | null;
+    document_type: string | null;
+    case_number: string | null;
+    court_name: string | null;
+    jurisdiction: string | null;
+    client_name: string | null;
+    attorney_name: string | null;
+    priority: string | null;
+    deadline: string | null;
+    service_instructions: string | null;
+    notes: string | null;
+    plaintiff_name: string | null;
+    defendant_name: string | null;
+    court_date: string | null;
+  }>(db, `SELECT parsed_data, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+      recipient_type, business_name, registered_agent_name, document_type, case_number, court_name, jurisdiction,
+      client_name, attorney_name, priority, deadline, service_instructions, notes,
+      plaintiff_name, defendant_name, court_date
+     FROM serve_queue WHERE id = ?`, id);
+  if (!row) return null;
+  const meta = parseServeParsedData(row.parsed_data);
+  const opsFromBody = (body.ops && typeof body.ops === 'object')
+    ? body.ops as Partial<ServeJobOps>
+    : (body as Partial<ServeJobOps>);
+  const mergedOps = { ...meta.ops, ...normalizePartialOps(opsFromBody) };
+  const klass = typeof body.address_class === 'string' ? body.address_class
+    : typeof body.klass === 'string' ? body.klass
+    : meta.addressClass;
+  const confirmed = body.address_class_confirmed !== undefined
+    ? body.address_class_confirmed === true || body.address_class_confirmed === 1
+    : typeof body.confirmed === 'boolean' ? body.confirmed
+    : meta.addressClassConfirmed;
+  const preview = previewServeOps({
+    addressClass: klass,
+    addressClassConfirmed: confirmed,
+    recipient_name: strOrNull(body.recipient_name) ?? row.recipient_name,
+    recipient_address: strOrNull(body.recipient_address) ?? row.recipient_address,
+    recipient_city: strOrNull(body.recipient_city) ?? row.recipient_city,
+    recipient_state: strOrNull(body.recipient_state) ?? row.recipient_state,
+    recipient_zip: strOrNull(body.recipient_zip) ?? row.recipient_zip,
+    recipient_type: strOrNull(body.recipient_type) ?? row.recipient_type,
+    business_name: strOrNull(body.business_name) ?? row.business_name,
+    registered_agent_name: strOrNull(body.registered_agent_name) ?? row.registered_agent_name,
+    document_type: strOrNull(body.document_type) ?? row.document_type,
+    case_number: strOrNull(body.case_number) ?? row.case_number,
+    court_name: strOrNull(body.court_name) ?? row.court_name,
+    jurisdiction: strOrNull(body.jurisdiction) ?? row.jurisdiction,
+    client_name: strOrNull(body.client_name) ?? row.client_name,
+    attorney_name: strOrNull(body.attorney_name) ?? row.attorney_name,
+    priority: strOrNull(body.priority) ?? row.priority,
+    deadline: strOrNull(body.deadline) ?? row.deadline,
+    service_instructions: strOrNull(body.service_instructions) ?? row.service_instructions,
+    notes: strOrNull(body.notes) ?? row.notes,
+    plaintiff_name: strOrNull(body.plaintiff_name) ?? row.plaintiff_name,
+    defendant_name: strOrNull(body.defendant_name) ?? row.defendant_name,
+    court_date: strOrNull(body.court_date) ?? row.court_date,
+    ops: mergedOps,
+  });
+  const json = intakePatchFromPreview(row.parsed_data, preview);
+  await execute(db, `UPDATE serve_queue SET parsed_data = ?, updated_at = datetime('now') WHERE id = ?`, json, id);
+  return preview;
+}
+
+function normalizePartialOps(raw: Partial<ServeJobOps>): Partial<ServeJobOps> {
+  const out: Partial<ServeJobOps> = {};
+  const keys: (keyof ServeJobOps)[] = [
+    'documents_to_serve', 'venue_kind', 'gate_code', 'dogs_on_site', 'cameras_on_site',
+    'language_needed', 'authorized_acceptor', 'photo_required', 'physical_description',
+    'vehicle_description', 'best_contact_window', 'no_sunday', 'no_saturday', 'sub_service_first',
+  ];
+  for (const k of keys) {
+    if (raw[k] !== undefined) (out as Record<string, unknown>)[k] = raw[k];
+  }
+  return out;
+}
+
+function restoreServeOfficerUnit(
+  db: ReturnType<typeof getDb>,
+  officerId: number,
+  serveCallId: number | null | undefined,
+): Promise<unknown> {
+  // Never drop a unit off a different live CFS (patrol/alarm) just because
+  // the officer logged a paper-serve attempt.
+  return execute(db,
+    `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+     WHERE officer_id = ?
+       AND status NOT IN ('off_duty','out_of_service')
+       AND (current_call_id IS NULL OR current_call_id = ?)`,
+    officerId, serveCallId ?? -1,
+  );
+}
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
 const READ = [...WRITE, 'dispatcher'];
 
-const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled', 'archived']);
 // serve_queue.priority CHECK enum — coerce unknown values to 'normal' (a bad
 // value 500s the INSERT/UPDATE on the constraint).
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
+const URGENCY_TIERS = new Set(['critical', 'tight', 'standard']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -269,7 +393,7 @@ sv.get('/active-routes', async (c) => {
   const [routes, jobs] = await Promise.all([
     query(db, 'SELECT * FROM serve_routes WHERE route_date = ? ORDER BY id DESC LIMIT 50', today),
     query(db, `SELECT * FROM serve_queue
-               WHERE status NOT IN ('served','completed','cancelled','closed','failed')
+               WHERE status NOT IN ('served','cancelled','failed')
                ORDER BY sort_order, id DESC LIMIT 200`),
   ]);
   return c.json({ jobs, routes });
@@ -789,6 +913,58 @@ sv.put('/assignments/settings', async (c) => {
   return c.json({ data: after });
 });
 
+// POST /preview-ops — live venue / windows / OPS tree from the job form.
+// Static path must be registered before /:id so it is never captured as an id.
+sv.post('/preview-ops', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const preview = previewServeOps({
+    addressClass: typeof body.address_class === 'string' ? body.address_class : null,
+    addressClassConfirmed: body.address_class_confirmed === true || body.address_class_confirmed === 1,
+    recipient_name: strOrNull(body.recipient_name),
+    recipient_address: strOrNull(body.recipient_address),
+    recipient_city: strOrNull(body.recipient_city),
+    recipient_state: strOrNull(body.recipient_state),
+    recipient_zip: strOrNull(body.recipient_zip),
+    recipient_type: strOrNull(body.recipient_type),
+    business_name: strOrNull(body.business_name),
+    registered_agent_name: strOrNull(body.registered_agent_name),
+    document_type: strOrNull(body.document_type),
+    case_number: strOrNull(body.case_number),
+    court_name: strOrNull(body.court_name),
+    jurisdiction: strOrNull(body.jurisdiction),
+    client_name: strOrNull(body.client_name),
+    attorney_name: strOrNull(body.attorney_name),
+    priority: strOrNull(body.priority),
+    deadline: strOrNull(body.deadline),
+    service_instructions: strOrNull(body.service_instructions),
+    notes: strOrNull(body.notes),
+    plaintiff_name: strOrNull(body.plaintiff_name),
+    defendant_name: strOrNull(body.defendant_name),
+    court_date: strOrNull(body.court_date),
+    ops: (body.ops && typeof body.ops === 'object') ? body.ops as Partial<ServeJobOps> : null,
+  });
+  return c.json({
+    address_class: preview.addressClass,
+    address_class_confirmed: preview.addressClassConfirmed,
+    venue: preview.venue,
+    venue_inferred: preview.venueInferred,
+    venue_label: preview.venueLabel,
+    windows: preview.windows,
+    fired_ids: preview.tree.firedIds,
+    fired_count: preview.tree.features.length,
+    catalog_size: preview.tree.catalogSize,
+    features: preview.tree.features,
+    note: preview.note,
+    ops: preview.ops,
+  });
+});
+
+function strOrNull(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
 sv.get('/', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
@@ -813,7 +989,8 @@ sv.get('/', async (c) => {
   if (priority) { where.push('q.priority = ?'); args.push(priority); }
   if (search) {
     where.push('(q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    args.push(s, s, s);
   }
   // FK reference guards: CASE expressions are re-emitted AFTER q.* so
   // they win on duplicate column names. serve_queue rows can reference
@@ -822,10 +999,14 @@ sv.get('/', async (c) => {
   const sql = `SELECT q.*, u.full_name AS officer_name,
       CASE WHEN cfs.id IS NULL THEN NULL ELSE q.call_id END AS call_id,
       CASE WHEN p.id IS NULL THEN NULL ELSE q.recipient_person_id END AS recipient_person_id,
-      CASE WHEN prop.id IS NULL THEN NULL ELSE q.property_id END AS property_id
+      CASE WHEN prop.id IS NULL THEN NULL ELSE q.property_id END AS property_id,
+      cfs.call_number AS linked_call_number,
+      cfs.pso_attempt_number AS linked_attempt_number,
+      cfs_ext.parent_call_id AS linked_parent_call_id
     FROM serve_queue q
     LEFT JOIN users u ON u.id = q.officer_id
     LEFT JOIN calls_for_service cfs ON cfs.id = q.call_id
+    LEFT JOIN calls_for_service_ext cfs_ext ON cfs_ext.id = q.call_id
     LEFT JOIN persons p ON p.id = q.recipient_person_id
     LEFT JOIN properties prop ON prop.id = q.property_id
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -848,8 +1029,8 @@ sv.get('/', async (c) => {
     if (ids.length) {
       const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
       const attemptCols = hasDispositionCol
-        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name'
-        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name';
+        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, a.photo_ids, u.full_name AS officer_name'
+        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, a.photo_ids, u.full_name AS officer_name';
       // `limit` is caller-supplied and capped at 500, so `ids` routinely exceeds
       // D1's 100-bound-parameter cap — a hand-rolled IN-list 500s the whole
       // queue view the moment a dispatcher asks for more than 100 jobs.
@@ -864,13 +1045,63 @@ sv.get('/', async (c) => {
       );
       const byQueue = new Map<number, any[]>();
       for (const a of attempts) {
+        a.photo_ids = (() => { try { return JSON.parse(a.photo_ids || '[]'); } catch { return []; } })();
         const bucket = byQueue.get(a.serve_queue_id) ?? [];
         bucket.push(a);
         byQueue.set(a.serve_queue_id, bucket);
       }
       for (const j of jobs) j.attempts = byQueue.get(j.id) ?? [];
+
+      try {
+        const slots = await queryInChunks<{
+          queue_id: number; scheduled_date: string; window_start: string; window_end: string;
+        }>(
+          db,
+          ids,
+          (placeholders) => `SELECT queue_id, scheduled_date, window_start, window_end
+             FROM serve_attempt_schedules
+            WHERE dismissed = 0 AND queue_id IN (${placeholders})
+            ORDER BY scheduled_date ASC, window_start ASC`,
+        );
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date());
+        const nextByQueue = new Map<number, { scheduled_date: string; window_start: string; window_end: string }>();
+        for (const slot of slots) {
+          if (slot.scheduled_date < today) continue;
+          if (!nextByQueue.has(slot.queue_id)) nextByQueue.set(slot.queue_id, slot);
+        }
+        for (const j of jobs) {
+          const slot = nextByQueue.get(j.id);
+          if (!slot) continue;
+          j.next_attempt_date = slot.scheduled_date;
+          j.next_attempt_window = `${slot.window_start}-${slot.window_end}`;
+        }
+      } catch {
+        // Table may be absent on some D1 installs.
+      }
+
+      // ── Attach notice scans per job ─────────────────────────────
+      // QR "Notice of Attempt to Serve" scan evidence (migration 0189).
+      const scans = await queryInChunks<any>(
+        db,
+        ids,
+        (placeholders) => `SELECT id, serve_queue_id, job_ref, scanned_at, ip_address, user_agent,
+                geo_city, geo_region, geo_country, geo_lat, geo_lng,
+                device_type, device_brand, device_model, os_family,
+                browser_family, browser_version, touch_capable, is_proxy, is_bot
+           FROM notice_scans
+          WHERE serve_queue_id IN (${placeholders})
+          ORDER BY scanned_at ASC, id ASC`,
+      );
+      const scansByQueue = new Map<number, any[]>();
+      for (const s of scans) {
+        const bucket = scansByQueue.get(s.serve_queue_id) ?? [];
+        bucket.push(s);
+        scansByQueue.set(s.serve_queue_id, bucket);
+      }
+      for (const j of jobs) j.scans = scansByQueue.get(j.id) ?? [];
     }
   }
+  await attachLearnedDwellSeconds(db, jobs).catch(() => {});
   return c.json(jobs.map(normalizeFees));
 });
 
@@ -912,6 +1143,7 @@ sv.post('/', async (c) => {
     'max_attempts', 'service_instructions', 'notes', 'status', 'contract_id',
     'serve_fee', 'rush_fee', 'payment_status',
     'diligence_required', 'contact_restrictions', 'building_access_notes',
+    'court_date', 'document_text',
   ];
   const insertVals: any[] = [
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
@@ -926,6 +1158,7 @@ sv.post('/', async (c) => {
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
     body.serve_fee ?? null, body.rush_fee ?? null, body.payment_status ?? 'unpaid',
     body.diligence_required ? 1 : 0, body.contact_restrictions ?? null, body.building_access_notes ?? null,
+    body.court_date ?? null, body.document_text ?? null,
   ];
   if (hasRecipientTypeOnCreate) {
     insertCols.push(
@@ -940,6 +1173,10 @@ sv.post('/', async (c) => {
       body.registered_office_address ?? null,
     );
   }
+  if (await columnExists(dbPost, 'serve_queue', 'attorney_phone')) {
+    insertCols.push('attorney_phone', 'attorney_email', 'attorney_bar_number');
+    insertVals.push(body.attorney_phone ?? null, body.attorney_email ?? null, body.attorney_bar_number ?? null);
+  }
   if (geocodeSource && await columnExists(dbPost, 'serve_queue', 'geocode_source')) {
     insertCols.push('geocode_source');
     insertVals.push(geocodeSource);
@@ -950,7 +1187,11 @@ sv.post('/', async (c) => {
     `INSERT INTO serve_queue (${insertCols.join(', ')}) VALUES (${placeholders})`,
     ...insertVals,
   );
-  return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  const newId = r.meta.last_row_id;
+  if (newId && (body.ops || body.address_class)) {
+    await persistJobOps(dbPost, Number(newId), body).catch(() => {});
+  }
+  return c.json({ success: true, id: newId }, 201);
 });
 
 // ── Bulk status update ────────────────────────────────────────────────────────
@@ -1023,7 +1264,7 @@ sv.get('/folder-stats', async (c) => {
   const rows = await query<{ status: string; cnt: number }>(
     db,
     `SELECT status, COUNT(*) AS cnt FROM serve_queue
-     WHERE DATE(created_at) = ? OR DATE(serve_date) = ?
+     WHERE DATE(created_at, '-7 hours') = ? OR DATE(serve_date) = ?
      GROUP BY status`,
     date, date,
   );
@@ -1112,14 +1353,40 @@ sv.get('/:id', async (c) => {
     id,
   );
   if (!row) return c.json({ error: 'Not found' }, 404);
-  const attempts = await query(
+  const attempts = (await query(
     db,
     `SELECT a.*, u.full_name AS officer_name
        FROM serve_attempts a LEFT JOIN users u ON u.id = a.officer_id
        WHERE a.serve_queue_id = ? ORDER BY a.attempt_at DESC`,
     id,
+  )).map((a: any) => ({
+    ...a,
+    photo_ids: (() => { try { return JSON.parse(a.photo_ids || '[]'); } catch { return []; } })(),
+  }));
+  const scans = await query(
+    db,
+    `SELECT id, serve_queue_id, job_ref, scanned_at, ip_address, user_agent,
+            geo_city, geo_region, geo_country, geo_lat, geo_lng,
+            device_type, device_brand, device_model, os_family,
+            browser_family, browser_version, touch_capable, is_proxy, is_bot
+       FROM notice_scans WHERE serve_queue_id = ? ORDER BY scanned_at DESC`,
+    id,
   );
-  return c.json(normalizeFees({ ...row, attempts }));
+  const skipTraceRows = await query(
+    db,
+    `SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC`,
+    id,
+  ).catch(() => [] as Record<string, unknown>[]);
+  const skipTraces = (skipTraceRows as Record<string, unknown>[]).map(row => {
+    let addresses_found: unknown[] = [];
+    const raw = row.addresses_found_json;
+    if (typeof raw === 'string' && raw.trim()) {
+      try { addresses_found = JSON.parse(raw); } catch { addresses_found = []; }
+    }
+    const { addresses_found_json: _drop, ...rest } = row;
+    return { ...rest, addresses_found };
+  });
+  return c.json(normalizeFees({ ...row, attempts, scans, skipTraces }));
 });
 
 // ── Serve audit trail ──────────────────────────────────────────
@@ -1149,8 +1416,8 @@ sv.get('/:id/audit', async (c) => {
 sv.put('/:id', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
-  const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const allowed = [
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
@@ -1159,13 +1426,15 @@ sv.put('/:id', async (c) => {
     'recipient_phone', 'recipient_email', 'recipient_dob',
     'recipient_employer', 'recipient_employer_address',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
-    'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'client_name', 'attorney_name', 'attorney_phone', 'attorney_email', 'attorney_bar_number',
+    'plaintiff_name', 'defendant_name',
     'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
     'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
     'next_attempt_note', 'urgency_tier',
     'serve_fee', 'rush_fee', 'payment_status',
     'diligence_required', 'mileage_actual', 'contact_restrictions', 'building_access_notes',
+    'court_date', 'document_text',
     'recipient_type',
     'business_name', 'business_dba', 'business_ein', 'business_sos_filing',
     'business_state_of_inc', 'registered_agent_name', 'registered_agent_title',
@@ -1188,27 +1457,53 @@ sv.put('/:id', async (c) => {
     'business_sos_filing', 'business_state_of_inc', 'registered_agent_name',
     'registered_agent_title', 'registered_office_address',
   ]);
+  const hasAttorneyContactCol = (
+    'attorney_phone' in body || 'attorney_email' in body || 'attorney_bar_number' in body
+  ) ? await columnExists(db, 'serve_queue', 'attorney_phone') : true;
+  const ATTORNEY_CONTACT_COLS = new Set(['attorney_phone', 'attorney_email', 'attorney_bar_number']);
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
+    if (k === 'urgency_tier') {
+      if (body[k] && URGENCY_TIERS.has(body[k])) {
+        sets.push('urgency_tier = ?');
+        args.push(body[k]);
+      }
+      continue;
+    }
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
+    if (ATTORNEY_CONTACT_COLS.has(k) && !hasAttorneyContactCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM serve_queue WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  // Backfill geocode when recipient_address is updated but coords are not
+  // Re-geocode when recipient_address is updated but coords are not explicitly set.
+  // Clear stale pins when geocode fails so the map does not keep the old location.
   if ('recipient_address' in body && body.recipient_lat === undefined && body.recipient_lng === undefined
       && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
-    const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
+    const fullLine = [
+      body.recipient_address,
+      body.recipient_city,
+      body.recipient_state,
+      body.recipient_zip,
+    ].filter(v => typeof v === 'string' && v.trim()).join(', ');
+    const coords = await geocodeAddress(c.env, fullLine || body.recipient_address).catch(() => null);
     if (coords) {
       sets.push('recipient_lat = ?', 'recipient_lng = ?');
       args.push(coords.lat, coords.lng);
       if (await columnExists(getDb(c.env), 'serve_queue', 'geocode_source')) {
         sets.push('geocode_source = ?');
         args.push(coords.geocodeSource);
+      }
+    } else {
+      sets.push('recipient_lat = NULL', 'recipient_lng = NULL');
+      if (await columnExists(getDb(c.env), 'serve_queue', 'geocode_source')) {
+        sets.push('geocode_source = NULL');
       }
     }
   }
@@ -1221,6 +1516,7 @@ sv.put('/:id', async (c) => {
   }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  await persistJobOps(getDb(c.env), id, body).catch(() => {});
   // Fire-and-forget: if status was explicitly set to a terminal outcome,
   // sync back to the originating CFS call (if one exists).
   if (body.status === 'served' || body.status === 'failed') {
@@ -1234,12 +1530,15 @@ sv.put('/:id', async (c) => {
 // Updates parsed_data._intake.address_class in-place via json_set; leaves every
 // other key in parsed_data untouched.
 sv.patch('/:id/address-class', async (c) => {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
-  const VALID_KLASS = new Set(['residential', 'business', 'unknown']);
+  const VALID_KLASS = new Set([
+    'residential', 'business', 'corporate', 'small_business',
+    'government', 'gated', 'po_box', 'unknown',
+  ]);
   const klass = typeof body.klass === 'string' && VALID_KLASS.has(body.klass) ? body.klass : null;
   const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : null;
   if (klass === null && confirmed === null) return c.json({ error: 'Provide klass and/or confirmed' }, 400);
@@ -1258,7 +1557,35 @@ sv.patch('/:id/address-class', async (c) => {
   }
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  await persistJobOps(db, id, {
+    address_class: klass,
+    address_class_confirmed: confirmed,
+  }).catch(() => {});
   return c.json({ success: true, klass, confirmed });
+});
+
+// PATCH /:id/ops — scene/packet fields + rebuild venue/windows/tree in parsed_data.
+sv.patch('/:id/ops', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const db = getDb(c.env);
+  const preview = await persistJobOps(db, id, body);
+  if (!preview) return c.json({ error: 'Not found' }, 404);
+  if (typeof body.court_date === 'string' && await columnExists(db, 'serve_queue', 'court_date')) {
+    await execute(db, `UPDATE serve_queue SET court_date = ?, updated_at = datetime('now') WHERE id = ?`, body.court_date || null, id);
+  }
+  return c.json({
+    success: true,
+    venue: preview.venue,
+    venue_label: preview.venueLabel,
+    windows: preview.windows,
+    fired_ids: preview.tree.firedIds,
+    note: preview.note,
+    ops: preview.ops,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -1318,16 +1645,30 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     return c.json({ error: 'Not assigned to this job' }, 403);
   }
 
+  const actorId = user?.id ?? null;
+  if (user?.role === 'officer' && actorId) {
+    const duty = await requireOnDutyForServe(db, actorId);
+    if (!duty.on_duty) {
+      return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
+    }
+  }
+  const attemptOfficerId = user?.role === 'officer' ? user.id : (body.officer_id ?? user?.id ?? null);
+
   // Structured PS code (PS/15.05 etc.) is the new source of truth. When
   // supplied, it derives both the legacy `result` enum (for the existing
   // CHECK constraint) and the next queue status. When absent, fall back to
   // whatever the caller passed in `result` (legacy path).
-  const psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
+  const coercedResult = coerceAttemptResult(body.result, defaultResult, ATTEMPT_RESULTS);
+  let psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
     ? body.disposition_code.trim().toUpperCase()
     : null;
+  if (!psCode) {
+    const inferred = defaultPsCodeForResult(coercedResult);
+    if (inferred && lookupPsoCode(inferred)) psCode = inferred;
+  }
   const result = psCode
     ? codeToLegacyResult(psCode)
-    : (ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult);
+    : coercedResult;
   const nextNum = (queue.attempt_count ?? 0) + 1;
 
   // Live serve_attempts has no `status` column (migration 0030 drift —
@@ -1352,7 +1693,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
            latitude, longitude, notes, attempt_type, photo_ids, signature_data,
            attempt_at
          ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+        id, nextNum, attemptOfficerId, result, psCode,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
@@ -1365,15 +1706,61 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
            latitude, longitude, notes, attempt_type, photo_ids, signature_data,
            attempt_at
          ) VALUES (?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+        id, nextNum, attemptOfficerId, result,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
         stampedAt,
       );
 
-  // Dwell-time learning — write path
-  const arrivedAt = body.arrivedAt as string | undefined;
+  const loggedAttemptId = Number(ins.meta.last_row_id) || 0;
+  if (loggedAttemptId > 0) {
+    await linkServeAttemptToShift(db, loggedAttemptId, attemptOfficerId != null ? Number(attemptOfficerId) : null).catch(() => {});
+    const catalogItems: CatalogFileInput[] = [];
+    const photoIds = Array.isArray(body.photo_ids)
+      ? body.photo_ids.filter((fid: unknown) => typeof fid === 'string' && fid.length > 0)
+      : [];
+    for (const fileId of photoIds) {
+      catalogItems.push({
+        file_id: fileId,
+        kind: 'photo',
+        document_type: 'door_photo',
+        uploaded_by: body.officer_id ?? user?.id ?? null,
+      });
+    }
+    if (Array.isArray(body.evidence_files)) {
+      for (const row of body.evidence_files) {
+        if (!row || typeof row.file_id !== 'string' || !row.file_id) continue;
+        catalogItems.push({
+          file_id: row.file_id,
+          kind: row.kind,
+          title: row.title,
+          description: row.description,
+          document_type: row.document_type,
+          copies: row.copies,
+          original_name: row.original_name,
+          mime_type: row.mime_type,
+          file_size: row.file_size,
+          uploaded_by: body.officer_id ?? user?.id ?? null,
+        });
+      }
+    }
+    await catalogServeAttemptFiles(db, id, loggedAttemptId, catalogItems).catch((err) => {
+      log.warn('catalogServeAttemptFiles after logAttempt failed', { queueId: id, loggedAttemptId, error: err instanceof Error ? err.message : String(err) });
+    });
+  }
+
+  // Dwell-time learning — write path. Prefer the device's arrivedAt / arrived_at
+  // (web + iOS); fall back to the linked CFS onscene_at so Dispatch Arrive
+  // still trains the planner when the wizard never sent an arrival stamp.
+  let arrivedAt = parseArrivedAtIso(body as Record<string, unknown>);
+  if (!arrivedAt && queue.call_id) {
+    const cfs = await queryFirst<{ onscene_at: string | null }>(
+      db, 'SELECT onscene_at FROM calls_for_service WHERE id = ?', queue.call_id,
+    ).catch(() => null);
+    const onsceneMs = parseD1TimestampMs(cfs?.onscene_at);
+    if (onsceneMs) arrivedAt = new Date(onsceneMs).toISOString();
+  }
   if (arrivedAt) {
     const loggedAt = new Date().toISOString();
     const dwell = dwellSeconds(arrivedAt, loggedAt);
@@ -1436,7 +1823,8 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // transitions calls that are still open — never re-opens a cleared call.
     if (newStatus === 'served' && queue.call_id) {
       execute(db,
-        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'), updated_at = datetime('now')
+        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'),
+         ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime('now')
          WHERE id = ? AND status NOT IN ('cleared','archived')`,
         queue.call_id,
       ).then(async (r) => {
@@ -1465,23 +1853,23 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // [F3] Restore PSO officer unit to available on terminal status so they
     // show as free in the dispatch units panel.
     if (user?.id) {
-      execute(db,
-        `UPDATE units SET status = 'available', last_status_change = datetime('now'), updated_at = datetime('now')
-         WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service')`,
-        user.id,
-      ).then(() => {
+      restoreServeOfficerUnit(db, user.id, queue.call_id).then(() => {
         broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'available' });
       }).catch(() => {});
     }
   } else if (user?.id) {
-    // [F3] Non-terminal attempt: officer is on-scene at the serve address.
-    execute(db,
-      `UPDATE units SET status = 'onscene', last_status_change = datetime('now'), updated_at = datetime('now')
-       WHERE officer_id = ? AND status NOT IN ('off_duty','out_of_service','dispatched')`,
-      user.id,
-    ).then(() => {
-      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'onscene' });
+    // After a logged attempt the officer is rolling to the next stop —
+    // leaving them 'onscene' jammed Dispatch while they still had more papers.
+    restoreServeOfficerUnit(db, user.id, queue.call_id).then(() => {
+      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user!.id, status: 'available' });
     }).catch(() => {});
+    if (queue.call_id) {
+      execute(db,
+        `UPDATE calls_for_service SET ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime('now')
+         WHERE id = ? AND onscene_at IS NOT NULL`,
+        queue.call_id,
+      ).catch(() => {});
+    }
   }
 
   // [12a] Live dispatch sync — broadcast over WebSocket so ServePage / DispatchPage
@@ -1544,11 +1932,15 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // [13] Consecutive non-service streak — after a non-served attempt, count
   // how many of the most recent consecutive attempts also failed to make contact.
   // At 5+ in a row, insert a system comment so supervisors see it in the thread.
+  // Fetch enough rows so a streak longer than the window is not silently capped.
+  // nextNum is the attempt count after this insert, so fetch nextNum rows —
+  // the true streak cannot exceed the total number of attempts.
   if (newStatus !== 'served' && newStatus !== 'failed') {
+    const fetchLimit = Math.max(nextNum, 10);
     const recentResults = await query<{ result: string }>(db,
       `SELECT result FROM serve_attempts WHERE serve_queue_id = ?
-       ORDER BY attempt_number DESC LIMIT 6`,
-      id,
+       ORDER BY attempt_number DESC LIMIT ?`,
+      id, fetchLimit,
     ).catch(() => [] as { result: string }[]);
     const streak = recentResults.findIndex((r) =>
       r.result === 'served' || r.result === 'sub_served',
@@ -1565,11 +1957,41 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     }
   }
 
+  if (newStatus !== 'served' && newStatus !== 'failed') {
+    const attemptAtIso = stampedAt || new Date().toISOString();
+    c.executionCtx.waitUntil(
+      scheduleNextServeAttempt(
+        db,
+        id,
+        Number(ins.meta.last_row_id) || 0,
+        result,
+        attemptAtIso,
+        typeof body.window === 'string' ? body.window : null,
+      ).then((replan) => {
+        if (!replan) return;
+        broadcastAll('data_changed', {
+          module: 'serve-schedule',
+          entity: 'slot',
+          action: 'created',
+          slot_id: replan.slot_id,
+          queue_id: id,
+        });
+      }).catch(() => {}),
+    );
+  }
+
   return c.json({
     success: true,
     id: ins.meta.last_row_id,
     attempt_number: nextNum,
     queue_status: newStatus,
+    // attempt_threshold_reached: true when the attempt count reaches max_attempts.
+    // This is a count-only heuristic — NOT a legal diligence certification.
+    // Full Rule 4(d) diligence requires time separation and time-of-day variation
+    // that only the client-side assessDiligence() can evaluate. Keep the old
+    // `due_diligence_complete` key as a count-threshold alias so ServeAttemptModal
+    // still offers the non-service affidavit shortcut.
+    attempt_threshold_reached: nextNum >= (queue.max_attempts ?? 3),
     due_diligence_complete: nextNum >= (queue.max_attempts ?? 3),
     proximity_warning: proximityWarning,
   });
@@ -1592,13 +2014,23 @@ sv.post('/:id/substitute-service', async (c) => {
   body.attempt_type = body.attempt_type ?? 'substitute';
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-  const user = c.get('user') as { id: number } | undefined;
+  const user = c.get('user') as { id: number; role?: string } | undefined;
   const db = getDb(c.env);
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number }>(
-    db, 'SELECT attempt_count, max_attempts FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null; officer_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, call_id, officer_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+  if (user?.role === 'officer' && queue.officer_id != null && queue.officer_id !== user.id) {
+    return c.json({ error: 'Not assigned to this job' }, 403);
+  }
   const nextNum = (queue.attempt_count ?? 0) + 1;
+  const officerForAttempt = user?.id ?? body.officer_id ?? null;
+  if (user?.role === 'officer' && officerForAttempt) {
+    const duty = await requireOnDutyForServe(db, Number(officerForAttempt));
+    if (!duty.on_duty) {
+      return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
+    }
+  }
   // No `status` column on live serve_attempts (see logAttempt note above).
   const ins = await execute(
     db,
@@ -1607,18 +2039,37 @@ sv.post('/:id/substitute-service', async (c) => {
        latitude, longitude, notes, attempt_type, photo_ids, signature_data,
        attempt_at
      ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?, COALESCE(?, datetime('now')))`,
-    id, nextNum, body.officer_id ?? user?.id ?? null,
+    id, nextNum, officerForAttempt,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type, JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
     deviceAttemptAt(body.attempt_at),
   );
+  await linkServeAttemptToShift(db, Number(ins.meta.last_row_id) || 0, officerForAttempt != null ? Number(officerForAttempt) : null).catch(() => {});
   await execute(
     db,
     `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now'), closed_at = datetime('now') WHERE id = ?`,
     nextNum, id,
   );
-  await generateServeCharges(db, id);
+  // generateServeCharges must never surface a billing failure as an HTTP 500
+  // on the attempt POST — the DB writes for the attempt already committed and
+  // cannot be rolled back. Swallow failures the same way logAttempt does.
+  await generateServeCharges(db, id).catch(() => {});
   syncServeCompletionToCfs(db, id).catch(() => {});
+  notifyServeCompletion(db, id, 'served').catch(() => {});
+
+  // Notify dispatchers and restore officer unit status — mirroring logAttempt's
+  // terminal-completion path so substitute-service is not invisible to dispatch.
+  broadcastAll('dispatch_update', {
+    action: 'serve_completed',
+    queue_id: id,
+    attempt_count: nextNum,
+  });
+  if (user?.id) {
+    restoreServeOfficerUnit(db, user.id, queue.call_id).then(() => {
+      broadcastAll('dispatch_update', { action: 'unit_status_changed', officer_id: user.id, status: 'available' });
+    }).catch(() => {});
+  }
+
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
 });
 
@@ -1694,6 +2145,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   // Photo IDs — append new IDs to the existing array (never replace/delete).
   // Operators can attach additional field photos after the fact; the original
   // evidence set is preserved because we only ever grow photo_ids, never shrink.
+  let appendedPhotoIds: string[] = [];
   if ('photo_ids_append' in body && Array.isArray(body.photo_ids_append) && body.photo_ids_append.length > 0) {
     const existingRow = await queryFirst<{ photo_ids: string | null }>(
       db, 'SELECT photo_ids FROM serve_attempts WHERE id = ?', attemptId);
@@ -1704,6 +2156,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
       (id) => typeof id === 'string' && id.length > 0 && !current.includes(id),
     );
     if (newIds.length > 0) {
+      appendedPhotoIds = newIds;
       sets.push('photo_ids = ?');
       args.push(JSON.stringify([...current, ...newIds]));
     }
@@ -1757,6 +2210,22 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   if (!sets.length) return c.json({ error: 'No editable fields supplied' }, 400);
   args.push(attemptId);
   await execute(db, `UPDATE serve_attempts SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  if (appendedPhotoIds.length > 0) {
+    await catalogServeAttemptFiles(
+      db,
+      queueId,
+      attemptId,
+      appendedPhotoIds.map((file_id) => ({
+        file_id,
+        kind: 'photo' as const,
+        document_type: 'door_photo',
+        uploaded_by: c.get('user')?.id ?? null,
+      })),
+    ).catch((err) => {
+      log.warn('catalogServeAttemptFiles after photo append failed', { queueId, attemptId, error: err instanceof Error ? err.message : String(err) });
+    });
+  }
 
   // ── Parent status recompute ───────────────────────────────
   // Only fire when result/disposition actually changed. We re-derive
@@ -2187,12 +2656,12 @@ sv.get('/stats/daily-run-summary', async (c) => {
       SUM(CASE WHEN result = 'not_home' THEN 1 ELSE 0 END) AS not_home,
       SUM(CASE WHEN result = 'refused'  THEN 1 ELSE 0 END) AS refused
     FROM serve_attempts
-    WHERE attempt_at >= date('now')
+    WHERE attempt_at >= date('now', '-7 hours')
   `);
   const mileRow = await queryFirst<{ total_miles: number }>(db, `
     SELECT SUM(mileage_actual) AS total_miles
     FROM serve_queue
-    WHERE closed_at >= date('now') AND status = 'served'
+    WHERE closed_at >= date('now', '-7 hours') AND status = 'served'
   `);
   return c.json({
     date: new Date().toISOString().slice(0, 10),

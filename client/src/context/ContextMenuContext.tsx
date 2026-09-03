@@ -99,7 +99,8 @@ let warnedNoProvider = false;
 export const useContextMenu = (): ContextMenuContextValue => {
   const ctx = useContext(ContextMenuContext);
   if (!ctx) {
-    if (!warnedNoProvider && typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+    const isTest = typeof import.meta !== 'undefined' && (import.meta.env?.MODE === 'test' || !!import.meta.env?.VITEST);
+    if (!warnedNoProvider && typeof import.meta !== 'undefined' && import.meta.env?.DEV && !isTest) {
       warnedNoProvider = true;
       // eslint-disable-next-line no-console
       console.warn('useContextMenu used outside a ContextMenuProvider — right-click menus are inert here.');

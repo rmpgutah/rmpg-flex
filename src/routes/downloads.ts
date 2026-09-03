@@ -5,6 +5,28 @@ import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
 
 // ─── Helpers exported for use by src/index.ts (non-API paths) ──
 
+/**
+ * Sanitize a filename for use in Content-Disposition headers.
+ * Strips control characters, escapes quotes, and truncates to prevent
+ * header injection attacks.
+ */
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[\x00-\x1f\x7f]/g, '_')  // Strip control characters
+    .replace(/"/g, '_')                   // Escape double quotes
+    .replace(/\\/g, '/')                  // Normalize backslashes
+    .slice(0, 200);                       // Truncate to prevent header overflow
+}
+
+/**
+ * Validate that an R2 key doesn't contain path traversal sequences.
+ * Returns the sanitized key or null if traversal is detected.
+ */
+function safeR2Key(key: string): string | null {
+  if (key.includes('..') || key.includes('\0')) return null;
+  return key;
+}
+
 function downloadMime(filename: string): string {
   if (filename.endsWith('.dmg')) return 'application/x-apple-diskimage';
   if (filename.endsWith('.exe')) return 'application/x-msdownload';
@@ -30,6 +52,12 @@ function downloadMime(filename: string): string {
  * images get fetched over.
  */
 export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: any) {
+  // Path traversal guard: reject keys with .. or null bytes
+  const safeKey = safeR2Key(filename);
+  if (!safeKey) {
+    return c.json({ error: 'Invalid filename' }, 400);
+  }
+
   const rangeHeader = c.req.header('range');
 
   // Parse a single "bytes=start-end" range. Multi-range requests are rare from
@@ -58,6 +86,7 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
   const obj = got.obj;
 
   const basename = filename.includes('/') ? filename.split('/').pop()! : filename;
+  const safeName = sanitizeFilename(basename);
   const mime = downloadMime(basename);
   const headers: Record<string, string> = {
     'Content-Type': mime,
@@ -73,7 +102,7 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
   // Without this a browser may display a .txt or, worse, sniff and render an
   // archive as a page.
   if (!basename.endsWith('.txt')) {
-    headers['Content-Disposition'] = `attachment; filename="${basename}"`;
+    headers['Content-Disposition'] = `attachment; filename="${safeName}"`;
   }
 
   if (range) {
@@ -439,7 +468,13 @@ export const updates = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
 
 updates.get('/latest.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
 updates.get('/latest-mac.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
-updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, `updates/${c.req.param('filename')}`, c));
+updates.get('/:filename', (c) => {
+  const filename = c.req.param('filename');
+  if (filename.includes('..') || filename.includes('\0')) {
+    return c.json({ error: 'Invalid filename' }, 400);
+  }
+  return serveDownloadFile(c.env.DOWNLOADS, `updates/${filename}`, c);
+});
 
 // ─── /downloads/:filename — the actual file downloads ────────────────────────
 //
@@ -467,5 +502,10 @@ updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, `updates/${c
 // public because installers must be fetchable before anyone can sign in.
 export const downloadFiles = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
 
-downloadFiles.get('/:filename', (c) =>
-  serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));
+downloadFiles.get('/:filename', (c) => {
+  const filename = c.req.param('filename');
+  if (filename.includes('..') || filename.includes('\0')) {
+    return c.json({ error: 'Invalid filename' }, 400);
+  }
+  return serveDownloadFile(c.env.DOWNLOADS, filename, c);
+});

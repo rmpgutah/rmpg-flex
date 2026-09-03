@@ -150,10 +150,10 @@ describe('useMapCore — WebGL context-loss recovery', () => {
     fakeMap.getCanvas = () => ({ getContext: () => ({ isContextLost: () => true }) }) as unknown as HTMLCanvasElement;
     act(() => { fakeMap.emit('webglcontextlost', {}); });
 
-    // installWebglContextRecovery waits restoreGraceMs (default 1500ms) for a
+    // installWebglContextRecovery waits restoreGraceMs (default 2500ms) for a
     // self-restore before rebuilding — real timers, since faking them here
     // fights the async token-fetch microtask chain in initMap().
-    await new Promise((r) => setTimeout(r, 1700));
+    await new Promise((r) => setTimeout(r, 3000));
 
     expect(onRetryNonceRequest).toHaveBeenCalledTimes(1);
     expect(fakeMap.remove).toHaveBeenCalled();

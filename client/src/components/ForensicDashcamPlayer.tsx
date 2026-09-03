@@ -673,7 +673,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                           )}
                           <rect x={x} y={y} width={w} height={h} fill="none" stroke={col} strokeWidth={isP ? 4 : 2} vectorEffect="non-scaling-stroke" />
                           {plr && <rect x={plr[0]} y={plr[1]} width={plr[2]} height={plr[3]} fill="none" stroke="#22d3ee" strokeWidth={1.5} opacity={0.6} vectorEffect="non-scaling-stroke" />}
-                          <text x={x + 3} y={y - 4} fontSize={13} fill={col} fontFamily="monospace">{tr.cls === 'person' ? 'PED' : 'VEH'}·{tr.id}</text>
+                          <text x={x + 3} y={y - 4} fontSize={13} fill={col} fontFamily="Arial, sans-serif">{tr.cls === 'person' ? 'PED' : 'VEH'}·{tr.id}</text>
                         </g>
                       );
                     })}
@@ -698,9 +698,9 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                                 {media.plate && (
                                   <>
                                     <rect x={px} y={py - 26} width={Math.max(80, label.length * 15)} height={24} fill="rgba(0 0 0 / 0.78)" stroke={lpCol} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-                                    <text x={px + 5} y={py - 8} fontSize={19} fill={lpCol} fontFamily="monospace" letterSpacing="2">{label}</text>
+                                    <text x={px + 5} y={py - 8} fontSize={19} fill={lpCol} fontFamily="Arial, sans-serif" letterSpacing="2">{label}</text>
                                     {!plateConfirmed && (
-                                      <text x={px + 5} y={py + ph + 16} fontSize={11} fill="#f59e0b" fontFamily="sans-serif" letterSpacing="1">UNCONFIRMED</text>
+                                      <text x={px + 5} y={py + ph + 16} fontSize={11} fill="#f59e0b" fontFamily="Arial, sans-serif" letterSpacing="1">UNCONFIRMED</text>
                                     )}
                                   </>
                                 )}
@@ -710,7 +710,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                           {vTag && (
                             <>
                               <rect x={x} y={tagY - 22} width={tagW} height={22} fill="rgba(0 0 0 / 0.8)" stroke="#d4a017" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-                              <text x={x + 6} y={tagY - 6} fontSize={16} fill="#d4a017" fontFamily="sans-serif">{vTag}</text>
+                              <text x={x + 6} y={tagY - 6} fontSize={16} fill="#d4a017" fontFamily="Arial, sans-serif">{vTag}</text>
                             </>
                           )}
                         </g>

@@ -3,6 +3,10 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from './mapbox
 import { escapeHtml } from './sanitize';
 import { parseTimestamp } from './dateUtils';
 
+// Priority colors use hex literals for DOM markers (HTMLElement inline styles).
+// CSS custom properties resolve via the browser cascade, but test environments
+// (jsdom) have no cascade — var() stays as a literal string and breaks assertions.
+// These are operational severity indicators that must render correctly in all themes.
 export const SERVE_PRIORITY_COLOR: Record<string, string> = {
   urgent: '#ef4444',
   rush: '#f97316',
@@ -81,7 +85,7 @@ export function buildServeClusterEl(count: number, dominantPriority: string): HT
     'width:36px', 'height:36px', 'border-radius:50%',
     'border:2px solid rgba(255,255,255,0.6)',
     'display:flex', 'align-items:center', 'justify-content:center',
-    'color:#fff', 'font-weight:700', 'font-size:12px', 'font-family:monospace',
+    'color:#fff', 'font-weight:700', 'font-size:12px', "font-family:'Arial, sans-serif'",
     'box-shadow:0 2px 8px rgba(0 0 0 / 0.5)', 'cursor:pointer',
   ].join(';');
   el.style.background = color;
@@ -109,7 +113,7 @@ export function serveJobPopupHTML(job: ServeMapEntry, opts?: { showAddToRoute?: 
     ? `<button data-action="add-to-route" data-job-id="${job.id}" style="margin-top:6px;margin-left:4px;font:10px monospace;font-weight:700;color:#3b82f6;background:transparent;border:1px solid #3b82f6;padding:3px 8px;border-radius:2px;cursor:pointer;">ADD TO ROUTE</button>`
     : '';
 
-  return `<div style="font-family:monospace;min-width:180px">
+  return `<div style="font-family:'Arial, sans-serif';min-width:180px">
     <div style="font-weight:700;font-size:11px;margin-bottom:6px;border-bottom:1px solid #374151;padding-bottom:4px">${esc(job.recipient_name) || 'Unknown'}</div>
     <table style="border-collapse:collapse;width:100%">${rows}</table>
     <div style="margin-top:2px">

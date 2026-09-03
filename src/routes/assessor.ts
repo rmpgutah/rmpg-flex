@@ -562,7 +562,7 @@ app.get('/review-queue', requireRole('admin', 'manager'), async (c) => {
       record_type: r.record_type,
       record_id: r.record_id,
       record_label: r.record_label,
-      matches: JSON.parse(r.matches_json ?? '[]') as ParcelSummary[],
+      matches: (() => { try { return JSON.parse(r.matches_json ?? '[]') as ParcelSummary[]; } catch { return [] as ParcelSummary[]; } })(),
     })),
   });
 });

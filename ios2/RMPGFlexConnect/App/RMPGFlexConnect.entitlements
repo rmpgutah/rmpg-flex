@@ -1,28 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-	<key>aps-environment</key>
-	<string>production</string>
-	<key>com.apple.developer.associated-domains</key>
-	<array>
-		<string>applinks:rmpgutah.us</string>
-		<string>webcredentials:rmpgutah.us</string>
-	</array>
-	<key>com.apple.developer.nfc.readersession.formats</key>
-	<array>
-		<string>TAG</string>
-	</array>
-	<key>com.apple.developer.carplay-maps</key>
-	<true/>
-	<key>com.apple.developer.carplay-communication</key>
-	<true/>
-	<key>com.apple.security.application-groups</key>
-	<array/>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)com.rmpg.flex.connect</string>
-		<string>$(AppIdentifierPrefix)group.com.rmpg.flex</string>
-	</array>
-</dict>
+<dict/>
 </plist>

@@ -51,9 +51,17 @@ export function isValidTransition(from: WarrantStatus, to: WarrantStatus): boole
  * tick in src/index.ts. Returns the number of rows flipped.
  */
 export async function expireOverdueWarrants(db: D1Database): Promise<number> {
+  // expires_at is usually DATE-ONLY ('YYYY-MM-DD', from the warrant form's
+  // <input type="date">). A raw lexical `expires_at < datetime('now')` flipped
+  // a warrant to expired at 00:00 UTC ON its expiry date — the previous
+  // evening in Denver. A warrant is valid THROUGH its expiry date, so
+  // date-only values expire at the start of the following day.
   const result = await db.prepare(
     `UPDATE warrants SET status = 'expired', updated_at = datetime('now')
-     WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < datetime('now')`,
+     WHERE status = 'active' AND expires_at IS NOT NULL
+       AND (CASE WHEN length(expires_at) = 10
+                 THEN datetime(expires_at, '+1 day')
+                 ELSE datetime(expires_at) END) <= datetime('now')`,
   ).run();
   return result.meta?.changes ?? 0;
 }
@@ -76,7 +84,9 @@ export async function applyLazyWarrantExpiry(
     if (r.status !== 'active') return false;
     const expiresAt = r.expires_at;
     if (typeof expiresAt !== 'string' || !expiresAt) return false;
-    const ms = Date.parse(expiresAt);
+    let ms = Date.parse(expiresAt);
+    // Date-only values are valid through the expiry date (see sweep above).
+    if (expiresAt.length === 10) ms += 86_400_000;
     return !Number.isNaN(ms) && ms < now;
   });
   if (!overdue.length) return;
@@ -84,7 +94,10 @@ export async function applyLazyWarrantExpiry(
     try {
       await db.prepare(
         `UPDATE warrants SET status = 'expired', updated_at = datetime('now')
-         WHERE id = ? AND status = 'active' AND expires_at IS NOT NULL AND expires_at < datetime('now')`,
+         WHERE id = ? AND status = 'active' AND expires_at IS NOT NULL
+           AND (CASE WHEN length(expires_at) = 10
+                     THEN datetime(expires_at, '+1 day')
+                     ELSE datetime(expires_at) END) <= datetime('now')`,
       ).bind(row.id).run();
       row.status = 'expired';
     } catch {

@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { requireRole } from '../../middleware/auth';
 
 const premise = new Hono<Env>();
 
@@ -29,7 +30,7 @@ interface PremiseHistoryRow {
 }
 
 // GET /dispatch/premise-history?address=...&property_id=...
-premise.get('/premise-history', async (c) => {
+premise.get('/premise-history', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const address = c.req.query('address') || '';
   const propertyId = c.req.query('property_id');
@@ -52,21 +53,27 @@ premise.get('/premise-history', async (c) => {
     // street number) to widen the match. Won't match across totally
     // different streets because of the LIKE bounds.
     whereClause += ' AND UPPER(location_address) LIKE ?';
-    params.push(`%${address.trim().toUpperCase()}%`);
+    params.push(`%${address.trim().toUpperCase().slice(0, 48)}%`);
   }
 
-  const rows = await query<PremiseHistoryRow>(
-    db,
-    `SELECT id, call_number, incident_type, priority, status,
-            location_address, created_at, cleared_at, disposition,
-            weapons_involved, domestic_violence, injuries_reported,
-            officer_safety_caution
-     FROM calls_for_service
-     ${whereClause}
-     ORDER BY created_at DESC
-     LIMIT 50`,
-    ...params,
-  );
+  let rows: PremiseHistoryRow[];
+  try {
+    rows = await query<PremiseHistoryRow>(
+      db,
+      `SELECT id, call_number, incident_type, priority, status,
+              location_address, created_at, cleared_at, disposition,
+              weapons_involved, domestic_violence, injuries_reported,
+              officer_safety_caution
+       FROM calls_for_service
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      ...params,
+    );
+  } catch (err) {
+    log.error('GET /premise-history query failed', { address, propertyId }, err as Error);
+    return c.json({ hasWarnings: false, total: 0, entries: [] });
+  }
 
   // hasWarnings reflects the officer-safety signal — present rows with weapons /
   // DV / injuries / caution flag should make the modal play the alert tone
@@ -96,7 +103,7 @@ premise.get('/premise-history', async (c) => {
 // here. Additive + separate from premise-history so it can't regress that
 // (still-legacy) endpoint. Best-effort throughout — a miss returns an empty
 // list, never an error that would block call creation.
-premise.get('/address-occupants', async (c) => {
+premise.get('/address-occupants', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const address = (c.req.query('address') || '').trim();
   if (address.length < 5) return c.json({ occupants: [], occupant_count: 0, has_flagged: false });
@@ -113,7 +120,7 @@ premise.get('/address-occupants', async (c) => {
        WHERE UPPER(p.address) LIKE ?
        ORDER BY active_warrants DESC, p.last_name
        LIMIT 25`,
-      `%${address.toUpperCase()}%`,
+      `%${address.toUpperCase().slice(0, 48)}%`,
     );
     const occupants = people.map((p) => {
       let flags: string[] = [];

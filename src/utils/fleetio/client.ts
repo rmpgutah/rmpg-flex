@@ -390,8 +390,8 @@ export interface IterateListResult<T> {
  * Walks every page of a list endpoint under whichever pagination contract is
  * live, returning the accumulated records.
  *
- * `onPage` runs between requests — the caller uses it to pace against
- * Fleet.io's 50 req/min account ceiling. Any error propagates (a mid-walk 429
+ * `onPage` runs between requests — the caller uses it for self-imposed pacing
+ * (Fleet.io limits are plan-dependent; no fixed published number). Any error propagates (a mid-walk 429
  * must not look like "the list ended"), so callers get a partial-vs-failed
  * distinction instead of a silently short list.
  */

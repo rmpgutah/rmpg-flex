@@ -77,6 +77,10 @@ export function useDesktopWindows(): DesktopWindowManagerContextValue {
   return ctx;
 }
 
+export function useOptionalDesktopWindows(): DesktopWindowManagerContextValue | null {
+  return useContext(DesktopWindowManagerContext);
+}
+
 function loadSession(): DesktopWindowState[] {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);

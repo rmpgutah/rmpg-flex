@@ -1,47 +1,44 @@
 // ============================================================
-// RMPG Flex — open a generated jsPDF in a new tab (the RIGHT way)
+// RMPG Flex — open a generated jsPDF inside the app (Toughbook-safe)
 //
-// Replaces jsPDF's `doc.output('dataurlnewwindow')`, which produced the
-// "blank Notice of Communication" incident: dataurlnewwindow opens a tiny
-// generated HTML page whose <iframe> points at a SESSION-BOUND blob URL.
-// Anything saved/shared from that window (browser "Save page as", drag to
-// Documents, print-to-PDF of the wrapper) captures the ~240-byte HTML
-// wrapper — whose blob reference is already dead — and renders as a
-// completely blank page in every viewer from then on. Live D1 evidence:
-// attachments row 56, "Notice of Communication.html", 238 bytes, text/html.
+// All PDF output is routed through openPdfBlob() which dispatches a custom
+// DOM event. GlobalPdfViewer (mounted in App.tsx) catches the event and
+// renders DocumentViewer — a full-screen in-app iframe modal with
+// zoom/print/download controls. No secondary tabs or OS-level file dialogs
+// are opened, which is required on the Panasonic Toughbook desktop where the
+// kiosk shell blocks external windows.
 //
-// This helper opens the REAL PDF bytes instead:
-//   • doc.output('blob') wrapped in a File so the browser PDF viewer's
-//     download button saves under the intended filename;
-//   • window.open on the object URL — Chrome/Edge/Firefox show their native
-//     PDF viewer, and "Save" from there writes the actual PDF;
-//   • popup-blocked? fall back to a direct .pdf download (same pattern as
-//     recordPdfGenerator's download path);
-//   • the object URL is revoked after the viewer has had time to load.
+// Blob URL lifecycle: GlobalPdfViewer owns the URL and revokes it on close.
 // ============================================================
 
 import type jsPDF from 'jspdf';
 
+/** Custom event name consumed by GlobalPdfViewer. */
+export const OPEN_PDF_EVENT = 'rmpg:open-pdf' as const;
+
+export interface OpenPdfDetail {
+  url: string;
+  title: string;
+}
+
 /**
- * Open a generated jsPDF in a new browser tab as a real PDF document,
- * falling back to a direct download when the popup is blocked.
+ * Open a blob URL in the in-app PDF viewer.
+ * The viewer takes ownership of the URL and revokes it on close.
+ */
+export function openPdfBlob(url: string, title: string): void {
+  window.dispatchEvent(
+    new CustomEvent<OpenPdfDetail>(OPEN_PDF_EVENT, { detail: { url, title } }),
+  );
+}
+
+/**
+ * Open a generated jsPDF in the in-app PDF viewer.
  */
 export function openPdfDocument(doc: jsPDF, filename: string): void {
   const blob = doc.output('blob');
   const file = new File([blob], filename, { type: 'application/pdf' });
   const url = URL.createObjectURL(file);
-
-  const win = window.open(url, '_blank');
-  if (!win) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  openPdfBlob(url, filename);
 }
 
 /**

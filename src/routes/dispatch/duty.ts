@@ -23,15 +23,18 @@ import type { Context } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
 import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
 import { log } from '../../utils/logger';
+import { nowDualStamp } from '../../utils/denverTime';
+import { lookupTodayScheduleId, officerOnApprovedLeave, ensureCorporateOpsSchema, enrichTimeEntryOnClockIn, autoCompileShiftDar } from '../../utils/corporateWorkflows';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const duty = new Hono<Env>();
 
 // Dispatch-tier roles may start/end a shift on another officer's behalf.
-const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']);
+const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher', 'human_resources']);
 
 // NOTE: units.vehicle_id is a TEXT column holding the vehicle_NUMBER string
 // (e.g. "PS-D19"), NOT the fleet_vehicles.id. The authoritative unit↔vehicle
@@ -214,12 +217,8 @@ async function loadRoster(db: D1Database) {
 // GET /dispatch/duty/roster — every active officer's duty state in one call.
 // Dispatch-tier only: this is the supervision surface behind the iOS Duty
 // Roster screen (start/end on behalf + time corrections hang off these rows).
-duty.get('/roster', async (c) => {
+duty.get('/roster', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
   try {
-    const role = (c.get('user') as { role?: string } | undefined)?.role;
-    if (!role || !ON_BEHALF_ROLES.has(role)) {
-      return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
-    }
     return c.json({ officers: await loadRoster(getDb(c.env)) });
   } catch (err) {
     log.error('GET /dispatch/duty/roster failed', {}, err);
@@ -249,7 +248,7 @@ duty.get('/timecard', async (c) => {
     if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
     const entries = await query<Record<string, unknown>>(getDb(c.env), `
       SELECT id, clock_in, clock_out, total_hours, break_minutes, status, notes,
-             starting_mileage, ending_mileage
+             starting_mileage, ending_mileage, total_miles, vehicle_id, unit_id, clock_source
         FROM time_entries WHERE officer_id = ?
        ORDER BY clock_in DESC LIMIT 60`, officerId);
     return c.json({ entries });
@@ -272,15 +271,30 @@ duty.get('/me', async (c) => {
 });
 
 // POST /dispatch/duty/start — go on duty: clock in + unit in-service + vehicle.
-duty.post('/start', async (c) => {
+duty.post('/start', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureCorporateOpsSchema(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const officerId = resolveOfficerId(c, body.officer_id);
     if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
 
+    if (await officerOnApprovedLeave(db, officerId)) {
+      const role = (c.get('user') as { role?: string } | undefined)?.role ?? '';
+      const canOverride = ON_BEHALF_ROLES.has(role);
+      if (!canOverride || (c.req.query('override_leave') !== '1' && body.override_leave !== 1)) {
+        return c.json({ error: 'Approved leave covers today — cannot start a field shift', code: 'ON_LEAVE' }, 409);
+      }
+    }
+
     const unit = body.unit_id != null ? await unitById(db, Number(body.unit_id)) : await officerUnit(db, officerId);
     if (!unit) return c.json({ error: 'No unit assigned — ask dispatch to assign you a unit first', code: 'NO_UNIT' }, 409);
+    // IDOR: non-privileged callers cannot seize a unit already claimed by another officer
+    if (body.unit_id != null && !ON_BEHALF_ROLES.has((c.get('user') as { role?: string } | undefined)?.role ?? '')) {
+      if (unit.officer_id !== null && unit.officer_id !== officerId) {
+        return c.json({ error: 'That unit is assigned to another officer', code: 'UNIT_NOT_YOURS' }, 409);
+      }
+    }
 
     const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
     const officerName = officer?.full_name ?? null;
@@ -362,10 +376,12 @@ duty.post('/start', async (c) => {
     // 1) Clock in — reuse an already-open entry rather than double-punching.
     let entry = existingEntry;
     if (!entry) {
+      const stamp = nowDualStamp();
+      const scheduleId = await lookupTodayScheduleId(db, officerId);
       const res = await execute(db,
-        `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, starting_mileage, qr_token, created_at)
-         VALUES (?, ?, 'active', ?, ?, ?, ?, datetime('now'))`,
-        officerId, nowStamp(), unit.id, vehicle.id, startingMileage, qrToken);
+        `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, unit_id, vehicle_id, starting_mileage, qr_token, schedule_id, clock_source, created_at)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, 'duty', datetime('now'))`,
+        officerId, stamp.utc, stamp.local, unit.id, vehicle.id, startingMileage, qrToken, scheduleId);
       entry = await queryFirst(db, `SELECT * FROM time_entries WHERE id = ?`, Number(res.meta.last_row_id));
     } else {
       // Re-open path: rotate the token so a stale QR from a prior open entry
@@ -390,7 +406,10 @@ duty.post('/start', async (c) => {
     const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
     try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { log.warn('[duty/start] broadcast unit_updated failed', { unitId: unit.id }); /* never break the write */ }
 
-    return c.json(await stateFor(db, officerId), 200);
+    const flags = entry?.id
+      ? await enrichTimeEntryOnClockIn(db, Number(entry.id), officerId, { clockSource: 'duty' })
+      : { handbook_pending: false, service_due: false, license_expiring: false };
+    return c.json({ ...(await stateFor(db, officerId)), ...flags }, 200);
   } catch (err) {
     log.error('POST /dispatch/duty/start failed', {}, err);
     return dbErrorResponse(c, err, 'Failed to start shift');
@@ -398,7 +417,7 @@ duty.post('/start', async (c) => {
 });
 
 // POST /dispatch/duty/end — go off duty: clock out + off-duty + release vehicle.
-duty.post('/end', async (c) => {
+duty.post('/end', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
@@ -434,13 +453,22 @@ duty.post('/end', async (c) => {
       }
       const totalMiles = startMi != null && endingMileage != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
 
-      const stamp = nowStamp();
-      const hrs = hoursBetween(String(entry.clock_in), stamp, Number(entry.break_minutes) || 0);
+      const stamp = nowDualStamp();
+      const hrs = hoursBetween(String(entry.clock_in), stamp.utc, Number(entry.break_minutes) || 0);
       await execute(db,
-        `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
-        stamp, hrs, endingMileage, totalMiles, entry.id);
+        `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
+        stamp.utc, stamp.local, hrs, endingMileage, totalMiles, entry.id);
       // Shift-end odometer reading is authoritative — sync the fleet vehicle.
-      await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
+      if (endingMileage != null) {
+        await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
+      }
+      await autoCompileShiftDar(db, Number(officerId), {
+        shift_start: String(entry.clock_in),
+        shift_end: stamp.utc,
+        total_miles: totalMiles,
+      }).catch((err) => {
+        log.warn('[dar] autoCompileShiftDar on duty/end failed (non-fatal)', { err });
+      });
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.
@@ -490,6 +518,67 @@ duty.post('/end', async (c) => {
   } catch (err) {
     log.error('POST /dispatch/duty/end failed', {}, err);
     return dbErrorResponse(c, err, 'Failed to end shift');
+  }
+});
+
+duty.post('/swap-vehicle', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const officerId = resolveOfficerId(c, body.officer_id);
+    if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
+    const entry = await openEntry(db, officerId);
+    if (!entry) return c.json({ error: 'No open shift', code: 'NO_ACTIVE_CLOCK' }, 409);
+    const vehicleId = Number(body.vehicle_id);
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'vehicle_id required', code: 'NEEDS_VEHICLE' }, 400);
+    const vehicle = await vehicleById(db, vehicleId);
+    if (!vehicle) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (vehicle.status !== 'in_service') return c.json({ error: `Vehicle ${vehicle.vehicle_number ?? vehicle.id} is ${vehicle.status}, not in service`, code: 'VEHICLE_NOT_IN_SERVICE' }, 409);
+    const unit = await officerUnit(db, officerId);
+    if (!unit) return c.json({ error: 'No unit assigned', code: 'NO_UNIT' }, 409);
+    if (vehicle.assigned_unit_id && vehicle.assigned_unit_id !== unit.id) {
+      return c.json({ error: 'That vehicle is already assigned to another unit', code: 'VEHICLE_TAKEN' }, 409);
+    }
+    const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
+    await assignUnitVehicle(db, unit.id, unit.call_sign, officer?.full_name ?? null, vehicle.id, vehicle.vehicle_number);
+    await execute(db, `UPDATE time_entries SET vehicle_id = ? WHERE id = ?`, vehicle.id, entry.id);
+    return c.json(await stateFor(db, officerId));
+  } catch (err) {
+    log.error('POST /dispatch/duty/swap-vehicle failed', {}, err);
+    return dbErrorResponse(c, err, 'Failed to swap vehicle');
+  }
+});
+
+duty.post('/force-end', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const officerId = Number(body.officer_id);
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!Number.isFinite(officerId) || officerId <= 0) return c.json({ error: 'officer_id required' }, 400);
+    if (reason.length < 3) return c.json({ error: 'reason required', code: 'REASON_REQUIRED' }, 400);
+    const entry = await openEntry(db, officerId);
+    if (!entry) return c.json({ error: 'No open shift', code: 'NO_ACTIVE_CLOCK' }, 404);
+    const actor = c.get('user') as { id?: number; full_name?: string } | undefined;
+    const stamp = nowDualStamp();
+    const hrs = hoursBetween(String(entry.clock_in), stamp.utc, Number(entry.break_minutes) || 0);
+    await execute(db,
+      `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, status = 'completed' WHERE id = ?`,
+      stamp.utc, stamp.local, hrs, entry.id);
+    await execute(db,
+      `INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at)
+       VALUES (?, ?, ?, 'clock_out', ?, ?, ?, datetime('now'))`,
+      entry.id, actor?.id ?? null, actor?.full_name ?? null, null, stamp.utc, reason,
+    );
+    const unit = await officerUnit(db, officerId);
+    if (unit) {
+      await execute(db, `UPDATE units SET status = 'off_duty', last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
+      await releaseUnitVehicle(db, unit.id);
+    }
+    return c.json(await stateFor(db, officerId));
+  } catch (err) {
+    log.error('POST /dispatch/duty/force-end failed', {}, err);
+    return dbErrorResponse(c, err, 'Failed to force-end shift');
   }
 });
 

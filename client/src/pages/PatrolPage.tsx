@@ -117,6 +117,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   const [mapReady, setMapReady] = React.useState(false);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [recoverNonce, setRecoverNonce] = React.useState(0);
+  const [isRecovering, setIsRecovering] = React.useState(false);
+  const [needsManualReload, setNeedsManualReload] = React.useState(false);
   const recoveryCleanupRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
@@ -145,11 +147,16 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       recoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'PatrolMapView',
         onRebuild: () => {
+          setIsRecovering(false);
+          setNeedsManualReload(false);
           if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
           if (mapInstanceRef.current) { unregisterMapInstance(mapInstanceRef.current); try { mapInstanceRef.current.remove(); } catch { /* gone */ } mapInstanceRef.current = null; }
           setMapReady(false);
           setRecoverNonce((n) => n + 1);
         },
+        onContextLost: () => setIsRecovering(true),
+        onContextRestored: () => setIsRecovering(false),
+        onGiveUp: () => { setIsRecovering(false); setNeedsManualReload(true); },
       });
 
       map.on('load', () => {
@@ -277,6 +284,24 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         {checkpoints.filter(c => c.latitude != null && c.longitude != null).length} checkpoints •{' '}
         {scans.filter(s => s.latitude != null && s.longitude != null).length} scan points
       </div>
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <span className="text-rmpg-300 text-[10px] font-mono">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-xs font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+              RELOAD PAGE
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
