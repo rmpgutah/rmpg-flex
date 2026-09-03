@@ -87,7 +87,28 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
     }).finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { loadBriefing(); }, [loadBriefing]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
+    Promise.allSettled([
+      apiFetch<BoloCall[] | { results?: BoloCall[] }>('/dispatch/calls?nature_contains=BOLO&status=active&limit=10')
+        .then(d => { if (!cancelled) setBolos(Array.isArray(d) ? d : (d.results ?? [])); }),
+      apiFetch<Warrant[] | { results?: Warrant[] }>('/warrants?status=active&limit=10')
+        .then(d => { if (!cancelled) setWarrants(Array.isArray(d) ? d : (d.results ?? [])); }),
+      apiFetch<PersonOfInterest[] | { results?: PersonOfInterest[] }>('/intel/persons?flag=officer_safety&limit=10')
+        .then(d => { if (!cancelled) setPersons(Array.isArray(d) ? d : (d.results ?? [])); })
+        .catch(() => { if (!cancelled) setPersonsAvail(false); }),
+      apiFetch<Unit[] | { results?: Unit[] }>('/dispatch/units?status=active&limit=20')
+        .then(d => { if (!cancelled) setUnits(Array.isArray(d) ? d : (d.results ?? [])); }),
+    ]).then(results => {
+      if (!cancelled) {
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed >= 3) setLoadError(true);
+      }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const q = search.trim().toLowerCase();
   const boloView = q ? bolos.filter((b) => [b.nature, b.location_address, b.status].join(' ').toLowerCase().includes(q)) : bolos;

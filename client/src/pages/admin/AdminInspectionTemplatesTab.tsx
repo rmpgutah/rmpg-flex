@@ -75,7 +75,15 @@ export default function AdminInspectionTemplatesTab() {
       .catch((e) => { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); });
   }, [includeInactive]);
 
-  useEffect(() => { fetchRows(); }, [fetchRows]);
+  useEffect(() => {
+    let cancelled = false;
+    setErr(null); setLoading(true);
+    const params = includeInactive ? '?include_inactive=1' : '';
+    apiFetch<{ data: TemplateRow[] }>(`/inspection-templates${params}`)
+      .then((r) => { if (!cancelled) { setRows(r?.data ?? []); setLoading(false); } })
+      .catch((e) => { if (!cancelled) { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [includeInactive]);
 
   const deactivate = (id: number) => {
     if (!confirm(`Deactivate template ${id}?`)) return;

@@ -48,9 +48,10 @@ export default function FleetWorkOrdersTab({ initialVehicleId }: Props) {
     const key = ids.join(',');
     if (!ids.length || key === fetchedIds.current) return;
     fetchedIds.current = key;
+    let cancelled = false;
     apiFetch<{ conflicts: Record<string, unknown>[] }>(`/fleetio/conflicts?table=work_order&ids=${ids.join(',')}`)
       .then((r) => {
-        if (!r?.conflicts) return;
+        if (cancelled || !r?.conflicts) return;
         const map = new Map<number, ConflictBadgeConflict[]>();
         for (const c of r.conflicts) {
           const rmpgId = c.rmpg_id as number;
@@ -67,6 +68,7 @@ export default function FleetWorkOrdersTab({ initialVehicleId }: Props) {
         setConflicts(map);
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [rows]);
 
   const fetchRows = useCallback(() => {
@@ -84,19 +86,25 @@ export default function FleetWorkOrdersTab({ initialVehicleId }: Props) {
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
   useEffect(() => {
+    let cancelled = false;
     setStatsLoading(true);
     apiFetch<{ stats: WorkOrderStats }>('/work-orders/stats')
-      .then((r) => { setStats(r?.stats ?? null); setStatsLoading(false); })
-      .catch(() => setStatsLoading(false));
+      .then((r) => { if (!cancelled) { setStats(r?.stats ?? null); setStatsLoading(false); } })
+      .catch(() => { if (!cancelled) setStatsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<WorkOrderFormVehicle[] | { data: WorkOrderFormVehicle[] }>('/fleet?limit=500')
       .then((r) => {
-        const arr = Array.isArray(r) ? r : (r && Array.isArray((r as { data?: WorkOrderFormVehicle[] }).data)) ? (r as { data: WorkOrderFormVehicle[] }).data : [];
-        setVehicles(arr);
+        if (!cancelled) {
+          const arr = Array.isArray(r) ? r : (r && Array.isArray((r as { data?: WorkOrderFormVehicle[] }).data)) ? (r as { data: WorkOrderFormVehicle[] }).data : [];
+          setVehicles(arr);
+        }
       })
-      .catch(() => setVehicles([]));
+      .catch(() => { if (!cancelled) setVehicles([]); });
+    return () => { cancelled = true; };
   }, []);
 
   const vehicleLabel = (vid: number) => {

@@ -33,7 +33,14 @@ export default function KioskDevicesTab() {
       .catch((e) => { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); });
   }, []);
 
-  useEffect(() => { fetchRows(); }, [fetchRows]);
+  useEffect(() => {
+    let cancelled = false;
+    setErr(null); setLoading(true);
+    apiFetch<{ devices: DeviceRow[] }>('/kiosk-linux/devices')
+      .then((r) => { if (!cancelled) { setRows(r?.devices ?? []); setLoading(false); } })
+      .catch((e) => { if (!cancelled) { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, []);
 
   const register = () => {
     const label = newLabel.trim();

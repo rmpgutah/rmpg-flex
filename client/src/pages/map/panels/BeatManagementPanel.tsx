@@ -30,15 +30,17 @@ export default function BeatManagementPanel({ onClose, onSolutionReady }: BeatMa
   const optimization = useOptimizationV2();
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ results: Beat[] }>('/dispatch/beats')
-      .then((r) => setBeats(r.results ?? []))
+      .then((r) => { if (!cancelled) setBeats(r.results ?? []); })
       .catch(() => {});
     apiFetch<Unit[]>('/dispatch/units')
-      .then((r) => setUnits(Array.isArray(r) ? r : []))
+      .then((r) => { if (!cancelled) setUnits(Array.isArray(r) ? r : []); })
       .catch(() => {});
     const today = new Date().toISOString().split('T')[0];
     setShiftStart(`${today}T13:00`);
     setShiftEnd(`${today}T21:00`);
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
