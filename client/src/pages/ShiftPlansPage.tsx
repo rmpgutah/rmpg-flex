@@ -238,13 +238,15 @@ export default function ShiftPlansPage() {
   }, [selectedDate, sp.activePlanId]);
 
   useEffect(() => {
+    let cancelled = false;
     // shiftPlans router mounted at /api (see src/routesConfig.ts)
     apiFetch('/shift-swaps?status=pending')
-      .then(r => Array.isArray(r) ? setSwapRequests(r) : null)
-      .catch((err: any) => addToast(err?.message || 'Failed to load swap requests', 'error'));
+      .then(r => { if (!cancelled && Array.isArray(r)) setSwapRequests(r); })
+      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load swap requests', 'error'); });
     apiFetch('/shift-notifications')
-      .then((r: any) => r?.notifications && setShiftNotifs(r.notifications))
-      .catch((err: any) => addToast(err?.message || 'Failed to load shift notifications', 'error'));
+      .then((r: any) => { if (!cancelled && r?.notifications) setShiftNotifs(r.notifications); })
+      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load shift notifications', 'error'); });
+    return () => { cancelled = true; };
   }, [addToast]);
 
   const loadSwapModalData = () => {
@@ -261,21 +263,23 @@ export default function ShiftPlansPage() {
   }, [showSwapModal]);
 
   useEffect(() => {
+    let cancelled = false;
     setOvertimeLoading(true);
     let pending = 3;
-    const done = () => { pending -= 1; if (pending === 0) setOvertimeLoading(false); };
+    const done = () => { pending -= 1; if (pending === 0 && !cancelled) setOvertimeLoading(false); };
     apiFetch(`/staffing-levels?date=${selectedDate}`)
-      .then((r: any) => r && setStaffingLevels(r))
-      .catch((err: any) => addToast(err?.message || 'Failed to load staffing levels', 'error'))
+      .then((r: any) => { if (!cancelled && r) setStaffingLevels(r); })
+      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load staffing levels', 'error'); })
       .finally(done);
     apiFetch(`/shift-plans/conflicts/${selectedDate}`)
-      .then((r: any) => r?.conflicts && setConflicts(r.conflicts))
-      .catch((err: any) => addToast(err?.message || 'Failed to load conflicts', 'error'))
+      .then((r: any) => { if (!cancelled && r?.conflicts) setConflicts(r.conflicts); })
+      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load conflicts', 'error'); })
       .finally(done);
     apiFetch(`/shift-overtime?week_start=${selectedDate}`)
-      .then((r: any) => r && setOvertimeData(r))
-      .catch((err: any) => addToast(err?.message || 'Failed to load overtime data', 'error'))
+      .then((r: any) => { if (!cancelled && r) setOvertimeData(r); })
+      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load overtime data', 'error'); })
       .finally(done);
+    return () => { cancelled = true; };
   }, [selectedDate, addToast]);
 
   // ── Computed ──

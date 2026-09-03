@@ -512,18 +512,20 @@ export default function CommunicationsPage() {
 
   // Initial load for messages (default panel) + officers list + stats
   useEffect(() => {
+    let cancelled = false;
     fetchMessages();
     apiFetch<any[]>('/personnel')
-      .then((data) => setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))))
-      .catch((err) => { console.warn('[CommunicationsPage] fetch personnel failed:', err); });
+      .then((data) => { if (!cancelled) setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))); })
+      .catch((err) => { if (!cancelled) console.warn('[CommunicationsPage] fetch personnel failed:', err); });
     // Fetch BOLO stats
     apiFetch<any>('/comms/bolos/stats')
-      .then((data) => { if (data) setBoloStats(data); })
+      .then((data) => { if (!cancelled && data) setBoloStats(data); })
       .catch(() => { /* stats optional */ });
     // Fetch message priority stats
     apiFetch<any>('/comms/messages/priority-stats')
-      .then((data) => { if (data) setMsgPriorityStats(data); })
+      .then((data) => { if (!cancelled && data) setMsgPriorityStats(data); })
       .catch(() => { /* stats optional */ });
+    return () => { cancelled = true; };
   }, [fetchMessages]);
 
   // Scroll to bottom of thread when selected or new messages arrive
