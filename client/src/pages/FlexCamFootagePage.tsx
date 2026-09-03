@@ -167,10 +167,14 @@ export default function FlexCamFootagePage() {
   }
 
   const reload = useCallback(() => {
-    apiFetch<Detail>(`/flexcam/footage/${id}`).then(setData).catch((e: Error) => setErr(e.message));
+    let cancelled = false;
+    apiFetch<Detail>(`/flexcam/footage/${id}`)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e: Error) => { if (!cancelled) setErr(e.message); });
+    return () => { cancelled = true; };
   }, [id]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => reload(), [reload]);
   useEffect(() => () => {
     for (const u of urlCache.current.values()) URL.revokeObjectURL(u);
     urlCache.current.clear();

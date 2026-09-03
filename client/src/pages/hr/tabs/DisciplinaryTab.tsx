@@ -140,12 +140,14 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   // ─── Fetch officers ──────────────────────────────────────
   useEffect(() => {
     if (!manager) return;
+    let cancelled = false;
     apiFetch<Array<{ id: number; full_name: string }>>('/personnel')
       .then(data => {
-        // personnel endpoint may return more fields; just keep id & full_name
+        if (cancelled) return;
         setOfficers(asArray<any>(data).map((o: any) => ({ id: o.id, full_name: o.full_name })));
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [manager]);
 
   useEffect(() => {
@@ -158,11 +160,13 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       setTimelineRecords([]);
       return;
     }
+    let cancelled = false;
     setTimelineLoading(true);
     apiFetch<DisciplinaryRecord[]>(`/hr/disciplinary/${selectedOfficerId}/timeline`)
-      .then((data) => setTimelineRecords(asArray<DisciplinaryRecord>(data)))
-      .catch(() => toast.addToast('Failed to load timeline', 'error'))
-      .finally(() => setTimelineLoading(false));
+      .then((data) => { if (!cancelled) setTimelineRecords(asArray<DisciplinaryRecord>(data)); })
+      .catch(() => { if (!cancelled) toast.addToast('Failed to load timeline', 'error'); })
+      .finally(() => { if (!cancelled) setTimelineLoading(false); });
+    return () => { cancelled = true; };
   }, [viewMode, selectedOfficerId, toast]);
 
   // ─── Handlers ────────────────────────────────────────────

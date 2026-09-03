@@ -793,13 +793,16 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
     // and a child still sees every prior visit.
     const chainIds = await collectCallChainIds(db, Number(id)).catch(() => [Number(id)]);
     const historyIds = chainIds.length ? chainIds : [Number(id)];
-    const historyPh = historyIds.map(() => '?').join(',');
-    const visitHistory = await query<Record<string, unknown>>(db,
-      `SELECT cvh.*, fv.vehicle_number AS responding_vehicle_number
-       FROM call_visit_history cvh
-       LEFT JOIN fleet_vehicles fv ON fv.id = cvh.responding_vehicle_id
-       WHERE cvh.call_id IN (${historyPh})
-       ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, ...historyIds);
+    const visitHistory = await queryInChunks<Record<string, unknown>>(
+      db,
+      historyIds,
+      (ph) =>
+        `SELECT cvh.*, fv.vehicle_number AS responding_vehicle_number
+         FROM call_visit_history cvh
+         LEFT JOIN fleet_vehicles fv ON fv.id = cvh.responding_vehicle_id
+         WHERE cvh.call_id IN (${ph})
+         ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`,
+    );
 
     const serveJob = await findServeJobForCall(db, Number(id)).catch(() => null);
 
@@ -813,12 +816,13 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
       : null;
     const siblingIds = historyIds.filter((cid) => cid !== Number(id));
     const childCalls = siblingIds.length
-      ? await query<{ id: number; call_number: string; status: string; pso_attempt_number: number | null }>(
+      ? await queryInChunks<{ id: number; call_number: string; status: string; pso_attempt_number: number | null }>(
         db,
-        `SELECT id, call_number, status, pso_attempt_number FROM calls_for_service
-         WHERE id IN (${siblingIds.map(() => '?').join(',')})
-         ORDER BY COALESCE(pso_attempt_number, 0) ASC, id ASC`,
-        ...siblingIds,
+        siblingIds,
+        (ph) =>
+          `SELECT id, call_number, status, pso_attempt_number FROM calls_for_service
+           WHERE id IN (${ph})
+           ORDER BY COALESCE(pso_attempt_number, 0) ASC, id ASC`,
       ).catch(() => [])
       : [];
 
@@ -1154,6 +1158,8 @@ calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   }
   try {
     const db = getDb(c.env);
+    const callRow = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!callRow) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
 
     // ── Detach dependents BEFORE the parent delete ──
     // D1 runs with PRAGMA foreign_keys=1. Only three child tables declare

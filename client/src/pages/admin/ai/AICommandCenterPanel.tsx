@@ -32,8 +32,17 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
   const [healthSnap, setHealthSnap] = useState<any>(null);
 
   useEffect(() => {
-    fetchActivity();
-    fetchQuickHealth();
+    let cancelled = false;
+    setActivityLoading(true);
+    Promise.all([
+      apiFetch<ActivityEntry[]>('/ai/activity?limit=5').catch(() => []),
+      apiFetch<any>('/ai/health').catch(() => null),
+    ]).then(([actData, health]) => {
+      if (cancelled) return;
+      setActivity(Array.isArray(actData) ? actData : []);
+      if (health) setHealthSnap(health);
+    }).finally(() => { if (!cancelled) setActivityLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const fetchActivity = async () => {

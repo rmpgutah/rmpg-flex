@@ -168,6 +168,8 @@ export default function CrmPage() {
   const { user } = useAuth();
   const isIntelUser = INTEL_ROLES.has(user?.role ?? '');
   const clientSearchRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
   useSlashFocus(clientSearchRef);
   // Per-user localStorage key — the prior global 'crm_active_section' key
   // leaked the previous operator's last-viewed tab to the next person who
@@ -252,19 +254,19 @@ export default function CrmPage() {
   const [revenueForecast, setRevenueForecast] = useState<any>(null);
 
   const fetchPipelineSummary = useCallback(async () => {
-    try { const res = await apiFetch<any>('/crm/pipeline-summary'); setPipelineSummary(res); } catch { /* ignore */ }
+    try { const res = await apiFetch<any>('/crm/pipeline-summary'); if (mountedRef.current) setPipelineSummary(res); } catch { /* ignore */ }
   }, []);
 
   const fetchFollowUps = useCallback(async () => {
-    try { const res = await apiFetch<any>('/crm/leads/follow-ups'); setFollowUps(res); } catch { /* ignore */ }
+    try { const res = await apiFetch<any>('/crm/leads/follow-ups'); if (mountedRef.current) setFollowUps(res); } catch { /* ignore */ }
   }, []);
 
   const fetchSourceAnalytics = useCallback(async () => {
-    try { const res = await apiFetch<any>('/crm/leads/source-analytics'); setSourceAnalytics(res); } catch { /* ignore */ }
+    try { const res = await apiFetch<any>('/crm/leads/source-analytics'); if (mountedRef.current) setSourceAnalytics(res); } catch { /* ignore */ }
   }, []);
 
   const fetchRevenueForecast = useCallback(async () => {
-    try { const res = await apiFetch<any>('/crm/revenue-forecast'); setRevenueForecast(res); } catch { /* ignore */ }
+    try { const res = await apiFetch<any>('/crm/revenue-forecast'); if (mountedRef.current) setRevenueForecast(res); } catch { /* ignore */ }
   }, []);
 
   // Persist active section (per-user)
@@ -279,10 +281,12 @@ export default function CrmPage() {
         apiFetch<CrmActivity[]>('/crm/recent-activity?limit=20'),
         apiFetch<any[]>('/crm/expiring-contracts?days=90'),
       ]);
+      if (!mountedRef.current) return;
       setStats(statsRes);
       setRecentActivity(Array.isArray(activityRes) ? activityRes : []);
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       console.error('CRM dashboard fetch error:', err);
       setFetchError(err?.message || 'Failed to load data');
     }
@@ -291,16 +295,19 @@ export default function CrmPage() {
   const fetchClients = useCallback(async () => {
     try {
       const res = await apiFetch<any[]>('/admin/clients');
+      if (!mountedRef.current) return;
       setClients(Array.isArray(res) ? res : []);
-    } catch { setClients([]); }
+    } catch { if (mountedRef.current) setClients([]); }
   }, []);
 
   const fetchProperties = useCallback(async () => {
     setPropertiesLoading(true);
     try {
       const res = await apiFetch<any[]>('/records/properties');
+      if (!mountedRef.current) return;
       setProperties(Array.isArray(res) ? res : []);
-    } catch { setProperties([]); } finally { setPropertiesLoading(false); }
+    } catch { if (mountedRef.current) setProperties([]); }
+    finally { if (mountedRef.current) setPropertiesLoading(false); }
   }, []);
 
   const fetchContacts = useCallback(async () => {
@@ -310,8 +317,10 @@ export default function CrmPage() {
       if (contactSearch) params.set('search', contactSearch);
       if (contactRelationship) params.set('relationship', contactRelationship);
       const res = await apiFetch<any[]>(`/crm/contacts?${params}`);
+      if (!mountedRef.current) return;
       setContacts(Array.isArray(res) ? res : []);
-    } catch { setContacts([]); } finally { setContactsLoading(false); }
+    } catch { if (mountedRef.current) setContacts([]); }
+    finally { if (mountedRef.current) setContactsLoading(false); }
   }, [contactSearch, contactRelationship]);
 
   const fetchInvoices = useCallback(async () => {
@@ -320,8 +329,10 @@ export default function CrmPage() {
       // /invoices (legacy) returns { data, pagination }, not a bare array — the
       // old Array.isArray check always failed, so the CRM Invoices tab was empty.
       const res = await apiFetch<{ data?: any[] } | any[]>('/invoices');
+      if (!mountedRef.current) return;
       setInvoices(Array.isArray(res) ? res : (res?.data ?? []));
-    } catch { setInvoices([]); } finally { setInvoicesLoading(false); }
+    } catch { if (mountedRef.current) setInvoices([]); }
+    finally { if (mountedRef.current) setInvoicesLoading(false); }
   }, []);
 
   const fetchTasks = useCallback(async () => {
@@ -329,15 +340,17 @@ export default function CrmPage() {
       const params = new URLSearchParams();
       if (taskFilter) params.set('status', taskFilter);
       const res = await apiFetch<CrmTask[]>(`/crm/tasks?${params}`);
+      if (!mountedRef.current) return;
       setTasks(Array.isArray(res) ? res : []);
-    } catch { setTasks([]); }
+    } catch { if (mountedRef.current) setTasks([]); }
   }, [taskFilter]);
 
   const fetchClientActivity = useCallback(async (clientId: string) => {
     try {
       const res = await apiFetch<CrmActivity[]>(`/crm/activity/${clientId}`);
+      if (!mountedRef.current) return;
       setClientActivity(Array.isArray(res) ? res : []);
-    } catch { setClientActivity([]); }
+    } catch { if (mountedRef.current) setClientActivity([]); }
   }, []);
 
   // Initial load

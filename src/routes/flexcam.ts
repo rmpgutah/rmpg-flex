@@ -76,7 +76,7 @@ flexcam.get('/status', async (c): Promise<Response> => {
   return c.json({ enabled: enabled?.config_value === 'true', ...(counts ?? { requests: 0, bytes: 0, pending: 0 }) });
 });
 
-flexcam.post('/request', async (c): Promise<Response> => {
+flexcam.post('/request', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureFootageSchema(db);
   let body: { asset_id?: number; unit_id?: number; from?: number; to?: number; trip_id?: string; call_id?: number; title?: string; channels?: string[] };
@@ -198,7 +198,7 @@ flexcam.get('/trips/:tripId/manifest', async (c): Promise<Response> => {
   return c.json(manifest);
 });
 
-flexcam.post('/render/:id', async (c): Promise<Response> => {
+flexcam.post('/render/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
@@ -232,7 +232,7 @@ flexcam.post('/render/:id', async (c): Promise<Response> => {
 
 // ── Evidence endpoints ───────────────────────────────────────
 
-flexcam.post('/footage/:id/lock', async (c): Promise<Response> => {
+flexcam.post('/footage/:id/lock', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
   const id = Number(c.req.param('id'));
   const row = await queryFirst<{ evidence_number: string | null }>(db, 'SELECT evidence_number FROM footage_requests WHERE id=?', id).catch(() => null);
@@ -270,7 +270,7 @@ flexcam.get('/footage/:id/custody', async (c): Promise<Response> => {
   return c.json({ request: req, custody, links });
 });
 
-flexcam.post('/footage/:id/links', async (c): Promise<Response> => {
+flexcam.post('/footage/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
   const id = Number(c.req.param('id'));
   let body: { entity_type?: string; entity_id?: number; notes?: string }; try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
@@ -287,7 +287,7 @@ flexcam.get('/footage/:id/links', async (c): Promise<Response> => {
   return c.json({ links });
 });
 
-flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
+flexcam.post('/footage/:id/court-package', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
   // Guards the SELECT against schema drift on a live D1 that hasn't had
   // migration 0144 (merged_sha256 + remux_* columns) applied yet.
@@ -328,7 +328,7 @@ flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
 
 // Locked-evidence delete guard: a request flagged as evidence cannot be deleted
 // until an admin unlocks it. The blocked attempt is itself recorded to custody.
-flexcam.delete('/footage/:id', async (c): Promise<Response> => {
+flexcam.delete('/footage/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
   const id = Number(c.req.param('id'));
   const row = await queryFirst<{ evidence_locked: number }>(db, 'SELECT evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
@@ -361,7 +361,7 @@ flexcam.post('/queue/drain', requireRole('admin'), async (c): Promise<Response> 
 // Repair a stuck/partial request: reset missing chunks → pending_request and
 // reopen the request → fulfilling so the next cron tick can retry them.
 // Evidence-locked requests are not affected.
-flexcam.post('/footage/:id/repair', async (c): Promise<Response> => {
+flexcam.post('/footage/:id/repair', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c): Promise<Response> => {
   const db = getDb(c.env);
   const id = Number(c.req.param('id'));
   const row = await queryFirst<{ status: string; evidence_locked: number }>(db,

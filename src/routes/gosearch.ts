@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { queryFirst } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
 
 const gosearch = new Hono<Env>();
@@ -173,7 +174,7 @@ gosearch.get('/health', (c) => {
   return c.json({ ok: true, configured, source: 'gosearch-aggregate' });
 });
 
-gosearch.post('/search', async (c) => {
+gosearch.post('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
   const body = await c.req.json<{ username?: string; check_breaches?: boolean }>();
   const username = (body.username ?? '').trim();
   if (!username) return c.json({ error: 'username is required' }, 400);
@@ -266,7 +267,7 @@ gosearch.post('/search', async (c) => {
   }
 });
 
-gosearch.get('/history', async (c) => {
+gosearch.get('/history', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c) => {
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10) || 50, 200);
   const { results } = await c.env.DB.prepare(
     `SELECT id, query_text, created_at, expires_at FROM osint_cache

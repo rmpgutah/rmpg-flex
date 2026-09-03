@@ -79,11 +79,28 @@ export default function IntelBulletinsPage() {
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    fetchStats();
+    let cancelled = false;
+    apiFetch<BulletinStats>('/intel-bulletins/stats/summary')
+      .then(data => { if (!cancelled) setStats(data); })
+      .catch(err => console.error('Failed to fetch stats', err));
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    fetchBulletins();
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
+    const params = new URLSearchParams();
+    if (statusFilter !== 'all') params.set('status', statusFilter);
+    if (typeFilter !== 'all') params.set('type', typeFilter);
+    if (priorityFilter !== 'all') params.set('priority', priorityFilter);
+    if (searchQuery) params.set('q', searchQuery);
+    const query = params.toString();
+    apiFetch<Bulletin[]>(`/intel-bulletins${query ? '?' + query : ''}`)
+      .then(data => { if (!cancelled) setBulletins(asArray<Bulletin>(data)); })
+      .catch(() => { if (!cancelled) { setLoadError(true); setBulletins([]); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [statusFilter, typeFilter, priorityFilter, searchQuery]);
 
   async function fetchStats() {

@@ -65,7 +65,8 @@ gangIntel.post('/', async (c) => {
 gangIntel.put('/:id', async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   const v = checkEnums(body);
@@ -78,13 +79,13 @@ gangIntel.put('/:id', async (c) => {
   } catch (err) { console.error('[gangIntel] PUT /:id failed', err); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
 });
 
-gangIntel.delete('/:id', async (c) => {
+gangIntel.delete('/:id', requireRole('admin', 'manager', 'supervisor'), async (c) => {
   try {
-  const actor = c.get('user') as { role: string } | undefined;
-  if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
   const db = getDb(c.env);
-  const id = c.req.param('id');
-  await execute(db, 'DELETE FROM gang_intel_members WHERE id=?', id);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const result = await execute(db, 'DELETE FROM gang_intel_members WHERE id=?', id);
+  if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /:id failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
@@ -118,7 +119,8 @@ gangIntel.post('/gangs', async (c) => {
 gangIntel.put('/gangs/:id', async (c) => {
   try {
   const db = getDb(c.env);
-  const id = c.req.param('id');
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   if (body.threat_level != null && body.threat_level !== '' && !THREAT_LEVELS.has(body.threat_level)) {
@@ -132,13 +134,13 @@ gangIntel.put('/gangs/:id', async (c) => {
   } catch (err) { console.error('[gangIntel] PUT /gangs/:id failed', err); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
 });
 
-gangIntel.delete('/gangs/:id', async (c) => {
+gangIntel.delete('/gangs/:id', requireRole('admin', 'manager', 'supervisor'), async (c) => {
   try {
-  const actor = c.get('user') as { role: string } | undefined;
-  if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
   const db = getDb(c.env);
-  const id = c.req.param('id');
-  await execute(db, 'DELETE FROM gang_intel_gangs WHERE id=?', id);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const result = await execute(db, 'DELETE FROM gang_intel_gangs WHERE id=?', id);
+  if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /gangs/:id failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }

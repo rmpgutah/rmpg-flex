@@ -365,7 +365,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
                 <button type="button" aria-label={`Copy ${s.label}`} onClick={() => copyToClipboard(s.number).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}>
                   <Copy className="w-3 h-3 text-rmpg-500" />
                 </button>
-                <button type="button" aria-label={`Delete ${s.label}`} onClick={() => apiFetch(`/dialer-connect/speed-dials/${s.id}`, { method: 'DELETE' }).then(load)}>
+                <button type="button" aria-label={`Delete ${s.label}`} onClick={() => apiFetch(`/dialer-connect/speed-dials/${s.id}`, { method: 'DELETE' }).then(load).catch(() => addToast('Delete failed', 'error'))}>
                   <Trash2 className="w-3 h-3 text-rmpg-500" />
                 </button>
               </div>
@@ -400,24 +400,26 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
             type="button"
             className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300"
             onClick={async () => {
-              const to = normalizeDialTarget(digits);
-              const created = await apiFetch<{ data: DialerCall }>('/dialer-connect/calls', {
-                method: 'POST',
-                body: JSON.stringify({
-                  direction: 'outbound', to: to, status: 'completed',
-                }),
-              });
-              if (created.data?.id) {
-                const patched = await apiFetch<{ data: DialerCall }>(`/dialer-connect/calls/${created.data.id}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify({
-                    callback_at: callbackAt || undefined,
-                    notes, disposition,
-                    call_id: cfsId ? Number(cfsId) : undefined,
-                  }),
+              try {
+                const to = normalizeDialTarget(digits);
+                const created = await apiFetch<{ data: DialerCall }>('/dialer-connect/calls', {
+                  method: 'POST',
+                  body: JSON.stringify({ direction: 'outbound', to: to, status: 'completed' }),
                 });
-                addToast('Call logged', 'success');
-                openDialerCallRecordPdf({ record: callToPdf(patched.data || created.data), exportedBy });
+                if (created.data?.id) {
+                  const patched = await apiFetch<{ data: DialerCall }>(`/dialer-connect/calls/${created.data.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                      callback_at: callbackAt || undefined,
+                      notes, disposition,
+                      call_id: cfsId ? Number(cfsId) : undefined,
+                    }),
+                  });
+                  addToast('Call logged', 'success');
+                  openDialerCallRecordPdf({ record: callToPdf(patched.data || created.data), exportedBy });
+                }
+              } catch (e: any) {
+                addToast(e?.message || 'Failed to log call', 'error');
               }
             }}
           >Log + print form</button>
@@ -432,7 +434,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
           <button
             type="button"
             className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300"
-            onClick={() => apiFetch('/dialer-connect/presence', { method: 'PUT', body: JSON.stringify({ status: presence, message: presenceMsg }) }).then(() => { addToast('Presence updated', 'success'); load(); })}
+            onClick={() => apiFetch('/dialer-connect/presence', { method: 'PUT', body: JSON.stringify({ status: presence, message: presenceMsg }) }).then(() => { addToast('Presence updated', 'success'); load(); }).catch(() => addToast('Failed to update presence', 'error'))}
           >Set presence</button>
           <div className="space-y-1 pt-2">
             {agents.map((a) => (
@@ -790,7 +792,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
               <IconAction label="Copy transcript" onClick={() => copyToClipboard(c.transcript || counterparty(c)).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}><Copy className="w-3 h-3" /></IconAction>
               <IconAction label="Redial" onClick={() => window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(counterparty(c)) } }))}><PhoneCall className="w-3 h-3" /></IconAction>
-              <IconAction label="Star" onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, { method: 'PATCH', body: JSON.stringify({ starred: !c.starred }) }).then(load)}><Star className={`w-3 h-3 ${c.starred ? 'text-brand-400' : ''}`} /></IconAction>
+              <IconAction label="Star" onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, { method: 'PATCH', body: JSON.stringify({ starred: !c.starred }) }).then(load).catch(() => addToast('Failed to update star', 'error'))}><Star className={`w-3 h-3 ${c.starred ? 'text-brand-400' : ''}`} /></IconAction>
               <IconAction label="Attach recording" onClick={() => { setUploadId(c.id); fileRef.current?.click(); }}><Link2 className="w-3 h-3" /></IconAction>
               {c.call_id ? (
                 <IconAction label="Open CFS" onClick={() => navigate(`/dispatch?call_id=${c.call_id}`)}><PhoneIncoming className="w-3 h-3" /></IconAction>

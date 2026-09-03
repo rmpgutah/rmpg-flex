@@ -392,11 +392,13 @@ export default function HelpPage() {
 
   // Fetch server health info for System section
   useEffect(() => {
+    let cancelled = false;
     setHealthLoading(true);
     apiFetch<HealthData>('/api/health')
-      .then((data) => { setHealthData(data); setHealthFailed(false); })
-      .catch(() => { setHealthData(null); setHealthFailed(true); })
-      .finally(() => setHealthLoading(false));
+      .then((data) => { if (!cancelled) { setHealthData(data); setHealthFailed(false); } })
+      .catch(() => { if (!cancelled) { setHealthData(null); setHealthFailed(true); } })
+      .finally(() => { if (!cancelled) setHealthLoading(false); });
+    return () => { cancelled = true; };
   }, [healthTick]);
 
   // Re-sync from URL when the back/forward buttons change ?topic / ?faq /

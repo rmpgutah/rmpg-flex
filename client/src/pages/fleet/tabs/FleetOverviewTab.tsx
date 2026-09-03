@@ -84,9 +84,11 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
 
   useEffect(() => {
     if (!detail?.id) return;
-    apiFetch<any>(`/fleet/${detail.id}/fuel-efficiency`).then((d: any) => d && setFuelEfficiency(d)).catch(() => {});
-    apiFetch<any>(`/fleet/${detail.id}/maintenance-costs`).then((d: any) => d && setMaintenanceCosts(d)).catch(() => {});
-    apiFetch<any>(`/fleet/${detail.id}/mileage-history`).then((d: any) => Array.isArray(d) && setMileageHistory(d)).catch(() => {});
+    let cancelled = false;
+    apiFetch<any>(`/fleet/${detail.id}/fuel-efficiency`).then((d: any) => { if (!cancelled && d) setFuelEfficiency(d); }).catch(() => {});
+    apiFetch<any>(`/fleet/${detail.id}/maintenance-costs`).then((d: any) => { if (!cancelled && d) setMaintenanceCosts(d); }).catch(() => {});
+    apiFetch<any>(`/fleet/${detail.id}/mileage-history`).then((d: any) => { if (!cancelled && Array.isArray(d)) setMileageHistory(d); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [detail?.id]);
 
   const [vehicleConflicts, setVehicleConflicts] = useState<ConflictBadgeConflict[]>([]);

@@ -38,7 +38,7 @@ export default function SyncStatusTab() {
         apiFetch<{ conflicts: ConflictRow[] }>('/api/sync/conflicts?limit=50'),
       ]);
       setQueue(q);
-      setConflicts(c.conflicts);
+      setConflicts(Array.isArray(c?.conflicts) ? c.conflicts : []);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load sync status';
       setError(msg);
@@ -126,7 +126,7 @@ export default function SyncStatusTab() {
                   <td className={`py-[2px] ${row.winning_source === 'fz55' ? 'text-green-400' : 'text-fg-secondary'}`}>
                     {row.winning_source === 'fz55' ? 'FZ-55' : 'Cloudflare'}
                   </td>
-                  <td className="py-[2px] text-fg-muted">{row.resolved_at.slice(0, 16)}</td>
+                  <td className="py-[2px] text-fg-muted">{(row.resolved_at ?? '').slice(0, 16)}</td>
                 </tr>
               ))}
             </tbody>

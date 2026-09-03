@@ -42,9 +42,11 @@ describe('/api/dispatch/calls broadcasts', () => {
   });
 
   it('DELETE /:id emits dispatch_update { action: "call_deleted" } with the id', async () => {
-    // DELETE goes straight through six execute() calls; recordingDb's run()
-    // returns success for every prepared statement.
-    const { db } = recordingDb([]);
+    // Seed the pre-existence check so the new 404 guard passes; executeBatch
+    // then proceeds and emitAlert fires as expected.
+    const { db } = recordingDb([
+      { match: /SELECT id FROM calls_for_service WHERE id = \?/, rows: [{ id: 123 }] },
+    ]);
     const request = buildApp(db);
     const res = await request('/api/dispatch/calls/123', { method: 'DELETE' });
     expect(res.status).toBe(200);

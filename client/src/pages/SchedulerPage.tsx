@@ -87,7 +87,11 @@ export default function SchedulerPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    apiFetch<Officer[]>('/personnel?status=active').then(d => setOfficers(asArray(d))).catch(() => setOfficers([]));
+    let cancelled = false;
+    apiFetch<Officer[]>('/personnel?status=active')
+      .then(d => { if (!cancelled) setOfficers(asArray(d)); })
+      .catch(() => { if (!cancelled) setOfficers([]); });
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     if (searchParams.get('call_id') || searchParams.get('serve_queue_id')) setShowCreate(true);

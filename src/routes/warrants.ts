@@ -1417,12 +1417,12 @@ warrants.put('/batch-update', async (c) => {
     let updated = 0;
     for (const chunk of chunkIds(ids)) {
       const placeholders = chunk.map(() => '?').join(',');
-      await execute(
+      const r = await execute(
         db,
         `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
         status, ...chunk,
       );
-      updated += chunk.length;
+      updated += r.meta.changes;
     }
     return c.json({ success: true, updated });
   } catch (err) {

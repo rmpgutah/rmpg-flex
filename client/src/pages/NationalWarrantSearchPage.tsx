@@ -346,11 +346,13 @@ export default function NationalWarrantSearchPage() {
 
   // ── Load Coverage ─────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
     setCoverageLoading(true);
     apiFetch<NationalCoverageResponse>('/api/warrants/national-coverage')
-      .then(data => setCoverage(data))
-      .catch(() => setCoverage(null))
-      .finally(() => setCoverageLoading(false));
+      .then(data => { if (!cancelled) setCoverage(data); })
+      .catch(() => { if (!cancelled) setCoverage(null); })
+      .finally(() => { if (!cancelled) setCoverageLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   // ── Search Handler ────────────────────────────────────────

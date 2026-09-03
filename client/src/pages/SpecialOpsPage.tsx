@@ -49,6 +49,9 @@ export default function SpecialOpsPage() {
 
   const canCreate = CAN_CREATE_ROLES.has(user?.role ?? '');
 
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+
   // -- Deep-link: ?op_id= or ?operation_id= ---------------------
   // Captured once at mount so navigation after hydration does not re-fire.
   const pendingOpIdRef = useRef<string | null>(
@@ -64,6 +67,7 @@ export default function SpecialOpsPage() {
         apiFetch<Equipment[]>('/special-ops/equipment').catch(() => null),
         apiFetch<Stats>('/special-ops/stats').catch(() => null),
       ]);
+      if (!mountedRef.current) return;
       if (c === null && e === null && s === null) {
         setFetchError(true);
         setLoadState('empty');
@@ -80,6 +84,7 @@ export default function SpecialOpsPage() {
       setStats(safeStats);
       setLoadState(safeCallouts.length > 0 || safeEquipment.length > 0 ? 'ready' : 'empty');
     } catch {
+      if (!mountedRef.current) return;
       setFetchError(true);
       setLoadState('empty');
     }

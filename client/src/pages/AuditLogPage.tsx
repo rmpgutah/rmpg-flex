@@ -231,10 +231,16 @@ const AuditLogPage: React.FC = () => {
 
   // Initial load
   useEffect(() => {
+    let cancelled = false;
     fetchLogs();
     fetchStats();
-    apiFetch<any>('/audit/compliance-report?days=30').then(d => { if (d) setComplianceReport(d); }).catch(() => {});
-    apiFetch<any>('/audit/index-stats').then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
+    apiFetch<any>('/audit/compliance-report?days=30')
+      .then(d => { if (!cancelled && d) setComplianceReport(d); })
+      .catch(() => {});
+    apiFetch<any>('/audit/index-stats')
+      .then(d => { if (!cancelled && d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [fetchLogs, fetchStats]);
 
   // Strip the deep-link params from the URL after the initial render. We keep

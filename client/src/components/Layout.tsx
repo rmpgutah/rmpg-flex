@@ -918,7 +918,7 @@ export default function Layout() {
     const unsub2 = subscribe('bolo_alert', () => fetchDispatchStats());
     const unsub3 = subscribe('email:new_messages', () => {
       apiFetch<{ count: number }>('/email/unread-count')
-        .then(r => setEmailUnreadCount(r.count || 0))
+        .then(r => { setEmailUnreadCount(r.count || 0); })
         .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });
     });
     return () => { unsub1(); unsub2(); unsub3(); };

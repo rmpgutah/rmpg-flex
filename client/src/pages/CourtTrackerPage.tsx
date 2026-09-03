@@ -120,6 +120,8 @@ export default function CourtTrackerPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
   const [filterType, setFilterType] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -390,15 +392,17 @@ export default function CourtTrackerPage() {
         ...(filterType ? { event_type: filterType } : {}),
       });
       const res = await apiFetch<{ data: CourtEvent[]; pagination: any }>(`/court/events?${params}`);
+      if (!mountedRef.current) return;
       setEvents(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
+    } catch (err: any) { if (mountedRef.current) setFetchError(err?.message || 'Failed to load data'); } finally { if (mountedRef.current) setLoading(false); }
   }, [page, searchQuery, filterType]);
 
   const fetchUpcoming = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: CourtEvent[] }>('/court/events/upcoming');
+      if (!mountedRef.current) return;
       setUpcoming(res.data || []);
     } catch { /* silent */ }
   }, []);
@@ -407,6 +411,7 @@ export default function CourtTrackerPage() {
   const fetchCalendar = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: Record<string, any[]> }>(`/court/calendar?month=${calendarMonth}&year=${calendarYear}`);
+      if (!mountedRef.current) return;
       setCalendarData(res.data || {});
     } catch { /* silent */ }
   }, [calendarMonth, calendarYear]);
@@ -416,17 +421,19 @@ export default function CourtTrackerPage() {
     setStatsLoading(true);
     try {
       const res = await apiFetch<{ data: any }>('/court/statistics');
+      if (!mountedRef.current) return;
       setStats(res.data || null);
     } catch { /* silent */ }
-    finally { setStatsLoading(false); }
+    finally { if (mountedRef.current) setStatsLoading(false); }
   }, []);
 
   // Feature 2: Conflict check
   const fetchConflicts = useCallback(async (eventId: number) => {
     try {
       const res = await apiFetch<{ data: any[] }>(`/court/events/${eventId}/conflicts`);
+      if (!mountedRef.current) return;
       setConflicts(res.data || []);
-    } catch { setConflicts([]); }
+    } catch { if (mountedRef.current) setConflicts([]); }
   }, []);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
@@ -499,7 +506,7 @@ export default function CourtTrackerPage() {
       addToast('Outcome recorded', 'success');
       setOutcomeOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setOutcomeSubmitting(false); }
@@ -512,7 +519,7 @@ export default function CourtTrackerPage() {
       await apiFetch(`/court/events/${selected.id}/confirm`, { method: 'PUT' });
       addToast('Attendance confirmed', 'success');
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
   };
 
@@ -528,7 +535,7 @@ export default function CourtTrackerPage() {
       setContinuanceOpen(false);
       setContinuanceData({ reason: '', new_date: '', new_time: '' });
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setContinuanceSubmitting(false); }
@@ -545,7 +552,7 @@ export default function CourtTrackerPage() {
       addToast('Bail/bond info updated', 'success');
       setBailOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setBailSubmitting(false); }
   };
@@ -561,7 +568,7 @@ export default function CourtTrackerPage() {
       addToast('Judge notes saved', 'success');
       setJudgeNotesOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
-      setSelected(updated.data);
+      setSelected(updated?.data ?? null);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setJudgeNotesSubmitting(false); }
   };

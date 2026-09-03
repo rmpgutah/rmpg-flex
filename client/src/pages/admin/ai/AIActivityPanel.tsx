@@ -19,7 +19,15 @@ export default function AIActivityPanel() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => { fetchActivity(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetch<ActivityEntry[]>('/ai/activity?limit=50')
+      .then(data => { if (!cancelled) setActivity(Array.isArray(data) ? data : []); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchActivity = async () => {
     setLoading(true);

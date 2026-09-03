@@ -40,12 +40,17 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
   const [newDesc, setNewDesc] = useState('');
 
   const load = useCallback(() => {
-    apiFetch<RadioChannel[]>(`/radio/channels${includeArchived ? '?include_archived=1' : ''}`)
+    const ctrl = new AbortController();
+    apiFetch<RadioChannel[]>(`/radio/channels${includeArchived ? '?include_archived=1' : ''}`, { signal: ctrl.signal })
       .then((data) => setChannels(asArray<RadioChannel>(data)))
-      .catch((err) => console.error('[radio] channels', err));
+      .catch((err) => { if (err?.name !== 'AbortError') console.error('[radio] channels', err); });
+    return ctrl;
   }, [includeArchived]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const ctrl = load();
+    return () => ctrl.abort();
+  }, [load]);
 
   const toggleFav = (id: number) => {
     const next = new Set(favorites);

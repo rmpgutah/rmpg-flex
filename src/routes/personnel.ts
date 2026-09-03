@@ -254,7 +254,10 @@ personnel.put('/credentials/:id', async (c) => {
 personnel.delete('/credentials/:id', async (c) => {
   const denied = requireManager(c); if (denied) return denied;
   try {
-    await execute(getDb(c.env), 'DELETE FROM officer_credentials WHERE id = ?', c.req.param('id'));
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(getDb(c.env), 'DELETE FROM officer_credentials WHERE id = ?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/credentials/:id failed:', err);
@@ -387,7 +390,10 @@ personnel.put('/equipment/:id', async (c) => {
 personnel.delete('/equipment/:id', async (c) => {
   const denied = requireManager(c); if (denied) return denied;
   try {
-    await execute(getDb(c.env), 'DELETE FROM officer_equipment WHERE id = ?', c.req.param('id'));
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(getDb(c.env), 'DELETE FROM officer_equipment WHERE id = ?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/equipment/:id failed:', err);

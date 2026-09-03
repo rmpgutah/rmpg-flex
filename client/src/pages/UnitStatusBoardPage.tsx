@@ -288,6 +288,8 @@ export default function UnitStatusBoardPage() {
   const [engagedFirst, setEngagedFirst] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = isAdmin || user?.role === 'supervisor' || user?.role === 'manager';
@@ -299,14 +301,16 @@ export default function UnitStatusBoardPage() {
   const fetchUnits = useCallback(async () => {
     try {
       const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
+      if (!mountedRef.current) return;
       setUnits(Array.isArray(data) ? data : []);
       setLastUpdated(new Date());
       setSecondsAgo(0);
       setError(null);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load units');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 

@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-
+import { requireRole } from '../middleware/auth';
 import { dbErrorResponse } from '../utils/dbErrors';
+
+const CRISIS_WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+const CRISIS_DELETE_ROLES = ['admin', 'manager', 'supervisor'] as const;
 // Mirror CHECK constraint on crisis_response_incidents.incident_type from
 // migrations/0048_specialized_modules.sql:92. Update both if the migration moves.
 const CRISIS_INCIDENT_TYPES = ['mental_health','suicide_ideation','substance_abuse','domestic','welfare_check','other'] as const;
@@ -19,7 +22,7 @@ crisis.get('/incidents', async (c) => {
   catch (err) { return dbErrorResponse(c, err, 'Failed to fetch crisis incidents'); }
 });
 
-crisis.post('/incidents', async (c) => {
+crisis.post('/incidents', requireRole(...CRISIS_WRITE_ROLES), async (c) => {
   try { const db = getDb(c.env); const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     const incidentType = normalizeIncidentType(body.incident_type);
@@ -30,8 +33,11 @@ crisis.post('/incidents', async (c) => {
   catch (err) { return dbErrorResponse(c, err, 'Failed to create crisis incident'); }
 });
 
-crisis.put('/incidents/:id', async (c) => {
-  try { const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json();
+crisis.put('/incidents/:id', requireRole(...CRISIS_WRITE_ROLES), async (c) => {
+  try { const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     const incidentType = normalizeIncidentType(body.incident_type);
     if (incidentType === null) {
@@ -41,9 +47,15 @@ crisis.put('/incidents/:id', async (c) => {
   catch (err) { return dbErrorResponse(c, err, 'Failed to update crisis incident'); }
 });
 
-crisis.delete('/incidents/:id', async (c) => {
-  try { const db = getDb(c.env); const id = c.req.param('id'); await execute(db, 'DELETE FROM crisis_response_incidents WHERE id=?', id); return c.json({ success: true }); }
-  catch (err) { return dbErrorResponse(c, err, 'Failed to delete crisis incident'); }
+crisis.delete('/incidents/:id', requireRole(...CRISIS_DELETE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(db, 'DELETE FROM crisis_response_incidents WHERE id=?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
+    return c.json({ success: true });
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to delete crisis incident'); }
 });
 
 crisis.get('/stats', async (c) => {

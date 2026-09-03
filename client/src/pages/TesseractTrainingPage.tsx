@@ -230,9 +230,11 @@ export default function TesseractTrainingPage() {
     setPendingBoxText('');
     setDrawingStroke(null);
     if (selectedId == null || Number.isNaN(selectedId)) { setDetail(null); return; }
+    let cancelled = false;
     apiFetch<DocDetail>(`/tesseract-training/documents/${selectedId}`)
-      .then((d) => { setDetail(d); setGroundTruth(d.raw_text ?? ''); })
+      .then((d) => { if (!cancelled) { setDetail(d); setGroundTruth(d.raw_text ?? ''); } })
       .catch(console.error);
+    return () => { cancelled = true; };
   }, [selectedId]);
 
   const loadBoxes = useCallback(() => {

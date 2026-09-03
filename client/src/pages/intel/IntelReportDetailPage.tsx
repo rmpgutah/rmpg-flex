@@ -23,9 +23,13 @@ export default function IntelReportDetailPage() {
   const [msg, setMsg] = useState('');
 
   const load = useCallback(() => {
-    apiFetch<any>(`/intel/reports/${id}`).then(setR).catch(() => setMsg('Failed to load.'));
+    let cancelled = false;
+    apiFetch<any>(`/intel/reports/${id}`)
+      .then((d) => { if (!cancelled) setR(d); })
+      .catch(() => { if (!cancelled) setMsg('Failed to load.'); });
+    return () => { cancelled = true; };
   }, [id]);
-  useEffect(load, [load]);
+  useEffect(() => load(), [load]);
 
   const act = async (path: string, body: unknown) => {
     setMsg('');

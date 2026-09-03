@@ -37,15 +37,18 @@ export default function AIMasterConfigPanel({ setError }: Props) {
   const [routingRules, setRoutingRules] = useState<Record<string, { provider: string }>>({});
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<MasterConfig>('/ai/master-config').then(mc => {
+      if (cancelled) return;
       setMasterPrompt(mc.masterPrompt || '');
       setChainMode(mc.chainMode ?? false);
       setRoutingRules(mc.routingRules || {});
     }).catch(err => {
-      setError(err?.message || 'Failed to load master config');
+      if (!cancelled) setError(err?.message || 'Failed to load master config');
     }).finally(() => {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
+    return () => { cancelled = true; };
   }, [setError]);
 
   const updateRouting = (key: string, provider: string) => {

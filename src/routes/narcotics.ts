@@ -52,7 +52,8 @@ narcotics.post('/cases', async (c) => {
 narcotics.get('/cases/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const row = await queryFirst<object>(db, 'SELECT * FROM narcotics_cases WHERE id=?', id);
     if (!row) return c.json({ error: 'Not found' }, 404);
     return c.json(row);
@@ -60,7 +61,10 @@ narcotics.get('/cases/:id', async (c) => {
 });
 
 narcotics.put('/cases/:id', async (c) => {
-  try { const actor = c.get('user') as { role: string } | undefined; if (!actor || !new Set(['admin', 'manager', 'supervisor', 'officer']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403); const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json();
+  try { const actor = c.get('user') as { role: string } | undefined; if (!actor || !new Set(['admin', 'manager', 'supervisor', 'officer']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403); const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     const v = validateNarcCase(body);
     if (!v.ok) return c.json(narcEnumError(v.field), 400);
@@ -69,8 +73,16 @@ narcotics.put('/cases/:id', async (c) => {
 });
 
 narcotics.delete('/cases/:id', async (c) => {
-  try { const actor = c.get('user') as { role: string } | undefined; if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403); const db = getDb(c.env); const id = c.req.param('id'); await execute(db, 'DELETE FROM narcotics_cases WHERE id=?', id); return c.json({ success: true }); }
-  catch (err) { return dbErrorResponse(c, err, 'Failed to delete narcotics case'); }
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(db, 'DELETE FROM narcotics_cases WHERE id=?', id);
+    if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
+    return c.json({ success: true });
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to delete narcotics case'); }
 });
 
 narcotics.get('/stats', async (c) => {

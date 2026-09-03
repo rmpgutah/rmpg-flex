@@ -193,9 +193,14 @@ records.get('/properties/:id', async (c): Promise<Response> => {
 records.delete('/properties/:id', async (c): Promise<Response> => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const rawId = c.req.param('id');
+    const id = Number(rawId);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM properties WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Not found' }, 404);
     await execute(db, "DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)", id, id);
-    await execute(db, 'DELETE FROM properties WHERE id = ?', id);
+    const r = await execute(db, 'DELETE FROM properties WHERE id = ?', id);
+    if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /properties/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
@@ -1646,12 +1651,17 @@ records.delete('/businesses/:id', async (c) => {
     const denied = requireRole(c, 'admin', 'manager', 'supervisor');
     if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const rawId = c.req.param('id');
+    const id = Number(rawId);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM businesses WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Not found' }, 404);
     await execute(db, 'DELETE FROM business_vehicles WHERE business_id = ?', id);
     await execute(db, 'DELETE FROM business_visits WHERE business_id = ?', id);
     await execute(db, 'DELETE FROM business_photos WHERE business_id = ?', id);
     await execute(db, 'DELETE FROM call_businesses WHERE business_id = ?', id);
-    await execute(db, 'DELETE FROM businesses WHERE id = ?', id);
+    const r = await execute(db, 'DELETE FROM businesses WHERE id = ?', id);
+    if (!r.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });

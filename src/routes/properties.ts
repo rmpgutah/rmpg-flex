@@ -76,7 +76,8 @@ properties.get('/export', async (c) => {
 properties.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?', id);
     if (!row) return c.json({ error: 'Property not found' }, 404);
     return c.json(row);

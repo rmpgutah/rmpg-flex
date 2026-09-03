@@ -36,10 +36,12 @@ export default function IntelSearchPage() {
   useEffect(() => {
     clearTimeout(debounceRef.current);
     if (q.trim().length < 2) { setResults([]); return; }
+    let cancelled = false;
     debounceRef.current = setTimeout(() => {
       setLoading(true);
       apiFetch<{ results: IntelHit[] }>(`/intel/search?q=${encodeURIComponent(q)}`)
         .then((r) => {
+          if (cancelled) return;
           setResults(r.results || []);
           setRecent((prev) => {
             const next = [q.trim(), ...prev.filter((x) => x !== q.trim())].slice(0, 8);
@@ -48,9 +50,9 @@ export default function IntelSearchPage() {
           });
         })
         .catch(console.error)
-        .finally(() => setLoading(false));
+        .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
-    return () => clearTimeout(debounceRef.current);
+    return () => { cancelled = true; clearTimeout(debounceRef.current); };
   }, [q]);
 
   useEffect(() => {
@@ -121,7 +123,7 @@ export default function IntelSearchPage() {
               className="w-full text-left px-2 py-[2px] text-[11px] text-rmpg-200 hover:bg-surface-raised flex items-center gap-2 border-b border-border-default last:border-b-0">
               <span className="flex-1">{h.label}</span>
               {h.snippet && <span className="text-fg-muted truncate max-w-[300px]">{h.snippet}</span>}
-              {h.flags.map((f) => (
+              {(h.flags ?? []).map((f) => (
                 <span key={f} className="text-[9px] font-semibold text-red-500">{f}</span>
               ))}
               {h.cluster && h.cluster.pending_suggestions > 0 && (
