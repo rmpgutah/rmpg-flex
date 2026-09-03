@@ -159,7 +159,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               <p className="text-sm font-bold text-rmpg-100 uppercase tracking-wider mb-3">
                 Connection Lost
               </p>
-              <p className="text-xs text-rmpg-400 leading-relaxed mb-6">
+              <p className="text-xs text-fg-muted leading-relaxed mb-6">
                 This page couldn't load because your device is offline.<br />
                 It will reload automatically when your connection returns.
               </p>
