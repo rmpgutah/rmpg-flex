@@ -57,7 +57,8 @@ export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: bo
   if (hasUrgencyRing) {
     const ring = document.createElement('div');
     ring.style.cssText = [
-      'position:absolute', 'inset:-4px', 'border-radius:50%',
+      'position:absolute', 'top:-4px', 'left:-4px', 'right:-4px', 'bottom:-4px',
+      'border-radius:50%',
       `border:2px solid ${ringColor}`,
       'animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite',
       'pointer-events:none',
