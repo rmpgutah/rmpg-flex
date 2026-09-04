@@ -290,7 +290,8 @@ export default function DailyActivityReportsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!selected) return;
+    if (!selected || submitting) return;
+    setSubmitting(true);
     try {
       await apiFetch(`/dar/${selected.id}/submit`, { method: 'PUT' });
       addToast('DAR submitted for review', 'success');
@@ -298,6 +299,7 @@ export default function DailyActivityReportsPage() {
       setSelected(updated.data);
       fetchDars({ silent: true });
     } catch (err: any) { addToast(err.message, 'error'); }
+    finally { setSubmitting(false); }
   };
 
   const handleApprove = async () => {
@@ -499,7 +501,7 @@ export default function DailyActivityReportsPage() {
                 <FileText style={{ width: 11, height: 11 }} /> PDF
               </button>
               {(selected.status === 'draft' || canManage) && (
-                <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary print:hidden">
+                <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden disabled:opacity-50">
                   <Send style={{ width: 11, height: 11 }} /> Submit
                 </button>
               )}

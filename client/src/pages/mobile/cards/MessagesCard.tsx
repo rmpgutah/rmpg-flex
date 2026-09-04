@@ -46,11 +46,14 @@ export default function MessagesCard() {
   const [error, setError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const fetchMessages = useCallback(async () => {
     setError(null);
     try {
       const res = await apiFetch<any>('/comms/messages?limit=5');
+      if (!mountedRef.current) return;
       const rows: MessageRow[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
@@ -58,9 +61,10 @@ export default function MessagesCard() {
         : [];
       setMessages(rows);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError('Failed to load messages');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 

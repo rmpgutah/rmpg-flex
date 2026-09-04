@@ -91,7 +91,7 @@ howen.get('/devices', async (c) => {
 
     return c.json({ devices, total, page });
   } catch (err) {
-    console.error('GET /howen/devices error:', err);
+    log.error('GET /howen/devices error:', { src: 'routes/howen.ts' }, err instanceof Error ? err.message : String(err));
     return c.json({ devices: [], total: 0, page: 1 }, 200);
   }
 });
@@ -148,7 +148,7 @@ howen.get('/events', async (c) => {
 
     return c.json({ events });
   } catch (err) {
-    console.error('GET /howen/events error:', err);
+    log.error('GET /howen/events error:', { src: 'routes/howen.ts' }, err instanceof Error ? err.message : String(err));
     return c.json({ events: [] }, 200);
   }
 });

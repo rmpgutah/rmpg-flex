@@ -88,6 +88,14 @@ export async function fetchWithTimeout(
 }
 
 
+// ─── Safe localStorage helper ─────────────────────────────────────────────
+// Safari private browsing throws SecurityError on any localStorage access.
+// All reads in this file go through this helper so a private-window user
+// doesn't crash the entire app on their first API call.
+function safeGetItem(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
@@ -110,7 +118,7 @@ export function authedImageUrl(url: string | null | undefined): string {
   const pathname = new URL(url, window.location.origin).pathname;
   // Only append token for API paths that require auth
   if (pathname.includes('/api/uploads') || pathname.startsWith('/api/')) {
-    const token = localStorage.getItem('rmpg_token');
+    const token = safeGetItem('rmpg_token');
     if (!token) return url;
     // Strip any existing token= param to prevent duplicates
     const cleanUrl = url.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
@@ -290,7 +298,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
     isLoading: false,
   });
 
-  const getToken = () => localStorage.getItem('rmpg_token');
+  const getToken = () => safeGetItem('rmpg_token');
 
   const request = useCallback(
     async (
@@ -488,7 +496,7 @@ let _consecutiveApiFailures = 0;
 
 export function resolveFallbackUrl(relativeUrl: string): string | null {
   if (_consecutiveApiFailures < CONSECUTIVE_FAILURE_THRESHOLD) return null;
-  const fallback = localStorage.getItem(FALLBACK_URL_KEY);
+  const fallback = safeGetItem(FALLBACK_URL_KEY);
   return fallback ? `${fallback}${relativeUrl}` : null;
 }
 
@@ -513,7 +521,7 @@ export async function apiFetch<T>(
   }
 
   // ─── Normal online fetch path ──────────────────────────
-  const token = localStorage.getItem('rmpg_token');
+  const token = safeGetItem('rmpg_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
@@ -595,7 +603,7 @@ export async function apiFetch<T>(
 /** Fetch binary data (audio, images) with auth + token refresh. Returns a Blob. */
 export async function apiFetchBlob(endpoint: string): Promise<Blob> {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
-  const token = localStorage.getItem('rmpg_token');
+  const token = safeGetItem('rmpg_token');
   const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -630,7 +638,7 @@ export async function apiPostForm<T>(
   options?: { timeoutMs?: number }
 ): Promise<T> {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
-  const token = localStorage.getItem('rmpg_token');
+  const token = safeGetItem('rmpg_token');
   const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const timeoutMs = options?.timeoutMs;
@@ -743,7 +751,7 @@ async function apiUploadFilesMultipart(
   opts?: UploadOptions,
   evidenceMeta?: EvidenceMeta,
 ): Promise<any[]> {
-  const token = localStorage.getItem('rmpg_token');
+  const token = safeGetItem('rmpg_token');
   const maxRetries = Math.max(0, opts?.retries ?? 0);
   const baseDelay = opts?.retryDelayMs ?? 1500;
 
@@ -837,7 +845,7 @@ export async function apiUploadFilesWithProgress(
     return apiUploadFiles(files, entityType, entityId, undefined, evidenceMeta);
   }
 
-  const token = localStorage.getItem('rmpg_token') || '';
+  const token = safeGetItem('rmpg_token') || '';
   const results: any[] = [];
 
   // Upload files one at a time so progress tracks per-file

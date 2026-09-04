@@ -237,9 +237,12 @@ export default function CrmPage() {
   // Task delete confirmation
   const [taskToDelete, setTaskToDelete] = useState<CrmTask | null>(null);
   const [deletingTask, setDeletingTask] = useState(false);
+  const [isSavingTask, setIsSavingTask] = useState(false);
 
   // Activity log modal
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [isLoggingActivity, setIsLoggingActivity] = useState(false);
+  const [isSubmittingClient, setIsSubmittingClient] = useState(false);
   const [activityForm, setActivityForm] = useState<{ client_id: string; activity_type: string; subject: string; details: string }>({
     client_id: '', activity_type: 'note', subject: '', details: '',
   });
@@ -287,7 +290,6 @@ export default function CrmPage() {
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
     } catch (err: any) {
       if (!mountedRef.current) return;
-      console.error('CRM dashboard fetch error:', err);
       setFetchError(err?.message || 'Failed to load data');
     }
   }, []);
@@ -466,6 +468,7 @@ export default function CrmPage() {
   };
 
   const saveTask = async () => {
+    setIsSavingTask(true);
     try {
       if (editingTask) {
         await apiFetch(`/crm/tasks/${editingTask.id}`, { method: 'PUT', body: JSON.stringify(taskForm) });
@@ -478,6 +481,8 @@ export default function CrmPage() {
       fetchTasks();
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to save task', 'error');
+    } finally {
+      setIsSavingTask(false);
     }
   };
 
@@ -512,6 +517,7 @@ export default function CrmPage() {
   // ── Activity Handlers ──────────────────────────────────
   const logActivity = async () => {
     if (!activityForm.client_id || !activityForm.activity_type) return;
+    setIsLoggingActivity(true);
     try {
       await apiFetch('/crm/activity', { method: 'POST', body: JSON.stringify(activityForm) });
       addToast('Activity logged', 'success');
@@ -521,6 +527,8 @@ export default function CrmPage() {
       fetchDashboard();
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to log activity', 'error');
+    } finally {
+      setIsLoggingActivity(false);
     }
   };
 
@@ -767,7 +775,7 @@ export default function CrmPage() {
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600 bg-surface-sunken/50">
               <button type="button" onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
-              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!taskForm.title?.trim()}>
+              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!taskForm.title?.trim() || isSavingTask}>
                 <Save className="w-3 h-3" /> {editingTask ? 'Update' : 'Create'}
               </button>
             </div>
@@ -808,7 +816,7 @@ export default function CrmPage() {
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
-              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!activityForm.client_id}>
+              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!activityForm.client_id || isLoggingActivity}>
                 <Save className="w-3 h-3" /> Log
               </button>
             </div>
@@ -822,6 +830,7 @@ export default function CrmPage() {
           isOpen={showClientModal}
           onClose={() => { setShowClientModal(false); setEditingClient(null); }}
           onSubmit={async (data: any) => {
+            setIsSubmittingClient(true);
             try {
               if (editingClient) {
                 await apiFetch(`/admin/clients/${editingClient.id}`, { method: 'PUT', body: JSON.stringify(data) });
@@ -836,10 +845,12 @@ export default function CrmPage() {
               fetchDashboard();
             } catch (err) {
               addToast(err instanceof Error ? err.message : 'Failed to save client', 'error');
+            } finally {
+              setIsSubmittingClient(false);
             }
           }}
           editingClient={editingClient}
-          isSubmitting={false}
+          isSubmitting={isSubmittingClient}
         />
       )}
 

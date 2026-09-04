@@ -1059,7 +1059,7 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
   const plate = (c.req.param('plate') ?? '').toUpperCase().replace(/[\s-]/g, '');
   if (!plate || plate.length < 2) return c.json({ error: 'Invalid plate' }, 400);
   const rows = await query<Record<string, unknown>>(db,
-    `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC`, plate);
+    `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC LIMIT 500`, plate);
   const vrRow = await db.prepare(
     `SELECT id FROM vehicles_records WHERE UPPER(TRIM(plate_number)) = UPPER(TRIM(?)) LIMIT 1`
   ).bind(plate).first<{ id: number }>();
@@ -1174,7 +1174,7 @@ const MODEL_REGISTRY_DDL = `CREATE TABLE IF NOT EXISTS model_registry (
 alpr.get('/models', operational, async (c) => {
   const db = getDb(c.env);
   await execute(db, MODEL_REGISTRY_DDL);
-  const models = await query(db, `SELECT * FROM model_registry ORDER BY target`);
+  const models = await query(db, `SELECT * FROM model_registry ORDER BY target LIMIT 200`);
   return c.json({ models });
 });
 

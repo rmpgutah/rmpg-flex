@@ -8,9 +8,9 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { log } from '../utils/logger';
 import { getDb } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { log } from '../utils/logger';
 import {
   ensureJailRosterSchema, getStatus, getStatistics, getCountyConfigs,
   scrapeCounty, resetCountyErrors, updateCountyConfig,

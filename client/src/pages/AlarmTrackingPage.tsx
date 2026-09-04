@@ -196,6 +196,16 @@ export default function AlarmTrackingPage() {
   useEffect(() => { fetchPermits(); }, [fetchPermits]);
   useEffect(() => { if (activeTab === 'activations') fetchActivations(); }, [activeTab, fetchActivations]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (permitFormOpen) { e.preventDefault(); setPermitFormOpen(false); return; }
+      if (activationFormOpen) { e.preventDefault(); setActivationFormOpen(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [permitFormOpen, activationFormOpen]);
+
   // ─── Permit CRUD ─────────────────────────────────────────────
 
   const openNewPermit = () => {

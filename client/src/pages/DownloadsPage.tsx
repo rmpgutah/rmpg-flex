@@ -147,9 +147,11 @@ export default function DownloadsPage() {
   useEffect(() => { loadCatalog(); }, [loadCatalog]);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<ReleaseNote[]>('/api/downloads/changelog')
-      .then((data) => setChangelog(data))
-      .catch(() => setChangelog([]));
+      .then((data) => { if (!cancelled) setChangelog(data); })
+      .catch(() => { if (!cancelled) setChangelog([]); });
+    return () => { cancelled = true; };
   }, []);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────

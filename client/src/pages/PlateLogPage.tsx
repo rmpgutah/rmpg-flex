@@ -430,8 +430,9 @@ export default function PlateLogPage() {
       setResult(r); setScan(null);
       setPlate(''); setNotes('');
       loadRecent();
-    } catch (e) { console.error(e); }
-    finally { setBusy(false); }
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Plate submission failed', 'error');
+    } finally { setBusy(false); }
   };
 
   // ── ALPR camera capture ──────────────────────────────────────

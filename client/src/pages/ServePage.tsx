@@ -507,7 +507,7 @@ export default function ServePage() {
         storePdfForEditor(bytes, filename);
         // Navigate to the PDF editor in the same tab; the user can annotate,
         // sign, add stamps, and save/print from there.
-        window.location.href = `/pdf-editor?from=serve&name=${encodeURIComponent(filename)}`;
+        routerNavigate(`/pdf-editor?from=serve&name=${encodeURIComponent(filename)}`);
       } else {
         const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
         openPdfDocument(pdf, filename);

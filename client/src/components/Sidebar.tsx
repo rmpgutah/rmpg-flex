@@ -20,6 +20,9 @@ interface SidebarItem {
   icon: React.ElementType;
   label: string;
   adminOnly?: boolean;
+  /** When true, only highlight this item on an exact path match (no startsWith).
+   *  Use when another sidebar entry is a more-specific sub-path of this one. */
+  exact?: boolean;
 }
 
 interface SidebarSection {
@@ -78,7 +81,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Process Service',
     items: [
       { path: '/serve-intake/scheduler', icon: CalendarDays, label: 'Scheduler' },
-      { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
+      { path: '/serve-intake', icon: Upload, label: 'Serve Intake', exact: true },
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
     ],
   },
@@ -99,7 +102,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Communications',
     items: [
       { path: '/communications', icon: MessageSquare, label: 'Communications' },
-      { path: '/dialer-connect', icon: Phone, label: 'Dial Connect' },
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     ],
@@ -119,7 +121,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     id: 'analysis',
     label: 'Analysis & Reports',
     items: [
-      { path: '/reports', icon: BarChart3, label: 'Reports' },
+      { path: '/reports', icon: BarChart3, label: 'Reports', exact: true },
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/analytics', icon: ScanSearch, label: 'Plate Analytics' },
@@ -204,8 +206,10 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   // Track which section is hovered (for collapsed tooltip flyouts)
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
 
-  const isActive = (path: string) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+  const isActive = (path: string, exact?: boolean) =>
+    path === '/' || exact
+      ? location.pathname === path
+      : location.pathname === path || location.pathname.startsWith(path + '/');
 
   const isVisible = (item: SidebarItem) => {
     if (item.adminOnly && !isAdmin) return false;
@@ -248,7 +252,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
 
             {section.items.map((item) => {
               const Icon = item.icon;
-              const active = isActive(item.path);
+              const active = isActive(item.path, item.exact);
 
               return (
                 <button type="button"

@@ -49,6 +49,7 @@ export function useVoiceChannel(): UseVoiceChannelResult {
   const transcriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize VoiceChannel instance once on mount
   useEffect(() => {
@@ -82,7 +83,8 @@ export function useVoiceChannel(): UseVoiceChannelResult {
       onStressDetected: (result) => {
         if (result.isStressed) {
           setStressDetected(true);
-          setTimeout(() => setStressDetected(false), 5000);
+          if (stressTimerRef.current) clearTimeout(stressTimerRef.current);
+          stressTimerRef.current = setTimeout(() => setStressDetected(false), 5000);
         }
       },
     });
@@ -95,6 +97,7 @@ export function useVoiceChannel(): UseVoiceChannelResult {
       if (transcriptTimerRef.current) clearTimeout(transcriptTimerRef.current);
       if (commandTimerRef.current) clearTimeout(commandTimerRef.current);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      if (stressTimerRef.current) clearTimeout(stressTimerRef.current);
     };
   }, [enabled]);
 

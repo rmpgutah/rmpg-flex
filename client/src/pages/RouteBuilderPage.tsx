@@ -159,7 +159,7 @@ export default function RouteBuilderPage() {
         );
         setUnits(active);
       })
-      .catch(console.error);
+      .catch((err) => { console.error(err); setError(err instanceof Error ? err.message : 'Failed to load active units'); });
   }, []);
 
   // ─── Initialize Map ─────────────────────────────────────

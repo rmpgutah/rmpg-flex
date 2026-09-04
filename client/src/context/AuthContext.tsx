@@ -132,7 +132,8 @@ function writeCachedUser(u: User): void {
  * win, not a security relaxation.
  */
 function initialOptimisticUser(): User | null {
-  const tok = localStorage.getItem(TOKEN_KEY);
+  let tok: string | null = null;
+  try { tok = localStorage.getItem(TOKEN_KEY); } catch { return null; }
   if (!tok) return null;
   const exp = parseJwtExpiry(tok);
   if (exp !== null && exp <= Date.now()) return null; // expired → must refresh first
@@ -236,7 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // than blocking the splash on a slow-cellular /auth/me round-trip. The loadUser
   // effect below revalidates in the background.
   const [user, setUser] = useState<User | null>(initialOptimisticUser);
-  const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } });
   const [isLoading, setIsLoading] = useState(() => user === null);
   const [error, setError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

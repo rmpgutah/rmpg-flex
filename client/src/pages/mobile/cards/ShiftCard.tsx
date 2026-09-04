@@ -64,11 +64,14 @@ export default function ShiftCard() {
     | { mode: 'ending'; vehicleLabel: string; previous: number | null }
     | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const fetchState = useCallback(async () => {
     setError(null);
     try {
       const res = await apiFetch<DutyState>('/dispatch/duty/me');
+      if (!mountedRef.current) return;
       setState({
         on_shift: !!res?.on_shift,
         time_entry: res?.time_entry ?? null,
@@ -78,9 +81,10 @@ export default function ShiftCard() {
         available_vehicles: Array.isArray(res?.available_vehicles) ? res.available_vehicles : [],
       });
     } catch (e) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : 'Failed to load shift');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
