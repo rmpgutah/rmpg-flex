@@ -842,7 +842,7 @@ export async function apiUploadFilesWithProgress(
     return apiUploadFiles(files, entityType, entityId, undefined, evidenceMeta);
   }
 
-  const token = localStorage.getItem('rmpg_token') || '';
+  const token = safeGetItem('rmpg_token') || '';
   const results: any[] = [];
 
   // Upload files one at a time so progress tracks per-file

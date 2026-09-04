@@ -24,12 +24,13 @@ export function useWelfareAlerts(): UseWelfareAlertsResult {
   const [loading, setLoading] = useState(true);
   const { subscribe } = useWebSocket();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
   const refetch = useCallback(() => {
     apiFetch<WelfareAlert[]>('/dispatch/welfare/status')
-      .then((rows) => setAlerts(rows.filter(a => a.status === 'emergency' || a.status === 'overdue')))
+      .then((rows) => { if (mountedRef.current) setAlerts(rows.filter(a => a.status === 'emergency' || a.status === 'overdue')); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (mountedRef.current) setLoading(false); });
   }, []);
 
   useEffect(() => { refetch(); }, [refetch]);
@@ -41,8 +42,12 @@ export function useWelfareAlerts(): UseWelfareAlertsResult {
   // panic_alert IS subscribed below since /welfare/help shares panic.ts's
   // broadcastPanic() helper, covering the higher-urgency real-time case.
   useEffect(() => {
+    mountedRef.current = true;
     timerRef.current = setInterval(refetch, POLL_INTERVAL_MS);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [refetch]);
 
   useEffect(() => {

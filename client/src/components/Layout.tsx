@@ -484,6 +484,10 @@ export default function Layout() {
       navHistoryRef.current = navHistoryRef.current.slice(0, idx + 1);
     }
     navHistoryRef.current.push(location.pathname);
+    // Cap history at 50 entries to prevent unbounded growth over long sessions
+    if (navHistoryRef.current.length > 50) {
+      navHistoryRef.current = navHistoryRef.current.slice(-50);
+    }
     navIndexRef.current = navHistoryRef.current.length - 1;
     setCanGoBack(navIndexRef.current > 0);
     setCanGoForward(false); // New navigation always clears forward
@@ -683,13 +687,9 @@ export default function Layout() {
       const item = visibleNav[idx];
       e.preventDefault();
 
-      // External links open in new tab
+      // External links open in new tab (no token in URL — auth must not travel in query strings)
       if (item.externalUrl) {
-        const token = localStorage.getItem('rmpg_token');
-        const url = token
-          ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
-          : item.externalUrl;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(item.externalUrl, '_blank', 'noopener,noreferrer');
         return;
       }
 

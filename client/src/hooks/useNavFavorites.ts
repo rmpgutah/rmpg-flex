@@ -34,7 +34,7 @@ export function useNavFavorites() {
     await apiFetch('/nav/favorites', {
       method: 'POST',
       body: JSON.stringify({ label, lat, lng, address }),
-    });
+    }).catch(() => {});
     reload();
   }, [reload]);
 
@@ -42,7 +42,7 @@ export function useNavFavorites() {
     // Optimistic removal — the DELETE route returns 403/404 on failure, but
     // a slow/offline delete shouldn't leave a stale favorite sitting in the list.
     setFavorites((prev) => prev.filter((f) => f.id !== id));
-    await apiFetch(`/nav/favorites/${id}`, { method: 'DELETE' });
+    await apiFetch(`/nav/favorites/${id}`, { method: 'DELETE' }).catch(() => {});
   }, []);
 
   return { favorites, loading, save, remove, reload };

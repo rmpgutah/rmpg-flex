@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { useToast } from '../../components/ToastProvider';
 
@@ -79,6 +79,9 @@ export default function MobilePsoCfsPage() {
   const [statusBusy, setStatusBusy] = useState(false);
   const [narrative, setNarrative] = useState<string>('');
   const [narrativeSaved, setNarrativeSaved] = useState(false);
+  const narrativeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const psoTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => { clearTimeout(narrativeTimerRef.current); clearTimeout(psoTimerRef.current); }, []);
   const [psoAttempt, setPsoAttempt] = useState<string>('');
   const [psoResult, setPsoResult] = useState<string>('');
   const [psoServedTo, setPsoServedTo] = useState<string>('');
@@ -189,7 +192,8 @@ export default function MobilePsoCfsPage() {
       if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
       setNarrative('');
       setNarrativeSaved(true);
-      setTimeout(() => setNarrativeSaved(false), 2500);
+      clearTimeout(narrativeTimerRef.current);
+      narrativeTimerRef.current = setTimeout(() => setNarrativeSaved(false), 2500);
     } catch (err: any) {
       addToast(`Narrative save failed: ${err.message || err}`, 'error');
     } finally {
@@ -228,7 +232,8 @@ export default function MobilePsoCfsPage() {
       }
       setPsoNotes('');
       setPsoSaved(true);
-      setTimeout(() => setPsoSaved(false), 2500);
+      clearTimeout(psoTimerRef.current);
+      psoTimerRef.current = setTimeout(() => setPsoSaved(false), 2500);
     } catch (err: any) {
       addToast(`PSO save failed: ${err.message || err}`, 'error');
     } finally {

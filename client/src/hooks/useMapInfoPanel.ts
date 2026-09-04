@@ -231,6 +231,8 @@ export function useMapInfoPanel(
   const [panel, setPanel] = useState<InfoPanelData | null>(null);
   const [loading, setLoading] = useState(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const mountedRef = useRef(true);
+  const mountedRef = useRef(true);
 
   const showPanel = useCallback((data: InfoPanelData) => {
     setPanel(data);
@@ -352,6 +354,7 @@ export function useMapInfoPanel(
       color: '#3b82f6',
     };
 
+    if (!mountedRef.current) return;
     showPanel(data);
     setLoading(false);
     devLog('[InfoPanel] Location info opened at', lng, lat);
@@ -359,7 +362,9 @@ export function useMapInfoPanel(
 
   // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       popupRef.current?.remove();
     };
   }, []);

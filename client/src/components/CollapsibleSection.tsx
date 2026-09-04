@@ -104,6 +104,7 @@ function CollapsibleSection({
         {actions && (
           <div
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             className="flex items-center gap-1 ml-auto pl-2 shrink-0"
           >
             {actions}
