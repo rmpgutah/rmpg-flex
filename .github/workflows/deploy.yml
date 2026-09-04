@@ -142,9 +142,13 @@ jobs:
           )
           MISSING=()
           for table in "${CRITICAL_TABLES[@]}"; do
+            # wrangler d1 execute writes progress banners to stdout alongside the
+            # JSON result, so json.load(stdin) always throws on the raw stream.
+            # grep -o '\[.*\]' isolates the JSON array line before Python sees it.
             COUNT=$(npx wrangler d1 execute rmpg-flex --remote \
               --command "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='${table}'" \
               2>/dev/null \
+              | grep -o '\[.*\]' \
               | python3 -c "
           import json, sys
           try:
