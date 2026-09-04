@@ -7,6 +7,7 @@
 import React, {
   useCallback, useEffect, useReducer, useRef, useState,
 } from 'react';
+import { Lock, LockOpen } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { apiHttpBase, apiWsBase } from '../utils/apiOrigin';
 
@@ -75,10 +76,10 @@ function normalize(raw: string): string {
 }
 
 // Feature 12: security padlock
-function padlock(url: string): string {
-  if (url.startsWith('https://')) return '🔒';
-  if (url.startsWith('http://')) return '🔓';
-  return '';
+function Padlock({ url }: { url: string }) {
+  if (url.startsWith('https://')) return <Lock size={12} style={{ flexShrink: 0, color: 'var(--sev-ok)' }} aria-label="Secure connection" />;
+  if (url.startsWith('http://')) return <LockOpen size={12} style={{ flexShrink: 0, color: 'var(--sev-warn)' }} aria-label="Insecure connection" />;
+  return null;
 }
 
 function loadJson<T>(key: string, fallback: T): T {
@@ -643,7 +644,7 @@ export default function WebCompanyBrowserPage() {
         <button onClick={() => sendToActive({ type: 'navigate', url: 'https://rmpgutah.us' })} style={S.iconBtn} aria-label="Home">⌂</button>
 
         {/* Feature 12: padlock */}
-        <span style={{ fontSize: 11, flexShrink: 0 }}>{padlock(activeTab?.url || '')}</span>
+        <Padlock url={activeTab?.url || ''} />
 
         {/* Feature 10: address bar with Feature 22: autocomplete */}
         <form onSubmit={handleAddressSubmit} style={{ flex: 1, display: 'flex', gap: 2, minWidth: 0 }}>

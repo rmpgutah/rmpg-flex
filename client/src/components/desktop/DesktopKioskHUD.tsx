@@ -13,6 +13,15 @@ import {
 import { useOptionalDesktopWindows } from './DesktopWindowManager';
 import { useOptionalAuth } from '../../context/AuthContext';
 
+interface KioskElectron {
+  getKioskShellState?: () => Promise<{ supported: boolean; enabled: boolean } | null>;
+  setKioskShell?: (enable: boolean) => Promise<{ ok: boolean; error?: string }>;
+}
+
+function getElectron(): KioskElectron | undefined {
+  return (window as unknown as { electron?: KioskElectron }).electron;
+}
+
 interface DesktopKioskHUDProps {
   isOpen: boolean;
   onClose: () => void;
@@ -76,13 +85,13 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
   // Fetch actual kiosk shell state from main process on open
   useEffect(() => {
     if (!isOpen) return;
-    (window as any).electron?.getKioskShellState?.()
-      .then((state: { supported: boolean; enabled: boolean } | null) => {
+    getElectron()?.getKioskShellState?.()
+      ?.then((state) => {
         if (state && typeof state.enabled === 'boolean') {
           setKioskEnabled(state.enabled);
         }
       })
-      .catch(() => {});
+      ?.catch(() => {});
   }, [isOpen]);
   const [radarScanning, setRadarScanning] = useState(false);
   const [simulatedDeviceCount, setSimulatedDeviceCount] = useState(24);
@@ -602,7 +611,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] font-mono">
+            <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] font-mono" title="Telemetry values are simulated — real hardware IPC not yet connected">
               <div className="flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-brand-gold" />
                 <span>CPU: <strong className="text-rmpg-100">{cpuUsage.toFixed(0)}%</strong></span>
@@ -622,6 +631,8 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                 <Crosshair className="w-3.5 h-3.5 text-brand-gold" />
                 <span>{gpsPrecision.split(' ')[0]}</span>
               </div>
+              <div className="w-px h-3 bg-border-subtle" />
+              <span className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest">SIM</span>
             </div>
 
             <button
@@ -651,7 +662,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
             <button
               onClick={async () => {
                 const next = !kioskEnabled;
-                const electron = (window as any).electron;
+                const electron = getElectron();
                 if (electron?.setKioskShell) {
                   try {
                     const result = await electron.setKioskShell(next);
@@ -665,8 +676,12 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                   }
                 }
                 // Re-read real state from main process to stay in sync
-                const state = await electron?.getKioskShellState?.().catch(() => null);
-                setKioskEnabled(state?.enabled ?? next);
+                try {
+                  const state = await electron?.getKioskShellState?.() ?? null;
+                  setKioskEnabled(state?.enabled ?? kioskEnabled);
+                } catch {
+                  setKioskEnabled(kioskEnabled);
+                }
                 showToast(`Kiosk Shell ${next ? 'Enforced & Locked' : 'Unlocked'}`);
               }}
               className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all border rounded-sm ${
