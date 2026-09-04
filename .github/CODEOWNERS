@@ -1,26 +1,152 @@
-# Default owner for everything
+# ============================================================
+# RMPG Flex — Code Owners
+# ============================================================
+# Every path requires approval from its listed owner(s) before
+# a PR can merge. Paths are evaluated most-specific first, so
+# a more-specific rule below overrides a less-specific one above.
+#
+# Ownership tiers (single-owner org):
+#   TIER 1 — Security-critical: auth, migrations, CI/CD, DO
+#   TIER 2 — Operational-critical: dispatch, warrants, CAD core
+#   TIER 3 — Law enforcement records: arrests, evidence, jail, intel
+#   TIER 4 — Supporting services: fleet, billing, serve, CRM
+#   TIER 5 — Client UI, edge AI, kiosk
+#
+# When team members are added, replace @rmpgutah on TIER 1/2 paths
+# with the specific engineer(s) responsible for that subsystem.
+# ============================================================
+
+# ── Default: everything requires review ─────────────────────
 * @rmpgutah
 
-# Worker API (Cloudflare) — live backend
-/src/ @rmpgutah
+# ── TIER 1: Security-critical ───────────────────────────────
 
-# Dispatch subsystem — critical path
-/src/routes/dispatch/ @rmpgutah
-/client/src/pages/dispatch/ @rmpgutah
+# Authentication and authorization middleware — ALL changes here
+# require explicit sign-off. A bug here is a site-wide auth bypass.
+/src/middleware/auth.ts @rmpgutah
+/src/middleware/mutationAudit.ts @rmpgutah
+/src/middleware/ @rmpgutah
 
-# Auth and security
-/src/middleware/auth* @rmpgutah
-/src/routes/auth* @rmpgutah
+# Auth routes (login, token refresh, password reset, 2FA)
+/src/routes/auth.ts @rmpgutah
+/src/routes/ssoAuth.ts @rmpgutah
+/src/routes/oidc.ts @rmpgutah
 
-# Database migrations (D1)
+# Database migrations — schema changes are irreversible on D1.
+# Every migration file needs deliberate review.
 /migrations/ @rmpgutah
 
-# Durable Objects
+# Durable Objects — stateful actor lifecycle, welfare timers, AI DO
 /src/durable-objects/ @rmpgutah
 
-# Deploy and CI
-/.github/ @rmpgutah
-/wrangler.toml @rmpgutah
+# Worker entry + route registry — controls what is mounted and how
+/src/index.ts @rmpgutah
+/src/routesConfig.ts @rmpgutah
+/src/types.ts @rmpgutah
 
-# Legacy VPS code (read-only quarantine) — see legacy/README.md
-/legacy/ @rmpgutah
+# CI/CD, deployment configuration, and secrets management
+/.github/workflows/ @rmpgutah
+/.github/CODEOWNERS @rmpgutah
+/wrangler.toml @rmpgutah
+/scripts/ @rmpgutah
+
+# Cryptographic utilities
+/src/routes/crypto.ts @rmpgutah
+/src/utils/emailFieldCrypto.ts @rmpgutah
+
+# ── TIER 2: Operational-critical (CAD dispatch core) ────────
+
+# Dispatch subsystem — the primary real-time CAD path. An error
+# here can affect officers during active incidents.
+/src/routes/dispatch/ @rmpgutah
+/client/src/pages/dispatch/ @rmpgutah
+/client/src/pages/DispatchPage.tsx @rmpgutah
+
+# Warrant system
+/src/routes/warrants.ts @rmpgutah
+/client/src/pages/WarrantsPage.tsx @rmpgutah
+
+# Unit / officer tracking
+/src/routes/dispatch/units.ts @rmpgutah
+/src/routes/dispatch/gps.ts @rmpgutah
+
+# Welfare check system (officer safety)
+/src/routes/welfare.ts @rmpgutah
+
+# WebSocket real-time channel
+/src/routes/ws.ts @rmpgutah
+
+# ── TIER 3: Law enforcement records ─────────────────────────
+
+# High-sensitivity — every write produces an evidentiary record
+/src/routes/arrests.ts @rmpgutah
+/src/routes/evidence.ts @rmpgutah
+/src/routes/jail.ts @rmpgutah
+/src/routes/jailRoster.ts @rmpgutah
+/src/routes/narcotics.ts @rmpgutah
+/src/routes/crime.ts @rmpgutah
+/src/routes/forensics.ts @rmpgutah
+/src/routes/gangIntel.ts @rmpgutah
+/src/routes/intel/ @rmpgutah
+/src/routes/intel.ts @rmpgutah
+/src/routes/fieldInterviews.ts @rmpgutah
+/src/routes/offenderRegistry.ts @rmpgutah
+/src/routes/redactions.ts @rmpgutah
+/src/routes/incidents.ts @rmpgutah
+/src/routes/incidentSubresources.ts @rmpgutah
+/src/routes/incidentSupplements.ts @rmpgutah
+/src/routes/records.ts @rmpgutah
+/src/routes/records/ @rmpgutah
+/src/routes/useOfForce.ts @rmpgutah
+/src/routes/trespassOrders.ts @rmpgutah
+/src/routes/personIntel.ts @rmpgutah
+
+# Personnel and HR records
+/src/routes/hr.ts @rmpgutah
+/src/routes/personnel/ @rmpgutah
+/src/routes/personnel.ts @rmpgutah
+
+# Audit and compliance trails — never reduce coverage here
+/src/routes/audit.ts @rmpgutah
+/src/routes/auditByEntity.ts @rmpgutah
+/src/routes/auditEmit.ts @rmpgutah
+/src/utils/auditLog.ts @rmpgutah
+/src/utils/emailAudit.ts @rmpgutah
+
+# ── TIER 4: Supporting services ─────────────────────────────
+
+# ALPR / vehicle intelligence
+/src/routes/alpr.ts @rmpgutah
+/src/utils/roboflowAlpr.ts @rmpgutah
+/src/routes/carxe.ts @rmpgutah
+
+# Fleet management + external sync
+/src/routes/fleet.ts @rmpgutah
+/src/routes/fleetio.ts @rmpgutah
+/src/routes/fleetioWebhook.ts @rmpgutah
+/src/utils/fleetio/ @rmpgutah
+
+# Civil process / serve operations
+/src/routes/serve.ts @rmpgutah
+/src/routes/serveDashboard.ts @rmpgutah
+/src/routes/serveIntake.ts @rmpgutah
+/src/routes/serveIntake/ @rmpgutah
+
+# Billing
+/src/routes/billing.ts @rmpgutah
+/src/routes/serveBilling.ts @rmpgutah
+
+# Legal data integrations
+/src/routes/legalDataHunter.ts @rmpgutah
+/src/utils/legalDataHunter/ @rmpgutah
+
+# ── TIER 5: Client UI, edge AI, kiosk, desktop ──────────────
+
+/client/ @rmpgutah
+/edge/ @rmpgutah
+/desktop/ @rmpgutah
+/desktop-tauri/ @rmpgutah
+/kiosk-linux/ @rmpgutah
+/ios2/ @rmpgutah
+/proxy/ @rmpgutah
+/functions/ @rmpgutah

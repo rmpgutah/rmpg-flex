@@ -20,6 +20,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
+import { mutationAuditMiddleware } from './middleware/mutationAudit';
 import { jsonBodyGuard } from './middleware/jsonBodyGuard';
 import { apiRateLimit } from './middleware/rateLimit';
 import { handleWebSocket, sendToUser } from './routes/ws';
@@ -153,6 +154,11 @@ for (const prefix of authPrefixes) {
   app.use(`${prefix}/*`, apiRateLimit);
   app.use(prefix, readOnlyRoleGuard);
   app.use(`${prefix}/*`, readOnlyRoleGuard);
+  // Auto-audit all authenticated state-changing requests. Must run after
+  // authMiddleware (needs userId) and before route handlers (calls next()
+  // internally, then writes the audit row on the way back out).
+  app.use(prefix, mutationAuditMiddleware);
+  app.use(`${prefix}/*`, mutationAuditMiddleware);
 }
 
 // Reject a malformed JSON body with 400 instead of letting the SyntaxError

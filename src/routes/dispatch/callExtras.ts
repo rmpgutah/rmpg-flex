@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
 
 const callExtras = new Hono<Env>();
 
@@ -30,7 +31,9 @@ function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number):
 
 // POST /api/dispatch/calls/:id/suggest-unit
 // Body (optional): { n: number }  — number of suggestions (default 5)
-callExtras.post('/:id/suggest-unit', async (c) => {
+callExtras.post('/:id/suggest-unit',
+  requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'),
+  async (c) => {
   const db = getDb(c.env);
   const callId = Number(c.req.param('id'));
   if (!callId) return c.json({ ok: false, error: 'invalid call id' }, 400);

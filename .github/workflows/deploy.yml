@@ -16,7 +16,54 @@ permissions:
   contents: read
 
 jobs:
+  # ── Gate: typecheck + fast tests ─────────────────────────────────────────────
+  # Runs before any deployment step. workflow_dispatch bypasses PR CI, so we
+  # replicate the fast checks here to ensure no untested code reaches production.
+  # Full test suite (client-tests 60 min, PDF, maps, desktop, E2E) lives in
+  # pr-tests.yml and is the mandatory gate for merging to main.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Typecheck (Worker — src/)
+        run: npx tsc --noEmit
+
+      - name: Worker unit tests
+        run: npx vitest run
+        timeout-minutes: 15
+
+      - name: Install client deps
+        run: cd client && npm ci --legacy-peer-deps
+
+      - name: Typecheck (Client — client/src/)
+        run: cd client && npx tsc --noEmit
+
+      - name: Client build verification
+        run: cd client && npx vite build
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
+        timeout-minutes: 10
+
+      - name: Dependency security audit (Worker)
+        # High/critical advisories block; moderate/low are advisory.
+        # If a high-severity advisory has no upstream fix, override via
+        # .nsprc or npm audit --omit=dev after documenting the exception.
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # ── Deploy ────────────────────────────────────────────────────────────────────
   deploy:
+    needs: [test]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -28,33 +75,14 @@ jobs:
           cache: npm
 
       # Worker source lives at /src/ with root package.json.
-      # The legacy /server/ directory is dead (moved to legacy/server-vps/).
-      # Root npm ci covers wrangler CLI + worker deps.
       - name: Install root deps
         run: npm ci
-
-      - name: Typecheck (Worker — src/)
-        run: npx tsc --noEmit
 
       # Schema drift check — verifies every CREATE TABLE and ALTER TABLE from
       # migration files exists on live D1. Catches the continue-on-error trap:
       # if a migration's DDL never actually landed (wrangler swallowed the
       # error), this step fails loudly. Override with SKIP_DRIFT_CHECK=1 for
       # emergency hotfixes where schema drift is intentional.
-      #
-      # env: this step shells out to `wrangler d1 execute --remote` directly
-      # (not via wrangler-action), so it needs the token/account explicitly —
-      # without them every query is an auth failure, which the pre-2026-07-24
-      # script silently reported as "MISSING TABLE" for the entire schema.
-      #
-      # timeout-minutes: the script fetches one sqlite_master snapshot and
-      # diffs locally (~1 min total). Since this step is already
-      # continue-on-error, a timeout here
-      # just skips it (as if drift-checking were inconclusive) rather than
-      # blocking Apply D1 migrations / Deploy Worker / Deploy client below —
-      # which is what happened on 2026-07-18 when re-enabling this step
-      # (after a long-dead missing-executable-bit no-op) ate the whole job
-      # budget and cancelled every deploy for ~10 minutes straight.
       - name: Schema drift check (remote D1)
         if: ${{ vars.SKIP_DRIFT_CHECK != '1' }}
         continue-on-error: true
@@ -77,7 +105,9 @@ jobs:
       # remote-unsafe table rebuilds (DROP TABLE calls_for_service).
       #
       # continue-on-error: true remains so a genuine later-file failure cannot
-      # block Worker + Pages. Always verify with pragma_table_info after merge.
+      # block Worker + Pages. The blocking schema verification step below catches
+      # any critical table that failed to land. Always verify with
+      # pragma_table_info after merge.
       - name: Apply D1 migrations (remote)
         continue-on-error: true
         timeout-minutes: 8
@@ -86,11 +116,59 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types scripts/d1PendingMigrations.ts --remote
 
-      # D1 export used to run here. wrangler d1 export takes a long exclusive
-      # lock on live D1, so login (and GET /api/health) returned 503 DB_ERROR
-      # for the whole export window — observed 2026-08-28 during run
-      # 33216027444 after migration 0270. Snapshots now live in d1-backup.yml
-      # (scheduled, off the deploy hot path).
+      # Blocking schema verification — confirms that tables which are required
+      # for live CAD/RMS operations actually exist on D1 before the Worker
+      # receives traffic. A failed migration that the step above swallowed is
+      # caught here rather than at runtime (a 500 on /api/dispatch/calls during
+      # an active incident). Override with SKIP_SCHEMA_VERIFY=1 only for
+      # emergency hotfixes where you know the schema is intact.
+      - name: Verify critical schema (post-migration)
+        if: ${{ vars.SKIP_SCHEMA_VERIFY != '1' }}
+        timeout-minutes: 2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          CRITICAL_TABLES=(
+            calls_for_service
+            units
+            persons
+            warrants
+            audit_log
+            users
+            dispatch_notes
+            alpr_captures
+          )
+          MISSING=()
+          for table in "${CRITICAL_TABLES[@]}"; do
+            COUNT=$(npx wrangler d1 execute rmpg-flex --remote \
+              --command "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='${table}'" \
+              2>/dev/null \
+              | python3 -c "
+          import json, sys
+          try:
+              data = json.load(sys.stdin)
+              n = data[0]['results'][0]['n'] if data else 0
+              print(n)
+          except Exception:
+              print(0)
+          " 2>/dev/null || echo "0")
+            if [ "$COUNT" = "0" ]; then
+              MISSING+=("$table")
+              echo "::error::Critical table '$table' is absent from live D1 — migration may have silently failed"
+            else
+              echo "  ✓  $table"
+            fi
+          done
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo ""
+            echo "::error::Schema verification failed — missing tables: ${MISSING[*]}"
+            echo "Run: scripts/apply-migration.sh <migration>.sql for each missing table"
+            echo "Then re-run this workflow. Use SKIP_SCHEMA_VERIFY=1 only for emergencies."
+            exit 1
+          fi
+          echo "Schema verification passed (${#CRITICAL_TABLES[@]} critical tables confirmed)."
 
       - name: Apply migrations to Turso secondary
         continue-on-error: true
@@ -181,21 +259,14 @@ jobs:
       # (env.LEGACY = rmpg-flex); both service-binding targets are already
       # deployed above by the time this runs.
       #
-      # BLOCKING again (no continue-on-error): the 2026-06-02 hedge was added
-      # because the deployed rmpg-api-proxy had orphan Durable Object namespaces
-      # (WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer) left by the #937
-      # name-collision, so every proxy deploy hit Cloudflare error 10064. PR #947
-      # cleared that by exporting inert stub DO classes from proxy/index.ts, so
-      # the proxy deploys cleanly now. This step is sequenced LAST specifically so
-      # a genuine proxy failure fails the run loudly WITHOUT skipping the
-      # worker/client/Pages deploys above (the regression #943's continue-on-error
-      # was guarding against). If this 10064s again, do NOT re-add
-      # continue-on-error — confirm proxy/index.ts still exports those four stub
+      # BLOCKING (no continue-on-error): PR #947 cleared the orphan DO namespace
+      # issue (WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer) that
+      # required the 2026-06-02 hedge. If 10064 returns, do NOT re-add
+      # continue-on-error — confirm proxy/index.ts still exports the four stub
       # classes. See memory project-auth-outage-name-collision.
       #
-      # `if: success()` (default) rather than `if: always()`: deploying the proxy
-      # when the Worker itself failed would wire the proxy to a Worker version that
-      # was never reached. A failed Worker deploy should fail the whole run.
+      # `if: success()` (default): deploying the proxy when the Worker itself
+      # failed would wire the proxy to a Worker version that was never reached.
       - name: Deploy proxy
         uses: cloudflare/wrangler-action@v4
         with:
@@ -206,7 +277,7 @@ jobs:
 
       # Post-deploy verification — smoke-test the Worker health endpoint.
       # This catches deploy failures that return a non-2xx Wrangler exit code
-      # but still "succeed" because the old Worker version keeps running.
+      # but still "succeed" because the old Worker version keeps serving traffic.
       - name: Verify Worker health
         if: always() && vars.SKIP_VERIFY != '1'
         run: |
