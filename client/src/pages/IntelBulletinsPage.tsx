@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../components/ToastProvider';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -65,6 +66,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function IntelBulletinsPage() {
+  const { addToast } = useToast();
   const [bulletins, setBulletins] = useState<Bulletin[]>([]);
   const [stats, setStats] = useState<BulletinStats>({ active_bolos: 0, active_atls: 0, crime_alerts: 0, unacknowledged: 0 });
   const [statusFilter, setStatusFilter] = useState('active');
@@ -82,7 +84,7 @@ export default function IntelBulletinsPage() {
     let cancelled = false;
     apiFetch<BulletinStats>('/intel-bulletins/stats/summary')
       .then(data => { if (!cancelled) setStats(data); })
-      .catch(err => console.error('Failed to fetch stats', err));
+      .catch(err => { console.error('Failed to fetch stats', err); addToast(err instanceof Error ? err.message : 'Failed to fetch bulletin stats', 'error'); });
     return () => { cancelled = true; };
   }, []);
 
@@ -109,6 +111,7 @@ export default function IntelBulletinsPage() {
       setStats(data);
     } catch (err) {
       console.error('Failed to fetch stats', err);
+      addToast(err instanceof Error ? err.message : 'Failed to fetch bulletin stats', 'error');
     }
   }
 
@@ -147,6 +150,7 @@ export default function IntelBulletinsPage() {
       fetchStats();
     } catch (err) {
       console.error('Failed to save bulletin', err);
+      addToast(err instanceof Error ? err.message : 'Failed to save bulletin', 'error');
     }
   }
 
@@ -157,6 +161,7 @@ export default function IntelBulletinsPage() {
       fetchStats();
     } catch (err) {
       console.error('Failed to acknowledge bulletin', err);
+      addToast(err instanceof Error ? err.message : 'Failed to acknowledge bulletin', 'error');
     }
   }
 

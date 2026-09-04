@@ -212,16 +212,16 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ mappings: CpgMapping[] }>('/clearpathgps/mappings');
       setMappings(data.mappings || []);
-    } catch (e) { console.error('Failed to fetch GPS mappings:', e); }
-  }, []);
+    } catch (e) { console.error('Failed to fetch GPS mappings:', e); setError(e instanceof Error ? e.message : 'Failed to fetch GPS mappings'); }
+  }, [setError]);
 
   // ── Fetch units ──
   const fetchUnits = useCallback(async () => {
     try {
       const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
       setUnits(Array.isArray(data) ? data : []);
-    } catch (e) { console.error('Failed to fetch units:', e); }
-  }, []);
+    } catch (e) { console.error('Failed to fetch units:', e); setError(e instanceof Error ? e.message : 'Failed to fetch units'); }
+  }, [setError]);
 
   // ── Fetch settings ──
   const fetchSettings = useCallback(async () => {

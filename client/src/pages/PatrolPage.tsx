@@ -520,6 +520,7 @@ const PatrolPage: React.FC = () => {
       setProperties(data || []);
     } catch (error) {
       console.error('Error loading properties:', error);
+      addToast(error instanceof Error ? error.message : 'Failed to load properties', 'error');
     }
   };
 
