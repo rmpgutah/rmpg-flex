@@ -249,7 +249,7 @@ async function upsertVehicleRecord(
            plate_type = COALESCE(NULLIF(plate_type,''), ?), updated_at = datetime('now')
          WHERE id = ?`,
         v.make, v.model, v.color, v.year, v.state, v.vehicleType, v.plateType, existingId);
-    } catch (err: any) { log.warn('[alpr] vehicle enrich failed:', { message: err?.message }); }
+    } catch (err) { log.warn('[alpr] vehicle enrich failed:', { message: err instanceof Error ? err.message : String(err) }); }
     const existing = await queryFirst<{ vin: string | null }>(db, `SELECT vin FROM vehicles_records WHERE id = ?`, existingId);
     return { id: existingId, created: false, vin: existing?.vin ?? null };
   }
@@ -363,7 +363,7 @@ async function finalizeCapture(
            VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
           `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${plate}`,
           critical.map((h) => h.detail).join('; '), screen.vehicleId, args.userId);
-      } catch (err: any) { log.error('[alpr] notify failed', { plate }, err instanceof Error ? err : new Error(String(err))); }
+      } catch (err) { log.error('[alpr] notify failed', { plate }, err instanceof Error ? err : new Error(String(err))); }
     }
 
     let recordId: number | null = null;
@@ -377,7 +377,7 @@ async function finalizeCapture(
       if (up?.created && !up.vin && plate && executionCtx) {
         executionCtx.waitUntil(
           enrichVehicleRecord(plate, read.state ?? '', db, env, executionCtx as ExecutionContext)
-            .catch((err: Error) => log.warn('auto-enrich failed', { plate, error: err?.message, stack: err?.stack })),
+            .catch((err: Error) => log.warn('auto-enrich failed', { plate, error: err instanceof Error ? err.message : String(err), stack: err?.stack })),
         );
       }
       if (recordId && args.callId != null) {
@@ -385,7 +385,7 @@ async function finalizeCapture(
           await execute(db,
             `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
              VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
-        } catch (err: any) { log.warn('[alpr] link failed:', { message: err?.message }); }
+        } catch (err) { log.warn('[alpr] link failed:', { message: err instanceof Error ? err.message : String(err) }); }
       }
       try {
         const base = `ALPR: ${[read.color, read.make, read.model, read.year].filter(Boolean).join(' ')}`.trim();
@@ -395,7 +395,7 @@ async function finalizeCapture(
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           plate, read.state, recordId, args.locationText, args.lat, args.lng, note, args.userId, out.plateConf);
         out.sightingId = Number(sres.meta.last_row_id);
-      } catch (err: any) { log.warn('[alpr] sighting failed:', { message: err?.message }); }
+      } catch (err) { log.warn('[alpr] sighting failed:', { message: err instanceof Error ? err.message : String(err) }); }
     }
 
     out.vehicles.push({
@@ -419,8 +419,8 @@ async function finalizeCapture(
       accepted ? read.year : null, read.state, accepted ? read.bodyStyle : null,
       out.plateConf, out.plateConf, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
-  } catch (err: any) {
-    log.warn('[alpr] finalize failed:', { message: err?.message });
+  } catch (err) {
+    log.warn('[alpr] finalize failed:', { message: err instanceof Error ? err.message : String(err) });
     try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); } catch { /* */ }
   }
   return out;
@@ -460,8 +460,8 @@ async function persistConfirmedVehicle(
           v.plate, v.state, recordId, row.location_text ?? null, row.latitude ?? null, row.longitude ?? null, source, userId, v.confidence);
       } catch { /* best-effort */ }
     }
-  } catch (err: any) {
-    log.warn('[alpr] persistConfirmedVehicle failed:', { message: err?.message });
+  } catch (err) {
+    log.warn('[alpr] persistConfirmedVehicle failed:', { message: err instanceof Error ? err.message : String(err) });
   }
   return hits;
 }
@@ -522,10 +522,10 @@ alpr.post('/capture', operational, async (c) => {
   let imageStored = true;
   try {
     await putEncrypted(c.env.UPLOADS, db, c.env, imageKey, bytes, { httpMetadata: { contentType } });
-  } catch (err: any) {
+  } catch (err) {
     if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
-    log.warn('[alpr] R2 image put failed:', { message: err?.message });
+    log.warn('[alpr] R2 image put failed:', { message: err instanceof Error ? err.message : String(err) });
   }
 
   // Attach the photo to the call/incident via field_photos (best-effort).
@@ -537,7 +537,7 @@ alpr.post('/capture', operational, async (c) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         userId, callId, incidentId, imageKey, contentType, bytes.length, lat, lng, 'ALPR capture');
       fieldPhotoId = Number(fp.meta.last_row_id);
-    } catch (err: any) { log.warn('[alpr] field_photos insert failed:', { message: err?.message }); }
+    } catch (err) { log.warn('[alpr] field_photos insert failed:', { message: err instanceof Error ? err.message : String(err) }); }
   }
 
   // ── Read the plate on Cloudflare Workers AI (free — no Roboflow credits) ──
@@ -703,9 +703,9 @@ alpr.get('/captures', operational, async (c) => {
       rows = await query<any>(db, sql, ...params);
     }
     return c.json(rows.map(shapeCapture));
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /captures failed', { src: 'src/routes/alpr.ts' }, err);
-    return c.json({ error: err?.message, hint: 'migration 0108/0109 may not have reached live D1' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err), hint: 'migration 0108/0109 may not have reached live D1' }, 500);
   }
 });
 
@@ -782,8 +782,8 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
         corrected ? null : (row.damage_observed ?? null),
         corrected ? null : (row.damage_summary ?? null),
         corrected ? null : (row.plate_confidence ?? null));
-    } catch (err: any) {
-      log.warn('[alpr] accept relink failed:', { message: err?.message });
+    } catch (err) {
+      log.warn('[alpr] accept relink failed:', { message: err instanceof Error ? err.message : String(err) });
       persisted = false;
     }
   }
@@ -889,8 +889,8 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
         aftermarket: null, confidences: {},
       };
       hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (verified)');
-    } catch (err: any) {
-      log.warn('[alpr] verify relink failed:', { message: err?.message });
+    } catch (err) {
+      log.warn('[alpr] verify relink failed:', { message: err instanceof Error ? err.message : String(err) });
       persisted = false;
     }
     await execute(db,
@@ -965,8 +965,8 @@ alpr.post('/captures/bulk', operational, async (c) => {
       } else {
         results.push({ id, ok: false, status: 'no_plate' });
       }
-    } catch (err: any) {
-      log.warn('[alpr] bulk item failed', { id, message: err?.message });
+    } catch (err) {
+      log.warn('[alpr] bulk item failed', { id, message: err instanceof Error ? err.message : String(err) });
       results.push({ id, ok: false, status: 'error' });
     }
   }
@@ -1109,7 +1109,7 @@ alpr.post('/edge', async (c) => {
          VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, NULL, 0, datetime('now'))`,
         `EDGE PLATE HIT: ${canonical}`,
         critical.map((h) => h.detail).join('; '), screen.vehicleId);
-    } catch (err: any) { log.warn('[alpr] edge notify failed:', { message: err?.message }); }
+    } catch (err) { log.warn('[alpr] edge notify failed:', { message: err instanceof Error ? err.message : String(err) }); }
   }
 
   // Record the edge read as a vehicle_sighting so it lands in the same history as
@@ -1124,7 +1124,7 @@ alpr.post('/edge', async (c) => {
       rec.location_text ?? null, num(rec.lat), num(rec.lng), note,
       trust.trustScore);
     sightingId = Number(sres.meta.last_row_id);
-  } catch (err: any) { log.warn('[alpr] edge sighting failed:', { message: err?.message }); }
+  } catch (err) { log.warn('[alpr] edge sighting failed:', { message: err instanceof Error ? err.message : String(err) }); }
 
   let photoRowId: number | null = null;
   if (trust.trustScore >= PACKAGE_GATE) {

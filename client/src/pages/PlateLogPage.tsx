@@ -174,21 +174,25 @@ export default function PlateLogPage() {
     () => filteredRecent.map((s) => ({ id: s.id, plate: s.plate, lat: s.lat ?? null, lng: s.lng ?? null, notes: s.notes, created_at: s.created_at })),
     [filteredRecent]);
 
-  const loadRecent = () => {
+  const loadRecent = (signal?: AbortSignal) => {
     setRecentLoading(true);
     setRecentError(null);
-    apiFetch<Sighting[]>('/intel/sightings?limit=15')
+    apiFetch<Sighting[]>('/intel/sightings?limit=15', { signal })
       .then((r) => setRecent(Array.isArray(r) ? r : []))
       .catch((err) => {
+        if ((err as any)?.name === 'AbortError') return;
         setRecent([]);
         setRecentError(err instanceof Error ? err.message : 'Failed to load sightings');
       })
       .finally(() => setRecentLoading(false));
   };
-  const loadReview = () => {
-    apiFetch<ReviewItem[]>('/alpr/captures?review=1&limit=25')
+  const loadReview = (signal?: AbortSignal) => {
+    apiFetch<ReviewItem[]>('/alpr/captures?review=1&limit=25', { signal })
       .then((r) => setReviewQueue(Array.isArray(r) ? r : []))
-      .catch(() => setReviewQueue([]));
+      .catch((err) => {
+        if ((err as any)?.name === 'AbortError') return;
+        setReviewQueue([]);
+      });
   };
   const reviewAction = async (id: number, action: 'accept' | 'reject') => {
     setReviewBusy(id);
@@ -249,8 +253,18 @@ export default function PlateLogPage() {
       setReviewMsg({ text: `Bulk ${action} failed: ${e?.message || 'error'} — please retry.`, kind: 'err' });
     } finally { setBulkBusy(false); }
   };
-  useEffect(loadRecent, []);
-  useEffect(loadReview, []);
+  useEffect(() => {
+    const ac = new AbortController();
+    loadRecent(ac.signal);
+    return () => ac.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const ac = new AbortController();
+    loadReview(ac.signal);
+    return () => ac.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
       (pos) => setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),

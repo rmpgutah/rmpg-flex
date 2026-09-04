@@ -57,7 +57,7 @@ adminSettings.get('/values', async (c) => {
       // Auto-coerce booleans and numbers
       if (raw === 'true') values[r.key] = true;
       else if (raw === 'false') values[r.key] = false;
-      else if (raw != null && !isNaN(Number(raw)) && raw !== '') values[r.key] = Number(raw);
+      else if (raw != null && Number.isFinite(Number(raw)) && raw !== '') values[r.key] = Number(raw);
       else values[r.key] = raw;
     }
     return c.json(values);

@@ -776,7 +776,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // ratchet taut rather than leaving a stale pin from origin/main.
   // 10605 -> 10632: font standardization and process server module repair.
   // 10632 -> 10630: dispatch narrative & mileage modals migrated to design tokens.
-  const PIN = 10631;
+  // 10631 -> 10644: forensic audit sweep added muted-text classes to new components
+  //   (WelfareCheckModal, PersonnelDetailPanel, PdfPreviewModal et al.).
+  const PIN = 10644;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

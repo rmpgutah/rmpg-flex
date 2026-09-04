@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import {
   Users, UserPlus, CalendarOff, Clock, ShieldCheck, AlertTriangle,
-  Activity, ChevronRight, Loader2,
+  Activity, ChevronRight, Loader2, FileWarning,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
@@ -31,6 +31,19 @@ interface ActivityItem {
   type: string;
   description: string;
   officer_name: string;
+  created_at: string;
+}
+
+// Maximum disciplinary records shown in the dashboard summary panel.
+// The full audit trail lives in DisciplinaryTab.
+const DISC_DASHBOARD_LIMIT = 50;
+
+interface DisciplinaryRecord {
+  id: number;
+  officer_name: string;
+  incident_type: string;
+  severity: string;
+  status: string;
   created_at: string;
 }
 
@@ -176,10 +189,26 @@ function BalanceCard({
 function ManagerDashboard({
   data,
   onNavigateToLeave,
+  onNavigateToDisciplinary,
 }: {
   data: DashboardData;
   onNavigateToLeave: () => void;
+  onNavigateToDisciplinary?: () => void;
 }) {
+  const [discRecords, setDiscRecords] = useState<DisciplinaryRecord[]>([]);
+  const [discLoading, setDiscLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch only the most recent DISC_DASHBOARD_LIMIT records. The full
+    // audit trail is available in DisciplinaryTab. This prevents the dashboard
+    // from rendering an unbounded list and hitting the D1 100-param cap on
+    // wide result sets.
+    apiFetch<DisciplinaryRecord[]>(`/hr/disciplinary?limit=${DISC_DASHBOARD_LIMIT}`)
+      .then((rows) => setDiscRecords(Array.isArray(rows) ? rows.slice(0, DISC_DASHBOARD_LIMIT) : []))
+      .catch(() => setDiscRecords([]))
+      .finally(() => setDiscLoading(false));
+  }, []);
+
   return (
     <div className="space-y-4">
       {/* Top metrics */}
@@ -255,6 +284,78 @@ function ManagerDashboard({
               );
             })}
           </div>
+        )}
+      </div>
+
+      {/* Disciplinary Log — summary only; capped at DISC_DASHBOARD_LIMIT.
+          Full audit trail is in DisciplinaryTab. */}
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-rmpg-100 flex items-center gap-2">
+            <FileWarning size={14} className="text-rmpg-400" />
+            Recent Disciplinary Records
+          </h3>
+          {onNavigateToDisciplinary && (
+            <button
+              type="button"
+              onClick={onNavigateToDisciplinary}
+              className="flex items-center gap-1 text-xs text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 rounded-sm"
+              aria-label="View all disciplinary records"
+            >
+              View all
+              <ChevronRight size={12} />
+            </button>
+          )}
+        </div>
+
+        {discLoading ? (
+          <div className="flex items-center gap-2 py-2">
+            <Loader2 size={14} className="animate-spin text-rmpg-400" />
+            <span className="text-xs text-rmpg-500">Loading…</span>
+          </div>
+        ) : discRecords.length === 0 ? (
+          <p className="text-xs text-rmpg-500">No disciplinary records on file</p>
+        ) : (
+          <>
+            <div className="space-y-1">
+              {discRecords.map(rec => (
+                <div
+                  key={rec.id}
+                  className="flex items-center gap-3 bg-surface-sunken border border-rmpg-700 rounded-sm px-3 py-2 transition-colors duration-150 hover:border-border-strong"
+                >
+                  <div
+                    className="w-1 self-stretch rounded-full flex-shrink-0"
+                    style={{
+                      backgroundColor:
+                        rec.severity === 'termination' || rec.severity === 'suspension'
+                          ? 'var(--sev-critical)'
+                          : rec.severity === 'written_warning'
+                          ? 'var(--sev-warn)'
+                          : 'var(--text-muted)',
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-rmpg-100 truncate">{rec.officer_name}</div>
+                    <div className="text-xs text-rmpg-500 truncate">{rec.incident_type}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-xs text-rmpg-400 capitalize">{rec.status.replace(/_/g, ' ')}</div>
+                    <div className="text-xs text-rmpg-500">{formatRelativeTime(rec.created_at)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {discRecords.length >= DISC_DASHBOARD_LIMIT && onNavigateToDisciplinary && (
+              <button
+                type="button"
+                onClick={onNavigateToDisciplinary}
+                className="mt-2 w-full text-xs text-rmpg-400 hover:text-rmpg-100 py-1.5 border border-rmpg-700 rounded-sm hover:border-border-strong transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+                aria-label="View all disciplinary records in full log"
+              >
+                View full disciplinary log ({DISC_DASHBOARD_LIMIT}+ records)
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -335,10 +436,12 @@ export default function HRDashboardTab({
   userRole,
   userId,
   onNavigateToLeave,
+  onNavigateToDisciplinary,
 }: {
   userRole: string;
   userId: string;
   onNavigateToLeave: () => void;
+  onNavigateToDisciplinary?: () => void;
 }) {
   const isManager = MANAGER_ROLES.includes(userRole);
   const { addToast } = useToast();
@@ -364,7 +467,7 @@ export default function HRDashboardTab({
   return (
     <div className="p-4">
       {isManager && data ? (
-        <ManagerDashboard data={data} onNavigateToLeave={onNavigateToLeave} />
+        <ManagerDashboard data={data} onNavigateToLeave={onNavigateToLeave} onNavigateToDisciplinary={onNavigateToDisciplinary} />
       ) : isManager && !data ? (
         <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Unable to load HR dashboard data</p>

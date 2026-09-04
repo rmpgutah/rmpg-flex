@@ -800,17 +800,17 @@ ai.post('/cleanup/fix', requireRole('admin', 'manager', 'supervisor'), async (c)
 
     if (body.type === 'stale_call') {
       if (body.action === 'clear') {
-        await execute(db, `UPDATE calls_for_service SET status = 'cleared', updated_at = datetime('now') WHERE id = ?`, id);
+        await execute(db, `UPDATE calls_for_service SET status = 'cleared', updated_at = datetime(\'now\') WHERE id = ?`, id);
       } else if (body.action === 'close') {
-        await execute(db, `UPDATE calls_for_service SET status = 'closed', updated_at = datetime('now') WHERE id = ?`, id);
+        await execute(db, `UPDATE calls_for_service SET status = 'closed', updated_at = datetime(\'now\') WHERE id = ?`, id);
       } else if (body.action === 'escalate') {
-        await execute(db, `UPDATE calls_for_service SET priority = 'P1', updated_at = datetime('now') WHERE id = ?`, id);
+        await execute(db, `UPDATE calls_for_service SET priority = 'P1', updated_at = datetime(\'now\') WHERE id = ?`, id);
       } else {
         return c.json({ error: `Unknown action "${body.action}" for stale_call` }, 400);
       }
     } else if (body.type === 'orphaned_unit') {
       if (body.action !== 'reset') return c.json({ error: `Unknown action "${body.action}" for orphaned_unit` }, 400);
-      await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL, updated_at = datetime('now') WHERE id = ?`, id);
+      await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL, updated_at = datetime(\'now\') WHERE id = ?`, id);
     } else {
       return c.json({ error: `Unknown cleanup type "${body.type}"` }, 400);
     }

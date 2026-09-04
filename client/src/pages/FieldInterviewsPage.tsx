@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
@@ -462,6 +462,18 @@ export default function FieldInterviewsPage() {
     setSearchParams(next, { replace: true });
   }, [fis, loading, searchParams, setSearchParams, addToast]);
 
+  // Pre-compute repeat-contact counts so each row does an O(1) Map lookup
+  // instead of an O(n) filter scan inside render (avoids O(n²) on large lists).
+  const repeatContactCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const f of fis) {
+      if (!f.subject_last_name) continue;
+      const key = `${f.subject_last_name}|${f.subject_first_name || ''}`.toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [fis]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -586,12 +598,10 @@ export default function FieldInterviewsPage() {
                 <div className="text-xs text-rmpg-100 font-medium flex items-center gap-1.5">
                   {fi.subject_last_name ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}` : 'Unknown Subject'}
                   {fi.person_flags && <WarrantBadge flags={fi.person_flags} size="sm" />}
-                  {(() => {
-                    if (!fi.subject_last_name) return null;
+                  {fi.subject_last_name && (() => {
                     const key = `${fi.subject_last_name}|${fi.subject_first_name || ''}`.toLowerCase();
-                    const count = fis.filter(f => `${f.subject_last_name}|${f.subject_first_name || ''}`.toLowerCase() === key).length;
-                    if (count >= 2) return <span className="text-[8px] font-bold px-1 py-0 bg-orange-900/50 text-orange-400 border border-orange-700/50">REPEAT ({count})</span>;
-                    return null;
+                    const count = repeatContactCounts.get(key) ?? 0;
+                    return count >= 2 ? <span className="text-[8px] font-bold px-1 py-0 bg-orange-900/50 text-orange-400 border border-orange-700/50">REPEAT ({count})</span> : null;
                   })()}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">

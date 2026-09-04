@@ -95,6 +95,10 @@ function broadcast(e: AuthEvent): void {
 }
 
 // ─── localStorage helpers ───────────────────────────────────
+function safeGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
 function safeSet(key: string, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* quota / private mode */ }
 }
@@ -158,14 +162,14 @@ export function refreshAccessToken(): Promise<string | null> {
 }
 
 async function runCoordinated(): Promise<string | null> {
-  const staleToken = localStorage.getItem(TOKEN_KEY);
+  const staleToken = safeGet(TOKEN_KEY);
   const locks = (typeof navigator !== 'undefined' ? (navigator as any).locks : null);
 
   if (locks?.request) {
     // Cross-tab critical section. If a peer rotates the token while we wait for
     // the lock, adopt its result instead of firing a second, doomed refresh.
     return locks.request(LOCK_NAME, async () => {
-      const current = localStorage.getItem(TOKEN_KEY);
+      const current = safeGet(TOKEN_KEY);
       if (current && current !== staleToken) return current; // peer already rotated
       return performRefresh();
     });
@@ -184,8 +188,8 @@ async function performRefresh(): Promise<string | null> {
     return null;
   }
 
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-  const sessionId = localStorage.getItem(SESSION_ID_KEY);
+  const refreshToken = safeGet(REFRESH_TOKEN_KEY);
+  const sessionId = safeGet(SESSION_ID_KEY);
 
   if (!refreshToken) {
     // No refresh token = effectively logged out.

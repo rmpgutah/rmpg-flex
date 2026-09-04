@@ -102,6 +102,8 @@ export default function Force2FASetupModal() {
           border: '1px solid var(--border-default)',
           borderTop: '3px solid var(--border-default)',
           WebkitAppRegion: 'no-drag',
+          maxHeight: 'calc(100dvh - 32px)',
+          overflowY: 'auto',
         } as React.CSSProperties}
       >
         {/* Header */}

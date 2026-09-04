@@ -113,7 +113,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
       {/* Editor overlay */}
       {openId != null && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-[1000px] h-[88dvh] bg-[#000] border border-border-default rounded-[2px] overflow-hidden">
+          <div className="relative w-full max-w-[1000px] h-[88dvh] bg-surface-deep border border-border-default rounded-[2px] overflow-hidden">
             <DocumentEditor documentId={openId} onClose={() => { setOpenId(null); void refresh(); }} onChanged={refresh} />
           </div>
         </div>

@@ -12,6 +12,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { log } from '../utils/logger';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { sha256Hex } from '../utils/apiKeys';
@@ -62,7 +63,7 @@ integrations.get('/services/rmpgutahps', async (c) => {
       key_preview: key ? '••••••••' + key.slice(-8) : null,
     });
   } catch (err) {
-    console.error('[Integrations] Get rmpgutahps config failed:', err);
+    log.error('[Integrations] Get rmpgutahps config failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to get service config.' }, 500);
   }
 });
@@ -96,7 +97,7 @@ integrations.put('/services/rmpgutahps', async (c) => {
     }
     return c.json({ success: true, message: 'rmpgutahps.us API key saved.' });
   } catch (err) {
-    console.error('[Integrations] Save rmpgutahps config failed:', err);
+    log.error('[Integrations] Save rmpgutahps config failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to save service config.' }, 500);
   }
 });
@@ -113,7 +114,7 @@ integrations.delete('/services/rmpgutahps', async (c) => {
     );
     return c.json({ success: true, message: 'rmpgutahps.us API key cleared.' });
   } catch (err) {
-    console.error('[Integrations] Clear rmpgutahps config failed:', err);
+    log.error('[Integrations] Clear rmpgutahps config failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to clear service config.' }, 500);
   }
 });
@@ -148,7 +149,7 @@ integrations.get('/keys', async (c) => {
       })),
     );
   } catch (err) {
-    console.error('[Integrations] List keys failed:', err);
+    log.error('[Integrations] List keys failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list API keys' }, 500);
   }
 });
@@ -189,7 +190,7 @@ integrations.post('/keys', async (c) => {
       key_prefix: keyPrefix,
     });
   } catch (err) {
-    console.error('[Integrations] Create key failed:', err);
+    log.error('[Integrations] Create key failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create API key' }, 500);
   }
 });
@@ -208,7 +209,7 @@ integrations.patch('/keys/:id/revoke', async (c) => {
     await execute(db, `UPDATE integration_api_keys SET is_active = 0 WHERE id = ?`, id);
     return c.json({ success: true, message: `API key "${existing.name}" revoked` });
   } catch (err) {
-    console.error('[Integrations] Revoke key failed:', err);
+    log.error('[Integrations] Revoke key failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to revoke API key' }, 500);
   }
 });
@@ -227,7 +228,7 @@ integrations.patch('/keys/:id/activate', async (c) => {
     await execute(db, `UPDATE integration_api_keys SET is_active = 1 WHERE id = ?`, id);
     return c.json({ success: true, message: `API key "${existing.name}" activated` });
   } catch (err) {
-    console.error('[Integrations] Activate key failed:', err);
+    log.error('[Integrations] Activate key failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to activate API key' }, 500);
   }
 });
@@ -246,7 +247,7 @@ integrations.delete('/keys/:id', async (c) => {
     await execute(db, `DELETE FROM integration_api_keys WHERE id = ?`, id);
     return c.json({ success: true, message: `API key "${existing.name}" deleted` });
   } catch (err) {
-    console.error('[Integrations] Delete key failed:', err);
+    log.error('[Integrations] Delete key failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete API key' }, 500);
   }
 });
@@ -290,7 +291,7 @@ integrations.get('/keys/request-log', async (c) => {
       })),
     );
   } catch (err) {
-    console.error('[Integrations] Request log failed:', err);
+    log.error('[Integrations] Request log failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to fetch request log' }, 500);
   }
 });
@@ -426,7 +427,7 @@ integrations.post('/calls-for-service', requireApiKeyScope('service_request'), a
 
     return c.json({ id, call_number: callNumber }, 201);
   } catch (err) {
-    console.error('[Integrations] Create calls-for-service failed:', err);
+    log.error('[Integrations] Create calls-for-service failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create call for service' }, 500);
   }
 });
@@ -476,7 +477,7 @@ integrations.get('/calls-for-service', requireApiKeyScope('service_request_read'
       createdAt: row.created_at,
     });
   } catch (err) {
-    console.error('[Integrations] Lookup calls-for-service failed:', err);
+    log.error('[Integrations] Lookup calls-for-service failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to look up calls for service' }, 500);
   }
 });

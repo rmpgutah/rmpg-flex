@@ -1116,7 +1116,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         popupEl?.addEventListener('click', onPopupClick);
         popup.once('close', () => popupEl?.removeEventListener('click', onPopupClick));
       };
-      popup.on('open', onOpen);
+      popup.once('open', onOpen);
     };
 
     for (const call of calls) {
@@ -1650,7 +1650,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             onClick={() => setShowBeatPlanner(true)}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 transition-colors"
             style={{ borderRadius: 2 }}
-            title="Optimize patrol beat assignments"
+            aria-label="Optimize patrol beat assignments"
           >
             Beat Planner
           </button>
@@ -1830,7 +1830,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             {measure.result.distanceFormatted}
             {measure.result.areaFormatted && ` · ${measure.result.areaFormatted}`}
           </span>
-          <button onClick={() => measure.clear()} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
+          <button onClick={() => measure.clear()} aria-label="Clear measurement" className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
         </div>
       )}
 
@@ -1841,7 +1841,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <span className="text-brand-gold-500 text-xs font-mono">
             DRAWING: {drawing.mode.toUpperCase()} — {drawing.mode === 'circle' ? 'Click center, then edge' : 'Click to add points, double-click to finish'}
           </span>
-          <button onClick={() => drawing.setMode('none')} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕ Cancel</button>
+          <button onClick={() => drawing.setMode('none')} aria-label="Cancel drawing mode" className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕ Cancel</button>
         </div>
       )}
 
@@ -1849,7 +1849,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {drawing.shapes.length > 0 && drawing.mode === 'none' && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
-          <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
+          <button onClick={() => drawing.clearAll()} aria-label="Clear all drawn shapes" className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
         </div>
       )}
 
@@ -1858,7 +1858,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-brand-gold-500/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <Grid3X3 className="w-3 h-3 text-brand-gold-500" />
           <span className="text-rmpg-300 text-[10px] font-mono">{glDraw.featureCount} GL Draw feature(s)</span>
-          <button onClick={() => glDraw.deleteAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear</button>
+          <button onClick={() => glDraw.deleteAll()} aria-label="Clear all GL Draw features" className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear</button>
         </div>
       )}
 
@@ -1876,7 +1876,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             <span className="text-rmpg-500">·</span>
             <span className="text-rmpg-300">{routing.activeRoute.distance}</span>
           </div>
-          <button onClick={() => routing.clearRoute()} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
+          <button onClick={() => routing.clearRoute()} aria-label="Clear route" className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
         </div>
       )}
 

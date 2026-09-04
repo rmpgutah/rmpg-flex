@@ -80,9 +80,9 @@ sch.get('/coverage-gaps', async (c) => {
       totalGaps: gaps.length,
       totalDeficit: gaps.reduce((sum, g) => sum + g.deficit, 0),
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /coverage-gaps failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to detect coverage gaps' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to detect coverage gaps' }, 500);
   }
 });
 
@@ -140,9 +140,9 @@ sch.post('/swap-request', async (c) => {
       requestId: result.meta.last_row_id,
       message: 'Swap request created',
     }, 201);
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST /swap-request failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to create swap request' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to create swap request' }, 500);
   }
 });
 
@@ -155,7 +155,7 @@ sch.get('/swap-suggestions/:requestId', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
 
   const requestId = parseInt(c.req.param('requestId'), 10);
-  if (isNaN(requestId)) {
+  if (!Number.isFinite(requestId) || requestId < 1) {
     return c.json({ error: 'Invalid request ID' }, 400);
   }
 
@@ -166,9 +166,9 @@ sch.get('/swap-suggestions/:requestId', async (c) => {
       suggestions,
       total: suggestions.length,
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /swap-suggestions/:requestId failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to get swap suggestions' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to get swap suggestions' }, 500);
   }
 });
 
@@ -182,7 +182,7 @@ sch.post('/swap-approve/:requestId', async (c) => {
 
   const userId = c.get('userId');
   const requestId = parseInt(c.req.param('requestId'), 10);
-  if (isNaN(requestId)) {
+  if (!Number.isFinite(requestId) || requestId < 1) {
     return c.json({ error: 'Invalid request ID' }, 400);
   }
 
@@ -262,9 +262,9 @@ sch.post('/swap-approve/:requestId', async (c) => {
       decision,
       message: `Swap request ${decision}`,
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST /swap-approve/:requestId failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to process swap request' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to process swap request' }, 500);
   }
 });
 
@@ -277,7 +277,7 @@ sch.get('/overtime/:userId', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
 
   const userId = parseInt(c.req.param('userId'), 10);
-  if (isNaN(userId)) {
+  if (!Number.isFinite(userId) || userId < 1) {
     return c.json({ error: 'Invalid user ID' }, 400);
   }
 
@@ -297,9 +297,9 @@ sch.get('/overtime/:userId', async (c) => {
       totalOvertimeHours: ot.totalOvertimeHours,
       dailyBreakdown: ot.dailyBreakdown,
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /overtime/:userId failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to calculate overtime' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to calculate overtime' }, 500);
   }
 });
 
@@ -347,9 +347,9 @@ sch.post('/auto-schedule', async (c) => {
         ),
       },
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST /auto-schedule failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to auto-schedule' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to auto-schedule' }, 500);
   }
 });
 
@@ -359,16 +359,16 @@ sch.post('/auto-schedule', async (c) => {
 
 sch.get('/handoff/:shiftId', async (c) => {
   const shiftId = parseInt(c.req.param('shiftId'), 10);
-  if (isNaN(shiftId)) {
+  if (!Number.isFinite(shiftId) || shiftId < 1) {
     return c.json({ error: 'Invalid shift ID' }, 400);
   }
 
   try {
     const handoff = await getShiftHandoffData(c.env.DB, shiftId);
     return c.json(handoff);
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /handoff/:shiftId failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to get handoff data' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to get handoff data' }, 500);
   }
 });
 
@@ -378,7 +378,7 @@ sch.get('/handoff/:shiftId', async (c) => {
 
 sch.get('/officer-availability/:userId', async (c) => {
   const userId = parseInt(c.req.param('userId'), 10);
-  if (isNaN(userId)) {
+  if (!Number.isFinite(userId) || userId < 1) {
     return c.json({ error: 'Invalid user ID' }, 400);
   }
 
@@ -403,9 +403,9 @@ sch.get('/officer-availability/:userId', async (c) => {
         availableOvertime: availability.filter((a) => a.status === 'available_overtime').length,
       },
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /officer-availability/:userId failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to get officer availability' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to get officer availability' }, 500);
   }
 });
 
@@ -448,9 +448,9 @@ sch.get('/metrics', async (c) => {
       },
       daily: metrics,
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /metrics failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to calculate metrics' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to calculate metrics' }, 500);
   }
 });
 
@@ -528,9 +528,9 @@ sch.get('/shift-comparison', async (c) => {
         staffingDiff: assignments1.length - assignments2.length,
       },
     });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /shift-comparison failed', { src: 'src/routes/scheduling.ts' }, err);
-    return c.json({ error: err.message ?? 'Failed to compare shifts' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Failed to compare shifts' }, 500);
   }
 });
 

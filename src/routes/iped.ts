@@ -250,7 +250,7 @@ iped.get('/hash-sets/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const set = await queryFirst<Record<string, unknown>>(
       db, `SELECT * FROM forensic_hash_sets WHERE id = ?`, id,
@@ -394,7 +394,7 @@ iped.get('/jobs/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     const job = await queryFirst<Record<string, unknown>>(
       db,
       `SELECT ii.*, fc.lab_number FROM iped_imports ii
@@ -422,7 +422,7 @@ iped.post('/jobs/:id/cancel', async (c) => {
     }
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     await execute(db, `UPDATE iped_imports SET summary = summary || ' [CANCELLED]' WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {

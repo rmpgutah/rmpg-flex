@@ -322,12 +322,20 @@ export default function CrisisResponsePage() {
         )}
       </PanelTitleBar>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <StatsCard label="CIT DEPLOYMENTS" value={String(stats.citCalls)} icon={PhoneCall} />
-        <StatsCard label="RESOLVED ON SCENE" value={String(stats.resolvedOnScene)} icon={Heart} />
-        <StatsCard label="DIVERSION RATE" value={`${stats.diversionRate}%`} icon={Users} />
-        <StatsCard label="TEAMS AVAILABLE" value={String(stats.teamsAvailable)} icon={Brain} />
-      </div>
+      {loadState === 'loading' ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="panel-beveled p-4 animate-pulse bg-surface-raised h-16" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <StatsCard label="CIT DEPLOYMENTS" value={String(stats.citCalls)} icon={PhoneCall} />
+          <StatsCard label="RESOLVED ON SCENE" value={String(stats.resolvedOnScene)} icon={Heart} />
+          <StatsCard label="DIVERSION RATE" value={`${stats.diversionRate}%`} icon={Users} />
+          <StatsCard label="TEAMS AVAILABLE" value={String(stats.teamsAvailable)} icon={Brain} />
+        </div>
+      )}
 
       {loadState === 'error' && (
         <div className="p-3 text-xs text-red-400 flex items-center justify-between">

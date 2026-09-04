@@ -41,6 +41,17 @@ export default {
       '3xl': '1920px',
     },
     extend: {
+      zIndex: {
+        // Shared stacking-order contract — use these names instead of z-[N] literals.
+        // Each tier is separated by 100 so future layers can be inserted without renumbering.
+        'modal':        '300',   // standard modals (FormModal, detail panels)
+        'overlay':      '400',   // fullscreen overlays (lightbox, crop)
+        'toast':        '500',   // ToastProvider
+        'alert-banner': '600',   // DispatchAlertBanner and similar sticky banners
+        'welfare-check':'700',   // WelfareCheckModal (officer welfare takeover)
+        'panic':        '800',   // PanicButton (always on top of welfare)
+        'context-menu': '900',   // ContextMenuContext (right-click menus)
+      },
       fontFamily: {
         sans: ['Arial', 'Helvetica', 'sans-serif'],
         mono: ['Arial', 'monospace'],

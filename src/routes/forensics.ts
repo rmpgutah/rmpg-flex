@@ -103,7 +103,7 @@ async function logActivity(
   caseId: number,
   action: string,
   details: string | null,
-  userId: number,
+  userId: number | null | undefined,
   userName: string,
   exhibitId: number | null = null,
 ): Promise<void> {
@@ -254,7 +254,7 @@ forensics.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(
       db,
       `SELECT fc.*, u.full_name as lead_examiner_name
@@ -296,7 +296,7 @@ forensics.post('/', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<Record<string, unknown>>();
 
     if (typeof b.title !== 'string' || !b.title.trim()) {
@@ -354,7 +354,7 @@ forensics.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number; status: string }>(
       db, 'SELECT id, status FROM forensic_cases WHERE id = ?', id,
     );
@@ -386,7 +386,7 @@ forensics.put('/:id', async (c) => {
 
     await execute(db, `UPDATE forensic_cases SET ${sets.join(', ')} WHERE id = ?`, ...vals);
 
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, id, 'case_updated', `Fields: ${Object.keys(b).filter((k) => CASE_UPDATABLE.has(k)).join(', ')}`, userId, user?.full_name ?? '');
 
@@ -405,7 +405,7 @@ forensics.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number; lab_number: string }>(
       db, 'SELECT id, lab_number FROM forensic_cases WHERE id = ?', id,
     );
@@ -432,7 +432,7 @@ forensics.get('/:caseId/exhibits', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number, id`,
@@ -451,8 +451,8 @@ forensics.post('/:caseId/exhibits', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
-    const userId = c.get('userId') as number;
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<Record<string, unknown>>();
 
     if (typeof b.description !== 'string' || !b.description.trim()) {
@@ -531,7 +531,7 @@ forensics.put('/:caseId/exhibits/:exhibitId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const exhibitId = parseInt(c.req.param('exhibitId'), 10);
-    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(exhibitId) || exhibitId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ id: number }>(
       db, 'SELECT id FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?', exhibitId, caseId,
@@ -554,7 +554,7 @@ forensics.put('/:caseId/exhibits/:exhibitId', async (c) => {
 
     await execute(db, `UPDATE forensic_exhibits SET ${sets.join(', ')} WHERE id = ?`, ...vals);
 
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, caseId, 'exhibit_updated', `Updated fields on exhibit ${exhibitId}`, userId, user?.full_name ?? '', exhibitId);
 
@@ -573,12 +573,12 @@ forensics.delete('/:caseId/exhibits/:exhibitId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const exhibitId = parseInt(c.req.param('exhibitId'), 10);
-    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(exhibitId) || exhibitId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const result = await execute(
       db, 'DELETE FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?', exhibitId, caseId,
     );
     if (result.meta.changes === 0) return c.json({ error: 'Exhibit not found', code: 'NOT_FOUND' }, 404);
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, caseId, 'exhibit_deleted', `Exhibit ${exhibitId} removed`, userId, user?.full_name ?? '');
     return c.json({ success: true });
@@ -597,8 +597,8 @@ forensics.post('/:caseId/exhibits/:exhibitId/custody', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const exhibitId = parseInt(c.req.param('exhibitId'), 10);
-    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
-    const userId = c.get('userId') as number;
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(exhibitId) || exhibitId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
     const { to_name, reason, notes } = await c.req.json<{
       to_name?: string; reason?: string; notes?: string;
     }>();
@@ -660,8 +660,8 @@ forensics.post('/:caseId/exhibits/:exhibitId/hashes', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const exhibitId = parseInt(c.req.param('exhibitId'), 10);
-    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
-    const userId = c.get('userId') as number;
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(exhibitId) || exhibitId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<Record<string, unknown>>();
 
     if (typeof b.algorithm !== 'string' || !HASH_ALGORITHMS.has(b.algorithm)) {
@@ -724,7 +724,7 @@ forensics.get('/:caseId/hashes', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
 
     const rows = await query<Record<string, unknown>>(
       db,
@@ -846,7 +846,7 @@ forensics.get('/:caseId/links', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db, 'SELECT * FROM forensic_case_entity_links WHERE forensic_case_id = ? ORDER BY linked_at DESC', caseId,
     );
@@ -875,8 +875,8 @@ forensics.post('/:caseId/links', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
-    const userId = c.get('userId') as number;
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<Record<string, unknown>>();
 
     if (typeof b.entity_type !== 'string' || !LINK_ENTITY_TYPES.has(b.entity_type)) {
@@ -915,13 +915,13 @@ forensics.delete('/:caseId/links/:linkId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const linkId = parseInt(c.req.param('linkId'), 10);
-    if (isNaN(caseId) || isNaN(linkId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(linkId) || linkId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ entity_type: string; entity_label: string }>(
       db, 'SELECT entity_type, entity_label FROM forensic_case_entity_links WHERE id = ? AND forensic_case_id = ?', linkId, caseId,
     );
     if (!existing) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
     await execute(db, 'DELETE FROM forensic_case_entity_links WHERE id = ?', linkId);
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, caseId, 'link_removed', `Unlinked ${existing.entity_type} "${existing.entity_label}"`, userId, user?.full_name ?? '');
     return c.json({ success: true });
@@ -939,7 +939,7 @@ forensics.get('/:caseId/analyses', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT fa.*, u.full_name as examiner_name, fe.exhibit_number
@@ -963,8 +963,8 @@ forensics.post('/:caseId/analyses', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
-    const userId = c.get('userId') as number;
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<Record<string, unknown>>();
 
     if (typeof b.analysis_type !== 'string' || !ANALYSIS_TYPES.has(b.analysis_type)) {
@@ -1011,7 +1011,7 @@ forensics.put('/:caseId/analyses/:analysisId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const analysisId = parseInt(c.req.param('analysisId'), 10);
-    if (isNaN(caseId) || isNaN(analysisId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(analysisId) || analysisId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ id: number; status: string }>(
       db, 'SELECT id, status FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?', analysisId, caseId,
@@ -1042,7 +1042,7 @@ forensics.put('/:caseId/analyses/:analysisId', async (c) => {
 
     await execute(db, `UPDATE forensic_analyses SET ${sets.join(', ')} WHERE id = ?`, ...vals);
 
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, caseId, 'analysis_updated', `Analysis ${analysisId} (${Object.keys(b).filter((k) => ANALYSIS_UPDATABLE.has(k)).join(', ')})`, userId, user?.full_name ?? '');
 
@@ -1061,7 +1061,7 @@ forensics.delete('/:caseId/analyses/:analysisId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const analysisId = parseInt(c.req.param('analysisId'), 10);
-    if (isNaN(caseId) || isNaN(analysisId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(analysisId) || analysisId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const result = await execute(
       db, 'DELETE FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?', analysisId, caseId,
     );
@@ -1081,7 +1081,7 @@ forensics.get('/:caseId/activity', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
     const rows = await query<Record<string, unknown>>(
       db,
@@ -1107,7 +1107,7 @@ forensics.get('/:caseId/exhibits/:exhibitId/custody-audit', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
     const exhibitId = parseInt(c.req.param('exhibitId'), 10);
-    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(exhibitId) || exhibitId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
 
     const exhibit = await queryFirst<{ chain_of_custody: string | null }>(
       db,
@@ -1225,7 +1225,7 @@ forensics.get('/:id/qc-history', async (c) => {
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT * FROM forensic_qc_checks WHERE forensic_case_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
@@ -1246,9 +1246,9 @@ forensics.post('/:id/qc-check', async (c) => {
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const body = await c.req.json<Record<string, unknown>>();
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const fc = await queryFirst<{ id: number }>(db, 'SELECT id FROM forensic_cases WHERE id = ?', id);
     if (!fc) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
 
@@ -1324,7 +1324,7 @@ forensics.post('/:caseId/apply-template', async (c) => {
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('caseId'), 10);
-    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     const templateId = Number(b.template_id);
     if (!Number.isFinite(templateId)) return c.json({ error: 'template_id required', code: 'TEMPLATE_ID_REQUIRED' }, 400);
@@ -1342,7 +1342,7 @@ forensics.post('/:caseId/apply-template', async (c) => {
       template.sections, caseId,
     );
 
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, caseId, 'template_applied', `Applied report template "${template.name}"`, userId, user?.full_name ?? '');
 

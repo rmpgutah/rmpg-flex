@@ -115,7 +115,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
+    } catch (err) { log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) }); allOk = false; }
   }
 
   // serve_queue columns from migration 0140
@@ -128,18 +128,18 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
+    } catch (err) { log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) }); allOk = false; }
   }
 
   // PR 2: updated_at for optimistic concurrency on PATCH /schedule/:slotId
   for (const [name, type] of [
-    ['updated_at', "TEXT NOT NULL DEFAULT (datetime('now'))"],
+    ['updated_at', "TEXT NOT NULL DEFAULT (datetime(\'now\'))"],
   ] as const) {
     try {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
+    } catch (err) { log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) }); allOk = false; }
   }
 
   if (allOk) scheduleSchemaReconciled = true;
@@ -158,7 +158,7 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
   try {
     await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
       model TEXT NOT NULL,
       ms INTEGER NOT NULL,
       raw_response TEXT,
@@ -168,7 +168,7 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       upload_user_id INTEGER
     )`);
   } catch (err) {
-    console.warn('[serve-intake] judge_runs create failed:', err);
+    log.warn('[serve-intake] judge_runs create failed', { error: err instanceof Error ? err.message : String(err) });
     allOk = false;
   }
 
@@ -183,7 +183,7 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
     } catch (err) {
-      console.warn(`[serve-intake] reconcile ${name} failed:`, err);
+      log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) });
       allOk = false;
     }
   }
@@ -958,7 +958,7 @@ si.post('/upload', async (c) => {
     ).run();
     judgeRunId = judgeInsert.meta?.last_row_id ?? null;
   } catch (err) {
-    console.warn('[serve-intake] judge_runs insert failed — proceeding without judge run id:', err);
+    log.warn('[serve-intake] judge_runs insert failed, proceeding without judge run id', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // Operator-selected client_id (integer FK) sent as a separate FormData field
@@ -1141,7 +1141,7 @@ si.post('/upload', async (c) => {
     try {
       const newCall = await queryFirst(db, `SELECT ${LIST_VIEW_COLUMNS.join(', ')} FROM calls_for_service WHERE id = ?`, commit.call_id);
       if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
-    } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
+    } catch (err) { log.warn('[serveIntake] call_created broadcast skipped (non-fatal)', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   return c.json({
@@ -1424,7 +1424,7 @@ si.post('/intake', async (c) => {
     try {
       const newCall = await queryFirst(getDb(c.env), `SELECT ${LIST_VIEW_COLUMNS.join(', ')} FROM calls_for_service WHERE id = ?`, commit.call_id);
       if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
-    } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
+    } catch (err) { log.warn('[serveIntake] call_created broadcast skipped (non-fatal)', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   return c.json({
@@ -1453,7 +1453,7 @@ si.get('/:id/documents', async (c) => {
   const denied = requireRole(c, ...INTAKE_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const rows = await query(
     db,
@@ -1473,7 +1473,7 @@ si.get('/documents/:docId/file', async (c) => {
   const denied = requireRole(c, ...INTAKE_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const docId = parseInt(c.req.param('docId'), 10);
-  if (isNaN(docId)) return c.json({ error: 'Invalid docId' }, 400);
+  if (!Number.isFinite(docId) || docId < 1) return c.json({ error: 'Invalid docId' }, 400);
   const db = getDb(c.env);
   const doc = await queryFirst<{ r2_key: string; file_type: string; file_name: string }>(
     db,
@@ -1564,7 +1564,7 @@ async function reprocessDocument(
   const queueRow = fieldsToQueueRow(normalized);
   await execute(db,
     `UPDATE serve_intake_documents SET fields_json=?, confidence=?, extraction_model=?, doc_type=?,
-       status=?, error_message=NULL, updated_at=datetime('now') WHERE id=?`,
+       status=?, error_message=NULL, updated_at=datetime(\'now\') WHERE id=?`,
     JSON.stringify(extraction.fields), extraction.confidence, extraction.model, extraction.documentType,
     extraction.success ? 'extracted' : 'failed', doc.id);
   let committedQueueId: number | null = null;
@@ -1639,7 +1639,7 @@ si.post('/review-queue/:id/accept', async (c) => {
   const db = getDb(c.env);
   await ensureQualityGateColumns(db);
   const r = await db.prepare(
-    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime(\'now\') WHERE id = ?`,
   ).bind('reviewed_ok', user?.id ?? null, id).run();
   if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true, quality_status: 'reviewed_ok' });
@@ -1654,7 +1654,7 @@ si.post('/review-queue/:id/fix', async (c) => {
   const db = getDb(c.env);
   await ensureQualityGateColumns(db);
   const r = await db.prepare(
-    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime(\'now\') WHERE id = ?`,
   ).bind('reviewed_fixed', user?.id ?? null, id).run();
   if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
   return c.json({ success: true, quality_status: 'reviewed_fixed' });
@@ -1700,7 +1700,7 @@ si.get('/stats', async (c) => {
   const served = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='served'");
   const overdue = await queryFirst<{ n: number }>(
     db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE deadline IS NOT NULL AND deadline < datetime('now') AND status NOT IN ('served','cancelled','failed')",
+    "SELECT COUNT(*) AS n FROM serve_queue WHERE deadline IS NOT NULL AND deadline < datetime(\'now\') AND status NOT IN ('served','cancelled','failed')",
   );
   return c.json({
     total: total?.n ?? 0,
@@ -1981,7 +1981,7 @@ si.patch('/schedule/:slotId', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
 
   const slotId = parseInt(c.req.param('slotId'), 10);
-  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+  if (!Number.isFinite(slotId) || slotId < 1) return c.json({ error: 'Invalid slot id' }, 400);
 
   const db = getDb(c.env);
   await reconcileScheduleSchema(db);
@@ -2177,7 +2177,7 @@ si.post('/schedule/rebalance', async (c) => {
     await execute(
       db,
       `UPDATE serve_queue
-          SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+          SET urgency_tier = ?, urgency_computed_at = datetime(\'now\') ${priorityClause}
         WHERE id = ?`,
       change.to_tier, change.queue_id,
     );
@@ -2209,7 +2209,7 @@ si.delete('/schedule/:slotId', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const slotId = parseInt(c.req.param('slotId'), 10);
-  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+  if (!Number.isFinite(slotId) || slotId < 1) return c.json({ error: 'Invalid slot id' }, 400);
   const db = getDb(c.env);
   await execute(db, 'UPDATE serve_attempt_schedules SET dismissed = 1 WHERE id = ?', slotId);
   return c.json({ success: true });
@@ -2283,7 +2283,7 @@ si.get('/:id{[0-9]+}', async (c) => {
   const denied = requireRole(c, ...INTAKE_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const row = await queryFirst<any>(
     db,
@@ -2400,7 +2400,7 @@ si.put('/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const db = getDb(c.env);
 
@@ -2447,7 +2447,7 @@ si.put('/:id', async (c) => {
 
   if (parsedPatches.length) {
     // Build a chained json_set call: json_set(json_set(parsed_data, path1, ?), path2, ?)
-    let expr = 'COALESCE(parsed_data, \'{}\')'
+    let expr = "COALESCE(parsed_data, '{}')"
     const patchArgs: string[] = [];
     for (const { path, value } of parsedPatches) {
       expr = `json_set(${expr}, ?, ?)`;
@@ -2455,7 +2455,7 @@ si.put('/:id', async (c) => {
     }
     await execute(
       db,
-      `UPDATE serve_queue SET parsed_data = ${expr}, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE serve_queue SET parsed_data = ${expr}, updated_at = datetime(\'now\') WHERE id = ?`,
       ...patchArgs,
       id,
     );
@@ -2481,7 +2481,7 @@ si.delete('/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
 
   // Read first so audit can capture context after the row is gone.
@@ -2545,7 +2545,7 @@ si.get('/:id/attempts', async (c) => {
   const denied = requireRole(c, ...INTAKE_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const rows = await query(
     db,
@@ -2565,7 +2565,7 @@ si.post('/:id/attempts', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
@@ -2630,7 +2630,7 @@ si.post('/:id/attempts', async (c) => {
     : '';
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime(\'now\')${closedClause} WHERE id = ?`,
     nextNum, newStatus, id,
   );
 
@@ -2729,7 +2729,7 @@ si.post('/:id/attempts', async (c) => {
             `UPDATE serve_attempt_schedules SET auto_replan_source = ? WHERE id = ?`,
             attemptId, slot.id,
           ).catch((e) => {
-            console.warn('[serveIntake] auto_replan_source FK stamp skipped:', e instanceof Error ? e.message : e);
+            log.warn('[serveIntake] auto_replan_source FK stamp skipped', { error: e instanceof Error ? e.message : String(e) });
             return null;
           }); // column may not exist on live yet (mig 0140 pending Task 7)
           replanSummary = {
@@ -2746,18 +2746,18 @@ si.post('/:id/attempts', async (c) => {
           : '';
         await execute(
           db,
-          `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+          `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime(\'now\') ${priorityClause}
              WHERE id = ?`,
           tier, id,
         ).catch((e) => {
-          console.warn('[serveIntake] urgency_tier update skipped:', e instanceof Error ? e.message : e);
+          log.warn('[serveIntake] urgency_tier update skipped', { error: e instanceof Error ? e.message : String(e) });
           return null;
         }); // urgency_tier column may not exist on live yet (mig 0140 pending Task 7)
       } else {
         // replanAfterFailedAttempt returned null (no viable window) — mark failed.
         await execute(
           db,
-          `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now') WHERE id = ?`,
+          `UPDATE serve_queue SET status = 'failed', updated_at = datetime(\'now\') WHERE id = ?`,
           id,
         );
       }
@@ -2789,7 +2789,7 @@ si.get('/:id/skip-trace', async (c) => {
   const denied = requireRole(c, ...INTAKE_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
   const data = rows.map((row: Record<string, unknown>) => {
@@ -2815,7 +2815,7 @@ si.post('/:id/skip-trace', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);

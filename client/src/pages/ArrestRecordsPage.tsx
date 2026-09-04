@@ -271,6 +271,9 @@ export default function ArrestRecordsPage() {
   // Error
   const [error, setError] = useState<string | null>(null);
 
+  // Person-lookup loading (URL ?person_id= resolution on mount)
+  const [personLookupLoading, setPersonLookupLoading] = useState(false);
+
   // CRUD
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<ArrestRecord | undefined>(undefined);
@@ -589,6 +592,7 @@ export default function ArrestRecordsPage() {
       // linked_person panel on the person dossier; we just seed the filter.
       // A bare numeric id won't match names; the toast tells the operator
       // what we tried so they can hand-edit the search.
+      setPersonLookupLoading(true);
       (async () => {
         try {
           const p = await apiFetch<{ first_name?: string; last_name?: string }>(`/records/persons/${encodeURIComponent(personName)}`);
@@ -597,6 +601,8 @@ export default function ArrestRecordsPage() {
         } catch {
           // Person not resolvable — leave the search empty rather than
           // typing a bare id into the box.
+        } finally {
+          setPersonLookupLoading(false);
         }
       })();
     }
@@ -718,15 +724,21 @@ export default function ArrestRecordsPage() {
       <div className="p-2 space-y-1.5 border-b border-rmpg-700/30">
         {/* Search */}
         <div className="relative" role="search">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+          {personLookupLoading
+            ? <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400 pointer-events-none animate-spin" aria-hidden="true" />
+            : <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+          }
           <input id="ff-arrestrecordspage-0"
             type="text"
-            value={searchTerm}
+            value={personLookupLoading ? '' : searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-            placeholder="Search by name..." aria-label="Search arrest records by name"
-            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 focus:outline-none transition-shadow"
+            placeholder={personLookupLoading ? 'Looking up person…' : 'Search by name...'}
+            aria-label="Search arrest records by name"
+            aria-busy={personLookupLoading}
+            disabled={personLookupLoading}
+            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 focus:outline-none transition-shadow disabled:opacity-60 disabled:cursor-wait"
           />
-          {searchTerm && (
+          {!personLookupLoading && searchTerm && (
             <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>

@@ -16,33 +16,49 @@ export interface PanicAlert {
 export interface UsePanicAlertsResult {
   alerts: PanicAlert[];
   loading: boolean;
+  error: string | null;
   refetch: () => void;
 }
 
 export function usePanicAlerts(): UsePanicAlertsResult {
   const [alerts, setAlerts] = useState<PanicAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { subscribe } = useWebSocket();
   const mountedRef = useRef(true);
 
   const refetch = useCallback(() => {
     apiFetch<PanicAlert[]>('/dispatch/panic')
-      .then((rows) => { if (mountedRef.current) setAlerts(rows.filter(a => a.status === 'active' || a.status === 'acknowledged')); })
-      .catch(() => {})
-      .finally(() => { if (mountedRef.current) setLoading(false); });
+      .then((rows) => {
+        if (!mountedRef.current) return;
+        setAlerts(rows.filter(a => a.status === 'active' || a.status === 'acknowledged'));
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (!mountedRef.current) return;
+        const message = err instanceof Error ? err.message : 'Failed to load panic alerts';
+        console.error('[usePanicAlerts] fetch error:', err);
+        setError(message);
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
+    refetch();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [refetch]);
 
   useEffect(() => {
-    const unsub = subscribe('panic_alert', () => refetch());
+    const unsub = subscribe('panic_alert', () => {
+      if (mountedRef.current) refetch();
+    });
     return unsub;
   }, [subscribe, refetch]);
 
-  return { alerts, loading, refetch };
+  return { alerts, loading, error, refetch };
 }

@@ -212,7 +212,7 @@ nav.put('/trip/:id/confirm', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
       'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
@@ -237,7 +237,7 @@ nav.put('/trip/:id/pause', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
       'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
@@ -262,7 +262,7 @@ nav.put('/trip/:id/resume', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
       'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
@@ -287,7 +287,7 @@ nav.put('/trip/:id/update', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const body = await c.req.json<TripUpdateBody>();
     const trip = await queryFirst<{ id: number; officer_id: number; status: string; route_points: string | null }>(db,
@@ -333,7 +333,7 @@ nav.put('/trip/:id/end', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const body = await c.req.json<TripEndBody>();
     const trip = await queryFirst<{ id: number; officer_id: number; status: string; route_points: string | null; start_time: string }>(db,
@@ -402,7 +402,7 @@ nav.put('/trip/:id/cancel', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
       'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
@@ -433,7 +433,7 @@ nav.delete('/trip/:id', async (c) => {
     const userId = (c.get('userId') as number | undefined) ?? null;
     const user = c.get('user') as { id: number; role: string } | undefined;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const trip = await queryFirst<{ id: number; officer_id: number; status: string; start_time: string }>(db,
       'SELECT id, officer_id, status, start_time FROM nav_trip_log WHERE id = ?', tripId);
@@ -532,7 +532,7 @@ nav.get('/trip/:id', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
     const tripId = Number(c.req.param('id'));
-    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+    if (!tripId || !Number.isFinite(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
 
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,

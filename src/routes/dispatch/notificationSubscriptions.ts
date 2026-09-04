@@ -26,16 +26,23 @@ async function reconcile(db: import('@cloudflare/workers-types').D1Database) {
 }
 
 // POST /api/dispatch/notifications/subscribe
-notifSubs.post('/subscribe', async (c) => {
+// Any authenticated officer/dispatcher can register their own push subscription.
+// The stored user_id is always the authenticated caller's own id — the body's
+// user_id field is intentionally ignored to prevent one user from registering a
+// subscription attributed to another account (IDOR).
+notifSubs.post('/subscribe',
+  requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'),
+  async (c) => {
   const db = getDb(c.env);
   await reconcile(db);
-  let body: { subscription: unknown; user_id?: number; notify_on?: string[] };
+  let body: { subscription: unknown; notify_on?: string[] };
   try { body = await c.req.json(); } catch { return c.json({ ok: false, error: 'invalid JSON' }, 400); }
-  const { subscription, user_id, notify_on = [] } = body;
+  const { subscription, notify_on = [] } = body;
   if (!subscription || typeof subscription !== 'object') {
     return c.json({ ok: false, error: 'subscription is required' }, 400);
   }
-  const uid = user_id ?? (c.get('userId') as number | undefined);
+  // Always use the authenticated user's own id — never the caller-supplied one
+  const uid = c.get('userId') as number | undefined;
   if (!uid) return c.json({ ok: false, error: 'user_id required' }, 400);
 
   const subJson = JSON.stringify(subscription);

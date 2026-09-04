@@ -19,16 +19,25 @@ export interface NavFavorite {
 export function useNavFavorites() {
   const [favorites, setFavorites] = useState<NavFavorite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     setLoading(true);
+    setError(null);
+    let cancelled = false;
     apiFetch<NavFavorite[]>('/nav/favorites')
-      .then(setFavorites)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((data) => { if (!cancelled) setFavorites(data); })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(String(err));
+          console.error(err);
+        }
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
-  useEffect(reload, [reload]);
+  useEffect(() => reload(), [reload]);
 
   const save = useCallback(async (label: string, lat: number, lng: number, address?: string) => {
     await apiFetch('/nav/favorites', {
@@ -45,5 +54,5 @@ export function useNavFavorites() {
     await apiFetch(`/nav/favorites/${id}`, { method: 'DELETE' }).catch(() => {});
   }, []);
 
-  return { favorites, loading, save, remove, reload };
+  return { favorites, loading, error, save, remove, reload };
 }

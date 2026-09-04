@@ -225,7 +225,7 @@ arrests.get('/manual/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM arrest_records WHERE id = ?', id,
     );
@@ -254,7 +254,7 @@ arrests.put('/manual/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM arrest_records WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' }, 404);
@@ -296,7 +296,7 @@ arrests.delete('/manual/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM arrest_records WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' }, 404);
     await execute(db, 'DELETE FROM arrest_records WHERE id = ?', id);
@@ -406,7 +406,7 @@ arrests.get('/:id/cross-links', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const links = await query<Record<string, unknown>>(
       db,
       `SELECT id, linked_type, linked_id, match_type, match_confidence, created_at
@@ -427,7 +427,7 @@ arrests.put('/:id/link-person', async (c) => {
   try {
     const db = getDb(c.env);
     const arrestId = parseInt(c.req.param('id'), 10);
-    if (isNaN(arrestId)) return c.json({ error: 'Invalid arrest ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(arrestId) || arrestId < 1) return c.json({ error: 'Invalid arrest ID', code: 'INVALID_ID' }, 400);
     const body = await c.req.json<{ person_id?: number; match_type?: string; match_confidence?: number }>();
     if (!body.person_id) return c.json({ error: 'person_id required', code: 'PERSON_ID_REQUIRED' }, 400);
 
@@ -457,7 +457,7 @@ arrests.delete('/:id/link-person', async (c) => {
     const db = getDb(c.env);
     const arrestId = parseInt(c.req.param('id'), 10);
     const personId = parseInt(c.req.query('person_id') || '', 10);
-    if (isNaN(arrestId) || isNaN(personId)) return c.json({ error: 'arrest id and person_id required', code: 'INVALID_IDS' }, 400);
+    if (!Number.isFinite(arrestId) || arrestId < 1 || !Number.isFinite(personId) || personId < 1) return c.json({ error: 'arrest id and person_id required', code: 'INVALID_IDS' }, 400);
     await execute(
       db,
       `DELETE FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = 'person' AND linked_id = ?`,

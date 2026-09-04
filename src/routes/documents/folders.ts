@@ -17,6 +17,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, ensureAttachmentEvidenceColumns } from '../../utils/db';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
+import { log } from '../../utils/logger';
 const folders = new Hono<Env>();
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -378,7 +379,7 @@ folders.get('/:entityType/:entityId/attachments', async (c) => {
     );
     return c.json(enriched);
   } catch (err) {
-    console.error('List entity attachments error:', err);
+    log.error('List entity attachments error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' }, 500);
   }
 });

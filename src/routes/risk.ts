@@ -107,7 +107,7 @@ risk.delete('/assessments/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const result = await execute(db, 'DELETE FROM risk_assessments WHERE id = ?', id);
     if (result.meta.changes === 0) return c.json({ error: 'Assessment not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });

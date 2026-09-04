@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { log } from '../utils/logger';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor'];
@@ -71,7 +72,7 @@ runCards.get('/', requireRole(...READ_ROLES), async (c) => {
     const rows = await query<RunCardRow>(db, sql);
     return c.json(rows.map(parseRunCard));
   } catch (err) {
-    console.error('[run-cards] list error', err);
+    log.error('run-cards list error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list run cards', code: 'RC_LIST_ERR' }, 500);
   }
 });
@@ -87,7 +88,7 @@ runCards.get('/by-type/:incident_type', requireRole(...READ_ROLES), async (c) =>
     if (!row) return c.json(null);
     return c.json(parseRunCard(row));
   } catch (err) {
-    console.error('[run-cards] by-type error', err);
+    log.error('run-cards by-type error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to fetch run card', code: 'RC_FETCH_ERR' }, 500);
   }
 });
@@ -101,7 +102,7 @@ runCards.get('/:id', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ error: 'Run card not found', code: 'RC_NOT_FOUND' }, 404);
     return c.json(parseRunCard(row));
   } catch (err) {
-    console.error('[run-cards] get error', err);
+    log.error('run-cards get error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to fetch run card', code: 'RC_FETCH_ERR' }, 500);
   }
 });
@@ -148,7 +149,7 @@ runCards.post('/', requireRole(...WRITE_ROLES), async (c) => {
       throw err;
     }
   } catch (err) {
-    console.error('[run-cards] create error', err);
+    log.error('run-cards create error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create run card', code: 'RC_CREATE_ERR' }, 500);
   }
 });
@@ -191,7 +192,7 @@ runCards.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const after = await queryFirst<RunCardRow>(db, 'SELECT * FROM dispatch_run_cards WHERE id = ?', id);
     return c.json(parseRunCard(after!));
   } catch (err) {
-    console.error('[run-cards] update error', err);
+    log.error('run-cards update error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to update run card', code: 'RC_UPDATE_ERR' }, 500);
   }
 });
@@ -206,7 +207,7 @@ runCards.delete('/:id', requireRole(...DELETE_ROLES), async (c) => {
     await execute(db, 'DELETE FROM dispatch_run_cards WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[run-cards] delete error', err);
+    log.error('run-cards delete error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete run card', code: 'RC_DELETE_ERR' }, 500);
   }
 });
@@ -243,7 +244,7 @@ export async function applyRunCard(
       t,
     );
   } catch (err) {
-    console.warn('[run-cards] applyRunCard query failed; treating as no card:', err);
+    log.warn('run-cards applyRunCard query failed; treating as no card:', { error: err instanceof Error ? err.message : String(err) });
     return { card: null, appliedPriority: null, appliedFlags: {} };
   }
   if (!row) return { card: null, appliedPriority: null, appliedFlags: {} };

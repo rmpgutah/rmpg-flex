@@ -471,7 +471,7 @@ hr.put('/leave/:id', requireRole(...ALL_ROLES), async (c) => {
     );
     if (!row) return c.json({ error: 'Not found' }, 404);
     if (!isManager(user.role) && row.officer_id !== user.id) {
-      return c.json({ error: 'Cannot edit another officer\'s request' }, 403);
+      return c.json({ error: "Cannot edit another officer's request" }, 403);
     }
     if (row.status !== 'pending') {
       return c.json({ error: 'Only pending requests can be edited' }, 400);
@@ -1561,13 +1561,22 @@ hr.get('/attendance', requireRole(...ALL_ROLES), async (c) => {
     if (attType && ATTENDANCE_TYPES.has(attType)) { where += ' AND a.type = ?'; params.push(attType); }
     if (date_from) { where += ' AND a.date >= ?'; params.push(date_from); }
     if (date_to) { where += ' AND a.date <= ?'; params.push(date_to); }
+    // Default to current month when no date range is specified
+    if (!date_from && !date_to) {
+      const now = new Date();
+      const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+      where += ' AND a.date >= ?';
+      params.push(monthStart);
+    }
+    const PAGE_SIZE = 200;
+    const page = Math.max(0, Number(c.req.query('page') ?? 0));
     const rows = await query(db, `
       SELECT a.*, o.full_name AS officer_name, d.full_name AS documented_by_name
       FROM hr_attendance a
       LEFT JOIN users o ON o.id = a.officer_id
       LEFT JOIN users d ON d.id = a.documented_by
-      ${where} ORDER BY a.date DESC, a.created_at DESC`, ...params);
-    return c.json(rows);
+      ${where} ORDER BY a.date DESC, a.created_at DESC LIMIT ? OFFSET ?`, ...params, PAGE_SIZE, page * PAGE_SIZE);
+    return c.json({ records: rows, page, page_size: PAGE_SIZE, has_more: rows.length === PAGE_SIZE });
   } catch (err) {
     console.error('[hr] GET /attendance', err);
     return c.json({ error: 'Failed to load attendance records', code: 'HR_ATTEND_LIST_ERR' }, 500);

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { log } from '../utils/logger';
 import { PMTiles, type Source, type RangeResponse } from 'pmtiles';
 import type { Env } from '../types';
 
@@ -108,7 +109,7 @@ tiles.get('/:name/:z/:x/:y', async (c) => {
       forgetArchive(name);
       return c.json({ error: 'archive not found' }, 404);
     }
-    console.error(`tile ${name}/${z}/${x}/${y} error:`, err);
+    log.error(`tile ${name}/${z}/${x}/${y} error`, {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'tile failed' }, 500);
   }
 });
@@ -163,7 +164,7 @@ tiles.get('/:file', async (c) => {
       headers: { 'Content-Type': 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' },
     });
   } catch (err) {
-    console.error('archive serve error:', err);
+    log.error('archive serve error:', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'failed' }, 500);
   }
 });

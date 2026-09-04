@@ -169,7 +169,11 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       const y = h - (speeds[i] / maxSpeed) * (h - 4);
       const mph = speeds[i];
       // Speed colors: red >65, amber >45, green ≤45
-      const color = mph > 65 ? '#ef4444' : mph > 45 ? '#f59e0b' : '#22c55e';
+      const root = document.documentElement;
+      const criticalColor = getComputedStyle(root).getPropertyValue('--sev-critical').trim() || '#ef4444';
+      const warnColor = getComputedStyle(root).getPropertyValue('--sev-warn').trim() || '#f59e0b';
+      const okColor = getComputedStyle(root).getPropertyValue('--sev-ok').trim() || '#22c55e';
+      const color = mph > 65 ? criticalColor : mph > 45 ? warnColor : okColor;
       return { x, y, color };
     });
   }, [track, speeds, maxSpeed, startMs, totalMs, h]);
@@ -207,8 +211,9 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       <line
         x1={`${progressX}%`} y1="0"
         x2={`${progressX}%`} y2={h}
-        stroke="#aaaaaa" strokeWidth="2"
+        strokeWidth="2"
         vectorEffect="non-scaling-stroke"
+        style={{ stroke: 'var(--text-muted)' }}
       />
     </svg>
   );
@@ -1264,7 +1269,7 @@ export default function DashCamDetailPage() {
             </a>
 
             {video.burned_file_path && (
-              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?token=${encodeURIComponent(token)}`}
+              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`}
                 download
                 className="toolbar-btn toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
                 <Download className="w-3.5 h-3.5" /> Download Burned

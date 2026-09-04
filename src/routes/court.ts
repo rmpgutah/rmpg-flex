@@ -69,7 +69,7 @@ async function generateEventNumber(db: ReturnType<typeof getDb>): Promise<string
   if (row?.event_number) {
     const parts = row.event_number.split('-');
     const n = parseInt(parts[2], 10);
-    seq = isNaN(n) ? 1 : n + 1;
+    seq = !Number.isFinite(n) ? 1 : n + 1;
   }
   return `${prefix}${String(seq).padStart(5, '0')}`;
 }
@@ -293,7 +293,7 @@ ct.post('/events/from-citation', async (c) => {
 // ── GET /events/:id ─────────────────────────────────────────
 ct.get('/events/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst<any>(getDb(c.env), 'SELECT * FROM court_events WHERE id = ?', id);
   if (!row) return c.json({ error: 'Not found' }, 404);
   row.officers_required = parseJsonCol(row.officers_required, []);
@@ -309,7 +309,7 @@ ct.get('/events/:id', async (c) => {
 // ── GET /events/:id/conflicts ───────────────────────────────
 ct.get('/events/:id/conflicts', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const ev = await queryFirst<any>(db, 'SELECT * FROM court_events WHERE id = ?', id);
   if (!ev) return c.json({ error: 'Not found' }, 404);
@@ -339,7 +339,7 @@ ct.get('/events/:id/conflicts', async (c) => {
 // ── GET /events/:id/witnesses ───────────────────────────────
 ct.get('/events/:id/witnesses', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst<{ witnesses: string }>(getDb(c.env), 'SELECT witnesses FROM court_events WHERE id = ?', id);
   if (!row) return c.json({ error: 'Not found' }, 404);
   return c.json(parseJsonCol(row.witnesses, []));
@@ -348,7 +348,7 @@ ct.get('/events/:id/witnesses', async (c) => {
 // ── GET /events/:id/linked-records ──────────────────────────
 ct.get('/events/:id/linked-records', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const ev = await queryFirst<any>(db, 'SELECT citation_id, incident_id, case_id, defendant_person_id FROM court_events WHERE id = ?', id);
   if (!ev) return c.json({ error: 'Not found' }, 404);
@@ -400,7 +400,7 @@ ct.put('/events/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const db = getDb(c.env);
 
@@ -434,7 +434,7 @@ ct.delete('/events/:id', async (c) => {
   const denied = requireRole(c, 'admin');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(getDb(c.env), 'DELETE FROM court_events WHERE id = ?', id);
   return c.json({ success: true });
 });
@@ -444,7 +444,7 @@ ct.put('/events/:id/outcome', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),
@@ -463,7 +463,7 @@ ct.put('/events/:id/verdict', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),
@@ -479,7 +479,7 @@ ct.put('/events/:id/confirm', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user) return c.json({ error: 'Unauthenticated' }, 401);
@@ -512,7 +512,7 @@ ct.post('/events/:id/continuance', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   if (!body.new_date) return c.json({ error: 'new_date required' }, 400);
   const user = c.get('user') as { id: number } | undefined;
@@ -549,7 +549,7 @@ ct.post('/events/:id/clone', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
@@ -578,7 +578,7 @@ ct.post('/events/:id/documents', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   if (!body.document) return c.json({ error: 'document required' }, 400);
   const db = getDb(c.env);
@@ -599,7 +599,7 @@ ct.put('/events/:id/witnesses', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const witnesses = Array.isArray(body.witnesses) ? body.witnesses : [];
   await execute(
@@ -615,7 +615,7 @@ ct.put('/events/:id/judge-notes', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),
@@ -630,7 +630,7 @@ ct.put('/events/:id/prosecutor', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),
@@ -648,7 +648,7 @@ ct.put('/events/:id/fees', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const fees = body.court_fees && typeof body.court_fees === 'object' ? body.court_fees : {};
   await execute(
@@ -665,7 +665,7 @@ ct.put('/events/:id/bail', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),

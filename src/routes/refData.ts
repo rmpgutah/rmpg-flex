@@ -16,6 +16,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { log } from '../utils/logger';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
@@ -114,7 +115,7 @@ refData.get('/decode-vin/:vin', async (c) => {
     if (err instanceof VinDecoderError) {
       return c.json({ error: err.message, code: 'NHTSA_FAIL' }, 502);
     }
-    console.error('[refData] decode-vin unknown error', err);
+    log.error('[refData] decode-vin unknown error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to decode VIN', code: 'INTERNAL' }, 500);
   }
 });
@@ -142,11 +143,11 @@ refData.get('/:family', async (c) => {
   } catch (err) {
     // Most likely cause: the migration hasn't reached live D1 yet (per CLAUDE.md
     // gotcha #5). Surface that explicitly instead of a bare 500.
-    console.error(`[refData] list /${slug} failed`, err);
+    log.error(`[refData] list /${slug} failed`, {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({
       error: `Failed to list ${slug}`,
       code: 'DB_ERROR',
-      detail: (err as Error)?.message,
+      detail: err instanceof Error ? err.message : String(err),
     }, 500);
   }
 });
@@ -174,11 +175,11 @@ refData.get('/:family/:id', async (c) => {
     if (!row) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
     return c.json(row);
   } catch (err) {
-    console.error(`[refData] get /${slug}/${id} failed`, err);
+    log.error(`[refData] get /${slug}/${id} failed`, {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({
       error: `Failed to fetch ${slug}/${id}`,
       code: 'DB_ERROR',
-      detail: (err as Error)?.message,
+      detail: err instanceof Error ? err.message : String(err),
     }, 500);
   }
 });

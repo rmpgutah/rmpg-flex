@@ -73,7 +73,7 @@ files.get('/:id/file-folders', async (c) => {
   const denied = requireRole(c, READ);
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('id'), 10);
-  if (isNaN(queueId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   await ensureServeAttemptFilesTable(db);
 
@@ -125,7 +125,7 @@ files.get('/:id/attempts/:attemptId/files', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('id'), 10);
   const attemptId = parseInt(c.req.param('attemptId'), 10);
-  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1 || !Number.isFinite(attemptId) || attemptId < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   await ensureServeAttemptFilesTable(db);
   const attempt = await loadAttempt(db, queueId, attemptId);
@@ -140,7 +140,7 @@ files.post('/:id/attempts/:attemptId/files', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('id'), 10);
   const attemptId = parseInt(c.req.param('attemptId'), 10);
-  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1 || !Number.isFinite(attemptId) || attemptId < 1) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
 
@@ -257,7 +257,7 @@ files.patch('/:id/attempts/:attemptId/files/:fileRowId', async (c) => {
   const queueId = parseInt(c.req.param('id'), 10);
   const attemptId = parseInt(c.req.param('attemptId'), 10);
   const fileRowId = parseInt(c.req.param('fileRowId'), 10);
-  if (isNaN(queueId) || isNaN(attemptId) || isNaN(fileRowId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1 || !Number.isFinite(attemptId) || attemptId < 1 || !Number.isFinite(fileRowId) || fileRowId < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const existing = await queryFirst<{ id: number }>(
     db,
@@ -267,7 +267,7 @@ files.patch('/:id/attempts/:attemptId/files/:fileRowId', async (c) => {
   if (!existing) return c.json({ error: 'File not found in this attempt folder' }, 404);
 
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({}));
-  const sets: string[] = ['updated_at = datetime(\'now\')'];
+  const sets: string[] = ["updated_at = datetime('now')"];
   const args: unknown[] = [];
   if ('title' in body) {
     sets.push('title = ?');
@@ -306,7 +306,7 @@ files.delete('/:id/attempts/:attemptId/files/:fileRowId', async (c) => {
   const queueId = parseInt(c.req.param('id'), 10);
   const attemptId = parseInt(c.req.param('attemptId'), 10);
   const fileRowId = parseInt(c.req.param('fileRowId'), 10);
-  if (isNaN(queueId) || isNaN(attemptId) || isNaN(fileRowId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1 || !Number.isFinite(attemptId) || attemptId < 1 || !Number.isFinite(fileRowId) || fileRowId < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const row = await queryFirst<{ id: number; file_id: string; kind: string }>(
     db,

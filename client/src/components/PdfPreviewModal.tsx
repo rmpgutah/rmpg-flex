@@ -147,7 +147,7 @@ export default function PdfPreviewModal({
     >
       <div className="w-full max-w-5xl h-[90dvh] bg-surface-sunken border border-rmpg-700 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-[#1a1a1a] to-[#242424] border-b border-rmpg-700 px-4 py-2">
+        <div className="flex items-center justify-between bg-gradient-to-r from-surface-sunken to-surface-base border-b border-rmpg-700 px-4 py-2">
           <div className="flex items-center gap-2 [color:var(--panel-header-color)]">
             <TargetIcon className="w-4 h-4" aria-hidden="true" />
             <span className="text-xs font-semibold uppercase tracking-wider">
@@ -172,7 +172,7 @@ export default function PdfPreviewModal({
               disabled={!blobUrl}
               aria-label="Print PDF"
               title="Print PDF"
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-[#d4a017] hover:bg-[#b8881a] border [border-color:var(--field-label-color)] text-black transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider [background-color:var(--accent-gold-300)] hover:opacity-80 border [border-color:var(--field-label-color)] text-black transition-opacity disabled:opacity-50"
             >
               <Printer className="w-3.5 h-3.5" aria-hidden="true" />
               Print
@@ -182,7 +182,7 @@ export default function PdfPreviewModal({
               onClick={onClose}
               aria-label="Close preview"
               title="Close (Esc)"
-              className="inline-flex items-center justify-center w-7 h-7 bg-surface-base hover:bg-[#2a0a0a] border border-rmpg-700 hover:border-red-700 text-rmpg-400 hover:text-red-400 transition-colors"
+              className="inline-flex items-center justify-center w-7 h-7 bg-surface-base hover:bg-red-950/60 border border-rmpg-700 hover:border-red-700 text-rmpg-400 hover:text-red-400 transition-colors"
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>

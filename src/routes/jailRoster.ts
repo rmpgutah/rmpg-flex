@@ -28,7 +28,7 @@ async function statusHandler(c: any) {
     await ensureJailRosterSchema(db);
     return c.json(await getStatus(db));
   } catch (err) {
-    log.error('jail-roster status failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster status failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to get scraper status' }, 500);
   }
 }
@@ -43,7 +43,7 @@ jailRoster.get('/statistics', async (c) => {
     await ensureJailRosterSchema(db);
     return c.json(await getStatistics(db));
   } catch (err) {
-    log.error('jail-roster statistics failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster statistics failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to get statistics' }, 500);
   }
 });
@@ -55,7 +55,7 @@ jailRoster.get('/config', requireRole('admin'), async (c) => {
     await ensureJailRosterSchema(db);
     return c.json({ configs: await getCountyConfigs(db) });
   } catch (err) {
-    log.error('jail-roster config failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster config failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to get config' }, 500);
   }
 });
@@ -70,7 +70,7 @@ jailRoster.put('/config/:county', requireRole('admin'), async (c) => {
     if (body.enabled !== undefined) updates.enabled = !!body.enabled;
     if (body.scrape_interval_minutes !== undefined) {
       const n = parseInt(String(body.scrape_interval_minutes), 10);
-      if (isNaN(n) || n < 15 || n > 1440) return c.json({ error: 'Interval must be 15–1440 minutes' }, 400);
+      if (!Number.isFinite(n) || n < 15 || n > 1440) return c.json({ error: 'Interval must be 15–1440 minutes' }, 400);
       updates.scrape_interval_minutes = n;
     }
     const db = getDb(c.env);
@@ -79,7 +79,7 @@ jailRoster.put('/config/:county', requireRole('admin'), async (c) => {
     if (!ok) return c.json({ error: 'County not found or no changes' }, 404);
     return c.json({ success: true });
   } catch (err) {
-    log.error('jail-roster config update failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster config update failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to update config' }, 500);
   }
 });
@@ -94,7 +94,7 @@ jailRoster.post('/sync/:county', requireRole('admin', 'manager', 'supervisor'), 
     const result = await scrapeCounty(db, county!);
     return c.json(result, result.success ? 200 : 502);
   } catch (err) {
-    log.error('jail-roster sync failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster sync failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Sync failed' }, 500);
   }
 });
@@ -112,7 +112,7 @@ jailRoster.post('/enrich/:county', requireRole('admin', 'manager', 'supervisor')
     const result = await enrichSaltLakeDetails(db);
     return c.json({ success: true, ...result });
   } catch (err) {
-    log.error('jail-roster enrich failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster enrich failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Enrichment failed' }, 500);
   }
 });
@@ -126,7 +126,7 @@ jailRoster.get('/pending-details/:county', async (c) => {
     await ensureJailRosterSchema(db);
     return c.json({ county, pending: county === 'salt_lake' ? await countPendingSaltLakeDetails(db) : 0 });
   } catch (err) {
-    log.error('jail-roster pending-details failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster pending-details failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to count pending details' }, 500);
   }
 });
@@ -142,7 +142,7 @@ jailRoster.post('/reset-errors/:county', requireRole('admin'), async (c) => {
     if (!ok) return c.json({ error: 'County not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
-    log.error('jail-roster reset failed:', { src: 'routes/jailRoster.ts' }, err instanceof Error ? err.message : String(err));
+    log.error('jail-roster reset failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Reset failed' }, 500);
   }
 });

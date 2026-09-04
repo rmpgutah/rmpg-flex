@@ -37,7 +37,7 @@ function parseDeviceType(ua: string | null): string {
 function cfFloat(val: string | undefined): number | null {
   if (!val) return null;
   const n = parseFloat(val);
-  return isNaN(n) ? null : n;
+  return Number.isFinite(n) ? n : null;
 }
 
 const toInt = (v: unknown) =>

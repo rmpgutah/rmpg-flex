@@ -22,6 +22,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
 import { encryptSecret, CpgCryptoError } from '../utils/cpgCrypto';
+import { log } from '../utils/logger';
 import {
   getCredentials, getConfigValue, setConfigValue, deleteConfigValue, CPG_KEYS,
   listDevices, testConnection,
@@ -351,7 +352,10 @@ cpg.get('/dashcam-events/by-officer/:id', async (c) =>
 cpg.get('/dashcam-events/export', async (c) => {
   const db = getDb(c.env);
   try { return c.json(await query(db, 'SELECT * FROM dashcam_events ORDER BY event_timestamp DESC LIMIT 1000')); }
-  catch { return c.json([]); }
+  catch (err) {
+    log.error('clearpathgps GET /dashcam-events/export failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // Stream a synced dashcam clip from R2 (playback / evidence).

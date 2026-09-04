@@ -504,7 +504,10 @@ aggregates.get('/heatmap/types', async (c) => {
        GROUP BY incident_type
        ORDER BY count DESC LIMIT 50`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) {
+    log.error('dispatch GET /stats/incident-types failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // GET /dispatch/stats/dashboard — shift briefing dashboard stats.
@@ -666,13 +669,17 @@ aggregates.get('/history-map', async (c) => {
     const db = getDb(c.env);
     const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '30', 10) || 30));
     const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '5000', 10) || 5000));
+    // Parameter budget: 1 (datetime) + statuses(≤10) + types(≤20) + priorities(≤5) + 1 (LIMIT) = 37 max.
+    // D1 cap is 100 bound params. Types cap lowered from 30→20 to keep the combined total well under 80.
     const csv = (q?: string, cap = 20) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean).slice(0, cap) : []);
     const statuses = csv(c.req.query('status'), 10);
-    const types = csv(c.req.query('types'), 30);
+    const types = csv(c.req.query('types'), 20);  // capped at 20 (was 30) to protect combined param budget
     const priorities = csv(c.req.query('priority'), 5);
 
     const where: string[] = ['latitude IS NOT NULL', 'longitude IS NOT NULL', "created_at >= datetime('now', ?)"];
     const params: unknown[] = [`-${days} days`];
+    // addIn() appends an IN-list to where[] and params[]. Combined cap: statuses(10)+types(20)+priorities(5)+2 = 37.
+    // Never exceed 95 params total (D1 hard cap is 100; assertion below guards against future param additions).
     const addIn = (col: string, vals: string[]) => {
       where.push(`${col} IN (${vals.map(() => '?').join(',')})`);
       params.push(...vals);
@@ -680,6 +687,10 @@ aggregates.get('/history-map', async (c) => {
     if (statuses.length) addIn('status', statuses);
     if (types.length) addIn('incident_type', types);
     if (priorities.length) addIn('priority', priorities);
+
+    // Guard: params[] + 1 (LIMIT) must stay under 100 (D1 bound-parameter cap).
+    // The csv() caps above guarantee at most 37, but this assertion protects against future additions.
+    if (params.length + 1 > 95) throw new Error('D1 param cap exceeded in /dispatch/history-map query');
 
     const rows = await query<Record<string, unknown>>(db, `
       SELECT id, call_number, incident_type, priority, status, disposition,
@@ -761,7 +772,10 @@ aggregates.get('/call-volume', async (c) => {
        WHERE created_at >= datetime('now','-${days} days')
        GROUP BY DATE(created_at) ORDER BY date`);
     return c.json({ by_day: rows, days });
-  } catch { return c.json({ by_day: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_day failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_day: [], days: 7 });
+  }
 });
 
 // GET /dispatch/aggregates/by-zone?days=7
@@ -777,7 +791,10 @@ aggregates.get('/by-zone', async (c) => {
        WHERE created_at >= datetime('now','-${days} days')
        GROUP BY zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
-  } catch { return c.json({ by_zone: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_zone failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_zone: [], days: 7 });
+  }
 });
 
 // GET /dispatch/aggregates/priority-distribution?days=7
@@ -795,7 +812,10 @@ aggregates.get('/priority-distribution', async (c) => {
        GROUP BY priority
        ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
     return c.json({ by_priority: rows, days });
-  } catch { return c.json({ by_priority: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_priority failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_priority: [], days: 7 });
+  }
 });
 
 // GET /dispatch/aggregates/hourly-today
@@ -819,7 +839,10 @@ aggregates.get('/hourly-today', async (c) => {
     for (const r of rows) byHour[r.hour] = r.count;
     const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: byHour[h] ?? 0 }));
     return c.json({ hours });
-  } catch { return c.json({ hours: [] }); }
+  } catch (err) {
+    log.error('dispatch stats hours failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ hours: [] });
+  }
 });
 
 // GET /dispatch/aggregates/response-times?days=7
@@ -842,7 +865,10 @@ aggregates.get('/response-times', async (c) => {
        GROUP BY priority
        ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
     return c.json({ by_priority: rows, days });
-  } catch { return c.json({ by_priority: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_priority failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_priority: [], days: 7 });
+  }
 });
 
 // GET /dispatch/ambient-stats — lightweight screensaver data (active calls, unit counts).
@@ -871,7 +897,10 @@ aggregates.get('/ambient-stats', async (c) => {
       total_units: unitRow?.total ?? 0,
       available_units: unitRow?.available ?? 0,
     });
-  } catch { return c.json({ active_calls: 0, critical_calls: 0, total_units: 0, available_units: 0 }); }
+  } catch (err) {
+    log.error('[aggregates] ambient-stats query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Ambient stats unavailable' }, 500);
+  }
 });
 
 export default aggregates;

@@ -226,7 +226,7 @@ dialerConnectIngest.post('/', async (c) => {
     }
     return c.json({ ok: true, id, kind: 'call' }, 201);
   } catch (err) {
-    log.error('dialer-connect ingest failed', {}, err as Error);
+    log.error('dialer-connect ingest failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Ingest failed' }, 500);
   }
 });

@@ -251,7 +251,7 @@ sqe.get('/optimize-route/:serverId', async (c) => {
   if (deniedOptimizeRouteServer) return c.json({ error: deniedOptimizeRouteServer }, 403);
 
   const serverId = parseInt(c.req.param('serverId'), 10);
-  if (isNaN(serverId)) return c.json({ error: 'Invalid serverId' }, 400);
+  if (!Number.isFinite(serverId) || serverId < 1) return c.json({ error: 'Invalid serverId' }, 400);
 
   const db = getDb(c.env);
 
@@ -429,7 +429,7 @@ sqe.get('/attempt-history/:queueId', async (c) => {
   if (deniedAttemptHistory) return c.json({ error: deniedAttemptHistory }, 403);
 
   const queueId = parseInt(c.req.param('queueId'), 10);
-  if (isNaN(queueId)) return c.json({ error: 'Invalid queueId' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1) return c.json({ error: 'Invalid queueId' }, 400);
 
   const db = getDb(c.env);
 
@@ -659,7 +659,7 @@ sqe.get('/eta/:attemptId', async (c) => {
   if (deniedEta) return c.json({ error: deniedEta }, 403);
 
   const attemptId = parseInt(c.req.param('attemptId'), 10);
-  if (isNaN(attemptId)) return c.json({ error: 'Invalid attemptId' }, 400);
+  if (!Number.isFinite(attemptId) || attemptId < 1) return c.json({ error: 'Invalid attemptId' }, 400);
 
   const db = getDb(c.env);
 
@@ -1115,7 +1115,7 @@ sqe.get('/nearest-unassigned', async (c) => {
     const lat = parseFloat(c.req.query('lat') || '');
     const lng = parseFloat(c.req.query('lng') || '');
     const radius = parseFloat(c.req.query('radius') || '50');
-    if (isNaN(lat) || isNaN(lng)) return c.json({ error: 'lat and lng required' }, 400);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: 'lat and lng required' }, 400);
     const { getNearestUnassignedAttempt } = await import('../utils/serveRouteOptimizer');
     const result = await getNearestUnassignedAttempt(db, lat, lng, radius);
     return c.json(result);

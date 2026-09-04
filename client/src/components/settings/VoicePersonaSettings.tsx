@@ -83,8 +83,8 @@ export default function VoicePersonaSettings() {
                   className="px-3 py-1 text-[11px] uppercase tracking-wider"
                   style={{
                     background: active ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-                    border: `1px solid ${active ? 'var(--accent-gold-300)' : 'var(--border-subtle)'}`,
-                    color: active ? 'var(--accent-gold-300)' : 'var(--text-muted)',
+                    border: `1px solid ${active ? 'var(--accent-silver-400)' : 'var(--border-subtle)'}`,
+                    color: active ? 'var(--accent-silver-400)' : 'var(--text-muted)',
                     borderRadius: 2,
                   }}
                 >
@@ -134,8 +134,8 @@ export default function VoicePersonaSettings() {
           className="px-3 py-1 text-[11px] uppercase tracking-wider"
           style={{
             background: 'var(--surface-raised)',
-            border: '1px solid var(--accent-gold-300)',
-            color: 'var(--accent-gold-300)',
+            border: '1px solid var(--accent-silver-400)',
+            color: 'var(--accent-silver-400)',
             borderRadius: 2,
           }}
         >
@@ -169,8 +169,8 @@ export default function VoicePersonaSettings() {
             className="px-3 py-1 text-[11px] uppercase tracking-wider"
             style={{
               background: persona.brainEnabled ? 'var(--surface-raised)' : 'var(--surface-overlay)',
-              border: `1px solid ${persona.brainEnabled ? 'var(--accent-gold-300)' : 'var(--border-subtle)'}`,
-              color: persona.brainEnabled ? 'var(--accent-gold-300)' : 'var(--text-muted)',
+              border: `1px solid ${persona.brainEnabled ? 'var(--accent-silver-400)' : 'var(--border-subtle)'}`,
+              color: persona.brainEnabled ? 'var(--accent-silver-400)' : 'var(--text-muted)',
               borderRadius: 2,
             }}
           >
