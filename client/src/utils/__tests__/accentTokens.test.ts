@@ -778,7 +778,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10632 -> 10630: dispatch narrative & mileage modals migrated to design tokens.
   // 10631 -> 10644: forensic audit sweep added muted-text classes to new components
   //   (WelfareCheckModal, PersonnelDetailPanel, PdfPreviewModal et al.).
-  const PIN = 10644;
+  // 10644 -> 10662: rebuilt ScheduleDetailTab and DeploymentDetailTab with full
+  //   UX (stats, grouping, cards) using existing rmpg-token patterns.
+  const PIN = 10662;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

@@ -86,6 +86,19 @@ function statusBadgeClass(status: FeatureItem['status']): string {
   }
 }
 
+const CATEGORY_NAV: { id: TabCategory; label: string; icon: React.ElementType }[] = [
+  { id: 'hardware',    label: 'Hardware',     icon: Cpu },
+  { id: 'kiosk',      label: 'Kiosk',        icon: Monitor },
+  { id: 'radar360',   label: 'Radar 360',    icon: Compass },
+  { id: 'diagnostics',label: 'Diagnostics',  icon: Activity },
+  { id: 'cad_apps',   label: 'CAD Apps',     icon: Radio },
+  { id: 'safety',     label: 'Safety',       icon: Shield },
+  { id: 'widgets',    label: 'Widgets',      icon: Layers },
+  { id: 'environment',label: 'Environment',  icon: Globe },
+  { id: 'security',   label: 'Security',     icon: Lock },
+  { id: 'utilities',  label: 'Utilities',    icon: Wrench },
+];
+
 export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: DesktopKioskHUDProps) {
   const navigate = useNavigate();
   useOptionalDesktopWindows(); // keep context subscription alive for sibling components
@@ -754,7 +767,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                       <span className="truncate">{cat.label}</span>
                     </div>
                     <span className="px-1.5 py-0.5 text-[9px] font-bold bg-surface-raised border border-border-subtle rounded-full text-rmpg-400">
-                      {cat.count}
+                      {catalog.filter(i => i.category === cat.id).length}
                     </span>
                   </button>
                 );
