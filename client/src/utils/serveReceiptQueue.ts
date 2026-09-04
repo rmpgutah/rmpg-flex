@@ -223,5 +223,5 @@ export async function flushQueued(token: string): Promise<FlushResult> {
     return { status: 'offline', retryInMs: backoffMs(entry.attempts) };
   }
   await clearQueued(token);
-  return { status: 'rejected', message: body instanceof Error ? body.message : 'This submission was not accepted.' };
+  return { status: 'rejected', message: body?.message || 'This submission was not accepted.' };
 }
