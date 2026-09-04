@@ -1,5 +1,5 @@
 // client/src/components/desktop/DesktopKioskHUD.tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Monitor, ShieldCheck, ShieldAlert, Cpu, Activity, Radio, Signal, Wifi,
@@ -12,6 +12,15 @@ import {
 } from 'lucide-react';
 import { useOptionalDesktopWindows } from './DesktopWindowManager';
 import { useOptionalAuth } from '../../context/AuthContext';
+
+interface KioskElectron {
+  getKioskShellState?: () => Promise<{ supported: boolean; enabled: boolean } | null>;
+  setKioskShell?: (enable: boolean) => Promise<{ ok: boolean; error?: string }>;
+}
+
+function getElectron(): KioskElectron | undefined {
+  return (window as unknown as { electron?: KioskElectron }).electron;
+}
 
 interface DesktopKioskHUDProps {
   isOpen: boolean;
@@ -76,22 +85,25 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
   // Fetch actual kiosk shell state from main process on open
   useEffect(() => {
     if (!isOpen) return;
-    (window as any).electron?.getKioskShellState?.()
-      .then((state: { supported: boolean; enabled: boolean } | null) => {
+    getElectron()?.getKioskShellState?.()
+      ?.then((state) => {
         if (state && typeof state.enabled === 'boolean') {
           setKioskEnabled(state.enabled);
         }
       })
-      .catch(() => {});
+      ?.catch(() => {});
   }, [isOpen]);
   const [radarScanning, setRadarScanning] = useState(false);
   const [simulatedDeviceCount, setSimulatedDeviceCount] = useState(24);
   const [selectedFeature, setSelectedFeature] = useState<FeatureItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current); }, []);
 
   const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
   // System Telemetry State
@@ -651,7 +663,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
             <button
               onClick={async () => {
                 const next = !kioskEnabled;
-                const electron = (window as any).electron;
+                const electron = getElectron();
                 if (electron?.setKioskShell) {
                   try {
                     const result = await electron.setKioskShell(next);
