@@ -15,7 +15,11 @@ export default function BillingReviewTab() {
   const { charges, loading, load, approve, voidCharge, generateInvoice } = useServeCharges();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [msg, setMsg] = useState<string>('');
-  useEffect(() => { load('pending_review'); }, [load]);
+  useEffect(() => {
+    load('pending_review');
+    const id = setInterval(() => load('pending_review'), 30_000);
+    return () => clearInterval(id);
+  }, [load]);
 
   // Void-reason modal — inline replacement for window.prompt('Void reason?').
   const [voidChargeId, setVoidChargeId] = useState<number | null>(null);

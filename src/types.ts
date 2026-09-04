@@ -187,6 +187,9 @@ export type Variables = {
   // auth (checkin/upload routes in src/routes/kioskLinux.ts) — distinct from
   // the JWT `user` above, since devices have no user account.
   kioskDevice?: { id: string; label: string };
+  // Opt-out flag for mutationAuditMiddleware on high-frequency routes
+  // that intentionally skip the generic auto-audit entry.
+  skipAutoAudit?: boolean;
 };
 
 export type Env = { Bindings: Bindings; Variables: Variables };

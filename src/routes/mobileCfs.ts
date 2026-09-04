@@ -234,7 +234,12 @@ mobileCfs.post('/cfs/:id/status', async (c) => {
     await execute(db,
       `UPDATE calls_for_service SET status = ?, ${col} = COALESCE(${col}, datetime('now')), updated_at = datetime('now') WHERE id = ?`,
       status, auth.callId);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', auth.callId);
+    const updated = await queryFirst<Record<string, unknown>>(db,
+      `SELECT id, call_number, incident_type, status, location_address, location_city,
+              priority, officer_id, unit_id, notes,
+              dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+              created_at, updated_at
+       FROM calls_for_service WHERE id = ?`, auth.callId);
     await bestEffortAudit(c, auth.userId, 'MOBILE_STATUS', auth.callId, { status, source: 'pso-mobile' });
     // Mirror terminal status → serve_queue (same as the desktop path in extensions.ts PUT /:id/status).
     // The crosslink self-skips for non-PSO calls, so we can fire unconditionally.
@@ -309,7 +314,12 @@ mobileCfs.post('/cfs/:id/pso', async (c) => {
     // The PSO fields just written live on the ext table (base is at the
     // column cap) — merge it in, or the response's `call` never reflects
     // what was just saved and the mobile UI has nothing to redisplay.
-    const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', auth.callId);
+    const updatedBase = await queryFirst<Record<string, unknown>>(db,
+      `SELECT id, call_number, incident_type, status, location_address, location_city,
+              priority, officer_id, unit_id, notes,
+              dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+              created_at, updated_at
+       FROM calls_for_service WHERE id = ?`, auth.callId);
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', auth.callId);
     const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
     await bestEffortAudit(c, auth.userId, 'MOBILE_PSO', auth.callId, { fields: sets, source: 'pso-mobile' });

@@ -21,17 +21,16 @@ import type { Bindings, Variables } from '../types';
 const dailyEmailAdmin = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // No blanket middleware — auth is checked inline per handler.
-// /test-open is intentionally public (temp bypass for testing).
 
 async function requireAdmin(c: any, next: any) {
   await authMiddleware(c, async () => {});
   return requireRole('admin')(c, next);
 }
 
-// GET /test-open — PUBLIC test endpoint (no auth, temp bypass for testing)
+// GET /test-open — admin-only test endpoint
 // Sends the FULL daily report (HTML + PDF) bypassing the enabled check.
 // Query params: ?date=YYYY-MM-DD  ?to=email (override recipient)
-dailyEmailAdmin.get('/test-open', async (c) => {
+dailyEmailAdmin.get('/test-open', requireAdmin, async (c) => {
   const resendApiKey = c.env.RESEND_API_KEY;
   if (!resendApiKey) {
     return c.json({ ok: false, error: 'RESEND_API_KEY not configured' }, 503);

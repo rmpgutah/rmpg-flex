@@ -22,6 +22,9 @@ interface Props {
   vehicles: FleetVehicle[];
   filtered: FleetVehicle[];
   vehicleTotal: number | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMore: () => void;
   selectedId: string | number | null;
   isMobile: boolean;
   filterStatus: string;
@@ -33,9 +36,10 @@ interface Props {
 }
 
 export default function FleetVehicleListPanel({
-  vehicles, filtered, vehicleTotal, selectedId, isMobile,
+  vehicles, filtered, vehicleTotal, hasMore, loadingMore, loadMore,
+  selectedId, isMobile,
   filterStatus, setFilterStatus, searchQuery, setSearchQuery,
-  onSelect,   onContextMenu,
+  onSelect, onContextMenu,
 }: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
@@ -212,6 +216,23 @@ export default function FleetVehicleListPanel({
             </div>
           );
         })}
+        {hasMore && (
+          <div className="px-3 py-2 border-t border-rmpg-700">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              aria-label={loadingMore ? 'Loading more vehicles…' : `Load more vehicles (${vehicleTotal != null ? `${vehicles.length} of ${vehicleTotal} loaded` : 'more available'})`}
+              className="w-full text-[10px] font-medium py-1.5 px-3 bg-rmpg-800 hover:bg-rmpg-700 disabled:opacity-50 disabled:cursor-not-allowed border border-rmpg-600 text-rmpg-300 transition-colors duration-150"
+            >
+              {loadingMore
+                ? 'Loading…'
+                : vehicleTotal != null
+                  ? `Load more (${vehicles.length} of ${vehicleTotal} loaded)`
+                  : 'Load more'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -16,19 +16,27 @@ const POLL_INTERVAL_MS = 60_000;
 export interface UseWelfareAlertsResult {
   alerts: WelfareAlert[];
   loading: boolean;
+  error: string | null;
   refetch: () => void;
 }
 
 export function useWelfareAlerts(): UseWelfareAlertsResult {
   const [alerts, setAlerts] = useState<WelfareAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { subscribe } = useWebSocket();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refetch = useCallback(() => {
     apiFetch<WelfareAlert[]>('/dispatch/welfare/status')
-      .then((rows) => setAlerts(rows.filter(a => a.status === 'emergency' || a.status === 'overdue')))
-      .catch(() => {})
+      .then((rows) => {
+        setAlerts(rows.filter(a => a.status === 'emergency' || a.status === 'overdue'));
+        setError(null);
+      })
+      .catch((err) => {
+        console.warn('[useWelfareAlerts] fetch failed:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load welfare status');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -50,5 +58,5 @@ export function useWelfareAlerts(): UseWelfareAlertsResult {
     return unsub;
   }, [subscribe, refetch]);
 
-  return { alerts, loading, refetch };
+  return { alerts, loading, error, refetch };
 }

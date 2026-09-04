@@ -178,7 +178,7 @@ function headerFingerprint(headers: HeadersInit | undefined): string {
   return entries
     .map(([k, v]) => `${k.toLowerCase()}:${v}`)
     .sort()
-    .join(' ');
+    .join('');
 }
 
 // ─── Retry config for 500/502/503/504 (server restart recovery) ────
@@ -448,14 +448,17 @@ export function resolveUploadsUrl(opts: { isDev: boolean; hostname?: string }): 
   return `${CF_WORKER_DIRECT_BASE}/api/uploads`;
 }
 
-/** URL for POST /api/uploads — relative on the app origin, Worker host otherwise. */
-export function uploadsUrl(): string {
-  return resolveUploadsUrl({
-    isDev: import.meta.env.DEV,
-    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
-  });
-}
+// Cloudflare Pages does NOT support 200-rewrites to another origin in
+// _redirects (it only honours redirect statuses). So a relative /api/uploads
+// from the Pages SPA (rmpgutah.us) resolves to the Pages domain, not the
+// Worker — which causes ERR_HTTP2_PROTOCOL_ERROR. All multipart upload POSTs
+// must go directly to the Worker in production.
+const UPLOADS_URL = import.meta.env.DEV ? '/api/uploads' : `${CF_WORKER_DIRECT_BASE}/api/uploads`;
 
+/** Absolute URL for POST /api/uploads in production; relative in dev (Vite proxies it). */
+export function uploadsUrl(): string {
+  return UPLOADS_URL;
+}
 
 /**
  * Absolute URL for a published download (installer / OS image).

@@ -42,6 +42,7 @@ import { useAuth } from '../context/AuthContext';
 import { AssessorBackfillButton } from '../components/AssessorBackfillButton';
 import { AssessorReviewQueueBanner } from '../components/AssessorReviewQueueBanner';
 import DlScanImportModal from '../components/DlScanImportModal';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
@@ -154,6 +155,11 @@ export default function RecordsPage() {
     setError(message);
   }, []);
 
+  // Truncation warnings — set when server returns fewer records than total
+  const [personsTruncated, setPersonsTruncated] = useState<{ returned: number; total: number } | null>(null);
+  const [vehiclesTruncated, setVehiclesTruncated] = useState<{ returned: number; total: number } | null>(null);
+  const [evidenceTruncated, setEvidenceTruncated] = useState<{ returned: number; total: number } | null>(null);
+
   // Evidence data
   const [evidence, setEvidence] = useState<any[]>([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
@@ -184,8 +190,14 @@ export default function RecordsPage() {
   const fetchPersons = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingPersons(true); clearError(); }
     try {
-      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`));
+      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: { returned?: number; total?: number } }>(`/records/persons?limit=100000&archived=${showArchived}`));
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
+      const pg = res?.pagination as { returned?: number; total?: number } | undefined;
+      if (pg && typeof pg.returned === 'number' && typeof pg.total === 'number' && pg.returned < pg.total) {
+        setPersonsTruncated({ returned: pg.returned, total: pg.total });
+      } else {
+        setPersonsTruncated(null);
+      }
     } catch (err) {
       if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load persons', () => { void fetchPersons(); });
     } finally {
@@ -196,8 +208,14 @@ export default function RecordsPage() {
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingVehicles(true); clearError(); }
     try {
-      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`));
+      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: { returned?: number; total?: number } }>(`/records/vehicles?limit=100000&archived=${showArchived}`));
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
+      const pg = res?.pagination as { returned?: number; total?: number } | undefined;
+      if (pg && typeof pg.returned === 'number' && typeof pg.total === 'number' && pg.returned < pg.total) {
+        setVehiclesTruncated({ returned: pg.returned, total: pg.total });
+      } else {
+        setVehiclesTruncated(null);
+      }
     } catch (err) {
       if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load vehicles', () => { void fetchVehicles(); });
     } finally {
@@ -220,10 +238,17 @@ export default function RecordsPage() {
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoadingEvidence(true);
     try {
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=100000&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: { returned?: number; total?: number } }>(`/records/evidence?limit=100000&archived=${showArchived}`);
       setEvidence(res?.data || []);
+      const pg = res?.pagination as { returned?: number; total?: number } | undefined;
+      if (pg && typeof pg.returned === 'number' && typeof pg.total === 'number' && pg.returned < pg.total) {
+        setEvidenceTruncated({ returned: pg.returned, total: pg.total });
+      } else {
+        setEvidenceTruncated(null);
+      }
     } catch {
       setEvidence([]);
+      setEvidenceTruncated(null);
     } finally {
       if (!options?.silent) setLoadingEvidence(false);
     }

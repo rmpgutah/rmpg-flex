@@ -172,10 +172,10 @@ export default function DashCameraTab({
   const SUMMARY_CARDS = [
     { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
     { label: 'Installed', value: stats.installed, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-600/30', topBorder: 'border-t-gray-500' },
-    { label: 'Available', value: stats.available, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
-    { label: 'Damaged/Lost', value: stats.damaged, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgClass: 'bg-[#140a1a]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+    { label: 'Available', value: stats.available, color: 'text-green-400', bgClass: 'bg-green-950/25', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgClass: 'bg-amber-950/25', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'Damaged/Lost', value: stats.damaged, color: 'text-red-400', bgClass: 'bg-red-950/25', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgClass: 'bg-purple-950/25', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
   ];
 
   return (
@@ -204,7 +204,7 @@ export default function DashCameraTab({
 
       {/* Alert Banner */}
       {stats.damaged > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-red-950/25">
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <span className="text-xs text-red-400 font-semibold">
             {stats.damaged} camera{stats.damaged !== 1 ? 's' : ''} damaged or lost

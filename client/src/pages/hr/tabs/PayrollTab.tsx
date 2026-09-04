@@ -18,6 +18,8 @@ import { useToast } from '../../../components/ToastProvider';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { withAlpha } from '../../../utils/withAlpha';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -133,7 +135,15 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   // ─── Overtime ─────────────────────────────────────────────
   const [otRequests, setOtRequests] = useState<OvertimeRequest[]>([]);
   const [showOtForm, setShowOtForm] = useState(false);
-  const [otForm, setOtForm] = useState({ requested_date: '', hours_requested: '', reason: '' });
+
+  const OT_FORM_DEFAULT = { requested_date: '', hours_requested: '', reason: '' };
+  const {
+    form: otForm,
+    setForm: setOtForm,
+    isDirty: otFormDirty,
+    clearDraft: clearOtDraft,
+    snapshot: snapshotOt,
+  } = useFormDraft({ storageKey: 'rmpg_payroll_ot_form', defaultValue: OT_FORM_DEFAULT, isActive: showOtForm });
 
   // ─── Forms ────────────────────────────────────────────────
   const [showPeriodForm, setShowPeriodForm] = useState(false);
@@ -144,10 +154,24 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const [editValues, setEditValues] = useState<Record<string, number>>({});
 
   // Period form
-  const [periodForm, setPeriodForm] = useState({ name: '', start_date: '', end_date: '', pay_date: '' });
+  const PERIOD_FORM_DEFAULT = { name: '', start_date: '', end_date: '', pay_date: '' };
+  const {
+    form: periodForm,
+    setForm: setPeriodForm,
+    isDirty: periodFormDirty,
+    clearDraft: clearPeriodDraft,
+    snapshot: snapshotPeriod,
+  } = useFormDraft({ storageKey: 'rmpg_payroll_period_form', defaultValue: PERIOD_FORM_DEFAULT, isActive: showPeriodForm });
 
   // Rate form
-  const [rateForm, setRateForm] = useState({ user_id: '', pay_type: 'hourly', rate: '', overtime_rate: '1.5', holiday_rate: '1.5', effective_date: '', notes: '' });
+  const RATE_FORM_DEFAULT = { user_id: '', pay_type: 'hourly', rate: '', overtime_rate: '1.5', holiday_rate: '1.5', effective_date: '', notes: '' };
+  const {
+    form: rateForm,
+    setForm: setRateForm,
+    isDirty: rateFormDirty,
+    clearDraft: clearRateDraft,
+    snapshot: snapshotRate,
+  } = useFormDraft({ storageKey: 'rmpg_payroll_rate_form', defaultValue: RATE_FORM_DEFAULT, isActive: showRateForm });
 
   const { addToast } = useToast();
 
@@ -243,7 +267,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       await apiFetch('/hr/payroll/overtime', { method: 'POST', body: JSON.stringify(otForm) });
       addToast('OT request submitted', 'success');
       setShowOtForm(false);
-      setOtForm({ requested_date: '', hours_requested: '', reason: '' });
+      clearOtDraft();
       fetchOtRequests();
     } catch { addToast('Failed to submit OT request', 'error'); }
   };
@@ -283,7 +307,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       });
       addToast('Pay period created', 'success');
       setShowPeriodForm(false);
-      setPeriodForm({ name: '', start_date: '', end_date: '', pay_date: '' });
+      clearPeriodDraft();
       fetchPeriods();
     } catch { addToast('Failed to create pay period', 'error'); }
   };
@@ -341,7 +365,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       });
       addToast('Pay rate set', 'success');
       setShowRateForm(false);
-      setRateForm({ user_id: '', pay_type: 'hourly', rate: '', overtime_rate: '1.5', holiday_rate: '1.5', effective_date: '', notes: '' });
+      clearRateDraft();
       fetchRates();
     } catch { addToast('Failed to set pay rate', 'error'); }
   };
@@ -551,7 +575,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button type="button" data-hr-new-btn onClick={() => setShowPeriodForm(!showPeriodForm)}
+              <button type="button" data-hr-new-btn onClick={() => { setShowPeriodForm(v => { if (!v) snapshotPeriod(); return !v; }); }}
                 className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> New Period
               </button>
@@ -565,6 +589,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           {/* Create form */}
           {showPeriodForm && (
             <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-4 space-y-3">
+              <UnsavedChangesGuard hasUnsavedChanges={periodFormDirty} />
               <h4 className="text-xs font-semibold text-rmpg-100">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
@@ -589,7 +614,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100">Cancel</button>
+                <button type="button" onClick={() => { setShowPeriodForm(false); clearPeriodDraft(); }} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100">Cancel</button>
                 <button type="button" onClick={handleCreatePeriod}
                   className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-colors">Create</button>
               </div>
@@ -669,7 +694,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button type="button" onClick={() => setShowRateForm(!showRateForm)}
+              <button type="button" onClick={() => { setShowRateForm(v => { if (!v) snapshotRate(); return !v; }); }}
                 className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> Set Rate
               </button>
@@ -679,6 +704,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           {/* Create rate form */}
           {showRateForm && (
             <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-4 space-y-3">
+              <UnsavedChangesGuard hasUnsavedChanges={rateFormDirty} />
               <h4 className="text-xs font-semibold text-rmpg-100">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
@@ -720,7 +746,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100">Cancel</button>
+                <button type="button" onClick={() => { setShowRateForm(false); clearRateDraft(); }} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100">Cancel</button>
                 <button type="button" onClick={handleCreateRate}
                   className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-colors">Save Rate</button>
               </div>
@@ -916,7 +942,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <AlertTriangle size={15} /> Overtime Requests
             </h3>
             <div className="flex-1" />
-            <button type="button" onClick={() => setShowOtForm(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30 transition-colors">
+            <button type="button" onClick={() => { snapshotOt(); setShowOtForm(true); }} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30 transition-colors">
               <Plus size={13} /> Request OT
             </button>
           </div>
@@ -924,6 +950,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           {/* OT Request Form */}
           {showOtForm && (
             <div className="p-3 border border-brand-500/30 bg-surface-base space-y-2">
+              <UnsavedChangesGuard hasUnsavedChanges={otFormDirty} />
               <div className="text-xs font-bold text-rmpg-100 uppercase">New OT Request</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
@@ -943,7 +970,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <button type="button" onClick={handleRequestOt} className="flex items-center gap-1 px-3 py-1 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30">
                   <Check size={12} /> Submit Request
                 </button>
-                <button type="button" onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-rmpg-100">Cancel</button>
+                <button type="button" onClick={() => { setShowOtForm(false); clearOtDraft(); }} className="px-3 py-1 text-xs text-rmpg-400 hover:text-rmpg-100">Cancel</button>
               </div>
             </div>
           )}

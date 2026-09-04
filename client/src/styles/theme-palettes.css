@@ -72,6 +72,8 @@ html.theme-dark,
   --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;  /* red    */
   --sev-high: #f97316;                                     /* orange */
   --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;           /* amber  */
+  --text-on-warn: #000;   /* text on --sev-warn amber background */
+  --text-on-brand: #fff;  /* text on --brand-600 active-state background */
   --sev-caution: #facc15;                                  /* yellow */
   --sev-ok: #22c55e; --sev-ok-soft: #86efac;               /* green  */
   --sev-info: #60a5fa;                                     /* blue   */
@@ -237,6 +239,10 @@ html.theme-dark,
   --toolbar-nav-active: #0a1018;
   --bevel-highlight: #3a4f66;
   --titlebar-gradient: linear-gradient(180deg, #1d2d3f 0%, #15212e 50%, #1d2d3f 100%);
+  /* Window chrome traffic-light triad */
+  --window-chrome-close: var(--sev-critical);
+  --window-chrome-minimize: var(--accent-silver-400);
+  --window-chrome-maximize: var(--sev-ok);
 }
 
 /* ---- DAY (light grey Spillman; scale INVERTED) ---- */
@@ -315,6 +321,8 @@ html.theme-light {
   --sev-critical: #b91c1c; --sev-critical-soft: #dc2626;
   --sev-high: #c2410c;
   --sev-warn: #b45309; --sev-warn-soft: #d97706;
+  --text-on-warn: #fff;   /* text on darker warn background in light theme */
+  --text-on-brand: #fff;  /* text on --brand-600 active-state background */
   --sev-caution: #a16207;
   --sev-ok: #15803d; --sev-ok-soft: #16a34a;
   --sev-info: #2563eb;
@@ -368,6 +376,10 @@ html.theme-light {
   --bevel-highlight: #c3cdd8;
   --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
   --rt-led-on: var(--sev-ok);
+  /* Window chrome traffic-light triad */
+  --window-chrome-close: var(--sev-critical);
+  --window-chrome-minimize: var(--accent-silver-400);
+  --window-chrome-maximize: var(--sev-ok);
 }
 
 /* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
@@ -439,6 +451,8 @@ html.theme-legacy-black {
   --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;
   --sev-high: #f97316;
   --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;
+  --text-on-warn: #000;   /* text on --sev-warn amber background */
+  --text-on-brand: #fff;  /* text on --brand-600 active-state background */
   --sev-caution: #facc15;
   --sev-ok: #22c55e; --sev-ok-soft: #86efac;
   --sev-info: #60a5fa;
@@ -487,6 +501,10 @@ html.theme-legacy-black {
   --bevel-highlight: #3a3a3a;
   --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
   --rt-led-on: var(--sev-ok);
+  /* Window chrome traffic-light triad */
+  --window-chrome-close: var(--sev-critical);
+  --window-chrome-minimize: var(--accent-silver-400);
+  --window-chrome-maximize: var(--sev-ok);
 }
 
 /* ---- BLUE & SILVER (optional full-override theme; same tier as legacy-black —
@@ -607,6 +625,8 @@ html.theme-blue-silver {
   --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;
   --sev-high: #f97316;
   --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;
+  --text-on-warn: #000;   /* text on --sev-warn amber background */
+  --text-on-brand: #fff;  /* text on --brand-600 active-state background */
   --sev-caution: #facc15;
   --sev-ok: #22c55e; --sev-ok-soft: #86efac;
   --sev-info: #60a5fa;
@@ -672,6 +692,10 @@ html.theme-blue-silver {
   --bevel-highlight: #46688c;
   --titlebar-gradient: linear-gradient(180deg, #2c4f74 0%, #22405f 50%, #2c4f74 100%);
   --rt-led-on: var(--sev-ok);
+  /* Window chrome traffic-light triad */
+  --window-chrome-close: var(--sev-critical);
+  --window-chrome-minimize: var(--accent-silver-400);
+  --window-chrome-maximize: var(--sev-ok);
 }
 
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */

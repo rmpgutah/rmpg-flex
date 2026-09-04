@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, execute } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { requireRole } from '../../middleware/auth';
 
 const unitMessages = new Hono<Env>();
 
@@ -27,7 +28,9 @@ async function reconcile(db: import('@cloudflare/workers-types').D1Database) {
 }
 
 // POST /api/dispatch/units/:id/messages
-unitMessages.post('/:id/messages', async (c) => {
+unitMessages.post('/:id/messages',
+  requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'),
+  async (c) => {
   const db = getDb(c.env);
   await reconcile(db);
 
@@ -54,7 +57,9 @@ unitMessages.post('/:id/messages', async (c) => {
 });
 
 // GET /api/dispatch/units/:id/messages?call_id=&limit=50
-unitMessages.get('/:id/messages', async (c) => {
+unitMessages.get('/:id/messages',
+  requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'),
+  async (c) => {
   const db = getDb(c.env);
   await reconcile(db);
 

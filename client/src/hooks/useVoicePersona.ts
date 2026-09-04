@@ -64,6 +64,14 @@ function writeLocal(p: Partial<VoicePersona>): void {
   if (p.brainEnabled !== undefined) localStorage.setItem(LS.brainEnabled, p.brainEnabled ? '1' : '0');
 }
 
+interface VoicePersonaRow {
+  voice_persona?: string;
+  voice_rate?: number;
+  voice_pitch?: number;
+  voice_terseness?: string;
+  voice_brain_enabled?: 0 | 1;
+}
+
 export function useVoicePersona() {
   const [persona, setPersonaState] = useState<VoicePersona>(readLocal);
   const userEditedRef = useRef(false);
@@ -72,14 +80,25 @@ export function useVoicePersona() {
   // or the user has already called setPersona() (user edits win).
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any>('/api/voice-persona')
+    apiFetch<VoicePersonaRow>('/api/voice-persona')
       .then((row) => {
         if (cancelled || userEditedRef.current || !row) return;
+        // Runtime guard: only apply fields that are actually present and typed
+        // correctly. If the server renames or restructures fields, fall back to
+        // defaults rather than silently applying undefined values.
+        const voiceId = typeof row.voice_persona === 'string' && row.voice_persona
+          ? row.voice_persona : DEFAULT.voiceId;
+        const rate = typeof row.voice_rate === 'number' && Number.isFinite(row.voice_rate)
+          ? row.voice_rate : DEFAULT.rate;
+        const pitch = typeof row.voice_pitch === 'number' && Number.isFinite(row.voice_pitch)
+          ? row.voice_pitch : DEFAULT.pitch;
+        const terseness = typeof row.voice_terseness === 'string' && VALID_TERSENESS.has(row.voice_terseness)
+          ? (row.voice_terseness as VoicePersona['terseness']) : DEFAULT.terseness;
         const next: VoicePersona = {
-          voiceId:      row.voice_persona ?? DEFAULT.voiceId,
-          rate:         row.voice_rate    ?? DEFAULT.rate,
-          pitch:        row.voice_pitch   ?? DEFAULT.pitch,
-          terseness:    row.voice_terseness ?? DEFAULT.terseness,
+          voiceId,
+          rate,
+          pitch,
+          terseness,
           brainEnabled: row.voice_brain_enabled === 1,
         };
         writeLocal(next);

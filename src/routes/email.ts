@@ -30,7 +30,7 @@
 
 import { Hono } from 'hono';
 import { authMiddleware, requireRole } from '../middleware/auth';
-import { getDb, queryFirst, query, execute, columnExists } from '../utils/db';
+import { getDb, queryFirst, query, execute, columnExists, queryInChunks } from '../utils/db';
 import {
   parseAddrList, mapAttachments, buildSendPayload, totalAttachmentBytes, MAX_TOTAL_ATTACHMENT_BYTES,
   type SendAttachment, type SendInput,
@@ -1418,12 +1418,11 @@ async function runAutolinker(
     candidates.add(tok);
   }
   if (candidates.size) {
-    const cands = [...candidates].slice(0, 99); // D1 100-bound-parameter cap
-    const placeholders = cands.map(() => '?').join(',');
-    const hits = await query<{ id: number; plate_number: string }>(
+    const cands = [...candidates];
+    const hits = await queryInChunks<{ id: number; plate_number: string }>(
       db,
-      `SELECT id, plate_number FROM vehicles_records WHERE plate_number IN (${placeholders}) LIMIT 50`,
-      ...cands,
+      cands,
+      (placeholders) => `SELECT id, plate_number FROM vehicles_records WHERE plate_number IN (${placeholders}) LIMIT 50`,
     );
     for (const v of hits) {
       const ref = (v.plate_number || '').toUpperCase();

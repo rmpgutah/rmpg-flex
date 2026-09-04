@@ -1054,7 +1054,8 @@ export default function ServeIntakePage() {
   // the failure it describes stayed live: with the dropdown silently empty an
   // operator cannot tell "no clients" from "the load broke", attaches no client,
   // and downstream billing auto-assign has nothing to key on.
-  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles || !!clientLoadError;
+  const missingDefendant = detectedDefendants.length > 1 && selectedDefendants.length === 0;
+  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles || !!clientLoadError || missingDefendant;
 
   // Degraded-engine warning: true when at least one document that finished
   // OCR fell back to the free Workers AI model instead of the configured
@@ -1296,6 +1297,12 @@ export default function ServeIntakePage() {
               selected={selectedDefendants}
               onChange={setSelectedDefendants}
             />
+            {missingDefendant && (
+              <p className="text-[10px] text-amber-400 flex items-center gap-1 mt-1 mb-2">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                Select at least one defendant to serve before submitting.
+              </p>
+            )}
             {/* Recipient identity */}
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Recipient</p>

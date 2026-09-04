@@ -1081,17 +1081,19 @@ export default function CitationsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className={`flex items-center justify-between px-3 py-2 border-t border-rmpg-700 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+      <div className={`flex items-center justify-between px-3 py-2 border-t border-rmpg-700 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+        {totalPages > 1 ? (
           <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Prev
           </button>
-          <span>Page {page} of {totalPages}</span>
+        ) : <span />}
+        <span>Page {page} of {totalPages}</span>
+        {totalPages > 1 ? (
           <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Next
           </button>
-        </div>
-      )}
+        ) : <span />}
+      </div>
     </>
   );
 
@@ -1513,7 +1515,7 @@ export default function CitationsPage() {
             mode={previewMode}
             onModeChange={setPreviewMode}
           />
-          <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
+          <button type="button" onClick={handleCancelForm} aria-label="Cancel form" className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -1669,7 +1671,7 @@ export default function CitationsPage() {
                 />
                 {personSearching && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 animate-spin" />}
                 {form.person_id && (
-                  <button type="button" onClick={clearPerson} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-200">
+                  <button type="button" onClick={clearPerson} aria-label="Clear selected person" className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-200">
                     <X size={12} />
                   </button>
                 )}

@@ -297,6 +297,59 @@ const PERSON_EXT_COLUMNS = new Set([
 const PERSON_EXT_READ_COLUMNS = [...PERSON_EXT_COLUMNS].filter(c => c !== 'raw_aamva_elements');
 const PERSON_EXT_SELECT = PERSON_EXT_READ_COLUMNS.join(', ');
 
+// Explicit column projections for persons queries.
+// `persons` currently has 94 columns (D1 cap is 100). Using SELECT * risks a
+// silent runtime failure the moment any future migration pushes it to 100+.
+// The ext-overflow pattern (persons_ext) keeps the base table from growing
+// further, but these constants guard existing queries against the cap and
+// reduce payload size on list/search paths.
+
+/** Full base-table projection for single-record detail reads (GET /:id,
+ *  POST/PUT response). Includes all columns stored on `persons` (not ext). */
+const PERSONS_FULL_SELECT = [
+  'id', 'first_name', 'last_name', 'middle_name', 'alias_nickname', 'dob', 'gender', 'race', 'aliases',
+  'height', 'height_feet', 'height_inches', 'weight', 'build', 'complexion',
+  'hair_color', 'hair_length', 'hair_style',
+  'eye_color', 'facial_hair', 'glasses', 'shoe_size',
+  'scars_marks_tattoos', 'clothing_description',
+  'address', 'city', 'state', 'zip',
+  'phone', 'phone_secondary', 'home_phone', 'work_phone', 'email', 'email_secondary',
+  'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
+  'ssn_last4', 'ssn_full',
+  'photo_url', 'photo', 'id_image_url',
+  'id_type', 'id_number', 'id_state', 'id_expiry',
+  'employer', 'occupation',
+  'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+  'language', 'gang_affiliation', 'is_sex_offender', 'citizenship', 'marital_status',
+  'probation_parole', 'probation_parole_officer', 'known_associates', 'social_media',
+  'caution_flags', 'flags', 'notes',
+  'ncic_number', 'sor_number', 'fbi_number', 'state_id_number',
+  'passport_number', 'passport_country', 'immigration_status',
+  'disability_flags', 'mental_health_flags', 'substance_abuse', 'medication_notes',
+  'education_level', 'military_branch', 'military_status', 'tribal_affiliation',
+  'tattoo_description', 'scar_description', 'piercing_description',
+  'distinguishing_features', 'identifying_marks_location',
+  'date_last_seen', 'location_last_seen', 'alias_dob',
+  'watchlist_match', 'watchlist_checked_at', 'blood_type',
+  // Legal-entity fields (managed by legal module)
+  'role_tag', 'entity_type', 'bar_number', 'firm_name',
+  'created_at', 'updated_at',
+].join(', ');
+
+/** Targeted projection for search/list paths. Includes identifying and
+ *  contact fields needed by search results, NCIC terminal, and link modals.
+ *  Omits bulk/forensic fields (medication_notes, military_status, etc.) to
+ *  reduce payload on queries that may return 10–50 rows. */
+const PERSONS_SEARCH_SELECT = [
+  'id', 'first_name', 'last_name', 'middle_name', 'alias_nickname', 'aliases',
+  'dob', 'gender', 'race', 'height', 'eye_color', 'hair_color',
+  'address', 'city', 'state', 'zip',
+  'phone', 'phone_secondary', 'home_phone', 'work_phone', 'email', 'email_secondary',
+  'dl_number', 'dl_state', 'flags', 'caution_flags', 'photo_url', 'notes',
+  'is_sex_offender', 'watchlist_match', 'ncic_number', 'sor_number',
+  'gang_affiliation', 'scars_marks_tattoos', 'created_at', 'updated_at',
+].join(', ');
+
 /** Upsert the overflow fields present in `body` into persons_ext (1:1 on
  *  person_id). No-op when the body carries none of them. */
 export async function writePersonExt(

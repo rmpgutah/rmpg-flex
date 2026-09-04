@@ -76,7 +76,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       }
       setSelectedCall((prev) => prev?.id === callId ? null : prev);
     } catch (err) {
-      console.error('Failed to archive call:', err);
       addToast('Failed to archive call', 'error');
     }
   }, [setCalls, setArchivedCalls, setSelectedCall, addToast]);
@@ -98,7 +97,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         setSelectedCall((prev) => prev?.id === callId ? restored : prev);
       }
     } catch (err) {
-      console.error('Failed to unarchive call:', err);
       addToast('Failed to unarchive call', 'error');
     }
   }, [setCalls, setArchivedCalls, setSelectedCall, addToast]);
@@ -116,7 +114,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         setArchivedCalls([]);
       }
     } catch (err) {
-      console.error('Failed to bulk archive calls:', err);
       addToast('Failed to bulk archive calls', 'error');
     } finally {
       setIsBulkArchiving(false);
@@ -151,7 +148,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       // ~2050) still handles stale cleared calls; manual archive is available
       // via the Archive button for immediate cleanup.
     } catch (err) {
-      console.error('Failed to update status:', err);
       addToast('Failed to update call status', 'error');
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
@@ -172,7 +168,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         setSelectedCall((prev) => prev?.id === callId ? hold(prev) : prev);
       }
     } catch (err) {
-      console.error('Failed to hold call:', err);
       addToast(err instanceof Error ? err.message : 'Failed to hold call', 'error');
     }
   }, [setCalls, setSelectedCall, addToast]);
@@ -192,7 +187,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         setSelectedCall((prev) => prev?.id === callId ? resume(prev) : prev);
       }
     } catch (err) {
-      console.error('Failed to resume call:', err);
       addToast('Failed to resume call', 'error');
     }
   }, [setCalls, setSelectedCall, addToast]);
@@ -206,7 +200,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       // Reverting from cleared re-dispatches the unit → refresh units.
       await refreshUnits();
     } catch (err: any) {
-      console.error('Failed to revert status:', err);
       addToast('Failed to revert call status', 'error');
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
@@ -237,12 +230,10 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
           await apiFetch(`/dispatch/calls/${callId}/generate-incident`, { method: 'POST' });
           navigate('/incidents');
         } catch (err: any) {
-          console.error('Failed to promote call to incident:', err);
           addToast(err?.error || err?.message || 'Failed to create incident report', 'error');
         }
       }
     } catch (err: any) {
-      console.error('Failed to clear call:', err);
       addToast('Failed to clear call', 'error');
     }
     setDispositionPromptCallId(null);
@@ -285,7 +276,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         addToast(`Priority changed to ${priority}`, 'success');
       }
     } catch (err) {
-      console.error('Failed to change priority:', err);
       addToast('Failed to change priority', 'error');
     }
   }, [setCalls, setSelectedCall, addToast]);
@@ -301,7 +291,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
       addToast('Law enforcement notified', 'success');
     } catch (err) {
-      console.error('Failed to notify LE:', err);
       addToast('Failed to notify LE', 'error');
     }
   }, [setCalls, setSelectedCall, addToast]);
@@ -322,7 +311,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         navigate('/incidents');
         return;
       }
-      console.error('Failed to generate incident:', err);
       addToast(msg || 'Failed to generate incident report', 'error');
     } finally {
       setIsGenerating(false);

@@ -66,7 +66,7 @@ export default function FleetPage() {
 
   // ── Vehicle list ──────────────────────────────────────────
   const {
-    vehicles, vehicleTotal, filtered,
+    vehicles, vehicleTotal, hasMore, loadingMore, loadMore, filtered,
     filterStatus, setFilterStatus, searchQuery, setSearchQuery,
     showArchived, setShowArchived,
     statusCounts, avgMileage, refetch: fetchVehicles,
@@ -426,6 +426,9 @@ export default function FleetPage() {
           vehicles={vehicles}
           filtered={filtered}
           vehicleTotal={vehicleTotal}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loadMore={loadMore}
           selectedId={selectedId}
           isMobile={isMobile}
           filterStatus={filterStatus}

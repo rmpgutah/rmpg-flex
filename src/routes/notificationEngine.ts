@@ -22,6 +22,14 @@ import type { D1Database, DurableObjectNamespace } from '@cloudflare/workers-typ
 import { query, execute } from '../utils/db';
 import { emitAlert } from '../utils/alertHub';
 
+// The complete set of valid role strings in this system. Used to allowlist
+// roles parsed from target_roles JSON so an oversized or malicious JSON blob
+// can never exceed D1's 100-parameter cap on a single query.
+const KNOWN_ROLES = new Set([
+  'admin', 'manager', 'supervisor', 'officer',
+  'dispatcher', 'contract_manager', 'client_viewer', 'human_resources',
+]);
+
 export interface NotifyContext {
   title?: string;
   message?: string;
@@ -157,13 +165,18 @@ async function resolveTargets(
   try { ids = JSON.parse(userIdsJson || '[]'); } catch { /* ignore */ }
 
   if (Array.isArray(roles) && roles.length > 0) {
-    const placeholders = roles.map(() => '?').join(',');
-    const rows = await query<{ id: number }>(
-      db,
-      `SELECT id FROM users WHERE status = 'active' AND role IN (${placeholders})`,
-      ...roles,
-    );
-    rows.forEach((r) => set.add(Number(r.id)));
+    // Allowlist against known roles — prevents a crafted target_roles JSON blob
+    // from injecting more than 8 parameters and hitting D1's 100-param cap.
+    const safeRoles = roles.filter((r) => typeof r === 'string' && KNOWN_ROLES.has(r));
+    if (safeRoles.length > 0) {
+      const placeholders = safeRoles.map(() => '?').join(',');
+      const rows = await query<{ id: number }>(
+        db,
+        `SELECT id FROM users WHERE status = 'active' AND role IN (${placeholders})`,
+        ...safeRoles,
+      );
+      rows.forEach((r) => set.add(Number(r.id)));
+    }
   }
   if (Array.isArray(ids)) {
     for (const id of ids) {

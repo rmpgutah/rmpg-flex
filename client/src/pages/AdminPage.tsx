@@ -292,7 +292,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning', 'automations', 'sync_status', 'offline-queue'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'alert_sounds', 'gps_health', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'court_lookups', 'kiosk_devices', 'ocr_learning', 'automations', 'sync_status', 'offline-queue'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -728,6 +728,7 @@ export default function AdminPage() {
         { id: 'map_data_files', label: 'Map Data Files', icon: Map },
         { id: 'linkage', label: 'Linkage Options', icon: Link2 },
         { id: 'health', label: 'System Health', icon: Activity },
+        { id: 'gps_health', label: 'GPS Health', icon: Navigation },
         { id: 'downloads', label: 'Downloads', icon: Download },
         { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
         { id: 'sync_status' as TabId, label: 'Sync Status', icon: Server },
@@ -747,6 +748,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
+        { id: 'alert_sounds', label: 'Alert Sounds', icon: Radio },
         { id: 'automations', label: 'Smart Automations', icon: Zap },
         { id: 'radio', label: 'Radio Channels', icon: Radio },
       ],
@@ -765,6 +767,7 @@ export default function AdminPage() {
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'person_intel', label: 'Person Intel', icon: Search },
+        { id: 'court_lookups', label: 'Court Lookups', icon: Search },
         { id: 'cloudflare', label: 'Cloudflare', icon: Cloud },
         { id: 'kiosk_devices', label: 'Kiosk Devices', icon: MonitorSmartphone },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },

@@ -669,13 +669,17 @@ aggregates.get('/history-map', async (c) => {
     const db = getDb(c.env);
     const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '30', 10) || 30));
     const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '5000', 10) || 5000));
+    // Parameter budget: 1 (datetime) + statuses(≤10) + types(≤20) + priorities(≤5) + 1 (LIMIT) = 37 max.
+    // D1 cap is 100 bound params. Types cap lowered from 30→20 to keep the combined total well under 80.
     const csv = (q?: string, cap = 20) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean).slice(0, cap) : []);
     const statuses = csv(c.req.query('status'), 10);
-    const types = csv(c.req.query('types'), 30);
+    const types = csv(c.req.query('types'), 20);  // capped at 20 (was 30) to protect combined param budget
     const priorities = csv(c.req.query('priority'), 5);
 
     const where: string[] = ['latitude IS NOT NULL', 'longitude IS NOT NULL', "created_at >= datetime('now', ?)"];
     const params: unknown[] = [`-${days} days`];
+    // addIn() appends an IN-list to where[] and params[]. Combined cap: statuses(10)+types(20)+priorities(5)+2 = 37.
+    // Never exceed 95 params total (D1 hard cap is 100; assertion below guards against future param additions).
     const addIn = (col: string, vals: string[]) => {
       where.push(`${col} IN (${vals.map(() => '?').join(',')})`);
       params.push(...vals);
@@ -683,6 +687,10 @@ aggregates.get('/history-map', async (c) => {
     if (statuses.length) addIn('status', statuses);
     if (types.length) addIn('incident_type', types);
     if (priorities.length) addIn('priority', priorities);
+
+    // Guard: params[] + 1 (LIMIT) must stay under 100 (D1 bound-parameter cap).
+    // The csv() caps above guarantee at most 37, but this assertion protects against future additions.
+    if (params.length + 1 > 95) throw new Error('D1 param cap exceeded in /dispatch/history-map query');
 
     const rows = await query<Record<string, unknown>>(db, `
       SELECT id, call_number, incident_type, priority, status, disposition,

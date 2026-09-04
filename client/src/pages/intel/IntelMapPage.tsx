@@ -13,6 +13,7 @@ import { useIntelGeo } from './useIntelGeo';
 import { LAYER_DEFS, toGeoJSON } from './map/geoLayers';
 import { escapeHtml } from '../../utils/sanitize';
 import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
+import { TACTICAL_TEXT_DIM } from '../map/utils/tacticalPalette';
 
 const DAYS_OPTS = [1, 7, 30];
 
@@ -63,6 +64,11 @@ export default function IntelMapPage() {
     const map = mapRef.current;
     if (!map || !ready) return;
     const allFeatures: Array<[number, number]> = [];
+    type ClickHandler = (e: mapboxgl.MapLayerMouseEvent) => void;
+    type CursorHandler = () => void;
+    const clickHandlers: Array<[string, ClickHandler]> = [];
+    const enterHandlers: Array<[string, CursorHandler]> = [];
+    const leaveHandlers: Array<[string, CursorHandler]> = [];
     for (const def of LAYER_DEFS) {
       const srcId = `intel-${def.key}`;
       safeRemoveLayer(map, srcId);
@@ -75,22 +81,35 @@ export default function IntelMapPage() {
         id: srcId, type: 'circle', source: srcId,
         paint: { 'circle-color': def.color, 'circle-radius': 6, 'circle-stroke-color': '#000', 'circle-stroke-width': 1, 'circle-opacity': 0.85 },
       });
-      map.on('click', srcId, (e) => {
+      const clickHandler: ClickHandler = (e) => {
         const p = e.features?.[0]?.properties as { entity_type?: string; entity_id?: number; label?: string } | undefined;
         if (!p?.entity_type) return;
         const type = p.entity_type, id = Number(p.entity_id);
         if (type === 'vehicle' || type === 'person') { selectEntity(type, id, p.label || `#${id}`); return; }
         if (type === 'warrant') { navigate(`/warrants?id=${id}`); return; }
-        popupRef.current?.setLngLat(e.lngLat).setHTML(`<div style="font:11px monospace;color:#111">${escapeHtml(p.label || type)}</div>`).addTo(map);
-      });
-      map.on('mouseenter', srcId, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', srcId, () => { map.getCanvas().style.cursor = ''; });
+        popupRef.current?.setLngLat(e.lngLat).setHTML(`<div style="font:11px monospace;color:${TACTICAL_TEXT_DIM}">${escapeHtml(p.label || type)}</div>`).addTo(map);
+      };
+      const enterHandler: CursorHandler = () => { map.getCanvas().style.cursor = 'pointer'; };
+      const leaveHandler: CursorHandler = () => { map.getCanvas().style.cursor = ''; };
+      map.on('click', srcId, clickHandler);
+      map.on('mouseenter', srcId, enterHandler);
+      map.on('mouseleave', srcId, leaveHandler);
+      clickHandlers.push([srcId, clickHandler]);
+      enterHandlers.push([srcId, enterHandler]);
+      leaveHandlers.push([srcId, leaveHandler]);
     }
     if (allFeatures.length) {
       const b = new mapboxgl.LngLatBounds();
       allFeatures.forEach((coord) => b.extend(coord));
       try { map.fitBounds(b, { padding: 60, maxZoom: 14, duration: 400 }); } catch { /* single point */ }
     }
+    return () => {
+      const m = mapRef.current;
+      if (!m) return;
+      clickHandlers.forEach(([id, h]) => m.off('click', id, h));
+      enterHandlers.forEach(([id, h]) => m.off('mouseenter', id, h));
+      leaveHandlers.forEach(([id, h]) => m.off('mouseleave', id, h));
+    };
   }, [data, active, ready, selectEntity, navigate]);
 
   const toggle = (k: string) => setActive((a) => ({ ...a, [k]: !a[k] }));

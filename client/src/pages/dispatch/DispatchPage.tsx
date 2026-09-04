@@ -129,6 +129,14 @@ import {
 
 const INCIDENT_TYPE_OPTIONS = Object.values(INCIDENT_TYPE_CATEGORIES).flat();
 
+// Minimal typed shapes for the core dispatch API responses.
+// mapDbCall / mapDbUnit accept `any` internally but these interfaces
+// let TypeScript catch field-name drift at the call sites.
+interface CallsApiResponse {
+  data?: Record<string, unknown>[];
+  [key: string]: unknown;
+}
+type UnitRaw = Record<string, unknown>;
 
 const PRIORITY_ORDER: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
 const SEARCH_DEBOUNCE_MS = 300;
@@ -455,8 +463,12 @@ export default function DispatchPage() {
   }, []);
   const [units, setUnits] = useState<Unit[]>([]);
   const refreshUnits = useCallback(async () => {
-    const unitsRes = await apiFetch<any[]>('/dispatch/units');
-    setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+    try {
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+    } catch (err) {
+      console.warn('[Dispatch] refreshUnits failed:', err);
+    }
   }, []);
   // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
   // exclude `units` to avoid re-arming the interval on every position tick) can
@@ -1238,8 +1250,8 @@ export default function DispatchPage() {
       .catch(() => { /* best-effort — badges just don't show this cycle */ });
     try {
       const [callsRes, unitsRes] = await Promise.all([
-        apiFetch<any>('/dispatch/calls?limit=200', { signal }),
-        apiFetch<any[]>('/dispatch/units', { signal }),
+        apiFetch<CallsApiResponse>('/dispatch/calls?limit=200', { signal }),
+        apiFetch<UnitRaw[]>('/dispatch/units', { signal }),
       ]);
       const callsRaw = Array.isArray(callsRes?.data) ? callsRes.data : Array.isArray(callsRes) ? callsRes : [];
       const mappedCalls = callsRaw.map(mapDbCall);
@@ -3366,6 +3378,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
+                      aria-label="Add note"
                       className="flex items-center justify-center px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                       style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? 'var(--spm-border)' : 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                     >
@@ -6369,7 +6382,7 @@ export default function DispatchPage() {
                             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-sm transition-colors shadow-xs"
                             style={{
                               background: callNarrative.trim() ? 'rgb(22 163 74)' : 'rgba(22,163,74,0.3)',
-                              color: '#fff',
+                              color: 'var(--text-primary)',
                               opacity: submittingNarrative ? 0.5 : 1,
                             }}
                             title="Submit narrative and close this CFS"
