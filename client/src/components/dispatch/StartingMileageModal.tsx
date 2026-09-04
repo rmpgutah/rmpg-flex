@@ -37,10 +37,11 @@ export default function StartingMileageModal({
     (async () => {
       try {
         if (unitId) {
-          const res = await apiFetch<Array<{ current_mileage?: number | null; odometer?: number | null }>>(
-            `/fleet/vehicles?assigned_unit_id=${unitId}`
+          const res = await apiFetch<{ data: Array<{ current_mileage?: number | null; odometer?: number | null }> } | Array<{ current_mileage?: number | null; odometer?: number | null }>>(
+            `/fleet?assigned_unit_id=${unitId}`
           ).catch(() => null);
-          const veh = Array.isArray(res) ? res[0] : res;
+          const arr = Array.isArray(res) ? res : (res as any)?.data ?? [];
+          const veh = Array.isArray(arr) ? arr[0] : null;
           const odo = veh?.current_mileage ?? veh?.odometer;
           if (!cancelled && odo != null && odo > 0) {
             setMileage(String(odo));
