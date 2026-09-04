@@ -15,6 +15,7 @@ import {
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
+import { WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -313,14 +314,9 @@ export default function DashCamDetailPage() {
     });
   };
 
-  const apiBase = window.location.origin + '/api';
-  const streamUrl = useMemo(() => {
-    if (!video) return '';
-    // Read token reactively so the URL stays current after a token refresh.
-    const token = localStorage.getItem('rmpg_token') || '';
-    return `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video?.id, apiBase]);
+  const apiBase = WORKER_HTTP_ORIGIN + '/api';
+  const token = localStorage.getItem('rmpg_token') || '';
+  const streamUrl = video ? `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}` : '';
 
   // ── Data Fetching ────────────────────────────
 
@@ -484,7 +480,7 @@ export default function DashCamDetailPage() {
     map.on('load', () => {
       // Marker
       const marker = new mapboxgl.Marker({
-        color: 'var(--text-muted)',
+        color: '#8a9bb8',
       })
         .setLngLat([centerLng, centerLat])
         .addTo(map);

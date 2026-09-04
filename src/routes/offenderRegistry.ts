@@ -22,6 +22,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { requireRole } from '../middleware/auth';
+import { log } from '../utils/logger';
 
 const offenderRegistry = new Hono<Env>();
 
@@ -65,7 +67,7 @@ const ALERT_SELECT = `
   LEFT JOIN persons p ON p.id = a.person_id`;
 
 // ── GET / — paginated alert list ────────────────────────────
-offenderRegistry.get('/', async (c) => {
+offenderRegistry.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
   try {
     const db = getDb(c.env);
     const q = c.req.query.bind(c.req);
@@ -83,7 +85,7 @@ offenderRegistry.get('/', async (c) => {
     }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
-    const limit = Math.min(500, Math.max(1, parseInt(q('limit') || '50', 10) || 50));
+    const limit = Math.min(250, Math.max(1, parseInt(q('limit') || '50', 10) || 50));
     const offset = (page - 1) * limit;
 
     const countRow = await queryFirst<{ total: number }>(
@@ -105,7 +107,7 @@ offenderRegistry.get('/', async (c) => {
       pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
     });
   } catch (err) {
-    console.error('GET /offender-registry error:', err);
+    log.error('[offender-registry] GET / failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list offender alerts', code: 'LIST_ERROR' }, 500);
   }
 });
@@ -140,7 +142,7 @@ offenderRegistry.post('/', async (c) => {
     );
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
-    console.error('POST /offender-registry error:', err);
+    log.error('[offender-registry] POST / failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create alert', code: 'CREATE_ERROR' }, 500);
   }
 });
@@ -159,7 +161,7 @@ offenderRegistry.put('/:id/clear', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Alert not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
-    console.error('PUT /offender-registry/:id/clear error:', err);
+    log.error('[offender-registry] PUT /:id/clear failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to clear alert', code: 'CLEAR_ERROR' }, 500);
   }
 });
@@ -201,7 +203,7 @@ offenderRegistry.put('/:id/verify', async (c) => {
     );
     return c.json({ data: { last_verification: row?.last_verification, next_verification_due: row?.next_verification_due } });
   } catch (err) {
-    console.error('PUT /offender-registry/:id/verify error:', err);
+    log.error('[offender-registry] PUT /:id/verify failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Verification failed', code: 'VERIFY_ERROR' }, 500);
   }
 });
@@ -249,7 +251,7 @@ offenderRegistry.put('/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Alert not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
-    console.error('PUT /offender-registry/:id error:', err);
+    log.error('[offender-registry] PUT /:id failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to update alert', code: 'UPDATE_ERROR' }, 500);
   }
 });
@@ -278,7 +280,7 @@ offenderRegistry.post('/reconcile-flags', async (c) => {
         )`);
     return c.json({ success: true, flagged: result.meta.changes ?? 0 });
   } catch (err) {
-    console.error('POST /offender-registry/reconcile-flags error:', err);
+    log.error('[offender-registry] POST /reconcile-flags failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to reconcile flags', code: 'RECONCILE_ERROR' }, 500);
   }
 });
@@ -323,7 +325,7 @@ offenderRegistry.get('/:id/risk-score', async (c) => {
     const level = score >= 70 ? 'high' : score >= 40 ? 'elevated' : 'standard';
     return c.json({ data: { score, level, factors } });
   } catch (err) {
-    console.error('GET /offender-registry/:id/risk-score error:', err);
+    log.error('[offender-registry] GET /:id/risk-score failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Risk assessment failed', code: 'RISK_ERROR' }, 500);
   }
 });
@@ -343,7 +345,7 @@ offenderRegistry.get('/:id/contacts', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
-    console.error('GET /offender-registry/:id/contacts error:', err);
+    log.error('[offender-registry] GET /:id/contacts failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ data: [] }, 200);
   }
 });
@@ -371,7 +373,7 @@ offenderRegistry.post('/:id/contact', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
-    console.error('POST /offender-registry/:id/contact error:', err);
+    log.error('[offender-registry] POST /:id/contact failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to log contact', code: 'CONTACT_ERROR' }, 500);
   }
 });
@@ -390,7 +392,7 @@ offenderRegistry.get('/export/csv', async (c) => {
     c.header('Content-Disposition', 'attachment; filename="offender_registry_export.csv"');
     return c.body(csv);
   } catch (err) {
-    console.error('GET /offender-registry/export/csv error:', err);
+    log.error('[offender-registry] GET /export/csv failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ url: null, count: 0, message: 'export failed' }, 200);
   }
 });
@@ -442,7 +444,7 @@ offenderRegistry.get('/stats', async (c) => {
       },
     });
   } catch (err) {
-    console.error('GET /offender-registry/stats error:', err);
+    log.error('[offender-registry] GET /stats failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ data: {} }, 200);
   }
 });

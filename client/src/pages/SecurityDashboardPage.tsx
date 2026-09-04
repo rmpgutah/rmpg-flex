@@ -255,7 +255,7 @@ export default function SecurityDashboardPage() {
             { label: '2FA', value: status.twoFactorEnabled ? 'ON' : 'OFF', cls: status.twoFactorEnabled ? 'text-green-400' : 'text-red-400', icon: Lock },
             { label: 'Password Age', value: `${status.passwordAge}d`, cls: status.passwordAge > 90 ? 'text-red-400' : status.passwordAge > 60 ? 'text-amber-400' : 'text-green-400', icon: Key },
             { label: 'Trusted Devices', value: String(status.trustedDevices), cls: 'text-rmpg-400', icon: Monitor },
-            { label: 'Active Sessions', value: String(status.activeSessions), cls: 'text-brand-gold-500', icon: Users },
+            { label: 'Active Sessions', value: String(status.activeSessions), cls: 'text-rmpg-100', icon: Users },
             { label: 'Last Login IP', value: (status.lastLoginIp || '—').slice(0, 15), cls: 'text-rmpg-400', icon: Globe },
             { label: 'Account', value: status.accountStatus || 'Active', cls: 'text-green-400', icon: CheckCircle },
           ].map(c => (
@@ -274,7 +274,7 @@ export default function SecurityDashboardPage() {
       <div className="flex gap-1 border-b border-rmpg-700 pb-1">
         {TABS.map(t => (
           <button key={t.id} type="button" onClick={() => setActiveTab(t.id)}
-            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === t.id ? 'text-brand-gold-500 bg-brand-gold-500/10 border border-brand-gold-500/30' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'}`}>
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === t.id ? 'text-accent-silver-300 bg-accent-silver-300/10 border border-accent-silver-300/30' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'}`}>
             <t.icon className="w-3 h-3 inline mr-1" />{t.label}
           </button>
         ))}

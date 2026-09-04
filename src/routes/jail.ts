@@ -102,7 +102,7 @@ jail.post('/inmates', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.last_name !== 'string' || !b.last_name.trim()) return c.json({ error: 'last_name required', code: 'LAST_NAME_REQUIRED' }, 400);
     if (typeof b.first_name !== 'string' || !b.first_name.trim()) return c.json({ error: 'first_name required', code: 'FIRST_NAME_REQUIRED' }, 400);
@@ -383,7 +383,7 @@ jail.post('/inmates/:id/disciplinary', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.violation !== 'string' || !b.violation.trim()) return c.json({ error: 'violation required' }, 400);
     const result = await execute(db,

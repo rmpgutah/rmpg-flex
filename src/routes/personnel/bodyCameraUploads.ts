@@ -151,7 +151,7 @@ bodycamVideosRouter.post('/', async (c) => {
     `, newId);
     return c.json(created, 201);
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos failed:', err);
+    log.error('POST /personnel/bodycam-videos failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -206,7 +206,7 @@ bodycamVideosRouter.post('/upload-init', async (c) => {
 
     return c.json({ uploadId: mp.uploadId, totalChunks });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/upload-init failed:', err);
+    log.error('POST /personnel/bodycam-videos/upload-init failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -274,7 +274,7 @@ bodycamVideosRouter.post('/upload-chunk', async (c) => {
       received: session.parts.length,
     });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/upload-chunk failed:', err);
+    log.error('POST /personnel/bodycam-videos/upload-chunk failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -362,7 +362,7 @@ bodycamVideosRouter.post('/upload-complete', async (c) => {
     `, newId);
     return c.json(created, 201);
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/upload-complete failed:', err);
+    log.error('POST /personnel/bodycam-videos/upload-complete failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -396,7 +396,7 @@ bodycamVideosRouter.delete('/upload-abort/:uploadId', async (c) => {
     await c.env.KV.delete(`${UPLOAD_SESSION_PREFIX}${uploadId}`);
     return c.json({ ok: true });
   } catch (err) {
-    console.error('DELETE /personnel/bodycam-videos/upload-abort failed:', err);
+    log.error('DELETE /personnel/bodycam-videos/upload-abort failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -496,7 +496,7 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
     headers['Content-Length'] = String(totalSize);
     return new Response(obj.body, { status: 200, headers });
   } catch (err) {
-    console.error('GET /personnel/bodycam-videos/:id/stream failed:', err);
+    log.error('GET /personnel/bodycam-videos/:id/stream failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -548,7 +548,7 @@ bodycamVideosRouter.post('/:id/thumbnail', async (c) => {
 
     return c.json({ success: true, thumbnail_path: thumbKey });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/:id/thumbnail failed:', err);
+    log.error('POST /personnel/bodycam-videos/:id/thumbnail failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -588,7 +588,7 @@ bodycamVideosRouter.get('/:id/thumbnail', async (c) => {
       },
     });
   } catch (err) {
-    console.error('GET /personnel/bodycam-videos/:id/thumbnail failed:', err);
+    log.error('GET /personnel/bodycam-videos/:id/thumbnail failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -641,7 +641,7 @@ bodycamVideosRouter.post('/:id/detections', async (c) => {
 
     return c.json({ success: true, detected_plate_count: plateCount, detected_face_count: faceCount, flagged: shouldFlag });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/:id/detections failed:', err);
+    log.error('POST /personnel/bodycam-videos/:id/detections failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -698,7 +698,7 @@ bodycamVideosRouter.post('/:id/transcribe', async (c) => {
     await execute(db, "UPDATE bodycam_videos SET transcript = ?, updated_at = datetime('now') WHERE id = ?", transcript, id);
     return c.json({ success: true, transcribed: true, transcript });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/:id/transcribe failed:', err);
+    log.error('POST /personnel/bodycam-videos/:id/transcribe failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -834,7 +834,7 @@ bodycamVideosRouter.post('/:id/analyze', async (c) => {
 
     return c.json({ success: true, frames_analyzed: results.length, frames_requested: frames.length, analysis });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/:id/analyze failed:', err);
+    log.error('POST /personnel/bodycam-videos/:id/analyze failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -958,7 +958,7 @@ bodycamVideosRouter.post('/:id/deep-scan', async (c) => {
 
     return c.json({ success: true, frames_analyzed: framesAnalyzed, frames_requested: frames.length, samples });
   } catch (err) {
-    console.error('POST /personnel/bodycam-videos/:id/deep-scan failed:', err);
+    log.error('POST /personnel/bodycam-videos/:id/deep-scan failed:', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed');
   }
 });

@@ -93,9 +93,9 @@ function matchesFilter(unit: DispatchUnit, filter: FilterMode): boolean {
     case 'AVAILABLE':
       return unit.status === 'available';
     case 'ON-CALL':
-      return unit.status === 'on-call' || unit.status === 'busy' || unit.status === 'traffic-stop';
+      return unit.status === 'dispatched' || unit.status === 'enroute' || unit.status === 'onscene' || unit.status === 'busy';
     case 'OUT':
-      return unit.status === 'out-of-service';
+      return unit.status === 'off_duty';
     default:
       return true;
   }
@@ -175,7 +175,7 @@ function StatusModal({ unit, onClose, onSave }: StatusModalProps) {
               onClick={handleSave}
               disabled={saving}
               className="flex-1 py-1 text-xs rounded-[2px] font-semibold transition-colors disabled:opacity-50"
-              style={{ background: 'var(--brand-500)', color: '#fff', border: 'none' }}
+              style={{ background: 'var(--brand-500)', color: 'var(--text-primary)', border: 'none' }}
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -352,8 +352,8 @@ export default function UnitStatusBoardPage() {
   // ── Counts ──────────────────────────────────────────────────────────────────
 
   const countAvailable = units.filter(u => u.status === 'available').length;
-  const countOnCall = units.filter(u => u.status === 'on-call' || u.status === 'busy' || u.status === 'traffic-stop').length;
-  const countOut = units.filter(u => u.status === 'out-of-service').length;
+  const countOnCall = units.filter(u => u.status === 'dispatched' || u.status === 'enroute' || u.status === 'onscene' || u.status === 'busy').length;
+  const countOut = units.filter(u => u.status === 'off_duty').length;
 
   // ── Filtered list ────────────────────────────────────────────────────────────
 
@@ -370,7 +370,7 @@ export default function UnitStatusBoardPage() {
   });
   if (engagedFirst) {
     visible = [...visible].sort((a, b) => {
-      const rank = (s: string) => (s === 'available' ? 2 : s === 'out-of-service' ? 3 : 1);
+      const rank = (s: string) => (s === 'available' ? 2 : s === 'off_duty' ? 3 : 1);
       return rank(a.status) - rank(b.status);
     });
   }

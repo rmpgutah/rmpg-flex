@@ -34,7 +34,7 @@ async function ensureSchema(db: ReturnType<typeof getDb>): Promise<void> {
 // POST /api/redactions — multipart: `video` (MP4 blob) + `metadata` (JSON string).
 redactions.post('/', async (c): Promise<Response> => {
   const db = getDb(c.env);
-  const userId = (c.get('userId') as number) ?? null;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   await ensureSchema(db);
 
   let form: FormData;

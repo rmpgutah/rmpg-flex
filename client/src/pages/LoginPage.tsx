@@ -214,23 +214,6 @@ export default function LoginPage() {
     }
   }, [loginStep]);
 
-  // Check for last login info stored during login flow
-  useEffect(() => {
-    if (loginStep === 'complete') {
-      const info = sessionStorage.getItem('rmpg_last_login_info');
-      if (info) {
-        try {
-          const parsed = JSON.parse(info);
-          setLastLoginInfo(parsed);
-          sessionStorage.removeItem('rmpg_last_login_info');
-          // Auto-dismiss after 8 seconds
-          const t = setTimeout(() => setLastLoginInfo(null), 8000);
-          return () => clearTimeout(t);
-        } catch { /* ignore */ }
-      }
-    }
-  }, [loginStep]);
-
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
   const [manualKey, setManualKey] = useState('');
@@ -461,7 +444,7 @@ export default function LoginPage() {
     if (requiresPasswordChange) {
       setLoginStep('password_change');
     } else {
-      window.location.reload();
+      navigate('/', { replace: true });
     }
   };
 

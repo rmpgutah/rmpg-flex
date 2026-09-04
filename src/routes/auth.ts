@@ -48,7 +48,7 @@ const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refr
 // force_password_change / totp_enrolled names the earlier handlers queried
 // (those columns do not exist on live D1).
 export const USER_SELECT =
-  'id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_enabled';
+  'id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_enabled, totp_exempt';
 
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
@@ -248,18 +248,6 @@ async function recordLoginAttempt(
     const geo = getRequestGeo(c);
     const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
     const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
-    // TEMP DIAGNOSTIC (2026-08-09) — remove once the capture pipeline is
-    // confirmed working live. Investigating why a real production login
-    // produced ip_address='unknown' and every new geo/device column null.
-    try {
-      const cfRaw = (c.req.raw as unknown as { cf?: unknown }).cf;
-      log.warn('[login] geo/device capture diagnostic', {
-        ua, hasCf: cfRaw != null, cfKeys: cfRaw ? Object.keys(cfRaw as object) : [],
-        cfConnectingIp: c.req.header('cf-connecting-ip') || null,
-        xForwardedFor: c.req.header('x-forwarded-for') || null,
-        allHeaderKeys: [...(c.req.raw as Request).headers.keys()],
-      });
-    } catch (diagErr) { log.error('[login] geo/device capture diagnostic FAILED', {}, diagErr as Error); }
     await execute(
       db,
       `INSERT INTO login_attempts (username, ip_address, success, failure_reason,
@@ -321,7 +309,15 @@ auth.post('/login', async (c) => {
     await ensureAccountLockoutColumns(db);
     const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
 
-    let user: any;
+    type UserRow = {
+      id: number; username: string; full_name: string | null; first_name: string | null;
+      last_name: string | null; email: string | null; role: string; badge_number: string | null;
+      phone: string | null; avatar_url: string | null; status: string;
+      must_change_password: number | null; totp_enabled: number | null; totp_exempt: number | null;
+      password_hash: string | null; failed_login_count: number | null; locked_until: string | null;
+      is_locked: number | null; lock_retry_seconds: number | null;
+    };
+    let user: UserRow | null = null;
     try {
       const userSql = `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
                 (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
@@ -330,9 +326,9 @@ auth.post('/login', async (c) => {
       // Exact match first (uses the username unique index). Fall back to
       // case-insensitive so "CZamora" still finds "czamora" — a common field
       // typo that previously returned a generic 401.
-      user = await queryFirst<any>(db, `${userSql} WHERE username = ?`, username);
+      user = await queryFirst<UserRow>(db, `${userSql} WHERE username = ?`, username);
       if (!user) {
-        user = await queryFirst<any>(db, `${userSql} WHERE LOWER(username) = LOWER(?)`, username);
+        user = await queryFirst<UserRow>(db, `${userSql} WHERE LOWER(username) = LOWER(?)`, username);
       }
     } catch (dbErr) {
       log.error('[login] D1 user lookup failed', { uname }, dbErr instanceof Error ? dbErr : new Error(String(dbErr)));
@@ -409,8 +405,9 @@ auth.post('/login', async (c) => {
     // Correct password — reset the failure counter regardless of what happens
     // next (2FA gate, trusted-device check, etc). Password-guessing is what
     // lockout defends against; a wrong 2FA code afterward is unrelated.
-    if (user.failed_login_count || user.locked_until) {
-      await execute(db, `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = ?`, user.id).catch(() => undefined);
+    if ((user.failed_login_count ?? 0) > 0 || user.locked_until != null) {
+      await execute(db, `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = ?`, user.id)
+        .catch((err: unknown) => log.warn('[login] failed to reset lockout counter', { userId: user?.id, err: err instanceof Error ? err.message : String(err) }));
     }
 
     const secret = c.env.JWT_SECRET;
@@ -422,9 +419,6 @@ auth.post('/login', async (c) => {
     // form to the code step). The tempToken is a 5-minute purpose-bound JWT
     // that /login/verify-2fa and /login/verify-backup-code exchange for real
     // tokens after the second factor checks out.
-    const exempt = await queryFirst<{ totp_exempt: number | null }>(
-      db, 'SELECT totp_exempt FROM users WHERE id = ?', user.id).catch(() => null);
-
     // A previously-trusted device (see trustDeviceIfRequested) skips the 2FA
     // gate entirely for its 30-day window — refresh last_used_at so an
     // actively-used device doesn't expire out from under someone.
@@ -443,7 +437,7 @@ auth.post('/login', async (c) => {
       } catch { /* table absent on an unmigrated local DB — treat as not trusted */ }
     }
 
-    if (user.totp_enabled && !exempt?.totp_exempt && !deviceTrusted) {
+    if (user.totp_enabled && !user.totp_exempt && !deviceTrusted) {
       const now = Math.floor(Date.now() / 1000);
       const tempToken = await sign(
         { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
@@ -1210,9 +1204,10 @@ auth.put('/profile', authMiddleware, async (c) => {
       email?: string; phone?: string;
     }>();
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
+    if (!userId) return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
 
-    const existing = await queryFirst<any>(
+    const existing = await queryFirst<{ username: string; full_name: string | null }>(
       db, 'SELECT username, full_name FROM users WHERE id = ?', userId,
     );
     if (!existing) return c.json({ error: 'User not found' }, 404);
@@ -1584,7 +1579,8 @@ auth.get('/security/login-history', async (c) => {
     const db = getDb(c.env);
     const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '15', 10) || 15));
     const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
+    if (!userId) return c.json(empty);
     const me = await queryFirst<{ username: string; role: string }>(db, 'SELECT username, role FROM users WHERE id = ?', userId);
     if (!me) return c.json(empty);
 

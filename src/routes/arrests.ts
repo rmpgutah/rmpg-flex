@@ -147,13 +147,14 @@ arrests.post('/manual', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
 
     const fullName = typeof b.full_name === 'string' ? b.full_name.trim() : '';
     if (fullName.length < 2) {
       return c.json({ error: 'Full name is required (min 2 characters)', code: 'FULL_NAME_REQUIRED' }, 400);
     }
+    const notes = typeof b.notes === 'string' ? b.notes.slice(0, 5000) : null;
     const status = typeof b.status === 'string' && ARREST_STATUSES.has(b.status) ? b.status : 'active';
 
     // Charges may be array or string; serialize to JSON either way for
@@ -192,7 +193,7 @@ arrests.post('/manual', async (c) => {
       b.height ?? null, b.weight ?? null, b.hair_color ?? null, b.eye_color ?? null, b.address ?? null,
       b.booking_date ?? null, b.release_date ?? null, b.booking_number ?? null,
       b.agency ?? null, b.county ?? null, b.state ?? 'UT',
-      chargesJson, b.bail_amount ?? null, b.hold_reason ?? null, b.notes ?? null, status,
+      chargesJson, b.bail_amount ?? null, b.hold_reason ?? null, notes, status,
       userId,
     );
     const newId = Number(result.meta.last_row_id);
@@ -308,6 +309,10 @@ arrests.delete('/manual/:id', async (c) => {
 
 // ── GET /status (Admin Arrests tile — not the old stub shape) ─
 arrests.get('/status', async (c) => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || !['admin', 'manager', 'supervisor'].includes(actor.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
   try {
     const db = getDb(c.env);
     const totalRow = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM arrest_records');

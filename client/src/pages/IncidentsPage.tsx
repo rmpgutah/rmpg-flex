@@ -1020,7 +1020,7 @@ export default function IncidentsPage() {
           }`}
         >
           <Archive className="w-3 h-3" />
-          {showArchived ? 'Archives' : 'Archives'}
+          {showArchived ? 'Active' : 'Archives'}
         </button>
         {!showArchived && (
           <>
@@ -1280,7 +1280,7 @@ export default function IncidentsPage() {
       (inc?.latitude != null && inc?.longitude != null)
         ? fetchStaticMapImage(Number(inc.latitude), Number(inc.longitude), {
             zoom: 15, width: 600, height: 300,
-            markers: [{ lng: Number(inc.longitude), lat: Number(inc.latitude), color: 'd4a017' }],
+            markers: [{ lng: Number(inc.longitude), lat: Number(inc.latitude), color: 'd9bd72' }],
           })
         : Promise.resolve(null),
     ]);

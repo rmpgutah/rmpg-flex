@@ -181,12 +181,13 @@ crm.get('/leads/follow-ups', async (c) => {
 crm.get('/leads/source-analytics', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = Number(c.req.query('days')) || 30;
+    const daysRaw = Number(c.req.query('days'));
+    const days = Number.isFinite(daysRaw) && daysRaw >= 1 && daysRaw <= 3650 ? Math.round(daysRaw) : 30;
     const data = await query(db,
       `SELECT source, COUNT(*) lead_count, COALESCE(SUM(estimated_value),0) total_value,
               SUM(CASE WHEN pipeline_stage='won' THEN 1 ELSE 0 END) won_count
-       FROM crm_leads WHERE created_at >= datetime('now', ?) GROUP BY source ORDER BY lead_count DESC`,
-      `-${days} days`);
+       FROM crm_leads WHERE created_at >= datetime('now', '-' || ? || ' days') GROUP BY source ORDER BY lead_count DESC`,
+      days);
     return c.json({ period_days: days, data });
   } catch { return c.json({ period_days: 30, data: [] }); }
 });
@@ -200,8 +201,10 @@ crm.get('/leads', async (c) => {
     const where: string[] = []; const p: unknown[] = [];
     if (source) { where.push('source = ?'); p.push(source); }
     if (stage) { where.push('pipeline_stage = ?'); p.push(stage); }
-    const sql = `SELECT * FROM crm_leads ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC, id DESC LIMIT 2000`;
-    return c.json(await query(db, sql, ...p));
+    const limitRaw = parseInt(c.req.query('limit') || '250', 10);
+    const limit = Math.min(500, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 250));
+    const sql = `SELECT * FROM crm_leads ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC, id DESC LIMIT ?`;
+    return c.json(await query(db, sql, ...p, limit));
   } catch { return c.json([]); }
 });
 

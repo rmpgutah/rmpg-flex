@@ -980,7 +980,7 @@ export default function CitationsPage() {
               <Plus size={isMobile ? 16 : 12} /> New
             </button>
             )}
-            <ExportButton exportUrl="/api/citations/export/csv" exportFilename="citations.csv" />
+            <ExportButton exportUrl="/citations/export/csv" exportFilename="citations.csv" />
             <button type="button" onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
             </button>
