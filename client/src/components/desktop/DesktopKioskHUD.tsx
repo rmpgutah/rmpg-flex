@@ -86,6 +86,7 @@ function statusBadgeClass(status: FeatureItem['status']): string {
   }
 }
 
+
 export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: DesktopKioskHUDProps) {
   const navigate = useNavigate();
   useOptionalDesktopWindows(); // keep context subscription alive for sibling components

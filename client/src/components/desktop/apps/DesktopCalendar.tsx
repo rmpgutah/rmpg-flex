@@ -5,16 +5,30 @@ import { apiFetch } from '../../../hooks/useApi';
 import { shiftsToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 import { copyToClipboard } from '../../../utils/contextMenuActions';
 
+interface AgendaItem {
+  key?: string;
+  id: number | string;
+  source: string;
+  date: string;
+  start: string | null;
+  end: string | null;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+}
+
 const W = 700;
 const H = 500;
 
 interface Shift {
-  id: number;
+  id: number | string;
   date: string;
   start_time?: string;
   end_time?: string;
   location?: string;
   status?: string;
+  title?: string;
+  source?: string;
 }
 
 type ViewMode = 'month' | 'week';
@@ -46,17 +60,32 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadShifts = () => {
+  const loadShifts = (forYear = year, forMonth = month) => {
     setLoadError(null);
-    apiFetch<Shift[]>('/schedules/my-schedule')
-      .then(setShifts)
+    const start = `${forYear}-${String(forMonth + 1).padStart(2, '0')}-01`;
+    const lastDay = new Date(forYear, forMonth + 1, 0).getDate(); // new-date-ok: local calendar math
+    const end = `${forYear}-${String(forMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    apiFetch<{ items?: AgendaItem[]; count?: number } | AgendaItem[]>(`/scheduler/agenda?start=${start}&end=${end}&sources=shift,court,custom`)
+      .then((res) => {
+        const raw: AgendaItem[] = Array.isArray(res) ? res : (res?.items ?? []);
+        setShifts(raw.map((item) => ({
+          id: item.key ?? String(item.id),
+          date: item.date,
+          start_time: item.start ?? undefined,
+          end_time: item.end ?? undefined,
+          location: item.subtitle ?? undefined,
+          status: item.status ?? undefined,
+          title: item.title,
+          source: item.source,
+        })));
+      })
       .catch((err) => {
         setShifts([]);
         setLoadError(err instanceof Error ? err.message : 'Failed to load schedule');
       });
   };
 
-  useEffect(() => { loadShifts(); }, []);
+  useEffect(() => { loadShifts(year, month); }, [year, month]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -125,8 +154,8 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
             {DAY_NAMES[d.getDay()]} {d.getDate()}
           </div>
           {dayShifts.map(s => (
-            <div key={s.id} style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, borderRadius: 2, background: 'var(--desktop-shell-accent, var(--accent-silver-400))', color: 'var(--surface-sunken)' }}>
-              {s.start_time ?? ''} {s.location ?? ''}
+            <div key={String(s.id)} style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, borderRadius: 2, background: 'var(--desktop-shell-accent, var(--accent-silver-400))', color: 'var(--surface-sunken)' }}>
+              {s.start_time ? `${s.start_time} ` : ''}{s.title ?? s.location ?? ''}
             </div>
           ))}
         </div>
@@ -183,7 +212,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
       {loadError && (
         <div style={{ padding: '4px 12px', fontSize: 11, color: 'var(--sev-critical)', display: 'flex', justifyContent: 'space-between' }}>
           <span>{loadError}</span>
-          <button type="button" onClick={loadShifts} style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}>Retry</button>
+          <button type="button" onClick={() => loadShifts(year, month)} style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}>Retry</button>
         </div>
       )}
 
@@ -213,8 +242,8 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
             {selectedShifts.length === 0 ? (
               <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 12 }}>No scheduled shifts</span>
             ) : selectedShifts.map(s => (
-              <span key={s.id} style={{ fontSize: 11, color: 'var(--text-primary)', marginLeft: 12 }}>
-                {s.start_time ?? ''}{s.end_time ? ` – ${s.end_time}` : ''}{s.location ? ` · ${s.location}` : ''}{s.status ? ` (${s.status})` : ''}
+              <span key={String(s.id)} style={{ fontSize: 11, color: 'var(--text-primary)', marginLeft: 12 }}>
+                {s.title ?? s.location ?? ''}{s.start_time ? ` · ${s.start_time}` : ''}{s.end_time ? `–${s.end_time}` : ''}{s.status ? ` (${s.status})` : ''}
               </span>
             ))}
           </div>
