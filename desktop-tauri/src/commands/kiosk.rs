@@ -71,11 +71,40 @@ pub fn get_kiosk_shell_state() -> KioskShellState {
             .output();
 
         let enabled = match output {
-            Ok(out) => {
+            Ok(out) if out.status.success() => {
                 let text = String::from_utf8_lossy(&out.stdout);
-                !text.contains("explorer.exe")
+                // `reg query /v Shell` output format (Windows):
+                //   HKLM\...\Winlogon
+                //       Shell    REG_SZ    <value>
+                // Extract the value after the last "REG_SZ" token on the Shell line.
+                // If the value IS exactly "explorer.exe" (case-insensitive), the
+                // machine is in normal mode; anything else (our exe path) = kiosk.
+                let shell_value = text
+                    .lines()
+                    .find(|l| l.trim_start().to_lowercase().starts_with("shell"))
+                    .and_then(|l| {
+                        // Columns are tab-separated: name \t type \t value
+                        let parts: Vec<&str> = l.split_whitespace().collect();
+                        // Expect at least 3 tokens: Shell REG_SZ <value...>
+                        if parts.len() >= 3 {
+                            // Value may contain spaces (quoted exe path); rejoin from index 2.
+                            Some(parts[2..].join(" "))
+                        } else {
+                            None
+                        }
+                    });
+
+                match shell_value {
+                    // Default Windows shell → kiosk is NOT enabled
+                    Some(ref v) if v.trim().eq_ignore_ascii_case("explorer.exe") => false,
+                    // Any other value (our exe, or missing) → kiosk IS enabled
+                    Some(_) => true,
+                    // Could not parse the Shell line → conservatively report not enabled
+                    None => false,
+                }
             }
-            Err(_) => false,
+            // reg.exe failed or not found → conservatively report not enabled
+            _ => false,
         };
 
         KioskShellState { supported: true, enabled }

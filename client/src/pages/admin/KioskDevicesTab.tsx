@@ -6,7 +6,7 @@
 // ============================================================
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
-import { Plus, Trash2, Copy } from 'lucide-react';
+import { Plus, Trash2, Copy, AlertTriangle } from 'lucide-react';
 import { formatEnumValue } from '../../utils/formatters';
 
 interface DeviceRow {
@@ -23,41 +23,51 @@ export default function KioskDevicesTab() {
   const [rows, setRows] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [mutationErr, setMutationErr] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [issuedToken, setIssuedToken] = useState<{ label: string; token: string } | null>(null);
+  // id of device pending revoke confirmation; null = no dialog open
+  const [pendingRevoke, setPendingRevoke] = useState<{ id: string; label: string } | null>(null);
 
   const fetchRows = useCallback(() => {
-    setErr(null); setLoading(true);
+    setErr(null);
+    setLoading(true);
     apiFetch<{ devices: DeviceRow[] }>('/kiosk-linux/devices')
       .then((r) => { setRows(r?.devices ?? []); setLoading(false); })
       .catch((e) => { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); });
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    setErr(null); setLoading(true);
-    apiFetch<{ devices: DeviceRow[] }>('/kiosk-linux/devices')
-      .then((r) => { if (!cancelled) { setRows(r?.devices ?? []); setLoading(false); } })
-      .catch((e) => { if (!cancelled) { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, []);
+  useEffect(() => { fetchRows(); }, [fetchRows]);
 
   const register = () => {
     const label = newLabel.trim();
     if (!label) return;
+    setMutationErr(null);
     apiFetch<{ id: string; label: string; token: string; registered_at: string }>('/kiosk-linux/devices', {
       method: 'POST',
       body: JSON.stringify({ label }),
     })
-      .then((r) => { setIssuedToken({ label: r.label, token: r.token }); setNewLabel(''); fetchRows(); })
-      .catch((e) => alert(`Failed to register device: ${e instanceof Error ? e.message : 'unknown'}`));
+      .then((r) => {
+        // Guard: not_configured or malformed response
+        if (!r?.token || !r?.label) {
+          setMutationErr('Device registration failed — server did not return a token.');
+          return;
+        }
+        setIssuedToken({ label: r.label, token: r.token });
+        setNewLabel('');
+        fetchRows();
+      })
+      .catch((e) => setMutationErr(`Failed to register device: ${e instanceof Error ? e.message : 'unknown'}`));
   };
 
-  const revoke = (id: string, label: string) => {
-    if (!confirm(`Revoke device "${label}"? Its token will stop working immediately.`)) return;
+  const confirmRevoke = () => {
+    if (!pendingRevoke) return;
+    const { id } = pendingRevoke;
+    setPendingRevoke(null);
+    setMutationErr(null);
     apiFetch<{ success: boolean }>(`/kiosk-linux/devices/${id}`, { method: 'DELETE' })
       .then(() => fetchRows())
-      .catch((e) => alert(`Failed to revoke: ${e instanceof Error ? e.message : 'unknown'}`));
+      .catch((e) => setMutationErr(`Failed to revoke: ${e instanceof Error ? e.message : 'unknown'}`));
   };
 
   if (loading) return <div className="p-4 text-sm text-rmpg-400">Loading kiosk devices…</div>;
@@ -65,6 +75,41 @@ export default function KioskDevicesTab() {
   return (
     <div className="p-4 space-y-3">
       {err && <div className="text-sm text-sev-critical">{err}</div>}
+
+      {mutationErr && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 text-sev-critical text-xs">
+          <AlertTriangle size={12} className="flex-shrink-0" />
+          <span>{mutationErr}</span>
+        </div>
+      )}
+
+      {/* Inline confirm dialog — replaces window.confirm() which is blocked in Electron */}
+      {pendingRevoke && (
+        <div className="flex items-start gap-3 px-3 py-3 bg-surface-raised border border-sev-critical/30">
+          <AlertTriangle size={14} className="flex-shrink-0 text-sev-critical mt-0.5" />
+          <div className="flex-1 space-y-2">
+            <p className="text-xs text-text-primary">
+              Revoke device <strong>"{pendingRevoke.label}"</strong>? Its token will stop working immediately.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={confirmRevoke}
+                className="text-xs px-3 py-1 bg-red-600/80 text-white font-semibold"
+              >
+                Revoke
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingRevoke(null)}
+                className="text-xs px-3 py-1 bg-surface-overlay text-text-secondary border border-border-subtle"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {issuedToken && (
         <div className="bg-surface-raised border border-brand-400 p-3 rounded-none space-y-2">
@@ -96,6 +141,7 @@ export default function KioskDevicesTab() {
         <input
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') register(); }}
           placeholder="Device label, e.g. Lobby kiosk 1"
           className="text-sm bg-surface-raised border border-rmpg-700 px-2 py-1 flex-1"
         />
@@ -130,7 +176,7 @@ export default function KioskDevicesTab() {
                   <button
                     type="button"
                     aria-label={`Revoke ${row.label}`}
-                    onClick={() => revoke(row.id, row.label)}
+                    onClick={() => setPendingRevoke({ id: row.id, label: row.label })}
                   >
                     <Trash2 size={14} />
                   </button>

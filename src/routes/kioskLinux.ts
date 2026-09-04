@@ -103,13 +103,15 @@ kioskLinux.post('/devices/:id/checkin', deviceAuthMiddleware, async (c) => {
   if (!device) return c.json({ error: 'Device authentication required' }, 401);
   const body = await c.req.json<{ os_version?: string }>().catch(() => ({}) as { os_version?: string });
   const lastIp = c.req.header('CF-Connecting-IP') ?? null;
+  // Cap os_version length to prevent oversized strings reaching D1.
+  const osVersion = typeof body.os_version === 'string' ? body.os_version.slice(0, 128) : null;
 
   await db
     .prepare(
       `UPDATE kiosk_devices SET last_seen_at = ?, os_version = COALESCE(?, os_version), last_ip = ?
        WHERE id = ?`,
     )
-    .bind(nowIso(), body.os_version ?? null, lastIp, device.id)
+    .bind(nowIso(), osVersion, lastIp, device.id)
     .run();
 
   return c.json({ ok: true });
