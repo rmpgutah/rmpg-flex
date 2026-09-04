@@ -142,10 +142,11 @@ calls.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'ad
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
-    const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
+    const limitNum = Math.min(250, Math.max(1, parseInt(limit || '200', 10)));
     const offset = (pageNum - 1) * limitNum;
 
-    const [{ total }] = await query<{ total: number }>(db, `SELECT COUNT(*) as total FROM calls_for_service c ${where}`, ...params);
+    const countRow = await queryFirst<{ total: number }>(db, `SELECT COUNT(*) as total FROM calls_for_service c ${where}`, ...params);
+    const total = countRow?.total ?? 0;
 
     // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
     // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
@@ -183,7 +184,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
 
     const { incident_type, priority, location_address } = body;
     if (!incident_type || !priority || !location_address) {

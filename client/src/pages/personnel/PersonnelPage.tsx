@@ -18,6 +18,7 @@ import CredentialFormModal from '../../components/CredentialFormModal';
 import type { CredentialFormData } from '../../components/CredentialFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { apiFetch } from '../../hooks/useApi';
+import { WORKER_HTTP_ORIGIN } from '../../utils/apiOrigin';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
@@ -1759,7 +1760,7 @@ export default function PersonnelPage() {
           onUploaded={refreshBodyCameras}
           cameras={bodyCameras.filter(c => c.officer_id === Number(selectedOfficer.id))}
           officerId={Number(selectedOfficer.id)}
-          apiBase={window.location.origin + '/api'}
+          apiBase={WORKER_HTTP_ORIGIN + '/api'}
           getAuthHeaders={() => {
             const token = localStorage.getItem('rmpg_token');
             const headers: Record<string, string> = {};
@@ -1773,7 +1774,7 @@ export default function PersonnelPage() {
         isOpen={!!playingVideo}
         onClose={() => setPlayingVideo(null)}
         video={playingVideo}
-        apiBase={window.location.origin + '/api'}
+        apiBase={WORKER_HTTP_ORIGIN + '/api'}
         getAuthHeaders={() => {
           const token = localStorage.getItem('rmpg_token');
           const headers: Record<string, string> = {};

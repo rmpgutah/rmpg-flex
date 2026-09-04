@@ -172,7 +172,7 @@ intel.get('/query', operational, async (c) => {
   };
   // Best-effort history record (never blocks the response).
   try {
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const raw = c.req.query('raw') || '';
     if (userId && raw.trim()) await c.env.DB.prepare(
       'INSERT INTO intel_search_history (user_id, query_text) VALUES (?, ?)').bind(userId, raw.slice(0, 500)).run();
@@ -182,14 +182,14 @@ intel.get('/query', operational, async (c) => {
 
 // Saved searches (per user).
 intel.get('/saved-searches', operational, async (c) => {
-  const uid = c.get('userId') as number;
+  const uid = (c.get('userId') as number | undefined) ?? null;
   try {
     return c.json(await query(getDb(c.env),
       'SELECT id, name, query_text, created_at FROM intel_saved_searches WHERE user_id = ? ORDER BY created_at DESC', uid));
   } catch { return c.json([]); }
 });
 intel.post('/saved-searches', operational, async (c) => {
-  const uid = c.get('userId') as number;
+  const uid = (c.get('userId') as number | undefined) ?? null;
   const body = await c.req.json<{ name?: string; query_text?: string }>().catch(() => ({} as { name?: string; query_text?: string }));
   if (!body.name || !body.query_text) return c.json({ error: 'name and query_text required' }, 400);
   await execute(getDb(c.env),
@@ -199,13 +199,13 @@ intel.post('/saved-searches', operational, async (c) => {
   return c.json({ success: true });
 });
 intel.delete('/saved-searches/:id', operational, async (c) => {
-  const uid = c.get('userId') as number;
+  const uid = (c.get('userId') as number | undefined) ?? null;
   await execute(getDb(c.env), 'DELETE FROM intel_saved_searches WHERE id = ? AND user_id = ?', c.req.param('id'), uid);
   return c.json({ success: true });
 });
 // Recent history (distinct, latest 10).
 intel.get('/search-history', operational, async (c) => {
-  const uid = c.get('userId') as number;
+  const uid = (c.get('userId') as number | undefined) ?? null;
   try {
     return c.json(await query(getDb(c.env),
       `SELECT query_text, MAX(executed_at) AS executed_at FROM intel_search_history
@@ -330,7 +330,7 @@ const WATCHABLE = ['person', 'vehicle', 'warrant'];
 
 intel.get('/watchlist', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   try {
     return c.json(await query<any>(db,
       `SELECT * FROM intel_watchlist WHERE active = 1 AND added_by = ? ORDER BY created_at DESC LIMIT 200`, userId));
@@ -342,7 +342,7 @@ intel.get('/watchlist', operational, async (c) => {
 
 intel.post('/watchlist', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const body = await c.req.json().catch(() => ({} as any));
   const entityType = String(body?.entity_type || '');
   const entityId = Number(body?.entity_id);
@@ -370,7 +370,7 @@ intel.post('/watchlist', operational, async (c) => {
 
 intel.delete('/watchlist/:entityType/:entityId', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const role = String((c.get('user') as { role?: string } | undefined)?.role || '');
   const entityType = c.req.param('entityType');
   const entityId = Number(c.req.param('entityId'));
@@ -391,7 +391,7 @@ intel.delete('/watchlist/:entityType/:entityId', operational, async (c) => {
 
 intel.post('/screen', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const body = await c.req.json().catch(() => ({} as any));
   const entityType = String(body?.entity_type || '');
   let hits;
@@ -459,7 +459,7 @@ intel.get('/suggestions', operational, async (c) => {
 
 intel.post('/suggestions/:id/confirm', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const s = await queryFirst<any>(db, 'SELECT * FROM intel_link_suggestions WHERE id = ?', id);
   if (!s) return c.json({ error: 'Suggestion not found' }, 404);
@@ -490,7 +490,7 @@ intel.post('/suggestions/:id/confirm', operational, async (c) => {
 
 intel.post('/suggestions/:id/reject', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const r = await execute(db,
     `UPDATE intel_link_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
     userId, Number(c.req.param('id')));
@@ -506,7 +506,7 @@ intel.post('/extract/run', requireRole('admin'), async (c) => {
 
 intel.post('/sightings', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const body = await c.req.json().catch(() => ({} as any));
   const plate = String(body?.plate || '').toUpperCase().replace(/[\s-]/g, '');
   if (plate.length < 2) return c.json({ error: 'plate required' }, 400);
@@ -557,7 +557,7 @@ intel.get('/sightings', operational, async (c) => {
 
 intel.post('/quick-capture', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const b = await c.req.json().catch(() => ({} as any));
   const first = String(b?.first_name || '').trim();
   const last = String(b?.last_name || '').trim();
@@ -661,7 +661,7 @@ intel.post('/quick-capture', operational, async (c) => {
 
 intel.post('/recordings/start', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const b = await c.req.json().catch(() => ({} as any));
   // Client declares its container format (web MediaRecorder: audio/webm,
   // iOS AVAudioRecorder: audio/mp4) — stored so chunks serve back playable.
@@ -683,7 +683,7 @@ intel.post('/recordings/start', operational, async (c) => {
 
 intel.put('/recordings/:id/chunk', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const seq = parseSeq(c.req.query('seq'));
   if (seq === null) return c.json({ error: 'valid seq query param required' }, 400);
@@ -705,7 +705,7 @@ intel.put('/recordings/:id/chunk', operational, async (c) => {
 
 intel.post('/recordings/:id/stop', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({} as any));
   const rec = await queryFirst<any>(db, 'SELECT officer_id FROM interaction_recordings WHERE id = ?', id);
@@ -718,7 +718,7 @@ intel.post('/recordings/:id/stop', operational, async (c) => {
 
 intel.get('/recordings', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const role = String((c.get('user') as { role?: string } | undefined)?.role || '');
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
   try {
@@ -785,7 +785,7 @@ intel.post('/jail/scan', requireRole('admin'), async (c) => {
 
 intel.post('/jail/ingest', supervisorPlus, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const b = await c.req.json().catch(() => ({} as any));
   const county = String(b?.county || '').trim();
   const sourceKey = b?.source_key || (county ? `ut-${county.toLowerCase().replace(/\s+/g, '-')}` : 'manual');
@@ -1035,7 +1035,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   try {
     const w = await queryFirst<any>(db,
       `SELECT 1 AS x FROM intel_watchlist WHERE entity_type = 'person' AND entity_id = ? AND added_by = ? AND active = 1`,
-      id, c.get('userId') as number);
+      id, (c.get('userId') as number | undefined) ?? null);
     watched = !!w;
   } catch (err: any) { console.error('[dossier] watch state failed:', err?.message); }
 
@@ -1077,7 +1077,7 @@ intel.get('/resolution/suggestions', supervisorPlus, async (c) => {
 intel.post('/resolution/suggestions/:id/confirm', supervisorPlus, async (c) => {
   const db = getDb(c.env);
   const id = Number(c.req.param('id'));
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const body = await c.req.json().catch(() => ({} as any));
   const s = await queryFirst<any>(db, 'SELECT * FROM entity_resolution_suggestions WHERE id = ?', id);
   if (!s) return c.json({ error: 'Suggestion not found' }, 404);
@@ -1095,7 +1095,7 @@ intel.post('/resolution/suggestions/:id/confirm', supervisorPlus, async (c) => {
 intel.post('/resolution/suggestions/:id/reject', supervisorPlus, async (c) => {
   const db = getDb(c.env);
   const id = Number(c.req.param('id'));
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const r = await execute(db,
     `UPDATE entity_resolution_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
     userId, id);

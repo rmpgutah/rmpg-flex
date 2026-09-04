@@ -56,8 +56,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/evidence', icon: Package, label: 'Evidence' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
       { path: '/crash-reports', icon: FileSearch, label: 'Crash Reports' },
-      { path: '/pawn-tracking', icon: Store, label: 'Pawn Tracking' },
-      { path: '/animal-control', icon: PawPrint, label: 'Animal Control' },
       { path: '/impound', icon: Warehouse, label: 'Impound Lot' },
     ],
   },
@@ -85,14 +83,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    id: 'serve',
-    label: 'Process Service',
-    items: [
-      { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
-      { path: '/serve', icon: Briefcase, label: 'Process Server' },
-    ],
-  },
-  {
     id: 'personnel',
     label: 'Personnel & Fleet',
     items: [
@@ -110,11 +100,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/communications', icon: MessageSquare, label: 'Communications' },
       { path: '/dialer-connect', icon: Phone, label: 'Dial Connect' },
-
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
-      { path: '/community-reports', icon: Building2, label: 'Community Reports' },
-      { path: '/tips', icon: MessageCircleQuestion, label: 'Anonymous Tips' },
     ],
   },
   {

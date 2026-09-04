@@ -262,16 +262,16 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       `}
       style={{
         background: call.status === 'on_hold'
-          ? 'rgba(180, 130, 0, 0.08)'
+          ? 'rgb(var(--sev-warn-rgb) / 0.08)'
           : isSelected ? undefined : 'var(--surface-base)',
         borderLeftColor: call.status === 'on_hold' ? 'var(--sev-warn)' : undefined,
         scrollSnapAlign: 'start',
         WebkitTouchCallout: 'none',
         willChange: 'transform',
         ...(isDragOver ? {
-          boxShadow: '0 0 8px rgba(34, 197, 94, 0.5)',
-          borderColor: 'rgb(34, 197, 94)',
-          outline: '1px solid rgba(34, 197, 94, 0.6)',
+          boxShadow: '0 0 8px rgb(var(--sev-ok-rgb) / 0.5)',
+          borderColor: 'var(--sev-ok)',
+          outline: '1px solid rgb(var(--sev-ok-rgb) / 0.6)',
         } : {}),
       }}
     >
@@ -681,8 +681,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       {/* 43: Drop-to-assign indicator with glow effect */}
       {isDragOver && canAcceptDrop && (
-        <div className="absolute inset-0 flex items-center justify-center bg-green-900/30 pointer-events-none rounded-sm" style={{ boxShadow: 'inset 0 0 12px rgba(34, 197, 94, 0.2)' }}>
-          <span className="text-xs font-bold text-green-400 bg-green-950/80 px-3 py-1.5 rounded-sm border border-green-600/50" style={{ boxShadow: '0 2px 8px rgba(34, 197, 94, 0.3)' }}>
+        <div className="absolute inset-0 flex items-center justify-center bg-green-900/30 pointer-events-none rounded-sm" style={{ boxShadow: 'inset 0 0 12px rgb(var(--sev-ok-rgb) / 0.2)' }}>
+          <span className="text-xs font-bold text-green-400 bg-green-950/80 px-3 py-1.5 rounded-sm border border-green-600/50" style={{ boxShadow: '0 2px 8px rgb(var(--sev-ok-rgb) / 0.3)' }}>
             Drop to assign unit
           </span>
         </div>

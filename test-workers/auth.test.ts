@@ -249,7 +249,8 @@ describe('POST /login — account lockout', () => {
       full_name TEXT, first_name TEXT, last_name TEXT, email TEXT,
       role TEXT NOT NULL DEFAULT 'officer', badge_number TEXT, phone TEXT, avatar_url TEXT,
       status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0,
-      totp_enabled INTEGER NOT NULL DEFAULT 0, login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT
+      totp_enabled INTEGER NOT NULL DEFAULT 0, totp_exempt INTEGER DEFAULT 0,
+      login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT
     )`);
     await execute(db, `CREATE TABLE IF NOT EXISTS login_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, ip_address TEXT,

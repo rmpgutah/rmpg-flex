@@ -16,7 +16,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { codedLike } from '../utils/searchText';
-
+import { log } from '../utils/logger';
 import { dbErrorResponse } from '../utils/dbErrors';
 const uof = new Hono<Env>();
 
@@ -43,6 +43,8 @@ const REPORT_SELECT = `
 
 // GET /api/use-of-force?page=&per_page=&status=&search=
 uof.get('/', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const q = c.req.query.bind(c.req);
@@ -76,13 +78,15 @@ uof.get('/', async (c) => {
       ...params, perPage, offset);
     return c.json({ data: rows || [], pagination: { page, per_page: perPage, total, totalPages: Math.max(1, Math.ceil(total / perPage)) } });
   } catch (err) {
-    console.error('GET /use-of-force failed:', err);
-    return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 1 } });
+    log.error('[use-of-force] GET / failed', { route: 'GET /use-of-force' }, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to load reports', code: 'DB_ERROR' }, 500);
   }
 });
 
 // GET /api/use-of-force/stats
 uof.get('/stats', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const total = (await queryFirst<{ c: number }>(db, 'SELECT COUNT(*) AS c FROM use_of_force'))?.c ?? 0;
@@ -94,8 +98,9 @@ uof.get('/stats', async (c) => {
     const byLevel = await query<Record<string, unknown>>(db,
       "SELECT force_level, COUNT(*) AS count FROM use_of_force WHERE force_level IS NOT NULL GROUP BY force_level ORDER BY count DESC");
     return c.json({ total, pending_review: pending, reviewed, this_month: thisMonth, by_type: byType, by_level: byLevel });
-  } catch {
-    return c.json({ total: 0, pending_review: 0, reviewed: 0, this_month: 0, by_type: [], by_level: [] });
+  } catch (err) {
+    log.error('[use-of-force] GET /stats failed', { route: 'GET /use-of-force/stats' }, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to load stats', code: 'DB_ERROR' }, 500);
   }
 });
 
@@ -161,6 +166,8 @@ uof.post('/', async (c) => {
 // returns the same joined shape the list does so the page can hydrate the
 // detail panel without re-paging.
 uof.get('/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const id = parseInt(c.req.param('id') ?? '', 10);
     if (!Number.isFinite(id)) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
@@ -229,7 +236,7 @@ uof.put('/:id/review', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') ?? '', 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
     const b = await c.req.json<{ decision?: string; notes?: string }>().catch(() => ({} as { decision?: string; notes?: string }));
     const status = b.decision === 'approved' ? 'reviewed'
       : b.decision === 'returned' ? 'returned' : null;

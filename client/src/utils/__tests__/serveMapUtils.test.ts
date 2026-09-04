@@ -44,9 +44,10 @@ describe('buildServeJobMarkerEl', () => {
   it('adds amber urgency ring for deadline < 72h away', () => {
     const soon = new Date(Date.now() + 24 * 3_600_000).toISOString();
     const el = buildServeJobMarkerEl({ ...baseJob, deadline: soon });
-    // jsdom normalizes hex to rgb() — match either form
+    // jsdom doesn't parse 'border' shorthand in cssText into borderColor;
+    // check cssText directly which contains the raw value.
     const rings = [...el.querySelectorAll('div')].filter(d =>
-      /f59e0b|rgb\(245,\s*158,\s*11\)/.test(d.style.borderColor)
+      /f59e0b|rgb\(245,\s*158,\s*11\)/.test(d.style.cssText)
     );
     expect(rings.length).toBeGreaterThan(0);
   });

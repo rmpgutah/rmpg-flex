@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { MapPin, ChevronDown, ChevronRight, Volume2, VolumeX, ExternalLink, RefreshCw } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
@@ -32,9 +33,23 @@ interface ActiveCall {
 type FilterMode = 'all' | 'critical' | 'unassigned';
 type SortMode = 'priority' | 'time';
 
+let _audioCtx: AudioContext | null = null;
+function getAudioCtx(): AudioContext | null {
+  try {
+    if (!_audioCtx || _audioCtx.state === 'closed') {
+      _audioCtx = new AudioContext();
+    }
+    return _audioCtx;
+  } catch {
+    return null;
+  }
+}
+
 function playP1Beep(): void {
   try {
-    const ctx = new AudioContext();
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
     oscillator.connect(gainNode);
@@ -241,6 +256,7 @@ function CallRow({ call, expanded, onToggle, onOpenMap, now: _now }: CallRowProp
 }
 
 export default function LiveCallMapPage() {
+  const navigate = useNavigate();
   const [calls, setCalls] = useState<ActiveCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -264,7 +280,7 @@ export default function LiveCallMapPage() {
   const fetchCalls = useCallback(async (isManual = false) => {
     if (isManual) setLoading(true);
     try {
-      const data = await apiFetch<ActiveCall[]>('/dispatch/calls?status=active');
+      const data = await apiFetch<ActiveCall[]>('/dispatch/calls?active=true');
       const incoming = Array.isArray(data) ? data : [];
 
       // Detect new P1 calls
@@ -482,7 +498,7 @@ export default function LiveCallMapPage() {
                     call={call}
                     expanded={expanded.has(call.id)}
                     onToggle={() => toggleExpanded(call.id)}
-                    onOpenMap={() => { window.location.href = `/map?call_id=${call.id}`; }}
+                    onOpenMap={() => navigate(`/map?call_id=${call.id}`)}
                     now={now}
                   />
                 </div>

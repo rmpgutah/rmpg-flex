@@ -36,6 +36,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { dashcamListToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 
 const PAGE_SIZE = 25;
 
@@ -227,7 +228,7 @@ export default function DashCamerasPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   // ── Handlers ────────────────────────────
-  const apiBase = window.location.origin + '/api';
+  const apiBase = WORKER_HTTP_ORIGIN + '/api';
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('rmpg_token');
     return token ? { Authorization: `Bearer ${token}` } : {};

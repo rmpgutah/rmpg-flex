@@ -101,7 +101,7 @@ export default function AlprHistoryPage() {
       if (sourceFilter) params.set('source', sourceFilter);
       if (accepted) params.set('accepted', accepted);
       const data = await apiFetch<CaptureRow[]>(`/alpr/captures?${params}`);
-      setRows(data);
+      setRows(Array.isArray(data) ? data : []);
     } catch (err: any) {
       const msg = err?.message ?? 'Failed to load capture history';
       setLoadError(msg);

@@ -25,6 +25,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
+import { log } from '../../utils/logger';
 
 const subjects = new Hono<Env>();
 
@@ -46,7 +48,7 @@ interface SubjectResult {
 }
 
 // GET /api/records/subjects/search?q=<term>&types=person,business&limit=20
-subjects.get('/search', async (c) => {
+subjects.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   const typesParam = c.req.query('types') || 'person,business';
   const types = new Set(typesParam.split(',').map((t) => t.trim()));
@@ -105,7 +107,7 @@ subjects.get('/search', async (c) => {
           }
         } catch (err: unknown) {
           if (!(err instanceof Error) || !err.message?.includes('no such table')) {
-            console.error('[subjects] warrants query error:', err);
+            log.error('[subjects] warrants query error', {}, err instanceof Error ? err : new Error(String(err)));
           }
         }
 
@@ -142,7 +144,7 @@ subjects.get('/search', async (c) => {
     } catch (err) {
       // Person search failure shouldn't kill the whole endpoint.
       // Log to console for debugging but return what we have.
-      console.error('[subjects.search] persons query failed:', err);
+      log.error('[subjects] persons query failed', {}, err instanceof Error ? err : new Error(String(err)));
     }
   }
 
@@ -191,7 +193,7 @@ subjects.get('/search', async (c) => {
       // Expected until PR-E lands. Don't log on the common "no such table"
       // case so the worker tail stays clean.
       if (err instanceof Error && !err.message?.includes('no such table')) {
-        console.error('[subjects.search] businesses query failed:', err);
+        log.error('[subjects] businesses query failed', {}, err instanceof Error ? err : new Error(String(err)));
       }
     }
   }

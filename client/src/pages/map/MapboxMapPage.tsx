@@ -2225,7 +2225,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                           style={{
                             background: c,
                             borderRadius: 2,
-                            outline: bm.color === c ? '1px solid #fff' : 'none',
+                            outline: bm.color === c ? '1px solid var(--text-primary)' : 'none',
                           }}
                           onClick={() => mapBookmarks.updateBookmark(bm.id, { color: c })}
                         />

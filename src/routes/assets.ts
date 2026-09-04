@@ -143,7 +143,7 @@ assets.post('/checkouts', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
     if (!b.asset_id) return c.json({ error: 'asset_id required' }, 400);
     if (!b.checked_out_to) return c.json({ error: 'checked_out_to required' }, 400);

@@ -87,7 +87,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
       role="alert"
       aria-live="assertive"
       style={{
-        background: 'rgba(220, 38, 38, 0.15)',
+        background: 'rgb(var(--sev-critical-rgb) / 0.15)',
         border: '1px solid var(--sev-critical)',
         padding: '6px 8px',
         marginTop: 4,
