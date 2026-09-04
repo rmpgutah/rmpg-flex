@@ -144,7 +144,9 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
             return w.title.toLowerCase().includes(q) || w.path.toLowerCase().includes(q);
           }).length === 0 ? (
             <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>
-              {windows.length === 0 ? 'No open windows' : 'No windows match the search'}
+              {windows.length === 0
+                ? 'No module windows open — open a CAD module from the Start menu to see it tracked here'
+                : 'No windows match the search'}
             </p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
@@ -178,7 +180,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                       <button
                         aria-label={`Close ${w.title}`}
                         onClick={() => closeWindow(w.id)}
-                        style={{ fontSize: 10, padding: '2px 8px', background: 'none', border: '1px solid var(--border-default)', borderRadius: 2, cursor: 'pointer', color: 'var(--sev-critical)' }}
+                        style={{ fontSize: 10, padding: '2px 8px', background: 'none', border: '1px solid var(--border-default)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-muted)' }}
                       >×</button>
                     </td>
                   </tr>
