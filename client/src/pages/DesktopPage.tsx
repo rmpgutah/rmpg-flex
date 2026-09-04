@@ -1,5 +1,5 @@
 // client/src/pages/DesktopPage.tsx
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useReducer } from 'react';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites, loadRecent } from '../utils/navFavorites';
 import { useUserPreferences, type UserPreferences } from '../context/UserPreferencesContext';
@@ -250,7 +250,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     });
   }, [isAdmin, isClientViewer, isContractManager, flagsTick]);
 
-  const [, forceRerender] = useState(0);
+  const [, forceRerender] = useReducer((x: number) => x + 1, 0);
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
 
   // Auto-pin role-appropriate defaults on first boot so the desktop is never empty.
@@ -289,13 +289,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
   const [notifCenterOpen, setNotifCenterOpen] = useState(false);
 
-  const _storedLock = localStorage.getItem('rmpg_desktop_autolock_secs');
-  const _parsedLock = _storedLock !== null ? parseInt(_storedLock, 10) : null;
+  const storedLock = localStorage.getItem('rmpg_desktop_autolock_secs');
+  const parsedLock = storedLock !== null ? parseInt(storedLock, 10) : null;
   // 0 = "Never" (FlexOSSettings). `0 || fallback` treats null and 0 identically,
   // silently overriding "Never" with the default — must check === null separately.
-  const autoLockSecs = _parsedLock === 0
+  const autoLockSecs = parsedLock === 0
     ? Number.MAX_SAFE_INTEGER
-    : (_parsedLock || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900));
+    : (parsedLock || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900));
   const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
@@ -613,8 +613,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: `Icon Size: Small${layout.iconSize === 'small' ? ' ✓' : ''}`, onClick: () => handleIconSizeChange('small') },
             { label: `Icon Size: Medium${layout.iconSize === 'medium' ? ' ✓' : ''}`, onClick: () => handleIconSizeChange('medium') },
             { label: `Icon Size: Large${layout.iconSize === 'large' ? ' ✓' : ''}`, onClick: () => handleIconSizeChange('large') },
-            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
-            { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
+            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(); } },
+            { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(); } },
             { label: '', onClick: () => {}, divider: true },
             { label: 'Cascade Windows', onClick: () => arrangeRef.current?.cascade() },
             { label: 'Tile Horizontally', onClick: () => arrangeRef.current?.tileH() },
@@ -728,7 +728,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         <FlexOSPowerMenu
           onClose={() => setPowerMenuOpen(false)}
           onLock={() => setManuallyLocked(true)}
-          onSignOut={() => signOut().catch(() => {})}
+          onSignOut={() => signOut().catch((err: unknown) => { console.error('Sign-out failed:', err); })}
         />
       )}
       {commandPaletteOpen && (

@@ -98,8 +98,9 @@ declare global {
     setAudioMuted(muted: boolean): void;
     isAudioMuted(): boolean;
     getWebContentsId(): number;
-    executeJavaScript(code: string): Promise<any>;
+    executeJavaScript(code: string): Promise<unknown>;
     insertCSS(css: string): Promise<string>;
+    removeInsertedCSS(key: string): Promise<void>;
     capturePage(): Promise<{ toPNG(): Buffer }>;
   }
 }
@@ -212,25 +213,6 @@ export default function CompanyBrowserPage() {
     }, SAVE_DEBOUNCE_MS);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [bookmarks, history]);
-
-  // Resize webviews imperatively (CSS sizing isn't reliable for <webview>)
-  useEffect(() => {
-    const container = webviewContainerRef.current;
-    if (!container) return;
-    const apply = () => {
-      const { width, height } = container.getBoundingClientRect();
-      for (const el of Object.values(webviewRefs.current)) {
-        if (!el) continue;
-        el.style.width = `${width}px`;
-        el.style.height = `${height}px`;
-      }
-    };
-    apply();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(apply);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [tabs.length]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -368,7 +350,9 @@ export default function CompanyBrowserPage() {
   // ── Copy URL ───────────────────────────────────────────────────────────────
 
   const copyUrl = useCallback(() => {
-    navigator.clipboard.writeText(activeTab.url).catch(() => {});
+    navigator.clipboard.writeText(activeTab.url).catch((err: unknown) => {
+      console.error('Failed to copy URL to clipboard:', err);
+    });
   }, [activeTab.url]);
 
   // ── Dark reader ────────────────────────────────────────────────────────────
@@ -381,11 +365,18 @@ export default function CompanyBrowserPage() {
         html { filter: invert(90%) hue-rotate(180deg) !important; }
         img, video, canvas, [style*="background-image"] { filter: invert(100%) hue-rotate(180deg) !important; }
       `);
-      darkReaderKeyRef.current = key ?? null;
+      if (key == null) return; // insertCSS not available or returned no key
+      darkReaderKeyRef.current = key;
       setDarkReader(true);
     } else {
-      setDarkReader(false);
+      const key = darkReaderKeyRef.current;
+      if (key) {
+        await el.removeInsertedCSS?.(key).catch((err: unknown) => {
+          console.error('Failed to remove dark reader CSS:', err);
+        });
+      }
       darkReaderKeyRef.current = null;
+      setDarkReader(false);
     }
   }, [activeTab.id, darkReader]);
 
@@ -415,7 +406,7 @@ export default function CompanyBrowserPage() {
     const onStopLoading = () => updateTab(activeTab.id, { loading: false, canGoBack: el.canGoBack(), canGoForward: el.canGoForward() });
     const onFailLoad = (e: Event) => {
       const fe = e as Event & { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
-      if (!isFatalNavFailure(fe.errorCode ?? 0, fe.isMainFrame ?? true)) return;
+      if (!isFatalNavFailure(fe.errorCode ?? 0, fe.isMainFrame ?? false)) return;
       updateTab(activeTab.id, { loading: false, error: fe.errorDescription || 'Page could not be loaded.' });
     };
     const onNewWindow = (e: Event) => {
@@ -612,21 +603,6 @@ export default function CompanyBrowserPage() {
           ))}
         </div>
       )}
-
-      <div ref={webviewContainerRef} className="flex-1 relative">
-        {tabs.map(tab => (
-          <webview
-            key={tab.id}
-            ref={(el) => { webviewRefs.current[tab.id] = el; }}
-            src={tab.url}
-            style={{
-              position: 'absolute', inset: 0,
-              display: tab.id === activeTabId ? 'flex' : 'none',
-            }}
-            partition={`persist:company-browser-${tab.id}`}
-          />
-        ))}
-      </div>
 
       {/* ── Find bar ───────────────────────────────────────────────────────── */}
       {panel === 'find' && (
@@ -834,9 +810,22 @@ function TabChip({ tab, active, pinned, onSelect, onClose, onPin, onMute, onDupl
   onSelect: () => void; onClose: () => void; onPin: () => void; onMute: () => void; onDuplicate: () => void;
 }) {
   const [ctx, setCtx] = useState(false);
+  const chipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ctx) return;
+    const handler = (e: MouseEvent) => {
+      if (chipRef.current && !chipRef.current.contains(e.target as Node)) {
+        setCtx(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [ctx]);
 
   return (
     <div
+      ref={chipRef}
       role="tab"
       aria-selected={active}
       onClick={onSelect}
@@ -853,7 +842,7 @@ function TabChip({ tab, active, pinned, onSelect, onClose, onPin, onMute, onDupl
         </button>
       )}
       {ctx && (
-        <div onClick={e => e.stopPropagation()} onMouseLeave={() => setCtx(false)} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 24px rgba(0 0 0 / 0.4)', minWidth: 160 }}>
+        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 24px rgba(0 0 0 / 0.4)', minWidth: 160 }}>
           {[
             { label: tab.pinned ? 'Unpin Tab' : 'Pin Tab', action: onPin },
             { label: tab.muted ? 'Unmute Tab' : 'Mute Tab', action: onMute },
