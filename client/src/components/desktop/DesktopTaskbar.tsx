@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, useReducer } from 'react';
 import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus, SquareSigma, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
@@ -37,7 +37,7 @@ function QuickSettingsButton() {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button type="button" onClick={() => setOpen(v => !v)} title="Quick settings"
-        style={{ background: open ? 'rgba(255,255,255,0.1)' : 'none', border: 'none', cursor: 'pointer', borderRadius: 2, padding: '3px 5px', display: 'flex', alignItems: 'center' }}>
+        style={{ background: open ? 'var(--surface-hover)' : 'none', border: 'none', cursor: 'pointer', borderRadius: 2, padding: '3px 5px', display: 'flex', alignItems: 'center' }}>
         <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: 'var(--text-primary)' }} />
       </button>
       {open && (
@@ -62,7 +62,7 @@ export interface DesktopTaskbarProps {
 export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter, onPowerMenu, onOpenCommandPalette, onNewCall }: DesktopTaskbarProps) {
   const { windows, focusWindow, openWindow, minimizeAll, restoreAll, closeWindow } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
-  const [, forceRerender] = useState(0);
+  const [, forceRerender] = useReducer((x: number) => x + 1, 0);
 
   const handleShowDesktop = useCallback(() => {
     if (autoMinimizedIds.length > 0) {
@@ -270,7 +270,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
               <ContextMenu
                 key={w.id}
                 items={[
-                  { label: isAppPinned(w.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(w.path)) unpinApp(w.path); else pinApp(w.path); forceRerender(n => n + 1); } },
+                  { label: isAppPinned(w.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(w.path)) unpinApp(w.path); else pinApp(w.path); forceRerender(); } },
                   { label: 'Close', onClick: () => closeWindow(w.id) },
                 ]}
               >
@@ -310,7 +310,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             <ContextMenu
               key={path}
               items={[
-                { label: isAppPinned(path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(path)) unpinApp(path); else pinApp(path); forceRerender(n => n + 1); } },
+                { label: isAppPinned(path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(path)) unpinApp(path); else pinApp(path); forceRerender(); } },
                 { label: 'Close', onClick: () => closeWindow(group[Math.min(cycleIndexRef.current[path] ?? 0, group.length - 1)].id) },
                 { label: 'Close all', onClick: () => group.forEach(w => closeWindow(w.id)) },
               ]}
@@ -533,8 +533,8 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         pinnedActions={TASKBAR_PINNED_ACTIONS[jumpList.appKey] ?? []}
         isPinned={isAppPinned(jumpList.appKey)}
         isRunning={jumpList.isRunning}
-        onPin={() => { pinApp(jumpList.appKey); setJumpList(null); forceRerender(n => n + 1); }}
-        onUnpin={() => { unpinApp(jumpList.appKey); setJumpList(null); forceRerender(n => n + 1); }}
+        onPin={() => { pinApp(jumpList.appKey); setJumpList(null); forceRerender(); }}
+        onUnpin={() => { unpinApp(jumpList.appKey); setJumpList(null); forceRerender(); }}
         onCloseWindow={jumpList.closeWindowId ? () => { closeWindow(jumpList.closeWindowId!); setJumpList(null); } : undefined}
         onDismiss={() => setJumpList(null)}
       />
