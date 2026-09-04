@@ -194,8 +194,8 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       cancelDraft();
       fetchTrips();
       onChanged?.();
-    } catch (err: any) {
-      addToast(err?.message || 'Update failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Update failed', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -214,8 +214,8 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       cancelDraft();
       fetchTrips();
       onChanged?.();
-    } catch (err: any) {
-      addToast(err?.message || 'Add failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Add failed', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -235,8 +235,8 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       setDeleteReason('');
       fetchTrips();
       onChanged?.();
-    } catch (err: any) {
-      addToast(err?.message || 'Delete failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Delete failed', 'error');
     } finally {
       setDeletingKey(null);
     }

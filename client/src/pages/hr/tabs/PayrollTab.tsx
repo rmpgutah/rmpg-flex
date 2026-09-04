@@ -325,7 +325,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       if (selectedPeriod?.id === confirmDeletePeriodId) setSelectedPeriod(null);
       setConfirmDeletePeriodId(null);
       fetchPeriods();
-    } catch (e: any) { addToast(e.message || 'Failed to delete', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete', 'error'); }
     finally { setConfirmDeleteLoading(false); }
   };
 

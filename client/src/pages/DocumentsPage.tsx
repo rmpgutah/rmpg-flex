@@ -216,7 +216,7 @@ export default function DocumentsPage() {
       setShowNewFolder(false);
       fetchContents(currentFolderId);
       addToast('Folder created', 'success');
-    } catch (err: any) { addToast(err.message || 'Failed to create folder', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to create folder', 'error'); }
   };
 
   const renameFolder = async () => {
@@ -226,7 +226,7 @@ export default function DocumentsPage() {
       setRenamingFolder(null);
       fetchContents(currentFolderId);
       addToast('Folder renamed', 'success');
-    } catch (err: any) { addToast(err.message || 'Failed to rename', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to rename', 'error'); }
   };
 
   // Stages a folder for deletion via ConfirmDialog (replaces window.confirm).
@@ -240,7 +240,7 @@ export default function DocumentsPage() {
       fetchContents(currentFolderId);
       addToast('Folder deleted', 'success');
       setPendingDeleteFolder(null);
-    } catch (err: any) { addToast(err.message || 'Failed to delete', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to delete', 'error'); }
     finally { setConfirmBusy(false); }
   };
 
@@ -262,7 +262,7 @@ export default function DocumentsPage() {
       addToast('File deleted', 'success');
       setSelectedFiles(prev => { const n = new Set(prev); n.delete(file.file_id); return n; });
       setPendingDeleteFile(null);
-    } catch (err: any) { addToast(err.message || 'Failed to delete', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to delete', 'error'); }
     finally { setConfirmBusy(false); }
   };
 

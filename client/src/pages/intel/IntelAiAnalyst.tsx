@@ -19,9 +19,10 @@ const EXAMPLES = [
 
 interface HistoryItem { q: string; answer: string }
 
-function notConfigured(err: any): boolean {
-  const s = `${err?.code ?? ''} ${err?.message ?? ''}`;
-  return /NO_AI_KEY|not configured/i.test(s);
+function notConfigured(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  const code = (err as Record<string, unknown>)?.code;
+  return /NO_AI_KEY|not configured/i.test(`${code ?? ''} ${msg}`);
 }
 
 export default function IntelAiAnalyst() {
@@ -44,7 +45,7 @@ export default function IntelAiAnalyst() {
   const testConnection = async () => {
     setTesting(true);
     try { setHealth(await apiFetch<Health>('/intel/ai/health?test=1')); }
-    catch (e: any) { setHealth({ configured: true, model: '', ok: false, detail: e?.message }); }
+    catch (e) { setHealth({ configured: true, model: '', ok: false, detail: e instanceof Error ? e.message : 'check failed' }); }
     finally { setTesting(false); }
   };
 
@@ -57,10 +58,10 @@ export default function IntelAiAnalyst() {
       const res = await apiFetch<AskResult>('/intel/ai/ask', { method: 'POST', body: JSON.stringify({ question: text }) });
       setResult(res);
       setHistory((h) => [{ q: text, answer: res.answer }, ...h].slice(0, 10));
-    } catch (e: any) {
+    } catch (e) {
       setError(notConfigured(e)
         ? 'AI is not configured — set the Anthropic API key in Admin → API Integrations.'
-        : (e?.message || 'AI request failed'));
+        : (e instanceof Error ? e.message : 'AI request failed'));
     } finally { setAsking(false); }
   };
 
@@ -76,8 +77,8 @@ export default function IntelAiAnalyst() {
         method: 'POST', body: JSON.stringify({ label: s.label, sections }),
       });
       setSummaries((prev) => ({ ...prev, [s.id]: res.summary }));
-    } catch (e: any) {
-      setSummaries((prev) => ({ ...prev, [s.id]: '✗ ' + (notConfigured(e) ? 'AI not configured' : (e?.message || 'summary failed')) }));
+    } catch (e) {
+      setSummaries((prev) => ({ ...prev, [s.id]: '✗ ' + (notConfigured(e) ? 'AI not configured' : (e instanceof Error ? e.message : 'summary failed')) }));
     } finally { setSummarizing(null); }
   };
 

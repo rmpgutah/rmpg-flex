@@ -769,8 +769,8 @@ export default function DispatchPage() {
         const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         setPersonSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowPersonDropdown(true);
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') setPersonSearchResults([]);
+      } catch (e) {
+        if ((e as { name?: string }).name !== 'AbortError') setPersonSearchResults([]);
       }
     }, SEARCH_DEBOUNCE_MS);
   }, []);
@@ -786,8 +786,8 @@ export default function DispatchPage() {
         const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         setVehicleSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowVehicleDropdown(true);
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') setVehicleSearchResults([]);
+      } catch (e) {
+        if ((e as { name?: string }).name !== 'AbortError') setVehicleSearchResults([]);
       }
     }, SEARCH_DEBOUNCE_MS);
   }, []);
@@ -928,8 +928,8 @@ export default function DispatchPage() {
         const results = await apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         setBusinessSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowBusinessDropdown(true);
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') setBusinessSearchResults([]);
+      } catch (e) {
+        if ((e as { name?: string }).name !== 'AbortError') setBusinessSearchResults([]);
       }
     }, SEARCH_DEBOUNCE_MS);
   }, []);
@@ -2328,8 +2328,8 @@ export default function DispatchPage() {
         prev.map((u) => (String(u.id) === String(unitId) ? { ...u, status: newStatus as any } : u)),
       );
       addToast('Saved', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to update unit status', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update unit status', 'error');
     }
   }, [setUnits, addToast]);
 
@@ -4430,8 +4430,8 @@ export default function DispatchPage() {
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
-                            } catch (err: any) {
-                              addToast(err?.message || 'Failed to update case number', 'error');
+                            } catch (err) {
+                              addToast(err instanceof Error ? err.message : 'Failed to update case number', 'error');
                             }
                             setEditingTimestamp(null);
                           }
@@ -4492,8 +4492,8 @@ export default function DispatchPage() {
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch (err: any) {
-                              addToast(err?.message || 'Failed to update incident link', 'error');
+                            } catch (err) {
+                              addToast(err instanceof Error ? err.message : 'Failed to update incident link', 'error');
                             }
                             setEditingTimestamp(null);
                           }
@@ -8459,8 +8459,8 @@ export default function DispatchPage() {
                     await handleStatusChange(selectedCall.id, 'closed');
                     setSubmitNarrativeConfirmOpen(false);
                     addToast(`Narrative submitted. CFS ${selectedCall.call_number} closed and scheduled for archiving.`, 'success');
-                  } catch (err: any) {
-                    addToast(err?.message || 'Failed to submit narrative', 'error');
+                  } catch (err) {
+                    addToast(err instanceof Error ? err.message : 'Failed to submit narrative', 'error');
                   } finally {
                     setSubmittingNarrative(false);
                   }

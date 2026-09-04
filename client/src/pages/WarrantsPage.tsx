@@ -887,8 +887,8 @@ export default function WarrantsPage() {
       setAddedToLocal(true);
       // Refresh warrants list if on warrants tab
       listTabRef.current?.refresh({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to add to local records', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to add to local records', 'error');
     } finally {
       setAddingToLocal(false);
     }

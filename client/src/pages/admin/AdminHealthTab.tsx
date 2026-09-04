@@ -148,7 +148,6 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
       setHealth(data);
       setLastRefresh(new Date());
     } catch (err) {
-      console.error('Failed to fetch health data:', err);
     } finally {
       setLoading(false);
     }
@@ -159,7 +158,6 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
       const data = await apiFetch<ChangelogData>('/admin/changelog');
       setChangelog(data);
     } catch (err) {
-      console.error('Failed to fetch changelog:', err);
     }
   }, []);
 

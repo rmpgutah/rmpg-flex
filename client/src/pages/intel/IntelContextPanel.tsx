@@ -68,9 +68,10 @@ export default function IntelContextPanel() {
         method: 'POST', body: JSON.stringify({ label, sections }),
       });
       setAiSummary(res?.summary || res?.error || 'No summary returned.');
-    } catch (e: any) {
-      const s = `${e?.code ?? ''} ${e?.message ?? ''}`;
-      setAiSummary(/NO_AI_KEY|not configured/i.test(s) ? 'AI not configured (set the Anthropic key in Admin).' : (e?.message || 'AI summary failed.'));
+    } catch (e) {
+      const err = e as { code?: string; message?: string };
+      const s = `${err.code ?? ''} ${err.message ?? ''}`;
+      setAiSummary(/NO_AI_KEY|not configured/i.test(s) ? 'AI not configured (set the Anthropic key in Admin).' : (err.message || 'AI summary failed.'));
     } finally { setAiBusy(false); }
   };
 

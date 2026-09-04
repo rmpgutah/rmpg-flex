@@ -373,8 +373,8 @@ export default function CourtRecordsPage() {
         continuance_count: detail.continuance_count,
         preparedBy,
       });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to generate court PDF', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to generate court PDF', 'error');
     }
   }, [hydratedDetail, user, addToast]);
 

@@ -176,8 +176,8 @@ export default function MobileShiftPage() {
         if (deepLinkOfficerId) console.info('[MobileShift] deep-link officer_id:', deepLinkOfficerId);
         if (deepLinkShiftId)   console.info('[MobileShift] deep-link shift_id:', deepLinkShiftId);
       }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load shift');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load shift');
     } finally {
       setLoading(false);
     }
@@ -233,8 +233,8 @@ export default function MobileShiftPage() {
       }
       const data: { key: string } = await res.json();
       setPhotos((p) => ({ ...p, [slot]: data.key }));
-    } catch (e: any) {
-      setError(e?.message || 'Photo upload failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Photo upload failed');
     } finally {
       setUploading(null);
     }
@@ -269,8 +269,8 @@ export default function MobileShiftPage() {
         throw new Error(body?.error || `Save failed (${res.status})`);
       }
       await load();
-    } catch (e: any) {
-      setError(e?.message || 'Save failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
     }

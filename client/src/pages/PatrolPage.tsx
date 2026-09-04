@@ -473,8 +473,8 @@ const PatrolPage: React.FC = () => {
       // to "now" so the elapsed counter starts ticking immediately.
       setBreakStartIso(data?.break_start ?? new Date().toISOString());
       addToast('Break started', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to start break', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to start break', 'error');
     } finally {
       // finally, not a trailing call: a thrown request must still re-enable
       // the button, or it would be dead until the operator reloaded.
@@ -488,7 +488,7 @@ const PatrolPage: React.FC = () => {
       setIsOnBreak(false);
       setBreakStartIso(null);
       addToast(`Break ended (${data?.duration_minutes || 0} min)`, 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to end break', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to end break', 'error'); }
   };
 
   // Scan filters
@@ -872,7 +872,7 @@ const PatrolPage: React.FC = () => {
       const data = await apiFetch<any>(`/patrol/optimize-route?${params}`);
       setOptimizedRoute(data);
       addToast(`Route optimized: ${data.optimized_order?.length || 0} checkpoints, ${data.total_distance_km} km`, 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to optimize route', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to optimize route', 'error'); }
     setOptimizing(false);
   };
 
@@ -885,7 +885,7 @@ const PatrolPage: React.FC = () => {
       const data = await apiFetch<any>(`/patrol/log/generate?${params}`);
       setPatrolLog(data);
       addToast('Patrol log generated', 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to generate log', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to generate log', 'error'); }
   };
 
   // ── Feature 6: Exception Report ──
@@ -894,7 +894,7 @@ const PatrolPage: React.FC = () => {
     try {
       const data = await apiFetch<any>('/patrol/exceptions?days=7');
       setExceptions(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load exceptions', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to load exceptions', 'error'); }
   };
 
   // ── Feature 7: Time Tracking ──
@@ -905,7 +905,7 @@ const PatrolPage: React.FC = () => {
       if (date) params.set('date', date);
       const data = await apiFetch<any>(`/patrol/time-tracking?${params}`);
       setTimeTracking(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load time tracking', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to load time tracking', 'error'); }
   };
 
   const patrolTabs = [

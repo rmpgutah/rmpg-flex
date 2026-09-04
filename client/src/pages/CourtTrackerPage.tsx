@@ -186,8 +186,8 @@ export default function CourtTrackerPage() {
       });
       setEditingHeader(false);
       addToast('Event updated', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Update failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Update failed', 'error');
     } finally {
       setSavingHeader(false);
     }
@@ -266,7 +266,7 @@ export default function CourtTrackerPage() {
       addToast('Prosecutor info saved', 'success');
       setProsecutorOpen(false);
       fetchEvents({ silent: true });
-    } catch (err: any) { addToast(err?.message || 'Failed to save', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to save', 'error'); }
     finally { setProsecutorSubmitting(false); }
   };
 
@@ -281,7 +281,7 @@ export default function CourtTrackerPage() {
       addToast('Court fees saved', 'success');
       setFeeOpen(false);
       fetchEvents({ silent: true });
-    } catch (err: any) { addToast(err?.message || 'Failed to save', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to save', 'error'); }
     finally { setFeeSubmitting(false); }
   };
 
@@ -296,7 +296,7 @@ export default function CourtTrackerPage() {
       addToast('Witness list saved', 'success');
       setWitnessOpen(false);
       fetchEvents({ silent: true });
-    } catch (err: any) { addToast(err?.message || 'Failed to save', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to save', 'error'); }
     finally { setWitnessSubmitting(false); }
   };
 
@@ -325,7 +325,7 @@ export default function CourtTrackerPage() {
       addToast(`Event cloned: ${res.data?.event_number}`, 'success');
       setCloneEventId(null); setCloneDate('');
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Clone failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Clone failed', 'error'); }
     finally { setCloneSubmitting(false); }
   };
 
@@ -350,7 +350,7 @@ export default function CourtTrackerPage() {
     try {
       const res = await apiFetch<{ reminders_sent: number; events_tomorrow: number }>('/court/events/generate-reminders', { method: 'POST' });
       addToast(`${res.reminders_sent} reminders sent for ${res.events_tomorrow} events tomorrow`, 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to generate reminders', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to generate reminders', 'error'); }
   };
 
   const handleSearchCitations = async () => {
@@ -374,7 +374,7 @@ export default function CourtTrackerPage() {
       setCitationSearchQ('');
       setCitationSearchResults([]);
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Failed to create event', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to create event', 'error'); }
     finally { setCreatingFromCitation(false); }
   };
 
@@ -491,7 +491,7 @@ export default function CourtTrackerPage() {
       setFormData({ ...EMPTY_FORM });
       setHistoricalEntry(false);
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -508,7 +508,7 @@ export default function CourtTrackerPage() {
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated?.data ?? null);
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); }
     finally { setOutcomeSubmitting(false); }
   };
 
@@ -520,7 +520,7 @@ export default function CourtTrackerPage() {
       addToast('Attendance confirmed', 'success');
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated?.data ?? null);
-    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
   };
 
   // Feature 3: Submit continuance
@@ -537,7 +537,7 @@ export default function CourtTrackerPage() {
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated?.data ?? null);
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setContinuanceSubmitting(false); }
   };
 
@@ -553,7 +553,7 @@ export default function CourtTrackerPage() {
       setBailOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated?.data ?? null);
-    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setBailSubmitting(false); }
   };
 
@@ -569,7 +569,7 @@ export default function CourtTrackerPage() {
       setJudgeNotesOpen(false);
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated?.data ?? null);
-    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setJudgeNotesSubmitting(false); }
   };
 
@@ -645,8 +645,8 @@ export default function CourtTrackerPage() {
         continuance_count: (selected as any).continuance_count,
         preparedBy,
       });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to generate PDF', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to generate PDF', 'error');
     }
   }, [selected, user, addToast]);
 

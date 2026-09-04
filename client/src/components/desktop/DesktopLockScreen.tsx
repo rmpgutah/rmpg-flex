@@ -103,7 +103,10 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
   }, [isLocked, user]);
 
   useEffect(() => {
-    if (selectedUser) setTimeout(() => inputRef.current?.focus(), 120);
+    if (selectedUser) {
+      const t = setTimeout(() => inputRef.current?.focus(), 120);
+      return () => clearTimeout(t);
+    }
   }, [selectedUser?.username]);
 
   const loadUsers = useCallback(() => {

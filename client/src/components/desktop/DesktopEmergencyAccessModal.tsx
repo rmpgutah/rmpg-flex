@@ -26,9 +26,10 @@ export default function DesktopEmergencyAccessModal({ isOpen, onClose, onEmergen
     if (isOpen) {
       setPin('');
       setError('');
-      setTimeout(() => inputRef.current?.focus(), 100);
+      const t = setTimeout(() => inputRef.current?.focus(), 100);
       const logEntry = `[${new Date().toISOString()}] EMERGENCY_ACCESS_TRIGGERED via Ctrl+Alt+Shift+F12`;
       setAuditLog(prev => [logEntry, ...prev.slice(0, 9)]);
+      return () => clearTimeout(t);
     }
   }, [isOpen]);
 

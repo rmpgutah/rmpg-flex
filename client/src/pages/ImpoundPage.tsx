@@ -227,8 +227,8 @@ export default function ImpoundPage() {
       }
       setFormOpen(false);
       fetchData();
-    } catch (err: any) {
-      addToast(err?.message || 'Save failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -248,8 +248,8 @@ export default function ImpoundPage() {
       setReleaseTo('');
       setReleaseNotes('');
       fetchData();
-    } catch (err: any) {
-      addToast(err?.message || 'Release failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Release failed', 'error');
     } finally {
       setSubmitting(false);
     }

@@ -314,8 +314,8 @@ export default function BodyCamerasPage() {
       setEditData(undefined);
       await refreshBodyCameras();
       addToast('Body camera saved', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save body camera', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save body camera', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -364,8 +364,8 @@ export default function BodyCamerasPage() {
     try {
       await apiFetch(path, { method: 'DELETE' });
       deleteOk = true;
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete body camera', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete body camera', 'error');
     } finally {
       setDeleting(false);
     }
@@ -387,8 +387,8 @@ export default function BodyCamerasPage() {
     try {
       await apiFetch(path, { method: 'DELETE' });
       deleteOk = true;
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete video', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete video', 'error');
     } finally {
       setDeleting(false);
     }
@@ -429,8 +429,8 @@ export default function BodyCamerasPage() {
       });
       await refreshBodyCameras();
       addToast(`${ids.length} video(s) deleted`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk delete failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk delete failed', 'error');
     } finally {
       setBulkLoading(false);
     }
@@ -445,8 +445,8 @@ export default function BodyCamerasPage() {
       });
       await refreshBodyCameras();
       addToast(`${ids.length} video(s) reclassified to ${classification}`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk classify failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk classify failed', 'error');
     } finally {
       setBulkLoading(false);
     }
@@ -461,8 +461,8 @@ export default function BodyCamerasPage() {
       });
       await refreshBodyCameras();
       addToast(`${ids.length} camera(s) deleted`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk delete failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk delete failed', 'error');
     } finally {
       setBulkLoading(false);
     }

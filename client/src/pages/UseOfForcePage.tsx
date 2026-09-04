@@ -302,8 +302,8 @@ export default function UseOfForcePage() {
         const row = await apiFetch<UofReport>(`/use-of-force/${wantNum}`);
         if (cancelled) return;
         setSelected(row);
-      } catch (e: any) {
-        if (e?.status === 404) {
+      } catch (e) {
+        if ((e as { status?: number }).status === 404) {
           addToast(`UoF report #${wantNum} not found`, 'warning');
         } else {
           addToast(`Failed to load UoF #${wantNum}`, 'error');
@@ -396,8 +396,8 @@ export default function UseOfForcePage() {
           setSelected(fresh);
         } catch { /* non-fatal */ }
       }
-    } catch (err: any) {
-      addToast(err?.message || 'Review failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Review failed', 'error');
     } finally {
       setReviewBusy(false);
     }
@@ -414,8 +414,8 @@ export default function UseOfForcePage() {
       setDeleteTarget(null);
       await fetchReports({ silent: true });
       fetchStats();
-    } catch (err: any) {
-      addToast(err?.message || 'Delete failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Delete failed', 'error');
     } finally {
       setDeleteBusy(false);
     }

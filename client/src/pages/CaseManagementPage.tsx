@@ -152,7 +152,7 @@ function LinkedEntityPanel({
       setSearchQuery('');
       setSearchResults([]);
       onRefresh();
-    } catch (err: any) { addToast(err.message || 'Link failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Link failed', 'error'); }
   };
 
   const handleUnlink = async (entityId: number) => {
@@ -160,7 +160,7 @@ function LinkedEntityPanel({
       await apiFetch(`/cases/${caseId}/${entityType}/${entityId}`, { method: 'DELETE' });
       addToast(`${entityType.slice(0, -1)} unlinked from case`, 'success');
       onRefresh();
-    } catch (err: any) { addToast(err.message || 'Unlink failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unlink failed', 'error'); }
   };
 
   return (
@@ -514,11 +514,11 @@ export default function CaseManagementPage() {
   }, [page, searchQuery, filterStatus, filterType, filterPriority, filterOverdue, filterMine, user?.id]);
 
   const fetchStats = useCallback(async () => {
-    try { const res = await apiFetch<{ data: any }>('/cases/stats'); setStats(res.data); } catch (e) { console.warn('[Cases] fetch stats failed:', e); }
+    try { const res = await apiFetch<{ data: any }>('/cases/stats'); setStats(res.data); } catch { /* silently skip */ }
   }, []);
 
   const fetchNotes = useCallback(async (caseId: number) => {
-    try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch (e) { console.warn('[Cases] fetch notes failed:', e); }
+    try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch { /* silently skip */ }
   }, []);
 
   // Refreshes both the full-case aggregate and its audit trail, so every
@@ -581,7 +581,7 @@ export default function CaseManagementPage() {
       clearSelection();
       fetchCases({ silent: true });
       fetchStats();
-    } catch (e: any) { addToast(e.message || 'Bulk action failed', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Bulk action failed', 'error'); }
   };
 
   // ── Saved filter views (v3 Phase 4) ──
@@ -635,13 +635,12 @@ export default function CaseManagementPage() {
           } else if (r && Array.isArray((r as { data: PersonnelRecord[] }).data)) {
             resolved = (r as { data: PersonnelRecord[] }).data;
           } else {
-            console.error('[CaseManagementPage] /personnel response has unexpected shape; assignment dropdowns will be empty.', r);
             resolved = [];
           }
           setUsers(resolved);
         }
       })
-      .catch((err) => { console.error('[CaseManagementPage] fetch personnel failed:', err); })
+      .catch(() => { /* silently skip */ })
       .finally(() => { if (!cancelled) setPersonnelLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -677,7 +676,7 @@ export default function CaseManagementPage() {
       setFormData({ ...EMPTY_FORM });
       fetchCases({ silent: true });
       fetchStats();
-    } catch (err: any) { addToast(err.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -705,7 +704,7 @@ export default function CaseManagementPage() {
       addToast('Note deleted', 'success');
       fetchNotes(selected.id);
       fetchFullCase(selected.id);
-    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
     finally { setNoteDeleting(null); setNoteToDelete(null); }
   };
 
@@ -720,7 +719,7 @@ export default function CaseManagementPage() {
       addToast(note.is_pinned ? 'Note unpinned' : 'Note pinned', 'success');
       fetchNotes(selected.id);
       fetchFullCase(selected.id);
-    } catch (err: any) { addToast(err.message || 'Toggle failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Toggle failed', 'error'); }
     finally { setNoteTogglingPin(null); }
   };
 
@@ -847,7 +846,7 @@ export default function CaseManagementPage() {
       addToast(`Case ${c.case_number} deleted`, 'success');
       if (selected?.id === c.id) setSelected(null);
       fetchCases();
-    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
     finally { setCaseDeleting(false); setCaseToDelete(null); }
   };
 

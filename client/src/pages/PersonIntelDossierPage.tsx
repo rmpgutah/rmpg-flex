@@ -155,8 +155,8 @@ export default function PersonIntelDossierPage() {
       if (data.status === 'complete' || data.status === 'error') {
         clearInterval(pollRef.current);
       }
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
       clearInterval(pollRef.current);
     } finally {
       setLoading(false);
@@ -200,8 +200,8 @@ export default function PersonIntelDossierPage() {
     try {
       await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
       await load();
-    } catch (e: any) {
-      addToast(e?.message ?? 'Failed to update data point', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to update data point', 'error');
     }
   };
 
@@ -212,8 +212,8 @@ export default function PersonIntelDossierPage() {
       await apiFetch(`/person-intel/${id}`, { method: 'DELETE' });
       addToast('Dossier deleted', 'success');
       navigate('/person-intel');
-    } catch (e: any) {
-      addToast(e.message ?? 'Failed to delete dossier', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to delete dossier', 'error');
     } finally {
       setDeleteLoading(false);
       setDeleteConfirmOpen(false);
@@ -315,8 +315,8 @@ export default function PersonIntelDossierPage() {
                 try {
                   const res = await apiFetch<{ filled: string[] }>(`/person-intel/${id}/apply-to-person`, { method: 'POST', body: JSON.stringify({}) });
                   addToast(res.filled?.length ? `Filled ${res.filled.join(', ')}` : 'No verified aggregator fields to fill', 'success');
-                } catch (e: any) {
-                  addToast(e?.message ?? 'Fill failed', 'error');
+                } catch (e) {
+                  addToast(e instanceof Error ? e.message : 'Fill failed', 'error');
                 }
               }}
             >

@@ -383,8 +383,8 @@ export default function FieldCameraPage() {
         addToast(callId ? 'Photo saved to call' : 'Photo saved', 'success');
         discard();
       }
-    } catch (err: any) {
-      addToast(err?.message || 'Upload failed — photo kept on screen', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Upload failed — photo kept on screen', 'error');
     } finally {
       setUploading(false);
     }
@@ -419,8 +419,8 @@ export default function FieldCameraPage() {
       if (resp.warrant_hits.length > 0) {
         addToast(`⚠ ${resp.warrant_hits.length} active warrant(s) found`, 'error');
       }
-    } catch (err: any) {
-      addToast(err?.message || 'Scan failed to parse — try again', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Scan failed to parse — try again', 'error');
     } finally {
       setIdScanSubmitting(false);
     }

@@ -50,8 +50,8 @@ export default function AdminCloudflareTab({ setError }: Props) {
         ]);
         setStatus(st); setResources(res);
       } else { setStatus(null); setResources(null); }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load Cloudflare config');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load Cloudflare config');
     } finally { setLoading(false); }
   }, [setError]);
 
@@ -66,7 +66,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
       setToken('');
       addToast('Cloudflare config saved', 'success');
       load();
-    } catch (e: any) { addToast(e?.message || 'Save failed', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Save failed', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -80,7 +80,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
     try {
       await apiFetch('/cloudflare/purge-cache', { method: 'POST', body: JSON.stringify({}) });
       addToast('Cache purged', 'success');
-    } catch (e: any) { addToast(e?.message || 'Purge failed', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Purge failed', 'error'); }
     finally {
       setPurging(false);
       setPurgeConfirmOpen(false);

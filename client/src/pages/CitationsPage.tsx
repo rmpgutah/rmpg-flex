@@ -595,7 +595,7 @@ export default function CitationsPage() {
       setShowPaymentForm(false);
       setPaymentForm({ amount: '', payment_date: localToday(), payment_method: 'cash', reference_number: '', notes: '' });
       fetchCitations({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err.message || 'Failed to record payment', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to record payment', 'error'); }
     finally { setPaymentSubmitting(false); }
   };
 

@@ -418,8 +418,8 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
                   addToast('Call logged', 'success');
                   openDialerCallRecordPdf({ record: callToPdf(patched.data || created.data), exportedBy });
                 }
-              } catch (e: any) {
-                addToast(e?.message || 'Failed to log call', 'error');
+              } catch (e) {
+                addToast(e instanceof Error ? e.message : 'Failed to log call', 'error');
               }
             }}
           >Log + print form</button>
@@ -523,21 +523,22 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
         <button
           type="button"
           className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300"
-          onClick={async () => {
-            const blob = await apiFetchBlob(`/dialer-connect/voicemails/export.csv?archived=${archived ? '1' : '0'}`);
-            saveBlob(blob, 'dialer-voicemail.csv');
+          onClick={() => {
+            apiFetchBlob(`/dialer-connect/voicemails/export.csv?archived=${archived ? '1' : '0'}`)
+              .then((blob) => saveBlob(blob, 'dialer-voicemail.csv'))
+              .catch((e) => addToast(e instanceof Error ? e.message : 'Export failed', 'error'));
           }}
         >CSV</button>
         <button type="button" onClick={() => load()} className="ml-auto text-rmpg-400" aria-label="Refresh voicemail"><RefreshCw className="w-3.5 h-3.5" /></button>
         <button
           type="button"
           className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300 flex items-center gap-1"
-          onClick={async () => {
+          onClick={() => {
             if (selected.size === 0) { addToast('Select voicemails first', 'warning'); return; }
-            await apiFetch('/dialer-connect/voicemails/bulk-heard', { method: 'POST', body: JSON.stringify({ ids: [...selected] }) });
-            setSelected(new Set());
-            await load();
-            addToast('Marked heard', 'success');
+            apiFetch('/dialer-connect/voicemails/bulk-heard', { method: 'POST', body: JSON.stringify({ ids: [...selected] }) })
+              .then(() => { setSelected(new Set()); return load(); })
+              .then(() => addToast('Marked heard', 'success'))
+              .catch((e) => addToast(e instanceof Error ? e.message : 'Bulk update failed', 'error'));
           }}
         ><CheckCheck className="w-3 h-3" /> Bulk heard</button>
       </div>

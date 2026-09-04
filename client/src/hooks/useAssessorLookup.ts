@@ -77,13 +77,13 @@ export function useAssessorLookup() {
       setCode(res.code);
       setDegraded(res.degraded);
       setManualUrl(res.manual_url);
-    } catch (e: any) {
+    } catch (e) {
       if (ctl.signal.aborted) return;
       setParcels([]);
       setCode('upstream_error');
       setSource('none');
       setDegraded(false);
-      setError(e?.message ?? 'Assessor lookup failed');
+      setError(e instanceof Error ? e.message : 'Assessor lookup failed');
       setManualUrl(`https://apps.saltlakecounty.gov/assessor/new/query.cfm?address=${encodeURIComponent(trimmed)}`);
     } finally {
       if (!ctl.signal.aborted) setLoading(false);

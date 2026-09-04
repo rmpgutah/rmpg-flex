@@ -219,8 +219,8 @@ export default function PlateLogPage() {
         }
       }
       loadReview(); loadRecent();
-    } catch (e: any) {
-      setReviewMsg({ text: `Action failed: ${e?.message || 'error'} — please retry.`, kind: 'err' });
+    } catch (e) {
+      setReviewMsg({ text: `Action failed: ${e instanceof Error ? e.message : 'error'} — please retry.`, kind: 'err' });
     } finally { setReviewBusy(null); }
   };
   const toggleSel = (id: number) => setSelected((prev) => {
@@ -249,8 +249,8 @@ export default function PlateLogPage() {
           : { text: `${baseText}.`, kind: 'ok' });
       setSelected(new Set());
       loadReview(); loadRecent();
-    } catch (e: any) {
-      setReviewMsg({ text: `Bulk ${action} failed: ${e?.message || 'error'} — please retry.`, kind: 'err' });
+    } catch (e) {
+      setReviewMsg({ text: `Bulk ${action} failed: ${e instanceof Error ? e.message : 'error'} — please retry.`, kind: 'err' });
     } finally { setBulkBusy(false); }
   };
   useEffect(() => {
@@ -409,8 +409,8 @@ export default function PlateLogPage() {
         hits: scan.hits,
         history: Array.isArray(history) ? history : [],
       });
-    } catch (e: any) {
-      setReviewMsg({ text: `Print failed: ${e?.message || 'error'}`, kind: 'err' });
+    } catch (e) {
+      setReviewMsg({ text: `Print failed: ${e instanceof Error ? e.message : 'error'}`, kind: 'err' });
     } finally {
       setPdfBusy(false);
     }

@@ -187,7 +187,6 @@ export default function CriminalHistoryPage() {
       setHistory([]);
     } catch (err: any) {
       setFetchError(err?.message || 'Failed to load data');
-      console.error('Person search error:', err);
       addToast('Failed to search persons', 'error');
       setPersons([]);
     } finally {
@@ -271,7 +270,6 @@ export default function CriminalHistoryPage() {
       });
       setHistory(entries);
     } catch (err) {
-      console.error('History fetch error:', err);
       addToast('Failed to load criminal history', 'error');
       setHistory([]);
     }

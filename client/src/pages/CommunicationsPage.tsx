@@ -1823,7 +1823,7 @@ export default function CommunicationsPage() {
               });
               addToast('Draft saved', 'success');
               setShowCompose(false);
-            } catch (err: any) { addToast(err?.message || 'Failed to save draft', 'error'); }
+            } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to save draft', 'error'); }
           }}
           className="toolbar-btn text-rmpg-400 hover:text-rmpg-100"
         >
@@ -1877,8 +1877,8 @@ export default function CommunicationsPage() {
             setEmergencyBroadcastOpen(false);
             setEmergencyBroadcastText('');
             fetchMessages({ silent: true });
-          } catch (err: any) {
-            addToast(err?.message || 'Failed to send emergency broadcast', 'error');
+          } catch (err) {
+            addToast(err instanceof Error ? err.message : 'Failed to send emergency broadcast', 'error');
           } finally {
             setEmergencyBroadcastSending(false);
           }

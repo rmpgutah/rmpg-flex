@@ -77,8 +77,8 @@ export default function ShiftCard() {
         take_home_vehicle: res?.take_home_vehicle ?? null,
         available_vehicles: Array.isArray(res?.available_vehicles) ? res.available_vehicles : [],
       });
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load shift');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load shift');
     } finally {
       setLoading(false);
     }
@@ -132,17 +132,18 @@ export default function ShiftCard() {
       });
       setMileagePrompt(null);
       await fetchState();
-    } catch (e: any) {
+    } catch (e) {
       // Server safety-net for decreasing/too-high — re-open with the previous
       // reading so the user (or a manager) gets the in-modal warning.
-      if (e?.code === 'MILEAGE_DECREASING' || e?.code === 'MILEAGE_TOO_HIGH') {
-        setMileagePrompt((m) => (m && m.mode === 'starting' ? { ...m, previous: e?.payload?.previous_mileage ?? null } : m));
-        setError(e?.message || 'Mileage rejected');
-      } else if (e?.code === 'NO_UNIT') {
+      const err = e as { code?: string; message?: string; payload?: { previous_mileage?: number } };
+      if (err.code === 'MILEAGE_DECREASING' || err.code === 'MILEAGE_TOO_HIGH') {
+        setMileagePrompt((m) => (m && m.mode === 'starting' ? { ...m, previous: err.payload?.previous_mileage ?? null } : m));
+        setError(err.message || 'Mileage rejected');
+      } else if (err.code === 'NO_UNIT') {
         setMileagePrompt(null);
         setError('No unit assigned — ask dispatch to assign you a unit first.');
       } else {
-        setError(e?.message || 'Clock in failed');
+        setError(err.message || 'Clock in failed');
       }
     } finally {
       setBusy(false);
@@ -185,12 +186,13 @@ export default function ShiftCard() {
       });
       setMileagePrompt(null);
       await fetchState();
-    } catch (e: any) {
-      if (e?.code === 'MILEAGE_DECREASING' || e?.code === 'MILEAGE_TOO_HIGH') {
-        setMileagePrompt((m) => (m && m.mode === 'ending' ? { ...m, previous: e?.payload?.previous_mileage ?? e?.payload?.starting_mileage ?? null } : m));
-        setError(e?.message || 'Mileage rejected');
+    } catch (e) {
+      const err = e as { code?: string; message?: string; payload?: { previous_mileage?: number; starting_mileage?: number } };
+      if (err.code === 'MILEAGE_DECREASING' || err.code === 'MILEAGE_TOO_HIGH') {
+        setMileagePrompt((m) => (m && m.mode === 'ending' ? { ...m, previous: err.payload?.previous_mileage ?? err.payload?.starting_mileage ?? null } : m));
+        setError(err.message || 'Mileage rejected');
       } else {
-        setError(e?.message || 'Clock out failed');
+        setError(err.message || 'Clock out failed');
       }
     } finally {
       setBusy(false);

@@ -382,8 +382,8 @@ export default function MileageAuditTab() {
       const filename = `PS-211_trip_log_${namePart.replace(/\s+/g, '_')}${unitPart}_${stamp}.pdf`;
       await downloadPdfV2(tripLogSchema, data, filename, { schemaId: 'trip_log' });
       addToast(`FORM PS-211 generated: ${data.rows.length} rows`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Trip log generation failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Trip log generation failed', 'error');
     }
     setTripLogLoading(false);
   };
@@ -412,8 +412,8 @@ export default function MileageAuditTab() {
       setBackfillOpen(false);
       setBackfillReason('');
       refresh();
-    } catch (err: any) {
-      addToast(err?.message || 'Backfill failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Backfill failed', 'error');
     } finally {
       setBackfillSubmitting(false);
     }
@@ -456,8 +456,8 @@ export default function MileageAuditTab() {
       setAutoFixOpen(false);
       setAutoFixReason('');
       refresh();
-    } catch (err: any) {
-      addToast(err?.message || 'Auto-fix failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Auto-fix failed', 'error');
     } finally {
       setAutoFixSubmitting(false);
     }
@@ -487,8 +487,8 @@ export default function MileageAuditTab() {
       setDiscardOpen(false);
       setDiscardReason('');
       refresh();
-    } catch (err: any) {
-      addToast(err?.message || 'Discard failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Discard failed', 'error');
     } finally {
       setDiscardSubmitting(false);
     }

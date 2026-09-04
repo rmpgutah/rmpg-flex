@@ -97,24 +97,24 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
       setShowForm(false);
       refresh();
       addToast('Task added', 'success');
-    } catch (e: any) { addToast(e.message || 'Failed to add task', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to add task', 'error'); }
     finally { setBusy(false); }
   };
 
   const setStatus = async (t: CaseTask, status: string) => {
     try { await apiFetch(`/cases/${caseId}/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ status }) }); refresh(); }
-    catch (e: any) { addToast(e.message || 'Update failed', 'error'); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Update failed', 'error'); }
   };
   const remove = async (t: CaseTask) => {
     try { await apiFetch(`/cases/${caseId}/tasks/${t.id}`, { method: 'DELETE' }); refresh(); addToast('Task removed', 'success'); }
-    catch (e: any) { addToast(e.message || 'Delete failed', 'error'); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Delete failed', 'error'); }
   };
   const applyTemplate = async () => {
     try {
       const r = await apiFetch<{ added: number }>(`/cases/${caseId}/tasks/apply-template`, { method: 'POST' });
       addToast(r?.added ? `${r.added} standard task${r.added === 1 ? '' : 's'} added` : 'Standard tasks already present', 'success');
       refresh();
-    } catch (e: any) { addToast(e.message || 'Failed to apply template', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to apply template', 'error'); }
   };
 
   const open = tasks.filter((t) => t.status !== 'done' && t.status !== 'canceled');
@@ -240,7 +240,7 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
 
   const complete = async (t: CaseTask) => {
     try { await apiFetch(`/cases/${t.case_id}/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ status: 'done' }) }); load(); }
-    catch (e: any) { addToast(e.message || 'Update failed', 'error'); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Update failed', 'error'); }
   };
 
   return (

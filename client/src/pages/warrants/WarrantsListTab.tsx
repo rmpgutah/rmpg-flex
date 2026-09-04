@@ -405,7 +405,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       setBatchSelected(new Set());
       setBatchStatus('');
       fetchWarrants({ silent: true });
-    } catch (err: any) { addToast(err?.message || 'Batch update failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Batch update failed', 'error'); }
     finally { setBatchSubmitting(false); }
   };
 
@@ -425,8 +425,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       addToast(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`, 'success');
       setBatchSelected(new Set());
       fetchWarrants({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk archive failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk archive failed', 'error');
     }
   };
 
@@ -440,8 +440,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       addToast(`Marked ${res.reviewed} warrant(s) reviewed`, 'success');
       setBatchSelected(new Set());
       fetchWarrants({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk review failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk review failed', 'error');
     }
   };
 
@@ -463,8 +463,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         full_name: props.user?.full_name,
         badge_number: props.user?.badge_number,
       });
-    } catch (err: any) {
-      addToast(err?.message || 'Packet generation failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Packet generation failed', 'error');
     }
   };
 
@@ -521,8 +521,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       const filename = `warrant-${safeStem || id}.pdf`;
 
       await downloadRecordPdf('warrant', data, filename);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to print warrant PDF', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to print warrant PDF', 'error');
     }
   };
 

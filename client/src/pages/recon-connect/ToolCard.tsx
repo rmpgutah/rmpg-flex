@@ -282,8 +282,8 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
       setLinkStatus(`✓ Attached to ${caseNumber}`);
       setCaseModalOpen(false);
       setTimeout(() => setLinkStatus(null), 4000);
-    } catch (e: any) {
-      setLinkStatus(`✗ Failed: ${e?.message || 'unknown error'}`);
+    } catch (e) {
+      setLinkStatus(`✗ Failed: ${e instanceof Error ? e.message : 'unknown error'}`);
       setTimeout(() => setLinkStatus(null), 6000);
     }
   };

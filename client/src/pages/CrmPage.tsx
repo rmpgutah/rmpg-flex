@@ -476,8 +476,8 @@ export default function CrmPage() {
       }
       setShowTaskModal(false);
       fetchTasks();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save task', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save task', 'error');
     }
   };
 
@@ -492,8 +492,8 @@ export default function CrmPage() {
       addToast('Task deleted', 'success');
       setTaskToDelete(null);
       fetchTasks();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete task', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete task', 'error');
     } finally {
       setDeletingTask(false);
     }
@@ -504,8 +504,8 @@ export default function CrmPage() {
     try {
       await apiFetch(`/crm/tasks/${task.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
       fetchTasks();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to update task', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update task', 'error');
     }
   };
 
@@ -519,8 +519,8 @@ export default function CrmPage() {
       setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' });
       if (selectedClientId) fetchClientActivity(selectedClientId);
       fetchDashboard();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to log activity', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to log activity', 'error');
     }
   };
 
@@ -834,8 +834,8 @@ export default function CrmPage() {
               setEditingClient(null);
               fetchClients();
               fetchDashboard();
-            } catch (err: any) {
-              addToast(err?.message || 'Failed to save client', 'error');
+            } catch (err) {
+              addToast(err instanceof Error ? err.message : 'Failed to save client', 'error');
             }
           }}
           editingClient={editingClient}

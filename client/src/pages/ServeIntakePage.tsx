@@ -999,8 +999,8 @@ export default function ServeIntakePage() {
         return next;
       });
       addToast('Recipient fields filled from ID scan — review before submitting', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Scan failed to parse — enter manually', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Scan failed to parse — enter manually', 'error');
     }
   }, [addToast]);
 

@@ -139,8 +139,8 @@ export default function BoloBoard() {
       await remove(cancelTarget.id);
       addToast(`BOLO ${cancelTarget.bolo_number} cancelled`, 'success');
       setCancelTarget(null);
-    } catch (e: any) {
-      addToast(e?.message || 'Failed to cancel BOLO', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to cancel BOLO', 'error');
     } finally {
       setCancelBusy(false);
     }

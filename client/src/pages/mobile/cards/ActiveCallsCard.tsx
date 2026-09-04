@@ -88,8 +88,8 @@ export default function ActiveCallsCard() {
         ? res.rows
         : [];
       setCalls(rows);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load calls');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load calls');
     } finally {
       setLoading(false);
     }

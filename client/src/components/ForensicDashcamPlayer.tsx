@@ -520,8 +520,8 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       });
       setBolo({ busy: false, done: true, err: null });
       logAudit('forensic_bolo_created', `${plate || vTag || 'vehicle'} risk ${risk.score}`);
-    } catch (e: any) {
-      setBolo({ busy: false, done: false, err: e?.message || 'BOLO failed' });
+    } catch (e) {
+      setBolo({ busy: false, done: false, err: e instanceof Error ? e.message : 'BOLO failed' });
     }
   };
 

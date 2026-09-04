@@ -336,8 +336,8 @@ export default function ShiftPlansPage() {
       });
       addToast(accept ? 'Swap accepted' : 'Swap declined', 'success');
       loadSwapModalData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to respond to swap', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to respond to swap', 'error');
     } finally {
       setSwapActionPending(null);
     }
@@ -349,8 +349,8 @@ export default function ShiftPlansPage() {
       await apiFetch(`/shift-swaps/${swapId}/cancel`, { method: 'POST' });
       addToast('Swap request cancelled', 'success');
       loadSwapModalData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to cancel swap', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to cancel swap', 'error');
     } finally {
       setSwapActionPending(null);
     }
@@ -365,8 +365,8 @@ export default function ShiftPlansPage() {
       });
       addToast(status === 'approved' ? 'Swap approved' : 'Swap denied', 'success');
       loadSwapModalData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to review swap', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to review swap', 'error');
     } finally {
       setSwapActionPending(null);
     }
@@ -386,8 +386,8 @@ export default function ShiftPlansPage() {
         conflicts,
         preparedBy: user?.full_name || user?.username || undefined,
       });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to generate shift PDF', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to generate shift PDF', 'error');
     }
   };
 

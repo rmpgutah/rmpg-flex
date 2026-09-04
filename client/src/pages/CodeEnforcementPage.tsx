@@ -274,7 +274,7 @@ export default function CodeEnforcementPage() {
       setVFormOpen(false);
       setVFormData({ ...EMPTY_VIOLATION });
       fetchViolations({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -294,7 +294,7 @@ export default function CodeEnforcementPage() {
       setTFormOpen(false);
       setTFormData({ ...EMPTY_TOW });
       fetchTows({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -307,7 +307,7 @@ export default function CodeEnforcementPage() {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
         setSelectedViolation(updated.data);
       }
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); }
   };
 
   const handleScheduleReinspection = async () => {
@@ -324,7 +324,7 @@ export default function CodeEnforcementPage() {
       fetchViolations({ silent: true }); fetchStats();
       const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${selectedViolation.id}`);
       setSelectedViolation(updated.data);
-    } catch (err: any) { addToast(err?.message || 'Failed to schedule reinspection', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to schedule reinspection', 'error'); }
     finally { setSchedulingReinspection(false); }
   };
 
@@ -337,7 +337,7 @@ export default function CodeEnforcementPage() {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);
         setSelectedTow(updated.data);
       }
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); }
   };
 
   // \u2500\u2500 Right-click context menus \u2500\u2500

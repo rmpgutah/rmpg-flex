@@ -280,8 +280,8 @@ export default function FleetCostFormModal({
     try {
       await onSave(payload);
       clearDraft();
-    } catch (e: any) {
-      setLocalError(e?.message || 'Save failed');
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : 'Save failed');
     }
   };
 

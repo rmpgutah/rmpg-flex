@@ -350,7 +350,7 @@ export default function FieldInterviewsPage() {
       addToast(`FI ${fi.fi_number} permanently deleted`, 'success');
       if (selectedFi?.id === fi.id) setSelectedFi(null);
       setFis(prev => prev.filter(f => f.id !== fi.id));
-    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
     finally { setHardDeleteTarget(null); }
   };
 

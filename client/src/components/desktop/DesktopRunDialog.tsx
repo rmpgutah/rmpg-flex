@@ -38,7 +38,8 @@ export default function DesktopRunDialog({ open, onClose }: { open: boolean; onC
     if (open) {
       setValue('');
       setError('');
-      setTimeout(() => inputRef.current?.focus(), 60);
+      const t = setTimeout(() => inputRef.current?.focus(), 60);
+      return () => clearTimeout(t);
     }
   }, [open]);
 

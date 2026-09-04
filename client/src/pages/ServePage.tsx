@@ -513,7 +513,6 @@ export default function ServePage() {
         openPdfDocument(pdf, filename);
       }
     } catch (err) {
-      console.error('[serve] Notice of Attempt generation failed:', err);
       setFetchError('Could not generate the Notice of Attempt — please try again.');
     }
   };
@@ -601,7 +600,6 @@ export default function ServePage() {
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
       openPdfDocument(pdf, `Job-Sheet-${job.case_number || job.id}.pdf`);
     } catch (err) {
-      console.error('[serve] Job sheet generation failed:', err);
       setFetchError('Could not generate the Job Information Sheet — please try again.');
     }
   };
@@ -648,7 +646,6 @@ export default function ServePage() {
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
       openPdfDocument(pdf, `Leave-Behind-PS314-${job.case_number || job.id}.pdf`);
     } catch (err) {
-      console.error('[serve] PS-314 leave-behind generation failed:', err);
       setFetchError('Could not generate the Notice of Service leave-behind — please try again.');
     }
   };
@@ -722,7 +719,6 @@ export default function ServePage() {
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
       openPdfDocument(pdf, filename);
     } catch (err) {
-      console.error('[serve] Affidavit of Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Service — please try again.');
     }
   };
@@ -802,7 +798,6 @@ export default function ServePage() {
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
       openPdfDocument(pdf, filename);
     } catch (err) {
-      console.error('[serve] Affidavit of Non-Service generation failed:', err);
       setFetchError('Could not generate the Affidavit of Non-Service — please try again.');
     }
   };
@@ -912,7 +907,7 @@ export default function ServePage() {
             try {
               const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
               if (call) callMap[j.id] = call;
-            } catch (err) { console.warn("[ServePage] operation failed:", err); }
+            } catch { /* linked call not found */ }
           })
         );
         setLinkedCalls(callMap);

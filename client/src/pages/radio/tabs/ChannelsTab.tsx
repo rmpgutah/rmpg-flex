@@ -75,7 +75,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
       await apiFetch('/radio/channels', { method: 'POST', body: JSON.stringify({ name, description: newDesc.trim() || null }) });
       setNewName(''); setNewDesc(''); setCreating(false);
       load();
-    } catch (err: any) { console.error('[radio] create channel', err); addToast(err?.message || 'Failed to create channel', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to create channel', 'error'); }
   };
 
   const archive = async (id: number) => {
@@ -83,7 +83,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
     try {
       await apiFetch(`/radio/channels/${id}`, { method: 'DELETE' });
       load();
-    } catch (err: any) { console.error('[radio] archive', err); addToast(err?.message || 'Failed to archive channel', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to archive channel', 'error'); }
   };
 
   const buildChannelMenu = (c: RadioChannel): ContextMenuItem[] => {

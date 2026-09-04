@@ -48,7 +48,7 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
       addToast('Case linked', 'success');
       setModalOpen(false); setQ(''); setResults([]);
       onChanged();
-    } catch (e: any) { addToast(e.message || 'Link failed', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Link failed', 'error'); }
   };
 
   const unlink = async (relatedCaseId: number) => {
@@ -56,7 +56,7 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
       await apiFetch(`/cases/${caseId}/related/${relatedCaseId}`, { method: 'DELETE' });
       addToast('Case unlinked', 'success');
       onChanged();
-    } catch (e: any) { addToast(e.message || 'Unlink failed', 'error'); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Unlink failed', 'error'); }
   };
 
   return (
