@@ -221,12 +221,12 @@ trespass.get('/expiration-calendar', async (c) => {
 });
 
 // GET /export/csv
-trespass.get('/export/csv', async (c) => {
+trespass.get('/export/csv', requireRole(...MANAGE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, any>>(
       db,
-      `${SELECT_ORDER} WHERE t.archived_at IS NULL ORDER BY t.id DESC LIMIT 10000`,
+      `${SELECT_ORDER} WHERE t.archived_at IS NULL ORDER BY t.id DESC LIMIT 2500`,
     );
     const cols = [
       'order_number', 'status', 'order_type', 'subject_first_name', 'subject_last_name',

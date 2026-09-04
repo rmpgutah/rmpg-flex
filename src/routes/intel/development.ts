@@ -23,7 +23,7 @@ const isSup = (c: any) =>
   ['admin', 'manager', 'supervisor'].includes(String((c.get('user') as { role?: string })?.role || ''));
 
 /** Strip the restricted body + source identity for unauthorized viewers. */
-function redact(r: any, sup: boolean, viewerId: number): any {
+function redact(r: any, sup: boolean, viewerId: number | null): any {
   if (sup || r.submitted_by === viewerId) return r;
   const { raw_narrative, source_id, source_type, ...safe } = r;
   return { ...safe, source_id: null, source_type: null, raw_narrative: null, _redacted: true };
@@ -34,7 +34,7 @@ export const intelReports = new Hono<Env>();
 // POST /api/intel/reports — submit a raw report
 intelReports.post('/', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const b = await c.req.json().catch(() => ({}));
   if (!b.title || !String(b.title).trim()) return c.json({ error: 'title required' }, 400);
   const year = new Date().getUTCFullYear();
@@ -54,7 +54,7 @@ intelReports.post('/', operational, async (c) => {
 // GET /api/intel/reports?status=&threat=&mine=1&retention=
 intelReports.get('/', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const sup = isSup(c);
   const where: string[] = [];
   const args: unknown[] = [];
@@ -80,7 +80,7 @@ intelReports.get('/', operational, async (c) => {
 // GET /api/intel/reports/:id
 intelReports.get('/:id', operational, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const sup = isSup(c);
   const id = Number(c.req.param('id'));
   const r = await queryFirst<any>(db, 'SELECT * FROM intel_reports WHERE id = ?', id);
@@ -100,7 +100,7 @@ intelReports.get('/:id', operational, async (c) => {
   });
 });
 
-async function audit(c: any, userId: number, action: string, id: number, details: unknown, entityType = 'intel_report') {
+async function audit(c: any, userId: number | null, action: string, id: number, details: unknown, entityType = 'intel_report') {
   await recordAudit(c, { action, entityType, entityId: String(id), details: JSON.stringify(details), actorId: userId });
 }
 
@@ -110,7 +110,7 @@ async function loadReport(db: any, id: number): Promise<IntelReport | null> {
 
 // POST /:id/evaluate { source_reliability, info_credibility, handling_code }
 intelReports.post('/:id/evaluate', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
@@ -136,7 +136,7 @@ intelReports.post('/:id/evaluate', supervisorPlus, async (c) => {
 
 // POST /:id/analyze { sanitized_narrative, assessment, criminal_predicate, threat_level? }
 intelReports.post('/:id/analyze', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
@@ -155,7 +155,7 @@ intelReports.post('/:id/analyze', supervisorPlus, async (c) => {
 
 // POST /:id/disseminate { recipient_user_ids?: number[] }
 intelReports.post('/:id/disseminate', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
@@ -196,7 +196,7 @@ intelReports.post('/:id/disseminate', supervisorPlus, async (c) => {
 
 // POST /:id/recall { reason }
 intelReports.post('/:id/recall', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
@@ -214,7 +214,7 @@ intelReports.post('/:id/recall', supervisorPlus, async (c) => {
 
 // POST /:id/reject { reason }
 intelReports.post('/:id/reject', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
@@ -231,7 +231,7 @@ intelReports.post('/:id/reject', supervisorPlus, async (c) => {
 
 // POST /:id/links { entity_type, entity_id, role }
 intelReports.post('/:id/links', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   if (!b.entity_type || !b.entity_id) return c.json({ error: 'entity_type + entity_id required' }, 400);
@@ -252,7 +252,7 @@ intelReports.delete('/:id/links/:linkId', supervisorPlus, async (c) => {
 
 // POST /:id/share { recipient_label, reason, recipient_type } — external/client share
 intelReports.post('/:id/share', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
@@ -283,7 +283,7 @@ intelSources.get('/', operational, async (c) => {
 
 // POST /api/intel/sources
 intelSources.post('/', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const b = await c.req.json().catch(() => ({}));
   if (!b.source_type) return c.json({ error: 'source_type required' }, 400);
   const year = new Date().getUTCFullYear();
@@ -313,7 +313,7 @@ intelSources.get('/:id', operational, async (c) => {
 // PUT /api/intel/sources/:id
 intelSources.put('/:id', supervisorPlus, async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const allowed = ['display_label', 'handler_user_id', 'status', 'restricted', 'notes_restricted', 'reliability_grade'];
@@ -329,7 +329,7 @@ intelSources.put('/:id', supervisorPlus, async (c) => {
 
 // POST /api/intel/sources/:id/reliability { new_grade, reason }
 intelSources.post('/:id/reliability', supervisorPlus, async (c) => {
-  const db = getDb(c.env); const userId = c.get('userId') as number;
+  const db = getDb(c.env); const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const s = await queryFirst<any>(db, 'SELECT reliability_grade FROM intel_sources WHERE id = ?', id);

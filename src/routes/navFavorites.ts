@@ -20,7 +20,7 @@ interface FavoriteRow {
 navFavorites.get('/', async (c) => {
   const db = getDb(c.env);
   await ensureNavFavoritesColumns(db);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const stagingOnly = c.req.query('staging') === 'true';
   const sql = stagingOnly
     ? 'SELECT * FROM nav_favorites WHERE user_id = ? AND is_staging = 1 ORDER BY created_at DESC'
@@ -33,7 +33,7 @@ navFavorites.get('/', async (c) => {
 navFavorites.post('/', async (c) => {
   const db = getDb(c.env);
   await ensureNavFavoritesColumns(db);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const body = await c.req.json<{ label: string; lat: number; lng: number; address?: string; is_staging?: boolean }>();
   const label = typeof body.label === 'string' ? body.label.trim() : '';
   if (!label || typeof body.lat !== 'number' || typeof body.lng !== 'number') {
@@ -52,7 +52,7 @@ navFavorites.post('/', async (c) => {
 // DELETE /api/nav/favorites/:id — remove a favorite (owner only).
 navFavorites.delete('/:id', async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
   if (!id || isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst<{ user_id: number }>(db, 'SELECT user_id FROM nav_favorites WHERE id = ?', id);

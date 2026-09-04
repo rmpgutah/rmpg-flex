@@ -94,7 +94,7 @@ fi.get('/', async (c) => {
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     const pageNum = Math.max(1, parseInt(q('page') || '1', 10) || 1);
-    const perPage = Math.min(100000, Math.max(1, parseInt(q('per_page') || '100', 10) || 100));
+    const perPage = Math.min(250, Math.max(1, parseInt(q('per_page') || '100', 10) || 100));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = await queryFirst<{ total: number }>(

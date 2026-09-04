@@ -60,7 +60,7 @@ risk.post('/assessments', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.entity_type !== 'string') return c.json({ error: 'entity_type required' }, 400);
     if (typeof b.description !== 'string' || !b.description.trim()) return c.json({ error: 'description required' }, 400);
@@ -143,7 +143,7 @@ risk.post('/inspections', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.location !== 'string' || !b.location.trim()) return c.json({ error: 'location required' }, 400);
     const inspNumber = `SI-${Date.now()}`;
@@ -208,7 +208,7 @@ risk.post('/claims', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.incident_date !== 'string') return c.json({ error: 'incident_date required' }, 400);
     if (typeof b.description !== 'string' || !b.description.trim()) return c.json({ error: 'description required' }, 400);

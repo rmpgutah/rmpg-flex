@@ -140,7 +140,7 @@ warrants.post('/watch/scan', async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
     runUtahWarrantScan(db, { wallBudgetMs: MANUAL_RUN_WALL_BUDGET_MS }).catch((err) => {
-      console.error('[warrants] manual scan failed:', err);
+      log.error('[warrants] manual scan failed:', {}, err instanceof Error ? err : new Error(String(err)));
     }),
   );
   return c.json({
@@ -217,7 +217,7 @@ warrants.get('/person/:id/profile', async (c) => {
     const p = person[0];
 
     const uw = await query<Record<string, any>>(
-      db, 'SELECT * FROM utah_warrants WHERE person_id = ? ORDER BY last_seen_at DESC', id);
+      db, 'SELECT * FROM utah_warrants WHERE person_id = ? ORDER BY last_seen_at DESC LIMIT 250', id);
 
     // Map each Utah warrant to the SPA's Warrant shape. Utah only carries
     // citation/court/charges/dates — other Warrant fields stay null and the
@@ -259,7 +259,7 @@ warrants.get('/person/:id/profile', async (c) => {
       lastChecked,
     });
   } catch (err) {
-    console.error('[warrants] person profile error', err);
+    log.error('[warrants] person profile error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to load person profile' }, 500);
   }
 });
@@ -289,8 +289,9 @@ async function buildUtahStatus(c: Context<Env>) {
   const runs = await query<Record<string, any>>(
     db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1');
   const latest = runs[0] ?? null;
-  const [{ active }] = await query<{ active: number }>(
+  const activeRow = await queryFirst<{ active: number }>(
     db, 'SELECT COUNT(*) AS active FROM utah_warrants WHERE is_active = 1');
+  const active = activeRow?.active ?? 0;
   const running = latest?.status === 'running';
 
   return {
@@ -795,7 +796,7 @@ warrants.post('/national-search', async (c) => {
   if (body.warrant_type) { scrapedWhere.push('UPPER(warrant_type) = ?'); scrapedParams.push(body.warrant_type.toUpperCase()); }
   if (body.charge_keyword) { const cl = containsClause('charge_description'); scrapedWhere.push(cl.sql); scrapedParams.push(cl.bind(body.charge_keyword)); }
 
-  const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ' WHERE ' + scrapedWhere.join(' AND ') : ''}`;
+  const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ' WHERE ' + scrapedWhere.join(' AND ') : ''} LIMIT 2500`;
   const scrapedRows = await query<Record<string, unknown>>(db, scrapedSql, ...scrapedParams);
 
   const by_state: Record<string, ReturnType<typeof mapScrapedWarrantRow>[]> = {};
@@ -825,7 +826,7 @@ warrants.post('/national-search', async (c) => {
   // than return unrelated records.
   const local = localWhere.length
     ? (await query<Record<string, unknown>>(
-        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')} LIMIT 500`, ...localParams,
+        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')} LIMIT 250`, ...localParams,
       ))
         .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
         .map(mapLocalWarrantRow)
@@ -1067,14 +1068,14 @@ warrants.get('/dashboard/stats', async (c) => {
 warrants.get('/dashboard/priority', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, any>>(db, `SELECT * FROM warrants WHERE status = 'active' LIMIT 500`);
+    const rows = await query<Record<string, any>>(db, `SELECT * FROM warrants WHERE status = 'active' LIMIT 250`);
     const ranked = rows
       .map((row) => ({ ...row, priority_score: computePriorityScore(row) }))
       .sort((a, b) => b.priority_score - a.priority_score)
       .slice(0, 20);
     return c.json({ data: ranked });
   } catch (err) {
-    console.error('[warrants] dashboard/priority error', err);
+    log.error('[warrants] dashboard/priority error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ data: [] });
   }
 });
@@ -1124,7 +1125,7 @@ warrants.get('/dashboard/feed', async (c) => {
 
     return c.json({ data });
   } catch (err) {
-    console.error('[warrants] dashboard/feed error', err);
+    log.error('[warrants] dashboard/feed error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ data: [] });
   }
 });
@@ -1149,7 +1150,7 @@ warrants.get('/expiring', async (c) => {
     }).length;
     return c.json({ count });
   } catch (err) {
-    console.error('[warrants] expiring error', err);
+    log.error('[warrants] expiring error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ count: 0 });
   }
 });
@@ -1426,7 +1427,7 @@ warrants.put('/batch-update', async (c) => {
     }
     return c.json({ success: true, updated });
   } catch (err) {
-    console.error('[warrants] batch-update error', err);
+    log.error('[warrants] batch-update error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Batch update failed' }, 500);
   }
 });
@@ -1501,7 +1502,7 @@ warrants.get('/summary-report', async (c) => {
       scanActivity,
     });
   } catch (err) {
-    console.error('[warrants] summary-report error', err);
+    log.error('[warrants] summary-report error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to build summary report' }, 500);
   }
 });
@@ -1541,7 +1542,7 @@ warrants.get('/:id', async (c) => {
     await applyLazyWarrantExpiry(db, [row]);
     return c.json(row);
   } catch (err) {
-    console.error('[warrants] get by id error', err);
+    log.error('[warrants] get by id error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to load warrant' }, 500);
   }
 });
@@ -1602,13 +1603,13 @@ warrants.post('/', async (c) => {
     if (body.subject_person_id) {
       c.executionCtx.waitUntil(
         screenPersonAllSources(c.env, Number(body.subject_person_id), { triggeredBy: 'warrant_create' })
-          .catch((err) => console.error('[warrants] screening trigger failed:', err)),
+          .catch((err) => log.error('[warrants] screening trigger failed:', {}, err instanceof Error ? err : new Error(String(err)))),
       );
     }
 
     return c.json(created, 201);
   } catch (err) {
-    console.error('[warrants] create error', err);
+    log.error('[warrants] create error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create warrant' }, 500);
   }
 });
@@ -1665,12 +1666,12 @@ warrants.put('/:id', async (c) => {
         && Number(body.subject_person_id) !== existing.subject_person_id) {
       c.executionCtx.waitUntil(
         screenPersonAllSources(c.env, Number(body.subject_person_id), { triggeredBy: 'warrant_update' })
-          .catch((err) => console.error('[warrants] screening trigger failed:', err)),
+          .catch((err) => log.error('[warrants] screening trigger failed:', {}, err instanceof Error ? err : new Error(String(err)))),
       );
     }
     return c.json(updated);
   } catch (err) {
-    console.error('[warrants] update error', err);
+    log.error('[warrants] update error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to update warrant' }, 500);
   }
 });
@@ -1700,7 +1701,7 @@ warrants.put('/:id/serve', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
-    console.error('[warrants] serve error', err);
+    log.error('[warrants] serve error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to mark warrant served' }, 500);
   }
 });
@@ -1736,7 +1737,7 @@ warrants.post('/:id/reopen', requireRole('admin', 'supervisor', 'manager'), asyn
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
-    console.error('[warrants] reopen error', err);
+    log.error('[warrants] reopen error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to reopen warrant' }, 500);
   }
 });
@@ -1752,7 +1753,7 @@ warrants.post('/:id/archive', async (c) => {
     await execute(db, `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[warrants] archive error', err);
+    log.error('[warrants] archive error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to archive warrant' }, 500);
   }
 });
@@ -1769,7 +1770,7 @@ warrants.post('/:id/unarchive', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
-    console.error('[warrants] unarchive error', err);
+    log.error('[warrants] unarchive error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to unarchive warrant' }, 500);
   }
 });
@@ -1785,7 +1786,7 @@ warrants.delete('/:id', async (c) => {
     await execute(db, 'DELETE FROM warrants WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[warrants] delete error', err);
+    log.error('[warrants] delete error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to delete warrant' }, 500);
   }
 });
@@ -1818,7 +1819,7 @@ warrants.post('/bulk-archive', async (c) => {
     }
     return c.json({ archived: toArchive.length, skipped });
   } catch (err) {
-    console.error('[warrants] bulk-archive error', err);
+    log.error('[warrants] bulk-archive error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Bulk archive failed' }, 500);
   }
 });
@@ -1842,7 +1843,7 @@ warrants.post('/bulk-review', async (c) => {
     }
     return c.json({ reviewed: ids.length });
   } catch (err) {
-    console.error('[warrants] bulk-review error', err);
+    log.error('[warrants] bulk-review error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Bulk review failed' }, 500);
   }
 });
@@ -1913,7 +1914,7 @@ warrants.post('/ingest-utah', async (c) => {
     }
     return c.json({ success: true, inserted, skipped: rows.length - inserted });
   } catch (err) {
-    console.error('[warrants] ingest-utah error', err);
+    log.error('[warrants] ingest-utah error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to ingest warrant' }, 500);
   }
 });
@@ -1930,7 +1931,7 @@ warrants.post('/check/:personId', async (c) => {
     const result = await runUtahWarrantCheckForPerson(db, personId);
     return c.json({ success: true, ...result });
   } catch (err) {
-    console.error('[warrants] check person error', err);
+    log.error('[warrants] check person error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Warrant check failed' }, 500);
   }
 });
