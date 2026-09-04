@@ -6,6 +6,7 @@ import {
   Radio, Signal,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../ToastProvider';
 import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
@@ -236,7 +237,7 @@ function useTrayPolling() {
           if (!cancelled) {
             setOnDuty(res.active);
             if (res.active && res.entry?.clock_in) {
-              setDutyStartMs(new Date(res.entry.clock_in).getTime());
+              setDutyStartMs(parseTimestamp(res.entry.clock_in).getTime());
             } else if (!res.active) {
               setDutyStartMs(null);
             }
