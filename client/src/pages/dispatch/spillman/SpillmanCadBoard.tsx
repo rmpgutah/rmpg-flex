@@ -280,7 +280,7 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           autoComplete="off"
           className="flex-1 font-mono text-[11px] px-1.5 py-0.5 outline-none"
           style={{
-            background: '#000', color: 'var(--spm-stat-avail)',
+            background: 'var(--surface-deep)', color: 'var(--spm-stat-avail)',
             border: '1px solid var(--spm-border)', borderRadius: 2, caretColor: 'currentColor',
           }}
           placeholder="ac · dc <unit> [call#] · uc <unit> · cc [call#]"

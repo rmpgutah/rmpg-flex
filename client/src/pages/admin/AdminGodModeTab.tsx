@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { toDisplayLabel } from '../../utils/formatters';
 import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import {
   Shield, Database, Users, Bell, Trash2, RefreshCw, Download, HardDrive,
   Activity, UserCheck, AlertTriangle, CheckCircle, Play, Archive, BarChart3,
@@ -93,12 +94,29 @@ export default function AdminGodModeTab() {
   // Activity feed
   const [activityFeed, setActivityFeed] = useState<any[]>([]);
 
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+    isLoading?: boolean;
+  }>({ open: false, title: '', message: '', onConfirm: () => {} });
+
+  // In-flight guards for destructive operations
+  const [purgingLogs, setPurgingLogs] = useState(false);
+  const [purgingNotifs, setPurgingNotifs] = useState(false);
+  const [purgingSessions, setPurgingSessions] = useState(false);
+  const [deletingBackup, setDeletingBackup] = useState<string | null>(null);
+
   const showResult = useCallback((type: 'success' | 'error', message: string) => {
     setActionResult({ type, message });
     setTimeout(() => setActionResult(null), 5000);
   }, []);
 
   const loadData = useCallback(async () => {
+    let cancelled = false;
     setLoading(true);
     try {
       const [stats, overview, bk, userList, unitList] = await Promise.all([
@@ -108,6 +126,7 @@ export default function AdminGodModeTab() {
         apiFetch<any[]>('/personnel').catch(() => []),
         apiFetch<any[]>('/dispatch/units').catch(() => []),
       ]);
+      if (cancelled) return;
       if (stats) setDbStats(stats);
       if (overview) setSystemOverview(overview);
       setBackups(asArray<Backup>(bk));
@@ -120,6 +139,7 @@ export default function AdminGodModeTab() {
         apiFetch<any>('/admin/system/lockdown').catch(() => null),
         apiFetch<any>('/admin/activity-feed?limit=20').catch(() => ({ actions: [] })),
       ]);
+      if (cancelled) return;
       setWsClients(asArray<any>(ws?.clients));
       if (presence) setUserPresence(presence);
       if (lockdown) setLockdownStatus(lockdown);
@@ -127,11 +147,49 @@ export default function AdminGodModeTab() {
     } catch (err) {
       console.error('God Mode load error:', err);
     } finally {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+    return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const [stats, overview, bk, userList, unitList] = await Promise.all([
+          apiFetch<DbStats>('/admin/database/stats').catch(() => null),
+          apiFetch<SystemOverview>('/admin/system-overview').catch(() => null),
+          apiFetch<Backup[]>('/admin/database/backups').catch(() => []),
+          apiFetch<any[]>('/personnel').catch(() => []),
+          apiFetch<any[]>('/dispatch/units').catch(() => []),
+        ]);
+        if (cancelled) return;
+        if (stats) setDbStats(stats);
+        if (overview) setSystemOverview(overview);
+        setBackups(asArray<Backup>(bk));
+        setUsers(asArray<any>(userList));
+        setUnits(asArray<any>(unitList));
+        const [ws, presence, lockdown, feed] = await Promise.all([
+          apiFetch<any>('/admin/websocket/clients').catch(() => ({ clients: [] })),
+          apiFetch<any>('/admin/users/presence').catch(() => null),
+          apiFetch<any>('/admin/system/lockdown').catch(() => null),
+          apiFetch<any>('/admin/activity-feed?limit=20').catch(() => ({ actions: [] })),
+        ]);
+        if (cancelled) return;
+        setWsClients(asArray<any>(ws?.clients));
+        if (presence) setUserPresence(presence);
+        if (lockdown) setLockdownStatus(lockdown);
+        setActivityFeed(asArray<any>(feed?.actions));
+      } catch (err) {
+        console.error('God Mode load error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleVacuum = async () => {
     try {

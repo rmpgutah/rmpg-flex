@@ -93,7 +93,7 @@ export default function IntelDashboard() {
 
       <StatTiles stats={ov.stats} />
 
-      <div className="grid grid-cols-2 gap-[10px]">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-[10px]">
         <WatchlistActivityWidget rows={ov.watchlist_activity} onSelect={selectEntity} />
         <ActiveAlertsWidget rows={ov.alerts} onSelect={selectEntity} />
         <EscalationLeaderboardWidget rows={ov.escalation_leaderboard} onSelect={selectEntity} />

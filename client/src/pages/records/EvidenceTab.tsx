@@ -497,7 +497,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>
                     <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.md5}</span>
-                    <button type="button" onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
+                    <button type="button" aria-label="Copy MD5 hash" onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `md5-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
                   </div>
@@ -506,7 +506,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">SHA-256:</span>
                     <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
-                    <button type="button" onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
+                    <button type="button" aria-label="Copy SHA-256 hash" onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `sha256-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
                   </div>
@@ -761,13 +761,15 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   p.textContent = selectedEvidence.description || '';
                   container.appendChild(p);
                   const date = doc.createElement('p');
-                  date.style.cssText = 'font-size:10px;color:#666;';
+                  date.style.cssText = 'font-size:10px;color:var(--text-muted, #666);';
                   date.textContent = new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' });
                   container.appendChild(date);
                   doc.body.appendChild(container);
                   doc.close();
-                  printWindow.print();
-                  printWindow.close();
+                  printWindow.onload = () => {
+                    printWindow.print();
+                    printWindow.close();
+                  };
                 }
               }}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1"

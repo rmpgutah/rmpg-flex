@@ -6,6 +6,7 @@ import { IntelProvider } from './IntelContext';
 import IntelRail from './IntelRail';
 import IntelContextPanel from './IntelContextPanel';
 import { useIntelOverview } from './useIntelOverview';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
 function PortalChrome() {
   const { data } = useIntelOverview();
@@ -20,7 +21,9 @@ function PortalChrome() {
     <div className="flex h-[calc(100vh-var(--app-header-h,72px))] min-h-[480px] bg-surface-base">
       <IntelRail counts={counts} />
       <main className="flex-1 min-h-0 overflow-y-auto min-w-0">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
       <IntelContextPanel />
     </div>

@@ -239,7 +239,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
                   >
                     <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? 'var(--field-label-color)' : 'var(--text-secondary)' }} />
                     <span className="flex flex-col min-w-0 flex-1">
-                      <span className="min-w-0 text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--text-secondary)' }}>{it.label}</span>
+                      <span className="min-w-0 text-sm truncate" style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{it.label}</span>
                       {it.sublabel && <span className="min-w-0 text-[10px] text-fg-muted truncate">{it.sublabel}</span>}
                     </span>
                     {it.badge && (

@@ -152,6 +152,22 @@ function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCam
 function DutyToggle({ officerId, currentStatus, onToggled }: { officerId: string; currentStatus: string; onToggled?: () => void }) {
   const [toggling, setToggling] = useState(false);
   const isOnDuty = currentStatus === 'on_duty';
+  // Cache the unit list for the duration of this panel mount to avoid
+  // re-fetching on every toggle action.
+  const cachedUnitsRef = useRef<unknown[] | null>(null);
+
+  // Pre-fetch units at mount so they are available instantly if needed.
+  useEffect(() => {
+    apiFetch<unknown>('/dispatch/units')
+      .then((res) => {
+        if (Array.isArray(res)) {
+          cachedUnitsRef.current = res;
+        } else if (res && typeof res === 'object' && Array.isArray((res as any).results)) {
+          cachedUnitsRef.current = (res as any).results;
+        }
+      })
+      .catch(() => { /* non-critical prefetch — ignore */ });
+  }, []);
 
   const handleToggle = useCallback(async () => {
     setToggling(true);
@@ -164,10 +180,22 @@ function DutyToggle({ officerId, currentStatus, onToggled }: { officerId: string
       onToggled?.();
     } catch (err: any) {
       if (err?.code === 'NEEDS_VEHICLE' || err?.code === 'NO_UNIT') {
-        const units = await apiFetch<any[]>('/dispatch/units').catch(() => []);
-        const myUnit = (units || []).find((u: any) => String(u.officer_id) === String(officerId));
+        // Use cached units when available; otherwise fetch once and cache.
+        let units = cachedUnitsRef.current;
+        if (!units) {
+          const raw = await apiFetch<unknown>('/dispatch/units').catch(() => null);
+          if (Array.isArray(raw)) {
+            units = raw;
+          } else if (raw && typeof raw === 'object' && Array.isArray((raw as any).results)) {
+            units = (raw as any).results;
+          } else {
+            units = [];
+          }
+          cachedUnitsRef.current = units;
+        }
+        const myUnit = (units ?? []).find((u: any) => String(u?.officer_id) === String(officerId));
         if (myUnit) {
-          await apiFetch(`/dispatch/units/${myUnit.id}`, {
+          await apiFetch(`/dispatch/units/${(myUnit as any).id}`, {
             method: 'PUT',
             body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
           });
@@ -347,7 +375,7 @@ export default function PersonnelDetailPanel({
                 wins over `?? selectedOfficer` and the Edit form opens
                 completely blank (every officer field reads undefined off the
                 event object). */}
-            <button type="button" onClick={() => onEditOfficer()} className="toolbar-btn text-[9px]" title="Edit">
+            <button type="button" onClick={() => onEditOfficer()} className="toolbar-btn text-[9px]" title="Edit" aria-label="Edit officer">
               <Pencil className="w-3 h-3" />
             </button>
             <PersonnelPrintMenu
@@ -360,17 +388,17 @@ export default function PersonnelDetailPanel({
               timeEntries={officerTime}
             />
             {canManageHR && !isArchived && officer.termination_date && (
-              <button type="button" onClick={() => onArchiveOfficer(officer.id)} className="toolbar-btn text-[9px] text-amber-400" title="Archive">
+              <button type="button" onClick={() => onArchiveOfficer(officer.id)} className="toolbar-btn text-[9px] text-amber-400" title="Archive" aria-label="Archive officer">
                 <Archive className="w-3 h-3" />
               </button>
             )}
             {canManageHR && !isArchived && (
-              <button type="button" onClick={onDeleteOfficer} className="toolbar-btn toolbar-btn-danger text-[9px]" title="Terminate">
+              <button type="button" onClick={onDeleteOfficer} className="toolbar-btn toolbar-btn-danger text-[9px]" title="Terminate" aria-label="Terminate officer">
                 <Trash2 className="w-3 h-3" />
               </button>
             )}
             {canManageHR && isArchived && (
-              <button type="button" onClick={() => onUnarchiveOfficer(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]" title="Restore">
+              <button type="button" onClick={() => onUnarchiveOfficer(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]" title="Restore" aria-label="Restore officer">
                 <RotateCcw className="w-3 h-3" />
               </button>
             )}

@@ -232,6 +232,10 @@ const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
 // ImpoundPage existed on disk but had no route — sidebar /impound link 404'd.
 const ImpoundPage = lazyRetry(() => import('./pages/ImpoundPage'));
+// PawnTrackingPage and AnimalControlPage existed on disk but had no routes —
+// sidebar links hit the 404 catch-all. Adding routes so links render the pages.
+const PawnTrackingPage = lazyRetry(() => import('./pages/PawnTrackingPage'));
+const AnimalControlPage = lazyRetry(() => import('./pages/AnimalControlPage'));
 const ShiftNotesPage = lazyRetry(() => import('./pages/ShiftNotesPage'));
 const QuickPlateCheckPage = lazyRetry(() => import('./pages/QuickPlateCheckPage'));
 const UnitStatusBoardPage = lazyRetry(() => import('./pages/UnitStatusBoardPage'));
@@ -718,6 +722,8 @@ function AppRoutes() {
             <Route path="/court-records" element={<RouteErrorBoundary><CourtRecordsPage /></RouteErrorBoundary>} />
             <Route path="/crash-reports" element={<RouteErrorBoundary><CrashReportsPage /></RouteErrorBoundary>} />
             <Route path="/impound" element={<RouteErrorBoundary><ImpoundPage /></RouteErrorBoundary>} />
+            <Route path="/pawn-tracking" element={<RouteErrorBoundary><PawnTrackingPage /></RouteErrorBoundary>} />
+            <Route path="/animal-control" element={<RouteErrorBoundary><AnimalControlPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras/:id" element={<RouteErrorBoundary><DashCamDetailPage /></RouteErrorBoundary>} />
             <Route path="/dashcam-ai" element={<RouteErrorBoundary><DashcamAiPage /></RouteErrorBoundary>} />
             <Route path="/document-intake" element={<RouteErrorBoundary><DocumentIntakePage /></RouteErrorBoundary>} />

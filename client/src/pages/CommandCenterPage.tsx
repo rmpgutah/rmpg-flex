@@ -48,7 +48,7 @@ type PanelId = typeof VALID_PANELS[number];
 export default function CommandCenterPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const canManage = ['admin', 'manager', 'supervisor'].includes((user as any)?.role || '');
+  const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
 
   // Deep-link: ?panel= strips after mount
   const initialPanel = ((): PanelId => {

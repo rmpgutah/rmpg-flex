@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ClipboardCheck, Plus, AlertTriangle, Loader2, Search } from 'lucide-react';
+import { ClipboardCheck, Plus, AlertTriangle, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
@@ -19,6 +19,13 @@ interface AttendanceRecord {
   reason: string;
   excused: number;
   documented_by_name: string;
+}
+
+interface AttendancePage {
+  records: AttendanceRecord[];
+  page: number;
+  page_size: number;
+  has_more: boolean;
 }
 
 interface AttendanceSummary {
@@ -42,9 +49,12 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   const { addToast } = useToast();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [officers, setOfficers] = useState<any[]>([]);
   const [selectedOfficer, setSelectedOfficer] = useState<number | null>(null);
+  const [officerFilter, setOfficerFilter] = useState<number | null>(null);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [form, setForm] = useState({ officer_id: '', date: localToday(), type: 'absent', minutes_late: 0, reason: '', excused: false });
   const [submitting, setSubmitting] = useState(false);
@@ -63,11 +73,20 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
     m.copyId(r.id),
   ];
 
-  const load = async () => {
+  const load = async (p: number = 0) => {
     setLoading(true);
     try {
-      try { const data = await apiFetch<any[]>('/hr/attendance'); setRecords(data); } catch { addToast('Failed to load attendance records', 'error'); }
-    } finally { setLoading(false); }
+      const params = new URLSearchParams({ page: String(p) });
+      if (officerFilter) params.set('officer_id', String(officerFilter));
+      const data = await apiFetch<AttendancePage>(`/hr/attendance?${params}`);
+      setRecords(data.records ?? []);
+      setPage(data.page ?? p);
+      setHasMore(data.has_more ?? false);
+    } catch {
+      addToast('Failed to load attendance records', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadOfficers = async () => {
@@ -78,7 +97,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
     try { const data = await apiFetch<AttendanceSummary>(`/hr/attendance/summary/${officerId}`); setSummary(data); } catch { setSummary(null); }
   };
 
-  useEffect(() => { load(); loadOfficers(); }, []);
+  useEffect(() => { load(0); loadOfficers(); }, [officerFilter]);
   useEffect(() => { if (selectedOfficer) loadSummary(selectedOfficer); }, [selectedOfficer]);
 
   // Escape to close form
@@ -94,8 +113,16 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
     if (!form.date) { addToast('Date is required', 'error'); return; }
     if (!form.type) { addToast('Type is required', 'error'); return; }
     setSubmitting(true);
-    try { await apiFetch('/hr/attendance', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id), excused: form.excused ? 1 : 0 }) }); addToast('Attendance logged', 'success'); setShowForm(false); load(); } catch { addToast('Failed to log attendance', 'error'); } finally { setSubmitting(false); }
+    try { await apiFetch('/hr/attendance', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id), excused: form.excused ? 1 : 0 }) }); addToast('Attendance logged', 'success'); setShowForm(false); load(0); } catch { addToast('Failed to log attendance', 'error'); } finally { setSubmitting(false); }
   };
+
+  const filtered = records.filter(r => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return r.officer_name.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q) || coded(r.type, formatEnumValue).includes(q);
+    }
+    return true;
+  });
 
   return (
     <div className="p-4 space-y-4">
@@ -176,7 +203,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
           <input id="ff-attendancetab-6" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..." aria-label="Search attendance records by officer or reason" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
         </div>
-        <select id="ff-attendancetab-7" value={selectedOfficer ?? ''} onChange={e => setSelectedOfficer(e.target.value ? Number(e.target.value) : null)} className="input-field text-xs py-1 px-2">
+        <select id="ff-attendancetab-7" value={officerFilter ?? ''} onChange={e => { const v = e.target.value ? Number(e.target.value) : null; setOfficerFilter(v); setSelectedOfficer(v); }} className="input-field text-xs py-1 px-2">
           <option value="">All Officers</option>
           {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
         </select>
@@ -185,27 +212,56 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
       {loading ? (
         <div className="flex items-center justify-center gap-2 text-rmpg-400 py-12 text-xs"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading attendance records" /> Loading attendance...</div>
       ) : (
-        <div className="space-y-1" role="list" aria-label="Attendance records">
-          {records.filter(r => {
-            if (selectedOfficer && r.officer_id !== selectedOfficer) return false;
-            if (searchQuery) {
-              const q = searchQuery.toLowerCase();
-              return r.officer_name.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q) || coded(r.type, formatEnumValue).includes(q);
-            }
-            return true;
-          }).map(r => (
-            <div key={r.id} role="listitem" onContextMenu={(e) => openMenu(e, buildAttendanceMenu(r))} className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
-              <div className="flex items-center gap-3">
-                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{toDisplayLabel(r.type)}</span>
-                <span className="text-xs text-rmpg-100">{r.officer_name}</span>
-                <span className="text-[10px] text-rmpg-400">{r.date ? parseTimestamp(r.date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
-                {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}
-                {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{formatEnumValue(r.reason)}</span>}
-              </div>
-              <span className={`text-[10px] ${r.excused ? 'text-green-400' : 'text-red-400'}`}>{r.excused ? 'Excused' : 'Unexcused'}</span>
+        <>
+          {!loading && filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
+              <ClipboardCheck className="w-8 h-8 mb-2 opacity-40" aria-hidden="true" />
+              <p className="text-sm font-medium">
+                {searchQuery || officerFilter ? 'No records match your filters' : 'No attendance records logged this month'}
+              </p>
             </div>
-          ))}
-        </div>
+          ) : (
+            <div className="space-y-1" role="list" aria-label="Attendance records">
+              {filtered.map(r => (
+                <div key={r.id} role="listitem" onContextMenu={(e) => openMenu(e, buildAttendanceMenu(r))} className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{toDisplayLabel(r.type)}</span>
+                    <span className="text-xs text-rmpg-100">{r.officer_name}</span>
+                    <span className="text-[10px] text-rmpg-400">{r.date ? parseTimestamp(r.date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
+                    {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}
+                    {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{formatEnumValue(r.reason)}</span>}
+                  </div>
+                  <span className={`text-[10px] ${r.excused ? 'text-green-400' : 'text-red-400'}`}>{r.excused ? 'Excused' : 'Unexcused'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {(page > 0 || hasMore) && (
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={() => load(page - 1)}
+                disabled={page === 0}
+                aria-label="Previous page"
+                className="toolbar-btn text-xs flex items-center gap-1 disabled:opacity-40"
+              >
+                <ChevronLeft className="w-3 h-3" /> Prev
+              </button>
+              <span className="text-[10px] text-rmpg-500">Page {page + 1}</span>
+              <button
+                type="button"
+                onClick={() => load(page + 1)}
+                disabled={!hasMore}
+                aria-label="Next page"
+                className="toolbar-btn text-xs flex items-center gap-1 disabled:opacity-40"
+              >
+                Next <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

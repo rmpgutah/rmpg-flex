@@ -89,6 +89,36 @@ export const LIST_VIEW_COLUMNS = [
 // rebuilding the join string and risk drifting from this projection.
 export const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
+// Explicit column list for single-row read-backs after writes.
+// calls_for_service sits at D1's 100-column result-set cap; `SELECT *` at
+// exactly 100 columns can silently truncate fields near the end of the column
+// list. This list enumerates the base-table columns without any JOIN, keeping
+// the total well under 100 so every read-back is reliable.
+// Note: ext-table columns (PSO, process-service, tactical overflow, etc.) live
+// on calls_for_service_ext and are fetched separately via a second queryFirst
+// wherever they are needed.
+const CALL_BASE_COLS = [
+  'id', 'call_number', 'incident_type', 'secondary_type', 'priority', 'priority_score',
+  'status', 'previous_status', 'status_changed_at', 'source', 'dispatch_code',
+  'created_at', 'updated_at', 'received_at', 'dispatched_at', 'enroute_at', 'onscene_at',
+  'cleared_at', 'closed_at', 'archived_at', 'response_time_seconds', 'onscene_duration_seconds',
+  'location_address', 'latitude', 'longitude', 'cross_street', 'location_building',
+  'location_floor', 'location_room', 'caller_name', 'caller_phone', 'contact_method',
+  'caller_relationship', 'caller_address', 'dispatcher_id', 'property_id', 'client_id',
+  'case_id', 'case_number', 'contract_id', 'description', 'notes', 'disposition', 'action_taken',
+  'assigned_unit_ids', 'unit_call_signs', 'sector_id', 'sector_name', 'zone_id', 'zone_name',
+  'zone_beat', 'beat_id', 'beat_name', 'beat_descriptor', 'section_name',
+  'num_subjects', 'num_victims', 'subject_description', 'vehicle_description', 'direction_of_travel',
+  'weapons_involved', 'injuries_reported', 'alcohol_involved', 'drugs_involved', 'domestic_violence',
+  'mental_health_crisis', 'juvenile_involved', 'felony_in_progress', 'officer_safety_caution',
+  'k9_requested', 'ems_requested', 'scene_safety', 'weather_conditions', 'lighting_conditions',
+  'responding_officer', 'responding_vehicle_id', 'damage_estimate', 'damage_description',
+  'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
+] as const;
+// 84 columns — well under D1's 100-column result-set cap.
+const CALL_BASE_SELECT = CALL_BASE_COLS.join(', ');
+
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
@@ -413,7 +443,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
         log.error('assignStackGroup failed on call create (non-fatal)', { callId }, stackErr);
       }
 
-      const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
+      const call = await queryFirst<Record<string, unknown>>(db, `SELECT ${CALL_BASE_SELECT} FROM calls_for_service WHERE id = ?`, callId);
 
       // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.

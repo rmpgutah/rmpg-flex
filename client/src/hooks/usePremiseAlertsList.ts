@@ -18,12 +18,14 @@ const POLL_INTERVAL_MS = 60_000;
 export interface UsePremiseAlertsListResult {
   alerts: PremiseAlertListItem[];
   loading: boolean;
+  error: string | null;
   refetch: () => void;
 }
 
 export function usePremiseAlertsList(): UsePremiseAlertsListResult {
   const [alerts, setAlerts] = useState<PremiseAlertListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refetch = useCallback(() => {
@@ -31,8 +33,13 @@ export function usePremiseAlertsList(): UsePremiseAlertsListResult {
     // (src/routes/dispatch/geography.ts) defaults to all active, unexpired
     // premise alerts when none are provided.
     apiFetch<PremiseAlertListItem[]>('/dispatch/geography/premise-alerts')
-      .then(setAlerts)
-      .catch(() => {})
+      .then((data) => {
+        setAlerts(data);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load premise alerts');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -44,5 +51,5 @@ export function usePremiseAlertsList(): UsePremiseAlertsListResult {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [refetch]);
 
-  return { alerts, loading, refetch };
+  return { alerts, loading, error, refetch };
 }
