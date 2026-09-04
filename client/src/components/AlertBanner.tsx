@@ -34,8 +34,8 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
             className={`alert-banner-row ${isCritical ? 'alert-banner-critical' : 'alert-banner-warning'} w-full flex items-center gap-3 px-3 py-2`}
             style={{
               background: isCritical
-                ? 'rgba(220, 38, 38, 0.3)'
-                : 'rgba(180, 120, 0, 0.2)',
+                ? 'rgb(var(--sev-critical-rgb) / 0.3)'
+                : 'rgb(var(--sev-warn-rgb) / 0.2)',
               border: isCritical
                 ? '1px solid var(--sev-critical)'
                 : '1px solid var(--sev-warn)',
@@ -91,7 +91,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
                 className="flex-shrink-0 p-1 hover:bg-white/10 transition-colors"
                 style={{ border: 'none', background: 'transparent', borderRadius: 0 }}
                 title="Dismiss alert"
-                aria-label="Dismiss alert"
+                aria-label={`Dismiss ${isCritical ? 'critical' : 'warning'} alert`}
               >
                 <X
                   className="w-3.5 h-3.5"

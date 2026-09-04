@@ -310,7 +310,7 @@ export async function fetchStaticMapImage(
     });
     if (options?.markers?.length) {
       params.set('markers', options.markers.map(m =>
-        `${m.lng},${m.lat},${m.color ?? 'd4a017'},${m.label ?? ''}`
+        `${m.lng},${m.lat},${m.color ?? 'd9bd72'},${m.label ?? ''}`
       ).join(';'));
     }
 
