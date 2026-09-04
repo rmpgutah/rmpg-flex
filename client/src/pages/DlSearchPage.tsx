@@ -226,8 +226,8 @@ export default function DlSearchPage() {
       await apiFetch('/dl-records/sources-config', { method: 'PUT', body: JSON.stringify(body) });
       addToast('Data-source config saved', 'success');
       loadSources();
-    } catch (err: any) {
-      addToast(err?.message || 'Save failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
     } finally { setSourcesSaving(false); }
   }, [sorUrl, sorKey, clToken, addToast, loadSources]);
 
@@ -236,7 +236,7 @@ export default function DlSearchPage() {
       const r = await apiFetch<any>('/dl-records/sor/poll', { method: 'POST' });
       addToast(r?.configured ? `SOR poll: ${r.upserted} record(s) loaded` : 'No SOR feed configured', r?.configured ? 'success' : 'warning');
       loadSources();
-    } catch (err: any) { addToast(err?.message || 'Poll failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Poll failed', 'error'); }
   }, [addToast, loadSources]);
 
   // Bulk-import offender rows the agency lawfully holds — JSON array or CSV
@@ -270,8 +270,8 @@ export default function DlSearchPage() {
       addToast(`Imported ${r?.imported ?? 0} of ${rows.length} offender record(s)`, 'success');
       setSorImportText('');
       loadSources();
-    } catch (err: any) {
-      addToast(err?.message || 'Import failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Import failed', 'error');
     } finally { setSorImporting(false); }
   }, [sorImportText, addToast, loadSources]);
 
@@ -525,7 +525,7 @@ export default function DlSearchPage() {
         method: 'POST', body: JSON.stringify({ plate_number: stolenPlate.trim() }),
       });
       setStolenResult(data?.data || data);
-    } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Stolen check failed', 'error'); }
   };
 
   // ── ?dl= / ?dl_number= / ?last= / ?person_id= URL deep-link ──
@@ -2077,8 +2077,8 @@ export default function DlSearchPage() {
                     });
                     doc.save(`safety-brief-${(ocrResult?.last_name || 'subject')}-${Date.now()}.pdf`);
                     addToast('Safety sheet generated', 'success');
-                  } catch (err: any) {
-                    addToast(err?.message || 'Failed to generate safety sheet', 'error');
+                  } catch (err) {
+                    addToast(err instanceof Error ? err.message : 'Failed to generate safety sheet', 'error');
                   }
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[11px] font-bold text-black transition-colors"

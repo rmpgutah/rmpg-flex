@@ -137,8 +137,8 @@ export default function FuelBudgetModal({
         notes: form.notes.trim() || null,
       });
       clearDraft();
-    } catch (e: any) {
-      setError(e?.message || 'Save failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
     }
   };
 

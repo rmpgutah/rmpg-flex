@@ -91,9 +91,9 @@ export default function ActiveCallsCard() {
         ? res.rows
         : [];
       setCalls(rows);
-    } catch (e: any) {
+    } catch (e) {
       if (!mountedRef.current) return;
-      setError(e?.message || 'Failed to load calls');
+      setError(e instanceof Error ? e.message : 'Failed to load calls');
     } finally {
       if (mountedRef.current) setLoading(false);
     }

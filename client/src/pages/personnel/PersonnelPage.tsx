@@ -1048,8 +1048,8 @@ export default function PersonnelPage() {
       if (selectedOfficer?.id === deleteTarget.id) setSelectedOfficer(null);
       await fetchCoreData({ silent: true });
       addToast('Officer terminated', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to terminate officer', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to terminate officer', 'error');
     } finally {
       setDeleting(false);
     }
@@ -1069,8 +1069,8 @@ export default function PersonnelPage() {
       addToast('Officer archived', 'success');
       if (selectedOfficer?.id === officerId) setSelectedOfficer(null);
       await fetchCoreData({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to archive officer', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to archive officer', 'error');
     }
   };
 
@@ -1080,8 +1080,8 @@ export default function PersonnelPage() {
       addToast('Officer unarchived', 'success');
       if (selectedOfficer?.id === officerId) setSelectedOfficer(null);
       await fetchCoreData({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to unarchive officer', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to unarchive officer', 'error');
     }
   };
 
@@ -1114,8 +1114,8 @@ export default function PersonnelPage() {
       const raw = await apiFetch<any[]>('/personnel/time');
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Break started', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to start break', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to start break', 'error');
     }
   };
 
@@ -1125,8 +1125,8 @@ export default function PersonnelPage() {
       const raw = await apiFetch<any[]>('/personnel/time');
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Break ended', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to end break', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to end break', 'error');
     }
   };
 
@@ -1140,8 +1140,8 @@ export default function PersonnelPage() {
           const raw = await apiFetch<any[]>('/personnel/time');
           setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
           addToast('Time entry deleted', 'success');
-        } catch (err: any) {
-          addToast(err?.message || 'Failed to delete time entry', 'error');
+        } catch (err) {
+          addToast(err instanceof Error ? err.message : 'Failed to delete time entry', 'error');
         }
       },
     });

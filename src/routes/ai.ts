@@ -207,7 +207,7 @@ ai.get('/presets', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       'SELECT id, name, temperature, max_tokens AS maxTokens, top_p AS topP, repeat_penalty AS repeatPenalty FROM ai_model_presets ORDER BY id DESC');
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/ai.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 ai.post('/presets', requireRole('admin', 'manager'), async (c) => {
   try {
@@ -244,7 +244,7 @@ ai.get('/templates', async (c) => {
     const db = getDb(c.env);
     const rows = await query(db, 'SELECT * FROM ai_prompt_templates ORDER BY category, name');
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/ai.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 ai.post('/templates', requireRole('admin', 'manager'), async (c) => {
   try {

@@ -205,8 +205,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       }
       setView('detail');
       fetchInvoices();
-    } catch (e: any) {
-      setError(e.message || 'Failed to create invoice');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create invoice');
     } finally {
       setSaving(false);
     }
@@ -223,7 +223,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   };
 
   const handleAddLineItem = async () => {
@@ -243,7 +243,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       setShowAddItem(false);
       setItemForm({ line_type: 'custom', description: '', quantity: '1', unit_price: '0' });
       fetchStats();
-    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   };
 
   const handleDeleteLineItem = async (itemId: string) => {
@@ -252,7 +252,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await apiFetch(`/billing/invoices/${selectedInvoice.id}/items/${itemId}`, { method: 'DELETE' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchStats();
-    } catch (e: any) { setError(e.message); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
 
   const handleRecordPayment = async () => {
@@ -275,7 +275,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       setPayForm({ amount: '', payment_date: localToday(), payment_method: 'check', reference_number: '', notes: '' });
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   };
 
   const handleDeletePayment = async (paymentId: string) => {
@@ -285,7 +285,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
 
   const handleRegenerate = async () => {
@@ -295,7 +295,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await apiFetch(`/billing/invoices/${selectedInvoice.id}/generate`, { method: 'POST' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchStats();
-    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   };
 
   const handleSaveNotes = async (notes: string) => {
@@ -305,14 +305,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         method: 'PUT',
         body: JSON.stringify({ notes }),
       });
-    } catch (e: any) {
-      // Audit caught (2026-06-21): autosave handler for collection notes /
-      // payment-disputed-reason was silently swallowing failures. Notes
-      // are a billing audit-trail surface — subpoena-relevant — so a
-      // silent failure here is high-risk. Surface the error so the
-      // operator knows to retry.
-      console.error('Failed to save invoice notes:', e);
-      addToast(e?.message || 'Failed to save invoice notes — retry', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to save invoice notes — retry', 'error');
     }
   };
 
@@ -769,9 +763,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 const blobUrl = await generateInvoicePdfBlobUrl(res.data.invoice);
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerOpen(true);
-              } catch (e: any) {
-                console.error('Invoice preview error:', e);
-                setError(e.message || 'Preview failed');
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Preview failed');
               }
             }}
             className="toolbar-btn text-rmpg-300"
@@ -787,9 +780,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 const doc = await generateInvoicePdf(res.data.invoice);
                 doc.save(`${inv.invoice_number}.pdf`);
-              } catch (e: any) {
-                console.error('Invoice PDF error:', e);
-                setError(e.message || 'PDF generation failed');
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'PDF generation failed');
               }
             }}
             className="toolbar-btn text-brand-400"
@@ -817,9 +809,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 } else {
                   setError('Pop-up blocked — please allow pop-ups for this site');
                 }
-              } catch (e: any) {
-                console.error('Invoice print error:', e);
-                setError(e?.message || 'Print failed');
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Print failed');
               }
             }}
             className="toolbar-btn text-rmpg-300"

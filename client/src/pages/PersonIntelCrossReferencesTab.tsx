@@ -103,8 +103,8 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
       await apiFetch(`/person-intel/${dossierId}/cross-refs/refresh`, { method: 'POST' });
       addToast('Cross-references refreshed', 'success');
       await load();
-    } catch (e: any) {
-      addToast(e?.message ?? 'Refresh failed', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Refresh failed', 'error');
     } finally {
       setRefreshing(false);
     }
@@ -124,8 +124,8 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
       addToast(`${res.result} — ${res.reason}`, res.result === 'confirmed' ? 'success' : res.result === 'rejected' ? 'error' : 'info');
       setDraft({ method: 'dob', evidence: '' });
       await load();
-    } catch (e: any) {
-      addToast(e?.message ?? 'Verification failed', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Verification failed', 'error');
     } finally {
       setVerifyBusy(null);
     }
@@ -140,8 +140,8 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
       a.download = `intel-${dossierId}.${format}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e: any) {
-      addToast(e?.message ?? 'Report download failed', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Report download failed', 'error');
     }
   };
 

@@ -321,7 +321,7 @@ citations.get('/calculate-fine', async (c) => {
       base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type,
       source, offense_level_used: levelUsed,
     } });
-  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic', source: 'default', offense_level_used: null } }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/citations.ts' }, err); return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic', source: 'default', offense_level_used: null } }); }
 });
 
 // ── Vehicle plate lookup (for auto-filling vehicle details) ──
@@ -336,7 +336,7 @@ citations.get('/vehicle-lookup', async (c) => {
        LIMIT 1`, plate);
     if (vehicle) return c.json({ found: true, ...vehicle });
     return c.json({ found: false });
-  } catch { return c.json({ found: false }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/citations.ts' }, err); return c.json({ found: false }); }
 });
 
 // ── GET /:id ────────────────────────────────────────────────
@@ -590,9 +590,7 @@ citations.post('/:id/copies', async (c) => {
     let form: FormData;
     try {
       form = await c.req.formData();
-    } catch {
-      return c.json({ error: 'Expected multipart/form-data', code: 'BAD_MULTIPART' }, 400);
-    }
+    } catch (err) { log.error('GET failed', { src: 'src/routes/citations.ts' }, err); return c.json({ error: 'Expected multipart/form-data', code: 'BAD_MULTIPART' }, 400); }
 
     await ensureCitationFilingTables(db);
 
@@ -1068,7 +1066,7 @@ citations.get('/statutes/lookup', async (c) => {
        FROM utah_statutes s WHERE (s.citation LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra}
        ORDER BY s.citation LIMIT 20`, ...params);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/citations.ts' }, err); return c.json({ data: [] }); }
 });
 
 // ── Batch citation creation (traffic enforcement) ────────────

@@ -176,8 +176,8 @@ export default function DashCamerasPage() {
       const data = await apiFetch<any>(`/fleet/dashcam-videos?${params}`);
       setVideos(Array.isArray(data?.videos) ? data.videos : []);
       setTotal(data?.total || 0);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to load videos', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to load videos', 'error');
     } finally {
       setLoading(false);
     }
@@ -263,8 +263,8 @@ export default function DashCamerasPage() {
     try {
       await apiFetch(path, { method: 'DELETE' });
       deleteOk = true;
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete video', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete video', 'error');
     } finally {
       setDeleting(false);
     }

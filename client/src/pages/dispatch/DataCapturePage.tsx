@@ -358,8 +358,8 @@ function SkipTraceTab({ callId }: { callId: number | null }) {
       // Auto-open first non-empty section
       const first = Object.entries(data.results ?? {}).find(([, rows]) => (rows as any[]).length > 0);
       if (first) setActiveSection(first[0]);
-    } catch (e: any) {
-      setError(e?.message ?? 'Query failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Query failed');
     } finally {
       setLoading(false);
     }

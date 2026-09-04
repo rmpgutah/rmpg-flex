@@ -123,8 +123,8 @@ export default function FleetReportsPage() {
       } else {
         addToast(res.message || 'No data for that date', 'warning');
       }
-    } catch (err: any) {
-      addToast(err?.message || 'Regeneration failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Regeneration failed', 'error');
     } finally {
       setRegenerating(null);
     }

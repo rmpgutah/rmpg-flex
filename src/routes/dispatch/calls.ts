@@ -2183,7 +2183,7 @@ calls.get('/:id/evidence-prompt', requireRole('officer', 'dispatcher', 'supervis
     const notes = (await queryFirst<{ n: number }>(db,
       'SELECT COUNT(*) AS n FROM call_notes WHERE call_id = ?', id))?.n ?? 0;
     return c.json({ prompt_evidence: !call?.photos_taken || call.photos_taken === 0, photos_count: call?.photos_taken ?? 0, notes_count: notes });
-  } catch { return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
 });
 
 calls.post('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {

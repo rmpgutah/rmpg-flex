@@ -186,7 +186,7 @@ export default function TrespassOrdersPage() {
       setBulkMode(false);
       setBulkPersons([]);
       fetchOrders();
-    } catch (err: any) { addToast(err?.message || 'Bulk create failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Bulk create failed', 'error'); }
   };
 
   // Fetch properties for dropdown
@@ -331,7 +331,7 @@ export default function TrespassOrdersPage() {
       addToast(`Order renewed as ${(renewed as any).order_number}`, 'success');
       await fetchOrders();
       setSelectedOrder(renewed);
-    } catch (err: any) { addToast(err.message || 'Failed to renew', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to renew', 'error'); }
   };
 
   // Check if order expires within 30 days
@@ -386,7 +386,7 @@ export default function TrespassOrdersPage() {
       addToast(`Order ${order.order_number} deleted`, 'success');
       if (selectedOrder?.id === order.id) setSelectedOrder(null);
       await fetchOrders();
-    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
     finally { setDeleting(false); setOrderToDelete(null); }
   };
 

@@ -65,8 +65,8 @@ async function mbFetch(url: string, init?: RequestInit): Promise<any> {
 }
 
 function fail(c: any, err: any, label: string) {
-  const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 502;
-  return c.json({ error: `Mapbox ${label} failed`, code: 'MAPBOX_UPSTREAM_ERROR', detail: err?.message, upstream: err?.body?.message }, status);
+  const status = (err as { status?: number })?.status && err.status >= 400 && err.status < 600 ? err.status : 502;
+  return c.json({ error: `Mapbox ${label} failed`, code: 'MAPBOX_UPSTREAM_ERROR', detail: err instanceof Error ? err instanceof Error ? err.message : String(err) : String(err), upstream: err?.body?.message }, status);
 }
 
 // ── Geocoding ──────────────────────────────────────────────
@@ -307,8 +307,8 @@ mapbox.get('/boundaries', async (c) => {
       });
     }
     // Entitled but no feature at this point — still try geocoding.
-  } catch (err: any) {
-    if (err?.status !== 401 && err?.status !== 403 && err?.status !== 404) {
+  } catch (err) {
+    if ((err as { status?: number })?.status !== 401 && (err as { status?: number })?.status !== 403 && (err as { status?: number })?.status !== 404) {
       return fail(c, err, 'boundaries');
     }
     // 401/403/404 = the account lacks the Boundaries entitlement. Boundaries
@@ -318,7 +318,7 @@ mapbox.get('/boundaries', async (c) => {
     // 503 skip shape, which is why the Properties/Warrants panels rendered
     // a permanent "Jurisdiction unavailable" badge.
     log.info('[mapbox/boundaries] no Boundaries entitlement — falling back to reverse geocoding', {
-      status: err?.status,
+      status: (err as { status?: number })?.status,
     });
   }
 
@@ -333,7 +333,7 @@ mapbox.get('/boundaries', async (c) => {
       return c.json({ county: null, municipality: null, place: null, source: 'mapbox-geocoding' });
     }
     return c.json({ ...ctx, source: 'mapbox-geocoding' });
-  } catch (err: any) {
+  } catch (err) {
     // BOTH sources are unavailable. Keep the original 200 skip shape rather
     // than propagating the upstream status: a jurisdiction lookup is an
     // advisory side-panel badge, and failing it must not surface as a hard
@@ -342,7 +342,7 @@ mapbox.get('/boundaries', async (c) => {
     // that predates the geocoding fallback — the fallback only ever REPLACES
     // that shape when it actually resolves something.
     log.warn('[mapbox/boundaries] geocoding fallback also failed — reporting unavailable', {
-      status: err?.status,
+      status: (err as { status?: number })?.status,
     });
     return notConfigured(c, 'Jurisdiction lookup unavailable — Mapbox Boundaries not enabled and reverse geocoding failed');
   }
@@ -459,7 +459,7 @@ mapbox.get('/static/image', async (c) => {
         'Cache-Control': 'private, max-age=300',
       },
     });
-  } catch (err: any) {
+  } catch (err) {
     clearTimeout(t);
     return fail(c, err, 'static image');
   }

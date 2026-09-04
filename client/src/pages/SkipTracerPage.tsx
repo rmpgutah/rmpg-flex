@@ -366,8 +366,8 @@ export default function SkipTracerPage() {
         officerName: officerName || undefined,
         badgeNumber: user?.badge_number || undefined,
       });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to generate PDF', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to generate PDF', 'error');
     }
   }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, user, addToast]);
 

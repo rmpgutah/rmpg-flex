@@ -794,7 +794,7 @@ records.post('/persons/check-duplicates', async (c) => {
       return c.json({ matches: dobMatches });
     }
     return c.json({ matches });
-  } catch (err) { return c.json({ matches: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ matches: [] }); }
 });
 
 // GET /records/persons/duplicates — find potential duplicate pairs.
@@ -807,7 +807,7 @@ records.get('/persons/duplicates', async (c) => {
       FROM persons a JOIN persons b ON a.last_name = b.last_name AND a.first_name = b.first_name AND a.id < b.id
       ORDER BY a.last_name, a.first_name LIMIT 200`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/persons/merge — merge duplicate person records.
@@ -862,7 +862,7 @@ records.get('/persons/alias-search', async (c) => {
       `SELECT id, first_name, last_name, dob, gender, alias_nickname FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
       ...ma.binds(q));
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/persons/:id — fetch a single person by ID (full detail).
@@ -1087,7 +1087,7 @@ records.get('/persons/:id/criminal-history', async (c) => {
     const id = c.req.param('id');
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM criminal_history WHERE person_id = ? ORDER BY created_at DESC LIMIT 200', id);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/persons/:id/criminal-history
@@ -1156,7 +1156,7 @@ records.get('/persons/:id/incidents', async (c) => {
     const id = c.req.param('id');
     const rows = await query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 200', id);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/persons/:id/clients — client relationships for this person.
@@ -1166,7 +1166,7 @@ records.get('/persons/:id/clients', async (c) => {
     const id = c.req.param('id');
     const rows = await query<Record<string, unknown>>(db, 'SELECT cpl.*, cl.name as client_name FROM client_person_links cpl LEFT JOIN clients cl ON cpl.client_id = cl.id WHERE cpl.person_id = ? ORDER BY cpl.created_at DESC LIMIT 100', id);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/clients/:clientId/persons — persons linked to a client.
@@ -1177,7 +1177,7 @@ records.get('/clients/:clientId/persons', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT cpl.*, p.first_name, p.last_name, (p.first_name || ' ' || p.last_name) AS full_name FROM client_person_links cpl LEFT JOIN persons p ON cpl.person_id = p.id WHERE cpl.client_id = ? ORDER BY cpl.created_at DESC LIMIT 100`, clientId);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/client-persons — create a client-person link.
@@ -1475,7 +1475,7 @@ records.get('/vehicles/plate-lookup', async (c) => {
     if (!plate || plate.length < 2) return c.json(null);
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.plate_number = ? LIMIT 1', plate.toUpperCase());
     return c.json(row || null);
-  } catch (err) { return c.json(null); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json(null); }
 });
 
 // GET /records/vehicles/bolo-check — active BOLOs matching this vehicle.
@@ -1588,7 +1588,7 @@ records.get('/vehicles/alerts/expired-registration', async (c) => {
     if (!plate || plate.length < 2) return c.json({ expired: false });
     const row = await queryFirst<Record<string, unknown>>(db, "SELECT id, plate_number, vin FROM vehicles_records WHERE plate_number = ?", plate.toUpperCase());
     return c.json({ expired: false, vehicle: row || null });
-  } catch (err) { return c.json({ expired: false }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json({ expired: false }); }
 });
 
 // POST /records/plate-check — multi-source plate aggregator called by VehiclesTab.
@@ -3232,9 +3232,7 @@ records.get('/clients', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM clients ORDER BY name LIMIT 1000');
     return c.json(rows);
-  } catch {
-    return c.json([]);
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/records.ts' }, err); return c.json([]); }
 });
 
 export default records;

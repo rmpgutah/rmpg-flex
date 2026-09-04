@@ -421,8 +421,8 @@ export default function DeviceScannerPage() {
       } else {
         flash(`Scan failed: ${res?.reason || 'unknown error'}`);
       }
-    } catch (e: any) {
-      flash(`Error: ${e.message}`);
+    } catch (e) {
+      flash(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(null);
     }

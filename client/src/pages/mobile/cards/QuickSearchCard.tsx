@@ -65,8 +65,8 @@ export default function QuickSearchCard() {
       setResults(Array.isArray(data) ? data : []);
       setHasSearched(true);
       setSubmittedQuery(q);
-    } catch (e: any) {
-      setError(e?.message || 'Search failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Search failed');
       setResults([]);
     } finally {
       setLoading(false);

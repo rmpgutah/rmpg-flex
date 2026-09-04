@@ -342,8 +342,8 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
     try {
       const r = await apiFetch<{ ok: boolean; message: string }>(`/admin/third-party-keys/${configKey}/test`, { method: 'POST' });
       setTestResult(prev => ({ ...prev, [configKey]: { ok: !!r.ok, message: r.message || (r.ok ? 'OK' : 'Failed') } }));
-    } catch (e: any) {
-      setTestResult(prev => ({ ...prev, [configKey]: { ok: false, message: e?.message || 'Test request failed' } }));
+    } catch (e) {
+      setTestResult(prev => ({ ...prev, [configKey]: { ok: false, message: e instanceof Error ? e.message : 'Test request failed' } }));
     }
     setTesting(null);
   };
@@ -493,7 +493,6 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       setSvcUrlInput(data.url);
       setSvcKeyPreview(data.key_preview);
     } catch (err) {
-      console.error('Failed to fetch rmpgutahps config:', err);
     } finally {
       setLoadingSvc(false);
     }
@@ -531,7 +530,6 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<ApiKey[]>('/integrations/keys');
       setKeys(asArray<ApiKey>(data));
     } catch (err) {
-      console.error('Failed to fetch integration keys:', err);
       setError(err instanceof Error ? err.message : 'Failed to load API keys');
     } finally {
       setLoadingKeys(false);
@@ -543,7 +541,6 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<RequestLogEntry[]>('/integrations/keys/request-log');
       setRequestLog(asArray<RequestLogEntry>(data));
     } catch (err) {
-      console.error('Failed to fetch request log:', err);
     } finally {
       setLoadingLog(false);
     }

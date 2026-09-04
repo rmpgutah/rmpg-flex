@@ -271,7 +271,7 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true }); fetchStats();
       const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
       if (updated) setSelected(updated.data || updated);
-    } catch (err: any) { addToast(err?.message || 'Checkout failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Checkout failed', 'error'); }
     finally { setCheckoutSubmitting(false); }
   };
 
@@ -287,7 +287,7 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true }); fetchStats();
       const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
       if (updated) setSelected(updated.data || updated);
-    } catch (err: any) { addToast(err?.message || 'Check-in failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Check-in failed', 'error'); }
     finally { setCheckoutSubmitting(false); }
   };
 
@@ -308,7 +308,7 @@ export default function EvidencePropertyPage() {
       addToast('Disposition recorded', 'success');
       setDispositionOpen(false); setDispositionType('pending'); setDispositionMethod(''); setDispositionNotes('');
       fetchItems({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err?.message || 'Disposition failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Disposition failed', 'error'); }
     finally { setDispositionSubmitting(false); }
   };
 
@@ -353,8 +353,8 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
       if (updated) setSelected(updated.data || updated);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to record action', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to record action', 'error');
     } finally { setChainSubmitting(false); }
   };
 
@@ -383,8 +383,8 @@ export default function EvidencePropertyPage() {
       });
       fetchItems({ silent: true });
       fetchStats();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to create evidence', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
   };
 
@@ -402,7 +402,7 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
       if (updated) setSelected(updated.data || updated);
-    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setReleaseSubmitting(false); }
   };
 
@@ -425,7 +425,7 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
       if (updated) setSelected(updated.data || updated);
-    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setReleaseSubmitting(false); }
   };
 

@@ -1842,8 +1842,8 @@ function PatrolTrackingCard() {
 
       await generatePatrolTrackingPdf(data);
       addToast('Patrol tracking report generated successfully', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to generate patrol tracking report', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to generate patrol tracking report', 'error');
     } finally {
       setGenerating(false);
     }

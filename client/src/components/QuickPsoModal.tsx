@@ -57,7 +57,8 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
   // D1 mirror) instead of being silently discarded.
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => firstInputRef.current?.focus(), 100);
+      const t = setTimeout(() => firstInputRef.current?.focus(), 100);
+      return () => clearTimeout(t);
     }
   }, [isOpen]);
 

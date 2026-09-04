@@ -84,8 +84,8 @@ export default function UnitStatusCard() {
         : null;
       setUnit(mine || null);
       unitIdRef.current = mine?.id ?? null;
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load unit');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load unit');
     } finally {
       setLoading(false);
     }
@@ -125,8 +125,8 @@ export default function UnitStatusCard() {
         body: JSON.stringify({ status: backend }),
       });
       await fetchUnit();
-    } catch (e: any) {
-      setError(e?.message || 'Status change failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Status change failed');
     } finally {
       setBusy(false);
     }

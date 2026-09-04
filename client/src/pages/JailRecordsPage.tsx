@@ -156,7 +156,6 @@ export default function JailRecordsPage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Ingest failed';
       addToast(msg, 'error');
-      console.error(e);
     } finally {
       setBusy(false);
     }

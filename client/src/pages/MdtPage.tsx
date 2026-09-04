@@ -113,7 +113,6 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       fetchMessages();
       addToast('Message sent', 'success');
     } catch (err) {
-      console.error('Send message failed:', err);
       addToast('Failed to send message', 'error');
     }
   };
@@ -328,7 +327,6 @@ export default function MdtPage() {
       setAudioMode(next);
       addToast(`Audio mode: ${next.toUpperCase()}`, 'success');
     } catch (err) {
-      console.error('[MDT] audio mode change failed', err);
       addToast('Failed to change audio mode', 'error');
     }
   }, [audioMode, myUnit, addToast]);
@@ -386,7 +384,6 @@ export default function MdtPage() {
         officerNameFallback: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
       });
     } catch (err) {
-      console.error('Failed to generate shift report:', err);
       addToast('Failed to generate shift report', 'error');
     }
     setGeneratingReport(false);
@@ -412,7 +409,6 @@ export default function MdtPage() {
       setShowFiForm(false);
       addToast('Field interview submitted', 'success');
     } catch (err) {
-      console.error('Failed to submit FI:', err);
       addToast('Failed to submit field interview', 'error');
     }
     setFiSubmitting(false);
@@ -489,7 +485,6 @@ export default function MdtPage() {
       });
 
     } catch (err) {
-      console.error('MDT fetch error:', err);
       addToast('Failed to load dispatch data', 'error');
     } finally {
       setLoading(false);
@@ -637,7 +632,6 @@ export default function MdtPage() {
       } else if (err?.code === 'NO_UNIT') {
         addToast('No unit assigned — ask dispatch to assign you a unit', 'error');
       } else {
-        console.error('Status change failed:', err);
         addToast('Failed to change unit status', 'error');
       }
     }
@@ -655,7 +649,6 @@ export default function MdtPage() {
       if (err?.code === 'NEEDS_MILEAGE' || err?.code === 'MILEAGE_LOWER') {
         setClockMileagePrompt({ mode: 'out' });
       } else {
-        console.error('End duty failed:', err);
         addToast('Failed to end shift', 'error');
       }
     }
@@ -683,7 +676,6 @@ export default function MdtPage() {
       if (selectedCall?.id === callId) setSelectedCall(updated);
       fetchData();
     } catch (err) {
-      console.error('Call status update failed:', err);
       addToast('Failed to update call status', 'error');
     }
   };
@@ -699,7 +691,6 @@ export default function MdtPage() {
       });
       fetchData();
     } catch (err) {
-      console.error('Self-dispatch failed:', err);
       addToast('Failed to self-dispatch', 'error');
     } finally {
       setDispatchingCallId(null);
@@ -770,7 +761,6 @@ export default function MdtPage() {
       setNoteText('');
       fetchData();
     } catch (err) {
-      console.error('Add note failed:', err);
       addToast('Failed to add note', 'error');
     } finally {
       setAddingNote(false);

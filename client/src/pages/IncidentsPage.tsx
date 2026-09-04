@@ -667,8 +667,8 @@ export default function IncidentsPage() {
           await apiFetch(`/incidents/${selectedIncident.id}/persons/${personId}`, { method: 'DELETE' });
           fetchIncidentDetail(selectedIncident.id);
           addToast(`Unlinked ${name}`, 'success');
-        } catch (err: any) {
-          addToast(err?.message || 'Failed to unlink person', 'error');
+        } catch (err) {
+          addToast(err instanceof Error ? err.message : 'Failed to unlink person', 'error');
         }
       },
     });
@@ -687,8 +687,8 @@ export default function IncidentsPage() {
           await apiFetch(`/incidents/${selectedIncident.id}/vehicles/${vehicleId}`, { method: 'DELETE' });
           fetchIncidentDetail(selectedIncident.id);
           addToast(`Unlinked ${label}`, 'success');
-        } catch (err: any) {
-          addToast(err?.message || 'Failed to unlink vehicle', 'error');
+        } catch (err) {
+          addToast(err instanceof Error ? err.message : 'Failed to unlink vehicle', 'error');
         }
       },
     });
@@ -851,8 +851,8 @@ export default function IncidentsPage() {
       addToast(`Archived ${incident.incident_number}`, 'success');
       setSelectedIncident(null);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to archive incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to archive incident', 'error');
     }
   };
 
@@ -862,8 +862,8 @@ export default function IncidentsPage() {
       addToast(`Unarchived ${incident.incident_number}`, 'success');
       setSelectedIncident(null);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to unarchive incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to unarchive incident', 'error');
     }
   };
 
@@ -905,8 +905,8 @@ export default function IncidentsPage() {
       setShowSupplementModal(false);
       addToast('Supplement created successfully', 'success');
       fetchSupplements(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to create supplement', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to create supplement', 'error');
     } finally {
       setSupplementSubmitting(false);
     }
@@ -921,8 +921,8 @@ export default function IncidentsPage() {
       });
       addToast('Supplement submitted for review', 'success');
       fetchSupplements(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to submit supplement', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to submit supplement', 'error');
     }
   };
 
@@ -935,8 +935,8 @@ export default function IncidentsPage() {
       });
       addToast('Supplement approved', 'success');
       fetchSupplements(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to approve supplement', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to approve supplement', 'error');
     }
   };
 
@@ -948,8 +948,8 @@ export default function IncidentsPage() {
       });
       addToast('Supplement deleted', 'success');
       fetchSupplements(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete supplement', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete supplement', 'error');
     }
   };
 
@@ -2051,8 +2051,8 @@ export default function IncidentsPage() {
                           try {
                             await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
                             fetchIncidentDetail(selectedIncident.id);
-                          } catch (err: any) {
-                            addToast(err?.message || 'Failed to remove offense', 'error');
+                          } catch (err) {
+                            addToast(err instanceof Error ? err.message : 'Failed to remove offense', 'error');
                           }
                         },
                       });
@@ -2109,8 +2109,8 @@ export default function IncidentsPage() {
                           try {
                             await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
                             fetchIncidentDetail(selectedIncident.id);
-                          } catch (err: any) {
-                            addToast(err?.message || 'Failed to remove officer', 'error');
+                          } catch (err) {
+                            addToast(err instanceof Error ? err.message : 'Failed to remove officer', 'error');
                           }
                         },
                       });
@@ -2201,8 +2201,8 @@ export default function IncidentsPage() {
                             try {
                               await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
                               fetchIncidentDetail(selectedIncident.id);
-                            } catch (err: any) {
-                              addToast(err?.message || 'Failed to remove cross-reference', 'error');
+                            } catch (err) {
+                              addToast(err instanceof Error ? err.message : 'Failed to remove cross-reference', 'error');
                             }
                           },
                         });
@@ -3030,8 +3030,8 @@ export default function IncidentsPage() {
                 { setShowAddOfficerModal(false); setAddOfficerPickerId(null); };
                 addToast(result?.updated_existing ? 'Officer details updated on incident' : 'Officer added to incident', 'success');
                 fetchIncidentDetail(selectedIncident.id);
-              } catch (err: any) {
-                addToast(err?.message || 'Failed to add officer', 'error');
+              } catch (err) {
+                addToast(err instanceof Error ? err.message : 'Failed to add officer', 'error');
               }
             }}
           >

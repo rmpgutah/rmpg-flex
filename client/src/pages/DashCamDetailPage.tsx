@@ -614,8 +614,8 @@ export default function DashCamDetailPage() {
       addToast('HUD burn started', 'success');
       setBurnConfirmOpen(false);
       fetchVideo();
-    } catch (err: any) {
-      addToast(err?.message || 'Burn failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Burn failed', 'error');
     } finally {
       setBurning(false);
     }

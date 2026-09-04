@@ -88,8 +88,8 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
       await refreshUnits();
       setMultiSelectUnits([]);
       addToast(`${unitIds.length} units dispatched`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to dispatch units', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to dispatch units', 'error');
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 
@@ -108,8 +108,8 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
       }
       await refreshUnits();
       addToast('Call transferred', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Transfer failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Transfer failed', 'error');
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 

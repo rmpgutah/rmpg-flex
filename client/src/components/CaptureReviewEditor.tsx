@@ -77,8 +77,8 @@ export default function CaptureReviewEditor({
         onSaved?.({ text: 'Saved.', kind: 'ok' });
       }
       onClose();
-    } catch (e: any) {
-      setErr(e?.message || 'Action failed — please retry.');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Action failed — please retry.');
     } finally { setBusy(null); }
   };
 

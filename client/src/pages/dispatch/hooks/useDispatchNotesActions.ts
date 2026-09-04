@@ -157,8 +157,8 @@ export function useDispatchNotesActions(args: UseDispatchNotesActionsArgs) {
       setSelectedCall(updatedCall);
       setBroadcastNoteText('');
       addToast('Note broadcast to all units', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Broadcast failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Broadcast failed', 'error');
     } finally {
       setIsBroadcasting(false);
     }

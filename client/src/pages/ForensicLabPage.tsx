@@ -386,7 +386,7 @@ export default function ForensicLabPage() {
       addToast(`QC check recorded: ${qcForm.pass ? 'PASS' : 'FAIL'}`, qcForm.pass ? 'success' : 'warning');
       fetchQcHistory(selectedCase.id);
       setQcForm({ check_type: 'peer_review', reviewer_notes: '', pass: true });
-    } catch (err: any) { addToast(err?.message || 'QC check failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'QC check failed', 'error'); }
     finally { setQcSubmitting(false); }
   };
 
@@ -414,8 +414,8 @@ export default function ForensicLabPage() {
       setSelectedCase(null);
       setDetailTab('overview');
       fetchCases();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to cancel case', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to cancel case', 'error');
     } finally {
       setCloseCaseBusy(false);
       setConfirmCloseCase(false);
@@ -442,7 +442,6 @@ export default function ForensicLabPage() {
       setStats(statsRes);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
-      console.error('Fetch forensic cases error:', err);
       setFetchError(err?.message || 'Failed to load forensic cases');
       addToast('Failed to load forensic cases', 'error');
     } finally {
@@ -477,7 +476,6 @@ export default function ForensicLabPage() {
         .catch(() => { setHashes([]); setHashStats(null); });
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
-      console.error('Fetch case detail error:', err);
       addToast('Failed to load case details', 'error');
     }
   }, [addToast]);
@@ -519,7 +517,6 @@ export default function ForensicLabPage() {
       fetchCases();
       fetchCaseDetail(newCaseId);
     } catch (err) {
-      console.error('Create case error:', err);
       addToast(err instanceof Error ? err.message : 'Failed to create case', 'error');
     } finally {
       setSubmitting(false);
@@ -540,7 +537,6 @@ export default function ForensicLabPage() {
       setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Add analysis error:', err);
       addToast('Failed to add analysis', 'error');
     }
   };
@@ -559,7 +555,6 @@ export default function ForensicLabPage() {
       setExhibitForm({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Add exhibit error:', err);
       addToast('Failed to add exhibit', 'error');
     }
   };
@@ -577,7 +572,6 @@ export default function ForensicLabPage() {
       fetchCaseDetail(selectedCase.id);
       fetchCases();
     } catch (err) {
-      console.error('Update status error:', err);
       addToast('Failed to update status', 'error');
     }
   };
@@ -608,7 +602,6 @@ export default function ForensicLabPage() {
       fetchCaseDetail(selectedCase.id);
       fetchCases();
     } catch (err) {
-      console.error('Edit case error:', err);
       addToast('Failed to save case changes', 'error');
     }
   };
@@ -625,7 +618,6 @@ export default function ForensicLabPage() {
       });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Update analysis error:', err);
       addToast('Failed to update analysis', 'error');
     }
   };
@@ -642,7 +634,6 @@ export default function ForensicLabPage() {
       });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Update exhibit error:', err);
       addToast('Failed to update exhibit', 'error');
     }
   };
@@ -661,7 +652,6 @@ export default function ForensicLabPage() {
       setTimelineNote('');
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Add note error:', err);
       addToast('Failed to add note', 'error');
     } finally {
       setAddingNote(false);
@@ -677,7 +667,6 @@ export default function ForensicLabPage() {
       const results = await apiFetch<any[]>(`/forensic-lab/${selectedCase.id}/links/search?q=${encodeURIComponent(linkSearchTerm)}`);
       setLinkSearchResults(results || []);
     } catch (err) {
-      console.error('Link search error:', err);
       setLinkSearchResults([]);
     } finally {
       setLinkSearching(false);
@@ -697,7 +686,6 @@ export default function ForensicLabPage() {
       fetchCaseLinks(selectedCase.id);
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Link entity error:', err);
       addToast('Failed to link entity', 'error');
     }
   };
@@ -719,7 +707,6 @@ export default function ForensicLabPage() {
       fetchCaseLinks(selectedCase.id);
       addToast('Linked entity removed', 'success');
     } catch (err) {
-      console.error('Unlink error:', err);
       addToast('Failed to unlink entity', 'error');
     } finally {
       setUnlinkBusy(false);
@@ -748,7 +735,6 @@ export default function ForensicLabPage() {
       setCompleteResults('');
       setCompleteConclusion('');
     } catch (err) {
-      console.error('Mark complete error:', err);
       addToast('Failed to mark complete', 'error');
     } finally {
       setCompleteBusy(false);
@@ -791,7 +777,6 @@ export default function ForensicLabPage() {
       });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
-      console.error('Save metadata error:', err);
       addToast('Failed to save metadata', 'error');
     }
   };
@@ -908,7 +893,6 @@ export default function ForensicLabPage() {
       });
       addToast('Court PDF opened in a new tab', 'success');
     } catch (err) {
-      console.error('Generate forensic PDF error:', err);
       addToast('Failed to generate court PDF', 'error');
     } finally {
       setPdfBusy(false);

@@ -1008,9 +1008,7 @@ auth.post('/forgot-password/reset', async (c) => {
     let payload: any;
     try {
       payload = await verifyJwt(tempToken, c.env.JWT_SECRET, 'HS256');
-    } catch {
-      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
-    }
+    } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401); }
     if (payload?.type !== 'pwd_reset' || payload?.userId == null) {
       return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
     }
@@ -1453,9 +1451,7 @@ auth.get('/security/status', async (c) => {
       lastLoginIp: last?.ip_address ?? '',
       accountStatus: 'Active',
     });
-  } catch {
-    return c.json({ totpEnabled: false, totpSetupRequired: false, backupCodesRemaining: 0, activeSessions: 0, trustedDevices: 0, passwordExpiresAt: null, passwordExpiringSoon: false, passwordExpired: false, passwordChangedAt: null, forcePasswordChange: false, unreadSecurityNotifications: 0, twoFactorEnabled: false, passwordAge: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json({ totpEnabled: false, totpSetupRequired: false, backupCodesRemaining: 0, activeSessions: 0, trustedDevices: 0, passwordExpiresAt: null, passwordExpiringSoon: false, passwordExpired: false, passwordChangedAt: null, forcePasswordChange: false, unreadSecurityNotifications: 0, twoFactorEnabled: false, passwordAge: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' }); }
 });
 
 // GET /api/auth/security/recent-threats — failed logins PLUS two
@@ -1612,7 +1608,7 @@ auth.get('/security/login-history', async (c) => {
       entries: mine, total, data,
       pagination: { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: Math.floor(offset / limit) + 1, limit },
     });
-  } catch { return c.json(empty); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json(empty); }
 });
 
 // GET /api/auth/security/password-compliance — no password-age tracking on
@@ -1628,9 +1624,7 @@ auth.get('/security/session-analytics', async (c) => {
     const data: Record<string, number> = {};
     for (const r of rows || []) data[r.day] = r.count;
     return c.json({ data });
-  } catch {
-    return c.json({ data: {} });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json({ data: {} }); }
 });
 
 // GET /api/auth/security/event-timeline?limit= — login successes + failures.
@@ -1644,9 +1638,7 @@ auth.get('/security/event-timeline', async (c) => {
               device_type, browser, os, country, region, city, isp, likely_vpn_or_hosting
          FROM login_attempts ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json({ data: rows || [] });
-  } catch {
-    return c.json({ data: [] });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json({ data: [] }); }
 });
 
 // ─── Profile image ────────────────────────────────────────
@@ -1707,7 +1699,7 @@ auth.get('/signature', authMiddleware, async (c) => {
     const row = await queryFirst<{ digital_signature: string | null }>(db,
       'SELECT digital_signature FROM users WHERE id = ?', c.get('userId'));
     return c.json({ signature: row?.digital_signature || null });
-  } catch { return c.json({ signature: null }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json({ signature: null }); }
 });
 
 auth.put('/signature', authMiddleware, async (c) => {
@@ -2179,9 +2171,7 @@ auth.get('/security/locked-accounts', async (c) => {
        FROM users WHERE locked_until IS NOT NULL AND locked_until > datetime(\'now\')
        ORDER BY locked_until DESC LIMIT 100`);
     return c.json({ data: rows || [] });
-  } catch {
-    return c.json({ data: [] });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/auth.ts' }, err); return c.json({ data: [] }); }
 });
 
 // ── Security: unlock account ────────────────────────────────

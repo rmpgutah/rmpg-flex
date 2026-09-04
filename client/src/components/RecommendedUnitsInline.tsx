@@ -93,8 +93,8 @@ export default function RecommendedUnitsInline({
     try {
       const r = await apiFetch<RecommendResponse>(`/api/dispatch/calls/${callId}/recommended-units?limit=${limit}`);
       setData(r);
-    } catch (e: any) {
-      setErr(e?.message || 'Failed to load recommendations');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed to load recommendations');
     } finally {
       setLoading(false);
     }

@@ -455,8 +455,8 @@ export default function AnalyticsTab() {
       URL.revokeObjectURL(blobUrl);
       addToast('Export downloaded', 'success');
       setExportOpen(false);
-    } catch (err: any) {
-      addToast(err?.message || 'Export failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Export failed', 'error');
     } finally {
       setExporting(false);
     }
@@ -1009,8 +1009,8 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
       addToast(`Reassigned ${res.reassigned_count} attempt(s)`, 'success');
       setSelectedAttemptIds(new Set());
       onBulkActionComplete();
-    } catch (err: any) {
-      addToast(err?.message || 'Reassign failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Reassign failed', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -1030,8 +1030,8 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
       addToast(`Updated ${res.updated_queue_count} job(s) to "${res.status}"`, 'success');
       setSelectedAttemptIds(new Set());
       onBulkActionComplete();
-    } catch (err: any) {
-      addToast(err?.message || 'Status update failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Status update failed', 'error');
     } finally {
       setSubmitting(false);
     }

@@ -67,7 +67,7 @@ export async function navigateTo(
     try {
       const res = await p.startNavigation({ lat, lng, label });
       return { ok: true, mode: res?.mode || 'pin-fallback' };
-    } catch (e: any) {
+    } catch {
       // Native launch failed (OM not installed, etc.) — fall through to web.
     }
   }
@@ -75,8 +75,8 @@ export async function navigateTo(
     const url = osmDirectionsUrl(lat, lng, label);
     window.open(url, '_blank', 'noopener,noreferrer');
     return { ok: true, mode: 'osm-web' };
-  } catch (e: any) {
-    return { ok: false, reason: e?.message || 'launch-failed' };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : 'launch-failed' };
   }
 }
 

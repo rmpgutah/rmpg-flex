@@ -19,6 +19,7 @@ import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMediaForAsset, type CpgMediaObject } from '../utils/clearpathGps';
 import { recordAudit } from '../utils/auditLog';
 import { verifySignedResource } from '../utils/signedAccess';
+import { log } from '../utils/logger';
 
 const drivingEvents = new Hono<Env>();
 
@@ -197,8 +198,8 @@ drivingEvents.get('/plate-history', async (c: Context<Env>): Promise<Response> =
         confidence: r.confidence, created_at: r.created_at,
       })),
     });
-  } catch (err: any) {
-    return c.json({ plate, count: 0, sightings: [], error: err?.message }, 200);
+  } catch (err) {
+    return c.json({ plate, count: 0, sightings: [], error: err instanceof Error ? err.message : String(err) }, 200);
   }
 });
 
@@ -383,7 +384,7 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   const id = Number(c.req.param('id'));
   let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
   try { resolved = await resolveEventMedia(c.env, db, id); }
-  catch (err) { return c.json({ error: (err as Error)?.message || 'resolve failed', has_video: false }, 200); }
+  catch (err) { return c.json({ error: err instanceof Error ? err.message : String(err) || 'resolve failed', has_video: false }, 200); }
   if (!resolved) return c.json({ has_video: false, gps: [], error: 'No media for this event' }, 200);
   const { media, event } = resolved;
   // The persisted ALPR still + plate + vehicle attributes (from the still scan).
@@ -469,8 +470,8 @@ drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
           // Surface the failure in `wrangler tail` instead of silently dropping —
           // R2 quota, ClearPath URL expiry, and D1 schema drift on clip_r2_key
           // all manifest here and have no other observability.
-          console.error('drivingEvents downloadClipToR2 failed', {
-            eventId: id, r2Key, error: (err as Error)?.message,
+          log.error('drivingEvents downloadClipToR2 failed', {
+            eventId: id, r2Key, error: err instanceof Error ? err.message : String(err),
           });
         }),
       );

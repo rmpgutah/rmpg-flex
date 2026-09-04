@@ -142,8 +142,8 @@ runCards.post('/', requireRole(...WRITE_ROLES), async (c) => {
       );
       const created = await queryFirst<RunCardRow>(db, 'SELECT * FROM dispatch_run_cards WHERE id = ?', result.meta.last_row_id);
       return c.json(parseRunCard(created!), 201);
-    } catch (err: any) {
-      if (String(err?.message || '').includes('UNIQUE')) {
+    } catch (err) {
+      if (String(err instanceof Error ? err instanceof Error ? err.message : String(err) : String(err) || '').includes('UNIQUE')) {
         return c.json({ error: 'A run card for that incident_type already exists', code: 'RC_DUPLICATE' }, 409);
       }
       throw err;
@@ -244,7 +244,7 @@ export async function applyRunCard(
       t,
     );
   } catch (err) {
-    log.warn('run-cards applyRunCard query failed; treating as no card:', { error: err instanceof Error ? err.message : String(err) });
+    log.warn('run-cards applyRunCard query failed; treating as no card:', { error: err instanceof Error ? err instanceof Error ? err.message : String(err) : String(err) });
     return { card: null, appliedPriority: null, appliedFlags: {} };
   }
   if (!row) return { card: null, appliedPriority: null, appliedFlags: {} };

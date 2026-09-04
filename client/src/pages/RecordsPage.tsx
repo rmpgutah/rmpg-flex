@@ -702,7 +702,6 @@ export default function RecordsPage() {
           const cfg = exportConfigs[activeTab];
           if (cfg) {
             downloadExport(cfg.url, cfg.filename).catch((err) => {
-              console.error('[RecordsPage] menu export failed:', err);
               addToast('Export failed — check your connection and try again', 'error');
             });
           } else {

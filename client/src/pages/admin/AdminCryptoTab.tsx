@@ -62,8 +62,8 @@ export default function AdminCryptoTab({ setError }: Props) {
       setHealth(h);
       setIdentities(ids.identities);
       setOfficers(officers.officers);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load crypto status');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load crypto status');
     } finally {
       setLoading(false);
     }
@@ -78,8 +78,8 @@ export default function AdminCryptoTab({ setError }: Props) {
       await apiFetch(endpoint, { method: 'POST', body: JSON.stringify({}) });
       addToast(`Org ${kind} identity provisioned`, 'success');
       load();
-    } catch (e: any) {
-      addToast(e?.message || `Failed to provision ${kind} identity`, 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : `Failed to provision ${kind} identity`, 'error');
     } finally { setBusy(false); }
   };
 
@@ -96,8 +96,8 @@ export default function AdminCryptoTab({ setError }: Props) {
       addToast(`Officer ${kind} identity provisioned for user ${uid}`, 'success');
       setOfficerUserId('');
       load();
-    } catch (e: any) {
-      addToast(e?.message || 'Failed to provision officer identity', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to provision officer identity', 'error');
     } finally { setBusy(false); }
   };
 
@@ -107,8 +107,8 @@ export default function AdminCryptoTab({ setError }: Props) {
       await apiFetch(`/crypto/officer/${userId}`, { method: 'DELETE' });
       addToast(`Officer ${userId} identity revoked (crypto-shredded)`, 'success');
       load();
-    } catch (e: any) {
-      addToast(e?.message || 'Revoke failed', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Revoke failed', 'error');
     } finally { setBusy(false); }
   };
 
@@ -123,8 +123,8 @@ export default function AdminCryptoTab({ setError }: Props) {
       setRotateOpen(false);
       setOldKey('');
       load();
-    } catch (e: any) {
-      addToast(e?.message || 'Rotation failed (wrong old key, or server error)', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Rotation failed (wrong old key, or server error)', 'error');
     } finally { setRotating(false); }
   };
 

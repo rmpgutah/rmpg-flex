@@ -37,7 +37,7 @@ export default function IntelReportDetailPage() {
       const res = await apiFetch<any>(`/intel/reports/${id}${path}`, { method: 'POST', body: JSON.stringify(body) });
       if (res?.error) { setMsg(res.error); return; }
       load();
-    } catch (e: any) { setMsg(e?.message || 'Action failed.'); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Action failed.'); }
   };
 
   const addLink = async () => {
@@ -52,7 +52,7 @@ export default function IntelReportDetailPage() {
       const res = await apiFetch<any>(`/intel/reports/${id}/links/${linkId}`, { method: 'DELETE' });
       if (res?.error) { setMsg(res.error); return; }
       load();
-    } catch (e: any) { setMsg(e?.message || 'Remove failed.'); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Remove failed.'); }
   };
 
   const linkPath = (t: string, eid: number) =>

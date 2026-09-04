@@ -214,7 +214,7 @@ export default function AnimalControlPage() {
       setFormOpen(false);
       setEditingCase(null);
       await fetchCases();
-    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); } finally { setSubmitting(false); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Operation failed', 'error'); } finally { setSubmitting(false); }
   };
 
   const handleDelete = async (ac: AnimalControlCase) => {
@@ -224,7 +224,7 @@ export default function AnimalControlPage() {
       addToast(`Case ${ac.case_number} deleted`, 'success');
       if (selectedCase?.id === ac.id) setSelectedCase(null);
       fetchCases();
-    } catch (err: any) { addToast(err?.message || 'Delete failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
   };
 
   const update = (field: string, value: string) => setFormData(prev => ({ ...prev, [field]: value }));

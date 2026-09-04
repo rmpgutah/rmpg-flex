@@ -49,8 +49,8 @@ export default function AdminPersonIntelTab({ LoadingSpinner, error, setError }:
       const init: Record<string, string> = {};
       data.forEach(r => { init[r.config_key] = r.config_value ?? ''; });
       setValues(init);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load config');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load config');
     } finally {
       setLoading(false);
     }
@@ -66,8 +66,8 @@ export default function AdminPersonIntelTab({ LoadingSpinner, error, setError }:
         body: JSON.stringify({ config_key: key, config_value: values[key] ?? '', is_active: 1 }),
       });
       await load();
-    } catch (e: any) {
-      setError(e.message ?? 'Save failed');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(null);
     }

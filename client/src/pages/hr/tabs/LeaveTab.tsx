@@ -159,8 +159,8 @@ export default function LeaveTab() {
       ]);
       setRequests(reqs);
       setBalances(Array.isArray(bals) ? bals : [bals].filter(Boolean));
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to load leave data', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to load leave data', 'error');
     } finally {
       setLoading(false);
     }
@@ -201,8 +201,8 @@ export default function LeaveTab() {
       await apiFetch(`/hr/leave/${id}`, { method: 'DELETE' });
       addToast('Leave request cancelled', 'success');
       loadData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to cancel leave request', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to cancel leave request', 'error');
     }
   };
 
@@ -216,8 +216,8 @@ export default function LeaveTab() {
       addToast('Leave request approved', 'success');
       setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
       loadData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to approve request', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to approve request', 'error');
     }
   };
 
@@ -231,8 +231,8 @@ export default function LeaveTab() {
       addToast('Leave request denied', 'success');
       setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
       loadData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to deny request', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to deny request', 'error');
     }
   };
 

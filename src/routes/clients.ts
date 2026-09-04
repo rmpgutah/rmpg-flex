@@ -74,7 +74,7 @@ clients.get('/', async (c) => {
       : 'SELECT * FROM clients ORDER BY name';
     const rows = status ? await query<Record<string, unknown>>(db, sql, status) : await query<Record<string, unknown>>(db, sql);
     return c.json(isFullClientAccess(c) ? rows : rows.map(redactClient));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/clients.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 clients.get('/:id', async (c) => {
@@ -91,7 +91,7 @@ clients.get('/:id', async (c) => {
     const full = isFullClientAccess(c);
     // Contracts carry rate/value terms too, so they ride the same gate.
     return c.json({ ...(full ? client : redactClient(client)), contracts: full ? contracts : [], persons });
-  } catch { return c.json({}); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/clients.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 clients.post('/', async (c) => {

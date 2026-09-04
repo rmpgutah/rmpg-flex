@@ -53,7 +53,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       const found = await scanClip(v, { intervalSec: 0.25, includePeople: false, onProgress: (f) => setScan({ busy: true, frac: f }) });
       setRegions(found.map((r) => ({ ...r, style, strength })));
       setFaceModelFailed(!faceModel);
-    } catch (e: any) { setErr(e?.message || 'Scan failed'); }
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Scan failed'); }
     setScan({ busy: false, frac: 1 });
   };
 
@@ -82,8 +82,8 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       const asRegionSamples: RegionDetectorSample[] = result.samples.map((s) => ({ kind: s.kind, box: s.box, t: s.t }));
       const found = mergeSamples(asRegionSamples, { scanInterval: 2 }).map((r) => ({ ...r, style, strength, source: 'deep-scan' as const }));
       setRegions((rs) => [...rs, ...found]);
-    } catch (e: any) {
-      setDeepScanError(e?.message || 'Deep scan failed');
+    } catch (e) {
+      setDeepScanError(e instanceof Error ? e.message : 'Deep scan failed');
     } finally {
       setDeepScan(null);
     }
@@ -124,7 +124,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = fileName; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-    } catch (e: any) { setErr(e?.message || 'Export failed'); }
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Export failed'); }
     setRender(null);
   };
 

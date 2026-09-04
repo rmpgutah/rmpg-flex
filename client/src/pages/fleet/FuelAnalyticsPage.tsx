@@ -121,8 +121,8 @@ export default function FuelAnalyticsPage() {
       if (cardR.status === 'fulfilled') setByCard(cardR.value.data || []);
       const failed = [ovR, offR, cardR].filter((r) => r.status === 'rejected').length;
       if (failed) setError(`${failed} of 3 analytics sections failed to load`);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load analytics');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load analytics');
     } finally {
       setLoading(false);
     }

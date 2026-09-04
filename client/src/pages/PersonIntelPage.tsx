@@ -124,8 +124,8 @@ export default function PersonIntelPage() {
           setSearchQuery(targetSubject);
         }
       }
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
       setHasLoaded(true);
     } finally {
       setLoading(false);
@@ -183,8 +183,8 @@ export default function PersonIntelPage() {
         body: JSON.stringify({ seed, notes }),
       });
       navigate(`/person-intel/${res.dossierId}`);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to start investigation');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start investigation');
     } finally {
       setSubmitting(false);
     }
@@ -197,8 +197,8 @@ export default function PersonIntelPage() {
       await apiFetch(`/person-intel/${deleteTargetId}`, { method: 'DELETE' });
       setDossiers(prev => prev.filter(d => d.id !== deleteTargetId));
       addToast('Investigation deleted', 'success');
-    } catch (e: any) {
-      addToast(e.message ?? 'Failed to delete investigation', 'error');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to delete investigation', 'error');
     } finally {
       setDeleting(false);
       setDeleteTargetId(null);
