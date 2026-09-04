@@ -84,10 +84,10 @@ intelAi.post('/ask', async (c): Promise<Response> => {
       system: ASK_SYSTEM, text: buildAskPrompt(question, hits), maxTokens: 1024,
     });
     return c.json({ answer: reply, citations: citationsFrom(reply, hits), sources: hits, engine });
-  } catch (err: any) {
+  } catch (err) {
     // Only reached on a non-LLM failure now (e.g. the FTS query) — the LLM call
     // degrades to Workers AI rather than throwing.
-    const detail = String(err?.message || err).slice(0, 200);
+    const detail = String(err instanceof Error ? err.message : String(err) || err).slice(0, 200);
     return c.json({ error: `AI request failed: ${detail}`, detail }, 502);
   }
 });
@@ -102,8 +102,8 @@ intelAi.post('/extract', async (c): Promise<Response> => {
       system: EXTRACT_SYSTEM, text: buildExtractPrompt(text), maxTokens: 1024,
     });
     return c.json({ data: parseExtract(reply), engine });
-  } catch (err: any) {
-    return c.json({ error: 'AI request failed', detail: String(err?.message).slice(0, 200) }, 502);
+  } catch (err) {
+    return c.json({ error: 'AI request failed', detail: String(err instanceof Error ? err.message : String(err)).slice(0, 200) }, 502);
   }
 });
 
@@ -123,8 +123,8 @@ intelAi.post('/summarize', async (c): Promise<Response> => {
       system: SUMMARY_SYSTEM, text: buildSummaryPrompt(label, sections), maxTokens: 512,
     });
     return c.json({ summary: reply.trim(), engine });
-  } catch (err: any) {
-    return c.json({ error: 'AI request failed', detail: String(err?.message).slice(0, 200) }, 502);
+  } catch (err) {
+    return c.json({ error: 'AI request failed', detail: String(err instanceof Error ? err.message : String(err)).slice(0, 200) }, 502);
   }
 });
 
@@ -140,8 +140,8 @@ intelAi.get('/health', async (c): Promise<Response> => {
   try {
     const reply = await callClaude(key, { text: 'Reply with the single word: OK', model, maxTokens: 4 });
     return c.json({ configured: true, model, ok: /ok/i.test(reply), reply: reply.slice(0, 40) });
-  } catch (err: any) {
-    return c.json({ configured: true, model, ok: false, detail: String(err?.message).slice(0, 200) });
+  } catch (err) {
+    return c.json({ configured: true, model, ok: false, detail: String(err instanceof Error ? err.message : String(err)).slice(0, 200) });
   }
 });
 

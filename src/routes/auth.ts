@@ -484,7 +484,7 @@ auth.post('/login', async (c) => {
       lastLoginIp: null,
       user: userPayload(user),
     });
-  } catch (err: any) {
+  } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
     log.error('[login] Unhandled login error', { message: msg, uname: String(username ?? '').slice(0, 64) }, err instanceof Error ? err : new Error(msg));
@@ -1265,7 +1265,7 @@ auth.put('/profile', authMiddleware, async (c) => {
     }
 
     return c.json({ success: true, user: userPayload(updated), ...tokenBundle });
-  } catch (err: any) {
+  } catch (err) {
     log.error('PUT /profile failed', { src: 'src/routes/auth.ts' }, err);
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('UNIQUE')) {

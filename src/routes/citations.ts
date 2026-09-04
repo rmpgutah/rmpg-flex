@@ -617,8 +617,8 @@ citations.post('/:id/copies', async (c) => {
           httpMetadata: { contentType: 'application/pdf' },
         });
         uploaded[kind] = key;
-      } catch (err: any) {
-        errors.push(`${kind}: R2 put failed: ${err?.message || 'unknown'}`);
+      } catch (err) {
+        errors.push(`${kind}: R2 put failed: ${err instanceof Error ? err.message : String(err) || 'unknown'}`);
       }
     }
 
