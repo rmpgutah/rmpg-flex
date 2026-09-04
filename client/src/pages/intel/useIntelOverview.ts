@@ -30,7 +30,7 @@ function notify() { subscribers.forEach((fn) => fn()); }
 function load() {
   apiFetch<IntelOverview>('/intel/overview')
     .then((d) => { cache = d; cacheError = null; notify(); })
-    .catch((e) => { cacheError = e?.message || 'overview failed'; notify(); });
+    .catch((e) => { cacheError = e instanceof Error ? e.message : 'overview failed'; notify(); });
 }
 
 function ensureInterval() { if (intervalId === undefined) intervalId = setInterval(load, POLL_MS); }

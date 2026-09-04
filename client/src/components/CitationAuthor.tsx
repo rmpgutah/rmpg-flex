@@ -471,8 +471,8 @@ export default function CitationAuthor({
         setSaveSuccess(false);
         onSaved(newId);
       }, 800);
-    } catch (err: any) {
-      setSaveError(err.message || 'Failed to save citation');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save citation');
     } finally {
       setSaving(false);
     }

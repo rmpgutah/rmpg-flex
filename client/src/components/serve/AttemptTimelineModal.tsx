@@ -34,8 +34,8 @@ export default function AttemptTimelineModal({ queueId, onClose }: AttemptTimeli
     try {
       const res = await apiFetch<AttemptTimelineResponse>(`/serve-dashboard/attempt-timeline/${queueId}`);
       setData(res);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load timeline');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load timeline');
     } finally {
       setLoading(false);
     }

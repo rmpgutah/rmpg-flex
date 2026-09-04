@@ -66,9 +66,9 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
     try {
       const resp = await fetch('/geojson/beat.geojson');
       beatGeojson = await resp.json();
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxResponseTime] failed to load beat.geojson');
-      setError(err?.message || 'Failed to load beat boundaries');
+      setError(err instanceof Error ? err.message : 'Failed to load beat boundaries');
       return;
     }
 
@@ -173,9 +173,9 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
       // whenStyleReady — no outer guard (it would wrap the async fetch and race
       // the style). See the comment in renderOnMap.
       void renderOnMap(b, map);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxResponseTime] fetch failed:', err);
-      setError(err?.message || 'Failed to load response times');
+      setError(err instanceof Error ? err.message : 'Failed to load response times');
     } finally {
       setLoading(false);
     }

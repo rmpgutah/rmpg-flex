@@ -188,9 +188,9 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
       const incs = Array.isArray(data?.data) ? data.data : [];
       setIncidents(incs);
       whenStyleReady(map, () => { renderOnMap(incs, map); });
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxIncidents] fetch failed:', err);
-      setError(err?.message || 'Failed to load incidents');
+      setError(err instanceof Error ? err.message : 'Failed to load incidents');
     } finally {
       setLoading(false);
     }

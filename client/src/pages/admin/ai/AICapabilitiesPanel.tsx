@@ -64,8 +64,8 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
 
       setDirty(false);
       onSaved();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save capabilities');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save capabilities');
     } finally {
       setSaving(false);
     }

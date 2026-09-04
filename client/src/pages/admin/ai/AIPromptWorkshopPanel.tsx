@@ -43,8 +43,8 @@ export default function AIPromptWorkshopPanel() {
     try {
       const data = await apiFetch<Template[]>('/ai/templates');
       setTemplates(asArray<Template>(data));
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load templates');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load templates');
     } finally {
       setLoading(false);
     }
@@ -68,8 +68,8 @@ export default function AIPromptWorkshopPanel() {
         }),
       });
       setResponse(data);
-    } catch (err: any) {
-      setError(err?.message || 'Test failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Test failed');
     } finally {
       setRunning(false);
     }
@@ -94,8 +94,8 @@ export default function AIPromptWorkshopPanel() {
         }),
       ]);
       setCompareResponses([low, high]);
-    } catch (err: any) {
-      setError(err?.message || 'Compare failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Compare failed');
     } finally {
       setComparing(false);
     }
@@ -123,8 +123,8 @@ export default function AIPromptWorkshopPanel() {
       setSaveName('');
       setShowSaveForm(false);
       await fetchTemplates();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save template');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save template');
     }
   };
 
@@ -136,8 +136,8 @@ export default function AIPromptWorkshopPanel() {
       });
       setEditingId(null);
       await fetchTemplates();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to update template');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update template');
     }
   };
 
@@ -145,8 +145,8 @@ export default function AIPromptWorkshopPanel() {
     try {
       await apiFetch(`/ai/templates/${id}`, { method: 'DELETE' });
       await fetchTemplates();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete template');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete template');
     }
   };
 

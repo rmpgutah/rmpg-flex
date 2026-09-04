@@ -58,7 +58,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       const data = await apiFetch<EmailStatus>('/email/status');
       setStatus(data);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch email status:', err);
     } finally {
       setLoading(false);
@@ -124,8 +124,8 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       setSaveSuccess(true);
       await fetchStatus();
       setTimeout(() => setSaveSuccess(false), 8000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSaving(false);
     }
@@ -136,8 +136,8 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/credentials', { method: 'DELETE' });
       await fetchStatus();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
@@ -152,8 +152,8 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       });
       setSmtpPassword('');
       await fetchStatus();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     }
   };
 

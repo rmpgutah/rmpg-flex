@@ -242,10 +242,10 @@ export default function ShiftPlansPage() {
     // shiftPlans router mounted at /api (see src/routesConfig.ts)
     apiFetch('/shift-swaps?status=pending')
       .then(r => { if (!cancelled && Array.isArray(r)) setSwapRequests(r); })
-      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load swap requests', 'error'); });
+      .catch((err: any) => { if (!cancelled) addToast(err instanceof Error ? err.message : 'Failed to load swap requests', 'error'); });
     apiFetch('/shift-notifications')
       .then((r: any) => { if (!cancelled && r?.notifications) setShiftNotifs(r.notifications); })
-      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load shift notifications', 'error'); });
+      .catch((err: any) => { if (!cancelled) addToast(err instanceof Error ? err.message : 'Failed to load shift notifications', 'error'); });
     return () => { cancelled = true; };
   }, [addToast]);
 
@@ -253,7 +253,7 @@ export default function ShiftPlansPage() {
     setSwapModalLoading(true);
     apiFetch('/shift-swaps')
       .then((r: any) => setAllSwaps(Array.isArray(r) ? r : []))
-      .catch((err: any) => addToast(err?.message || 'Failed to load shift swaps', 'error'))
+      .catch((err: any) => addToast(err instanceof Error ? err.message : 'Failed to load shift swaps', 'error'))
       .finally(() => setSwapModalLoading(false));
   };
 
@@ -269,15 +269,15 @@ export default function ShiftPlansPage() {
     const done = () => { pending -= 1; if (pending === 0 && !cancelled) setOvertimeLoading(false); };
     apiFetch(`/staffing-levels?date=${selectedDate}`)
       .then((r: any) => { if (!cancelled && r) setStaffingLevels(r); })
-      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load staffing levels', 'error'); })
+      .catch((err: any) => { if (!cancelled) addToast(err instanceof Error ? err.message : 'Failed to load staffing levels', 'error'); })
       .finally(done);
     apiFetch(`/shift-plans/conflicts/${selectedDate}`)
       .then((r: any) => { if (!cancelled && r?.conflicts) setConflicts(r.conflicts); })
-      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load conflicts', 'error'); })
+      .catch((err: any) => { if (!cancelled) addToast(err instanceof Error ? err.message : 'Failed to load conflicts', 'error'); })
       .finally(done);
     apiFetch(`/shift-overtime?week_start=${selectedDate}`)
       .then((r: any) => { if (!cancelled && r) setOvertimeData(r); })
-      .catch((err: any) => { if (!cancelled) addToast(err?.message || 'Failed to load overtime data', 'error'); })
+      .catch((err: any) => { if (!cancelled) addToast(err instanceof Error ? err.message : 'Failed to load overtime data', 'error'); })
       .finally(done);
     return () => { cancelled = true; };
   }, [selectedDate, addToast]);
@@ -1044,7 +1044,7 @@ export default function ShiftPlansPage() {
                             apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false));
                             addToast('Template saved', 'success');
                           })
-                          .catch((err: any) => addToast(err?.message || 'Failed to save template', 'error'));
+                          .catch((err: any) => addToast(err instanceof Error ? err.message : 'Failed to save template', 'error'));
                       }
                     }}
                   />
@@ -1077,7 +1077,7 @@ export default function ShiftPlansPage() {
                               apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false));
                               addToast('Template saved', 'success');
                             })
-                            .catch((err: any) => addToast(err?.message || 'Failed to save template', 'error'));
+                            .catch((err: any) => addToast(err instanceof Error ? err.message : 'Failed to save template', 'error'));
                         }
                       }}
                       className="px-2 py-1 text-[10px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
@@ -1145,7 +1145,7 @@ export default function ShiftPlansPage() {
                                   .then(() => {
                                     addToast('Template applied — refresh to see new plans', 'success');
                                   })
-                                  .catch((err: any) => addToast(err?.message || 'Failed to apply template', 'error'))
+                                  .catch((err: any) => addToast(err instanceof Error ? err.message : 'Failed to apply template', 'error'))
                                   .finally(() => setApplyingTemplate(null));
                               }}
                               className="px-1.5 py-0.5 text-[9px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"

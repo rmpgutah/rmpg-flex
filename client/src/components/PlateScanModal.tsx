@@ -140,8 +140,8 @@ export default function PlateScanModal({ callId, onClose, onCreated }: Props) {
       if (result.warnings?.length) addToast(result.warnings[0], 'warning');
       const critical = result.hits?.filter((h) => h.severity === 'critical') ?? [];
       if (critical.length) addToast(`⚠ Records HIT: ${critical[0].detail}`, 'error', 8000);
-    } catch (err: any) {
-      const msg = err?.message || 'Analysis failed';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Analysis failed';
       setError(msg);
       addToast(msg, 'error');
     } finally {
@@ -171,8 +171,8 @@ export default function PlateScanModal({ callId, onClose, onCreated }: Props) {
       addToast(`Vehicle record created — ${result.plate_number}`, 'success');
       onCreated?.(result.id);
       onClose();
-    } catch (err: any) {
-      const msg = err?.message || 'Create failed';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Create failed';
       setError(msg);
       addToast(msg, 'error');
     } finally {

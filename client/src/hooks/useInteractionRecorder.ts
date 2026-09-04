@@ -80,8 +80,8 @@ export function useInteractionRecorder() {
 
       try { wakeRef.current = await (navigator as any).wakeLock?.request('screen'); } catch { /* best-effort */ }
       timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
-    } catch (err: any) {
-      setError(err?.name === 'NotAllowedError' ? 'Microphone permission denied' : (err?.message || 'Could not start recording'));
+    } catch (err) {
+      setError(((err as { name?: string }).name === 'NotAllowedError') ? 'Microphone permission denied' : (err instanceof Error ? err.message : 'Could not start recording'));
       streamRef.current?.getTracks().forEach((t) => t.stop());
     }
   }, [uploadChunk]);

@@ -436,7 +436,7 @@ export interface MapboxErrorClassification {
 }
 
 export function classifyMapboxError(e: { error?: { message?: string; status?: number } }): MapboxErrorClassification {
-  const message = e.error?.message || 'Mapbox map error';
+  const message = e.error instanceof Error ? e.error.message : (e.error?.message ?? 'Mapbox map error');
   const status = e.error?.status;
   const msgLower = message.toLowerCase();
 

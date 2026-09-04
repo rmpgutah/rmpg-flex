@@ -82,8 +82,8 @@ export default function DocumentIntakePage() {
         body: JSON.stringify({ filename: file.name, text, page_count: pageCount, used_ocr: false }),
       });
       setState({ kind: 'review', extraction, filename: file.name });
-    } catch (err: any) {
-      const msg = err?.message || 'Document extraction failed';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Document extraction failed';
       toast.addToast(msg, 'error');
       setState({ kind: 'error', message: msg });
     }

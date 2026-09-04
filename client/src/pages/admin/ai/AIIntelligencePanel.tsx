@@ -30,8 +30,8 @@ export default function AIIntelligencePanel({ setError }: Props) {
     try {
       const report = await apiFetch<any>('/ai/health');
       setHealthReport(report);
-    } catch (err: any) {
-      setError(err?.message || 'Health check failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Health check failed');
     } finally {
       setHealthLoading(false);
     }
@@ -42,8 +42,8 @@ export default function AIIntelligencePanel({ setError }: Props) {
     try {
       const report = await apiFetch<any>('/ai/cleanup/scan');
       setCleanupReport(report);
-    } catch (err: any) {
-      setError(err?.message || 'Cleanup scan failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cleanup scan failed');
     } finally {
       setCleanupLoading(false);
     }
@@ -59,8 +59,8 @@ export default function AIIntelligencePanel({ setError }: Props) {
       });
       const report = await apiFetch<any>('/ai/cleanup/scan');
       setCleanupReport(report);
-    } catch (err: any) {
-      setError(err?.message || 'Fix failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fix failed');
     } finally {
       setFixingIds(p => { const n = new Set(p); n.delete(fixKey); return n; });
     }

@@ -211,8 +211,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<DailySummary>('/serve-dashboard/daily-summary');
       setDaily(data);
-    } catch (err: any) {
-      setDailyError(err?.message || 'Failed to load daily summary');
+    } catch (err) {
+      setDailyError(err instanceof Error ? err.message : 'Failed to load daily summary');
     } finally {
       setDailyLoading(false);
     }
@@ -232,8 +232,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<ServerPerformanceResponse>(`/serve-dashboard/server-performance?days=${range}`);
       setServerPerf(data);
-    } catch (err: any) {
-      setServerPerfError(err?.message || 'Failed to load server performance');
+    } catch (err) {
+      setServerPerfError(err instanceof Error ? err.message : 'Failed to load server performance');
     }
   }, [range]);
 
@@ -242,8 +242,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<SuccessByTypeResponse>(`/serve-dashboard/success-rate-by-type?days=${range}`);
       setSuccessByType(data);
-    } catch (err: any) {
-      setSuccessByTypeError(err?.message || 'Failed to load success rates');
+    } catch (err) {
+      setSuccessByTypeError(err instanceof Error ? err.message : 'Failed to load success rates');
     }
   }, [range]);
 
@@ -252,8 +252,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<CountyBreakdownResponse>(`/serve-dashboard/county-breakdown?days=${range}`);
       setCountyBreakdown(data);
-    } catch (err: any) {
-      setCountyError(err?.message || 'Failed to load county breakdown');
+    } catch (err) {
+      setCountyError(err instanceof Error ? err.message : 'Failed to load county breakdown');
     }
   }, [range]);
 
@@ -269,8 +269,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<TimeToServeResponse>(`/serve-dashboard/time-to-serve?days=${ttsRange}`);
       setTimeToServe(data);
-    } catch (err: any) {
-      setTtsError(err?.message || 'Failed to load time-to-serve');
+    } catch (err) {
+      setTtsError(err instanceof Error ? err.message : 'Failed to load time-to-serve');
     }
   }, [ttsRange]);
 
@@ -287,8 +287,8 @@ export default function AnalyticsTab() {
       const start = new Date(Date.now() - range * 86_400_000).toISOString().slice(0, 10);
       const data = await apiFetch<ScheduleAnalytics>(`/process-server/schedule-analytics?start_date=${start}`);
       setTiming(data);
-    } catch (err: any) {
-      setTimingError(err?.message || 'Failed to load timing analytics');
+    } catch (err) {
+      setTimingError(err instanceof Error ? err.message : 'Failed to load timing analytics');
     }
   }, [range]);
 
@@ -297,8 +297,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<WeeklyTrendResponse>('/serve-dashboard/weekly-trend?weeks=12');
       setWeeklyTrend(data);
-    } catch (err: any) {
-      setWeeklyTrendError(err?.message || 'Failed to load weekly trend');
+    } catch (err) {
+      setWeeklyTrendError(err instanceof Error ? err.message : 'Failed to load weekly trend');
     }
   }, []);
 
@@ -316,8 +316,8 @@ export default function AnalyticsTab() {
     try {
       const data = await apiFetch<WorkloadResponse>('/serve-dashboard/workload-distribution');
       setWorkload(data);
-    } catch (err: any) {
-      setWorkloadError(err?.message || 'Failed to load workload');
+    } catch (err) {
+      setWorkloadError(err instanceof Error ? err.message : 'Failed to load workload');
     }
   }, []);
 

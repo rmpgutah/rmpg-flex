@@ -128,8 +128,8 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
             playTone('caution');
           }
         }
-      } catch (err: any) {
-        setError(err?.message || 'Failed to load premise history');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load premise history');
       } finally {
         setLoading(false);
       }

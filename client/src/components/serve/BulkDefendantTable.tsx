@@ -151,8 +151,8 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
       // fix and resubmit without retyping.
       if (res.summary.failed === 0) signalSaved();
       if (onSubmitted) onSubmitted(res);
-    } catch (err: any) {
-      setError(err?.message || 'Bulk intake failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk intake failed');
     } finally {
       setSubmitting(false);
     }

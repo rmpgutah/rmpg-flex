@@ -154,13 +154,13 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
       setEditingId(null);
       setForm({ ...EMPTY_FORM });
       await fetchRecords();
-    } catch (err: any) {
+    } catch (err) {
       // Audit caught (2026-06-21): this was bare console.error with no toast,
       // so on auth-expiry / D1 schema drift / validation rejection the
       // operator hit Save several times wondering why nothing happened.
       // Mirror the handleDelete pattern below.
       console.error('Save criminal history failed:', err);
-      addToast(err?.message || 'Failed to save criminal history', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save criminal history', 'error');
     } finally {
       setSaving(false);
     }
@@ -193,9 +193,9 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
       await apiFetch(`/records/criminal-history/${deleteTarget.id}`, { method: 'DELETE' });
       setDeleteTarget(null);
       await fetchRecords();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Delete criminal history failed:', err);
-      addToast(err?.message || 'Failed to delete criminal history', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to delete criminal history', 'error');
     } finally {
       setDeleting(false);
     }

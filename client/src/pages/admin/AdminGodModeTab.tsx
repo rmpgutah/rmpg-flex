@@ -196,7 +196,7 @@ export default function AdminGodModeTab() {
       const result = await apiFetch<any>('/admin/database/vacuum', { method: 'POST' });
       showResult('success', `VACUUM complete — reclaimed ${result.reclaimed_mb}MB (${result.before_size_mb}MB → ${result.after_size_mb}MB)`);
       loadData();
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleIntegrity = async () => {
@@ -208,7 +208,7 @@ export default function AdminGodModeTab() {
       }
       const issues = Array.isArray(result.result) ? result.result.join(', ') : String(result.result ?? 'unknown');
       showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${issues}`);
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleBackup = async () => {
@@ -216,14 +216,14 @@ export default function AdminGodModeTab() {
       const result = await apiFetch<any>('/admin/database/backup', { method: 'POST' });
       showResult('success', `Backup created: ${result.backup_path} (${result.size_mb}MB)`);
       loadData();
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleAnalyze = async () => {
     try {
       await apiFetch<any>('/admin/database/analyze', { method: 'POST' });
       showResult('success', 'ANALYZE complete — query optimizer updated');
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleDeleteBackup = async (filename: string) => {
@@ -231,7 +231,7 @@ export default function AdminGodModeTab() {
       await apiFetch<any>(`/admin/database/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
       showResult('success', `Deleted backup: ${filename}`);
       loadData();
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleImpersonate = async () => {
@@ -241,7 +241,7 @@ export default function AdminGodModeTab() {
       showResult('success', `Impersonating ${result.user.full_name} (${result.user.role}) — token valid for ${result.expires_in}`);
       // Copy token to clipboard
       navigator.clipboard?.writeText(result.token);
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleBroadcast = async () => {
@@ -258,7 +258,7 @@ export default function AdminGodModeTab() {
       showResult('success', `Broadcast sent to ${result.sent_to} users`);
       setBroadcastTitle('');
       setBroadcastMessage('');
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handlePurgeLogs = async () => {
@@ -269,7 +269,7 @@ export default function AdminGodModeTab() {
       });
       showResult('success', `Purged ${result.purged} activity log entries older than ${purgeLogDays} days`);
       loadData();
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handlePurgeNotifs = async () => {
@@ -279,14 +279,14 @@ export default function AdminGodModeTab() {
         body: JSON.stringify({ days_to_keep: purgeNotifDays }),
       });
       showResult('success', `Purged ${result.purged} read notifications older than ${purgeNotifDays} days`);
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handlePurgeSessions = async () => {
     try {
       const result = await apiFetch<any>('/admin/purge/sessions', { method: 'POST' });
       showResult('success', `Purged ${result.purged} expired sessions`);
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleBulkReassign = async () => {
@@ -301,7 +301,7 @@ export default function AdminGodModeTab() {
         method: 'POST', body: JSON.stringify({ call_ids: ids, unit_id: parseInt(reassignTargetId) }),
       });
       showResult('success', `Reassigned ${r.updated} calls to ${r.target}`);
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleForceCloseAll = async () => {
@@ -312,7 +312,7 @@ export default function AdminGodModeTab() {
         method: 'POST', body: JSON.stringify({ disposition: closeDisposition }),
       });
       showResult('success', `Force-closed ${r.closed} open calls`);
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleSqlQuery = async () => {
@@ -324,7 +324,7 @@ export default function AdminGodModeTab() {
         method: 'POST', body: JSON.stringify({ sql: sqlQuery }),
       });
       setSqlResult(r);
-    } catch (err: any) { setSqlResult({ error: err.message }); }
+    } catch (err) { setSqlResult({ error: err instanceof Error ? err.message : 'Unknown error' }); }
     finally { setSqlRunning(false); }
   };
 
@@ -340,7 +340,7 @@ export default function AdminGodModeTab() {
         showResult('success', 'Lockdown ENABLED — non-admin users blocked');
       }
       loadData();
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleMergePersons = async () => {
@@ -351,7 +351,7 @@ export default function AdminGodModeTab() {
       });
       showResult('success', `Merged Person #${mergeMergeId} into #${r.keep_id} — related records reassigned`);
       setMergeKeepId(''); setMergeMergeId('');
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   const handleFullExport = async () => {
@@ -366,7 +366,7 @@ export default function AdminGodModeTab() {
       a.click();
       URL.revokeObjectURL(url);
       showResult('success', 'Full export downloaded');
-    } catch (err: any) { showResult('error', err.message); }
+    } catch (err) { showResult('error', err instanceof Error ? err.message : 'Unknown error'); }
   };
 
   // Defensive: /admin/system-overview is an `any`-shaped fetch; a non-numeric

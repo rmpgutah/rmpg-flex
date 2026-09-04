@@ -708,16 +708,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(message);
         throw new Error(message);
       }
-    } catch (err: any) {
-      console.warn('[WEBAUTHN] Auth error:', err?.name, err?.code, err?.message);
+    } catch (err) {
+      const webAuthnErr = err as { name?: string; code?: string; message?: string };
+      console.warn('[WEBAUTHN] Auth error:', webAuthnErr.name, webAuthnErr.code, webAuthnErr.message);
       // Handle WebAuthn-specific errors with clear messages
-      if (err?.name === 'NotAllowedError') {
+      if (((err as { name?: string }).name === 'NotAllowedError')) {
         setError('Security key verification was cancelled or timed out. Try again.');
-      } else if (err?.name === 'SecurityError') {
+      } else if (((err as { name?: string }).name === 'SecurityError')) {
         setError('Security key not available on this domain.');
-      } else if (err?.message?.includes('not supported')) {
+      } else if (webAuthnErr.message?.includes('not supported')) {
         setError('WebAuthn is not supported in this browser.');
-      } else if (err?.message?.includes('No security keys registered')) {
+      } else if (webAuthnErr.message?.includes('No security keys registered')) {
         setError('No security keys are registered. Set up a key in Profile → Security.');
       } else {
         const message = friendlyAuthError(err);

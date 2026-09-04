@@ -327,7 +327,7 @@ export default function ServeAttemptModal({
           longitude: null,
           accuracy: null,
           loading: false,
-          error: err?.message || 'GPS error',
+          error: err instanceof Error ? err.message : 'GPS error',
         });
       },
       {

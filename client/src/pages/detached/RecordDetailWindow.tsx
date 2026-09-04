@@ -29,8 +29,8 @@ export default function RecordDetailWindow() {
         document.title = type === 'person'
           ? `${data.last_name}, ${data.first_name} — RMPG Flex`
           : `${data.plate_number || 'Vehicle'} — RMPG Flex`;
-      } catch (err: any) {
-        setError(err.message || 'Failed to load record');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load record');
       } finally {
         setLoading(false);
       }

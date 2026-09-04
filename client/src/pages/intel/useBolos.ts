@@ -24,7 +24,7 @@ export function useBolos() {
     setLoading(true);
     apiFetch<Bolo[]>('/comms/bolos')
       .then((r) => { setBolos(Array.isArray(r) ? r : []); setError(null); })
-      .catch((e) => setError(e?.message || 'failed to load BOLOs'))
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load BOLOs'))
       .finally(() => setLoading(false));
   }, []);
   useEffect(reload, [reload]);

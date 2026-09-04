@@ -151,9 +151,9 @@ export default function AnalyticsPage() {
       const res = await apiFetch<SummaryResp>(`/analytics/alpr/summary?days=${d}`);
       setSummary(res.plates || []);
       setNotProvisioned(false);
-    } catch (err: any) {
+    } catch (err) {
       if (is503(err)) { setNotProvisioned(true); setSummary([]); }
-      else setSummaryError(err?.message || 'Failed to load summary');
+      else setSummaryError(err instanceof Error ? err.message : 'Failed to load summary');
     } finally {
       setSummaryLoading(false);
     }
@@ -175,7 +175,7 @@ export default function AnalyticsPage() {
       const h = await apiFetch<HealthResp>('/analytics/health');
       setHealth(h);
       setNotProvisioned(!h.query_ready);
-    } catch (err: any) {
+    } catch (err) {
       if (is503(err)) setNotProvisioned(true);
       // a 403 (wrong role) or other error: leave health null; the section
       // loaders surface their own messages.
@@ -193,9 +193,9 @@ export default function AnalyticsPage() {
       const res = await apiFetch<PlateHistoryResp>(`/analytics/alpr/plate/${encodeURIComponent(plate)}?days=${days}`);
       setSightings(res.sightings || []);
       setNotProvisioned(false);
-    } catch (err: any) {
+    } catch (err) {
       if (is503(err)) { setNotProvisioned(true); setSightings(null); }
-      else setPlateError(err?.message || 'Search failed');
+      else setPlateError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setPlateLoading(false);
     }
@@ -211,9 +211,9 @@ export default function AnalyticsPage() {
         body: JSON.stringify({ query: sql }),
       });
       setRawRows(res.rows || []);
-    } catch (err: any) {
+    } catch (err) {
       if (is503(err)) setNotProvisioned(true);
-      setRawError(err?.message || 'Query failed');
+      setRawError(err instanceof Error ? err.message : 'Query failed');
     } finally {
       setRawLoading(false);
     }
@@ -227,9 +227,9 @@ export default function AnalyticsPage() {
         apiFetch<{ events: EventRow[] }>(`/analytics/events?days=${d}&limit=100`),
       ]);
       setEventTypes(sum.types || []); setEvents(ev.events || []); setNotProvisioned(false);
-    } catch (err: any) {
+    } catch (err) {
       if (is503(err)) { setNotProvisioned(true); setEventTypes([]); setEvents([]); }
-      else setActError(err?.message || 'Failed to load activity');
+      else setActError(err instanceof Error ? err.message : 'Failed to load activity');
     } finally {
       setActLoading(false);
     }
@@ -240,8 +240,8 @@ export default function AnalyticsPage() {
     try {
       const ev = await apiFetch<{ events: EventRow[] }>(`/analytics/events?type=${encodeURIComponent(type)}&days=${days}&limit=100`);
       setEvents(ev.events || []);
-    } catch (err: any) {
-      if (!is503(err)) setActError(err?.message || 'Failed to load events');
+    } catch (err) {
+      if (!is503(err)) setActError(err instanceof Error ? err.message : 'Failed to load events');
     } finally {
       setActLoading(false);
     }
@@ -255,9 +255,9 @@ export default function AnalyticsPage() {
         apiFetch<{ units: GpsRow[] }>(`/analytics/gps/coverage?days=${d}`),
       ]);
       setCfsTrends(cfs.call_types || []); setGpsCoverage(gps.units || []); setNotProvisioned(false);
-    } catch (err: any) {
+    } catch (err) {
       if (is503(err)) { setNotProvisioned(true); setCfsTrends([]); setGpsCoverage([]); }
-      else setOpsError(err?.message || 'Failed to load operations');
+      else setOpsError(err instanceof Error ? err.message : 'Failed to load operations');
     } finally {
       setOpsLoading(false);
     }

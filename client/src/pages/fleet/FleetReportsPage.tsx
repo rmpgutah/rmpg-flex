@@ -74,8 +74,8 @@ export default function FleetReportsPage() {
       if (data.months?.[0]) {
         setExpandedMonths(prev => (prev.size === 0 ? new Set([data.months[0].month]) : prev));
       }
-    } catch (err: any) {
-      const msg = err?.message || 'Failed to load daily reports';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load daily reports';
       setLoadError(msg);
       addToast(msg, 'error');
     } finally {
@@ -106,7 +106,7 @@ export default function FleetReportsPage() {
         window.open(url, '_blank');
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       })
-      .catch(err => addToast(err?.message || 'Failed to open report', 'error'));
+      .catch(err => addToast(err instanceof Error ? err.message : 'Failed to open report', 'error'));
   };
 
   const regenerate = async (dateStr: string) => {

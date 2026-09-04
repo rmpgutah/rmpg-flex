@@ -27,8 +27,8 @@ export default function JurisdictionLookup({ address }: { address: string }) {
       }
       const [lng, lat] = first.center;
       await lookup(lng, lat);
-    } catch (err: any) {
-      if (!cancelledRef.current) setError(err?.message || 'Lookup failed');
+    } catch (err) {
+      if (!cancelledRef.current) setError(err instanceof Error ? err.message : 'Lookup failed');
     }
   }, [address, lookup]);
 

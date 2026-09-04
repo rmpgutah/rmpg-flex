@@ -76,9 +76,9 @@ export function useMapboxTilequery(map: mapboxgl.Map | null) {
 
       setPointInfo(info);
       return info;
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxTilequery] query failed:', err);
-      const message = err?.message || 'Failed to identify point';
+      const message = err instanceof Error ? err.message : 'Failed to identify point';
       setError(message);
       errorRef.current = message;
       return null;

@@ -190,8 +190,8 @@ export default function LeaveTab() {
       setModalOpen(false);
       setEditRequest(null);
       loadData();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to submit leave request', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to submit leave request', 'error');
       throw err;
     }
   };

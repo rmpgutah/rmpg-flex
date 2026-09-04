@@ -514,8 +514,8 @@ export default function SkipTracerV2Page() {
       const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
       setResult(data);
       if (data.profiles?.length === 1) setSelected(data.profiles[0]);
-    } catch (err: any) {
-      setError(err.message || 'Search failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
     }

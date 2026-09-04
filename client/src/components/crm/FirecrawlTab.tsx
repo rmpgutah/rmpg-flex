@@ -3286,8 +3286,8 @@ function PdfInspectPanel() {
       setUrl(data.url || `upload://${file.name}`);
       addToast('PDF uploaded and inspected', 'success');
       loadHistory();
-    } catch (err: any) {
-      addToast(err.message || 'Upload failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Upload failed', 'error');
     } finally {
       setInspecting(false);
     }
@@ -7457,7 +7457,7 @@ function DocExtractPanel() {
       setUrl(data.url || `upload://${file.name}`);
       addToast('Document uploaded and extracted', 'success');
       loadHistory();
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Upload failed', 'error'); } finally { setExtracting(false); }
+    } catch (err) { addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Upload failed', 'error'); } finally { setExtracting(false); }
   };
 
   const viewHistoryItem = (item: DocExtractResult) => {
@@ -10020,7 +10020,7 @@ function PdfToolsPanel() {
       setUrl(data.url || `upload://${file.name}`);
       addToast('PDF uploaded and processed', 'success');
       loadHistory();
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Upload failed', 'error'); } finally { setProcessing(false); }
+    } catch (err) { addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Upload failed', 'error'); } finally { setProcessing(false); }
   };
 
   const viewHistoryItem = (item: PdfToolsResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
@@ -10195,8 +10195,8 @@ function LeadGenPanel() {
       if (!data?.results || (Array.isArray(data.results) && data.results.length === 0)) {
         addToast('No leads found', 'info');
       }
-    } catch (err: any) {
-      addToast(err.message || 'Lead search failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Lead search failed', 'error');
     } finally {
       setLoading(false);
     }

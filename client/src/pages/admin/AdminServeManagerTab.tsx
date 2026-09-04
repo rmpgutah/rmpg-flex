@@ -288,8 +288,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       });
       setRouteSaveState('saved');
       setTimeout(() => setRouteSaveState(null), 3000);
-    } catch (err: any) {
-      setRouteSaveState(err?.message || 'Save failed');
+    } catch (err) {
+      setRouteSaveState(err instanceof Error ? err.message : 'Save failed');
     }
   };
 
@@ -309,8 +309,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       });
       setNotifSaveState('saved');
       setTimeout(() => setNotifSaveState(null), 3000);
-    } catch (err: any) {
-      setNotifSaveState(err?.message || 'Save failed');
+    } catch (err) {
+      setNotifSaveState(err instanceof Error ? err.message : 'Save failed');
     }
   };
 
@@ -326,8 +326,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       });
       setIntakeSaveState('saved');
       setTimeout(() => setIntakeSaveState(null), 3000);
-    } catch (err: any) {
-      setIntakeSaveState(err?.message || 'Save failed');
+    } catch (err) {
+      setIntakeSaveState(err instanceof Error ? err.message : 'Save failed');
     }
   };
 

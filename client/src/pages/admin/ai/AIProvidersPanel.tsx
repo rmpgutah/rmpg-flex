@@ -123,8 +123,8 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
 
       setDirty(false);
       onSaved();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save provider configuration');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save provider configuration');
     } finally {
       setSaving(false);
     }

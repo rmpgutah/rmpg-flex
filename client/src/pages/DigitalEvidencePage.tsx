@@ -641,8 +641,8 @@ export default function DigitalEvidencePage() {
       } else {
         setItems([]);
       }
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to load evidence');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load evidence');
     } finally {
       setLoading(false);
     }
@@ -676,8 +676,8 @@ export default function DigitalEvidencePage() {
       addToast(`Evidence sealed: ${item.original_filename ?? item.filename}`, 'success');
       setPreviewItem(null);
       fetchItems();
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to seal evidence', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to seal evidence', 'error');
     }
   }, [addToast, fetchItems]);
 
@@ -687,8 +687,8 @@ export default function DigitalEvidencePage() {
       addToast(`Evidence released: ${item.original_filename ?? item.filename}`, 'success');
       setPreviewItem(null);
       fetchItems();
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to release evidence', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to release evidence', 'error');
     }
   }, [addToast, fetchItems]);
 

@@ -159,11 +159,12 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
         }),
       });
       onLinked();
-    } catch (err: any) {
-      if (err?.message?.includes('already exists') || err?.message?.includes('409')) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '';
+      if (errMsg.includes('already exists') || errMsg.includes('409')) {
         setError('This record is already linked to this incident');
       } else {
-        setError(err?.message || 'Failed to create link');
+        setError(errMsg || 'Failed to create link');
       }
     } finally {
       setIsSubmitting(false);

@@ -159,7 +159,7 @@ export default function RouteBuilderPage() {
         );
         setUnits(active);
       })
-      .catch((err) => { console.error(err); setError(err instanceof Error ? err.message : 'Failed to load active units'); });
+      .catch((err) => { console.error(err); setError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to load active units'); });
   }, []);
 
   // ─── Initialize Map ─────────────────────────────────────
@@ -268,8 +268,8 @@ export default function RouteBuilderPage() {
       if (mapRef.current && result.waypoints.length > 0) {
         renderRouteRef.current?.(result.origin, result.waypoints);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to optimize route');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to optimize route');
     } finally {
       setOptimizing(false);
     }
@@ -491,8 +491,8 @@ export default function RouteBuilderPage() {
         },
       );
       setSavedRouteId(result.id);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save route');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save route');
     } finally {
       setSaving(false);
     }
@@ -515,8 +515,8 @@ export default function RouteBuilderPage() {
       }
       await navTrip.loadUnitRoute(selectedUnitId);
       navigate('/navigation');
-    } catch (err: any) {
-      setError(err.message || 'Failed to start route');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start route');
     } finally {
       setStartingRoute(false);
     }

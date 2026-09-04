@@ -178,10 +178,10 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         if (cancelled) return;
         setLoaded(true);
         setError(null);
-      } catch (err: any) {
+      } catch (err) {
         if (!cancelled) {
           setLoaded(false);
-          setError(err?.message || getMapboxTokenErrorMessage());
+          setError((err instanceof Error ? err.message : null) || getMapboxTokenErrorMessage());
         }
       }
     })();

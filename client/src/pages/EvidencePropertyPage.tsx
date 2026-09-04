@@ -204,7 +204,7 @@ export default function EvidencePropertyPage() {
       setItems(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
+    } catch (err) { setFetchError(err instanceof Error ? err.message : 'Failed to load data'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType]);
 
   const fetchStats = useCallback(async () => {

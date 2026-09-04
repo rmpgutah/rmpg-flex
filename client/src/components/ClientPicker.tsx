@@ -74,7 +74,7 @@ export default function ClientPicker({
         setClients(list);
         setError(null);
       })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load clients'); })
+      .catch((err: any) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load clients'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [activeOnly]);

@@ -114,8 +114,8 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       setSelectedPerson(newPerson);
       setShowCreatePerson(false);
       checkWarrants(result.id);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to create person');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create person');
     } finally {
       setIsCreating(false);
     }
@@ -137,8 +137,8 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       });
       onLinked();
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to link person');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to link person');
     } finally {
       setIsSubmitting(false);
     }

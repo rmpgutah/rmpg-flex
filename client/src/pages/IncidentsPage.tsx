@@ -381,7 +381,7 @@ export default function IncidentsPage() {
         const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
-    } catch (err: any) {
+    } catch (err) {
       // Audit caught (2026-06-21): the original bare `} catch { addToast(
       // 'Network error', ...) }` discarded the error object. Operators
       // re-tried the chain-of-custody action several times not realizing
@@ -389,7 +389,7 @@ export default function IncidentsPage() {
       // or 422 (missing location) — not actually a network issue. Mirror
       // the pattern that EvidencePropertyPage.handleChainAction:319-320
       // already uses correctly.
-      addToast(err?.message || 'Failed to record custody action', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to record custody action', 'error');
     }
     setCustodySubmitting(false);
   };
@@ -483,8 +483,8 @@ export default function IncidentsPage() {
       if (!options?.silent) setError(null);
       const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=100000&archived=${showArchived}`);
       setIncidents((Array.isArray(res?.data) ? res.data : []).map(mapDbIncident));
-    } catch (err: any) {
-      if (!options?.silent) setError(err.message ?? 'Failed to load incidents');
+    } catch (err) {
+      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load incidents');
     } finally {
       if (!options?.silent) setLoading(false);
     }
@@ -588,8 +588,8 @@ export default function IncidentsPage() {
     try {
       const res = await apiFetch<any>(`/incidents/${incidentId}/supplements`);
       setDetailSupplements(Array.isArray(res) ? res : res.data || []);
-    } catch (err: any) {
-      setSupplementsError(err?.message || 'Failed to load supplements');
+    } catch (err) {
+      setSupplementsError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to load supplements');
       setDetailSupplements([]);
     } finally {
       setSupplementsLoading(false);
@@ -668,7 +668,7 @@ export default function IncidentsPage() {
           fetchIncidentDetail(selectedIncident.id);
           addToast(`Unlinked ${name}`, 'success');
         } catch (err) {
-          addToast(err instanceof Error ? err.message : 'Failed to unlink person', 'error');
+          addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to unlink person', 'error');
         }
       },
     });
@@ -688,7 +688,7 @@ export default function IncidentsPage() {
           fetchIncidentDetail(selectedIncident.id);
           addToast(`Unlinked ${label}`, 'success');
         } catch (err) {
-          addToast(err instanceof Error ? err.message : 'Failed to unlink vehicle', 'error');
+          addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to unlink vehicle', 'error');
         }
       },
     });
@@ -707,8 +707,8 @@ export default function IncidentsPage() {
       });
       setShowFormModal(false);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to create incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to create incident', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -725,8 +725,8 @@ export default function IncidentsPage() {
       setShowFormModal(false);
       setEditingIncident(undefined);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to update incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update incident', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -743,8 +743,8 @@ export default function IncidentsPage() {
       });
       setIsEditing(false);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to save draft', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save draft', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -759,8 +759,8 @@ export default function IncidentsPage() {
           method: 'PUT',
           body: JSON.stringify({ narrative: narrativeRef.current.value }),
         });
-      } catch (err: any) {
-        addToast(err.message ?? 'Failed to save before submitting', 'error');
+      } catch (err) {
+        addToast(err instanceof Error ? err.message : 'Failed to save before submitting', 'error');
         return;
       }
     }
@@ -771,8 +771,8 @@ export default function IncidentsPage() {
       });
       setIsEditing(false);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to submit for review', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to submit for review', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -786,8 +786,8 @@ export default function IncidentsPage() {
         method: 'PUT',
       });
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to approve incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to approve incident', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -814,8 +814,8 @@ export default function IncidentsPage() {
       setShowReturnModal(false);
       setReturnComments('');
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to return incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to return incident', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -834,8 +834,8 @@ export default function IncidentsPage() {
       }
       setDeleteTarget(null);
       await fetchIncidents({ silent: true });
-    } catch (err: any) {
-      addToast(err.message ?? 'Failed to delete incident', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete incident', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -852,7 +852,7 @@ export default function IncidentsPage() {
       setSelectedIncident(null);
       await fetchIncidents({ silent: true });
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to archive incident', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to archive incident', 'error');
     }
   };
 
@@ -863,7 +863,7 @@ export default function IncidentsPage() {
       setSelectedIncident(null);
       await fetchIncidents({ silent: true });
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to unarchive incident', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to unarchive incident', 'error');
     }
   };
 
@@ -906,7 +906,7 @@ export default function IncidentsPage() {
       addToast('Supplement created successfully', 'success');
       fetchSupplements(selectedIncident.id);
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to create supplement', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to create supplement', 'error');
     } finally {
       setSupplementSubmitting(false);
     }
@@ -922,7 +922,7 @@ export default function IncidentsPage() {
       addToast('Supplement submitted for review', 'success');
       fetchSupplements(selectedIncident.id);
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to submit supplement', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to submit supplement', 'error');
     }
   };
 
@@ -936,7 +936,7 @@ export default function IncidentsPage() {
       addToast('Supplement approved', 'success');
       fetchSupplements(selectedIncident.id);
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to approve supplement', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to approve supplement', 'error');
     }
   };
 
@@ -949,7 +949,7 @@ export default function IncidentsPage() {
       addToast('Supplement deleted', 'success');
       fetchSupplements(selectedIncident.id);
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to delete supplement', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to delete supplement', 'error');
     }
   };
 
@@ -1535,9 +1535,9 @@ export default function IncidentsPage() {
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerTitle(`${selectedIncident.incident_number} — ${toDisplayLabel(reportType).toUpperCase()}`);
                 setPdfViewerOpen(true);
-              } catch (err: any) {
+              } catch (err) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
-                addToast(err?.message || 'PDF preview generation failed', 'error');
+                addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'PDF preview generation failed', 'error');
               }
             }}
             onSignAndExport={async (reportType, signature) => {
@@ -2052,7 +2052,7 @@ export default function IncidentsPage() {
                             await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
                             fetchIncidentDetail(selectedIncident.id);
                           } catch (err) {
-                            addToast(err instanceof Error ? err.message : 'Failed to remove offense', 'error');
+                            addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to remove offense', 'error');
                           }
                         },
                       });
@@ -2110,7 +2110,7 @@ export default function IncidentsPage() {
                             await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
                             fetchIncidentDetail(selectedIncident.id);
                           } catch (err) {
-                            addToast(err instanceof Error ? err.message : 'Failed to remove officer', 'error');
+                            addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to remove officer', 'error');
                           }
                         },
                       });
@@ -2202,7 +2202,7 @@ export default function IncidentsPage() {
                               await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
                               fetchIncidentDetail(selectedIncident.id);
                             } catch (err) {
-                              addToast(err instanceof Error ? err.message : 'Failed to remove cross-reference', 'error');
+                              addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to remove cross-reference', 'error');
                             }
                           },
                         });
@@ -3031,7 +3031,7 @@ export default function IncidentsPage() {
                 addToast(result?.updated_existing ? 'Officer details updated on incident' : 'Officer added to incident', 'success');
                 fetchIncidentDetail(selectedIncident.id);
               } catch (err) {
-                addToast(err instanceof Error ? err.message : 'Failed to add officer', 'error');
+                addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to add officer', 'error');
               }
             }}
           >

@@ -200,8 +200,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
       ]);
       setNetworks((nets as ScannedNetwork[]).sort((a, b) => b.signal - a.signal));
       setProfiles(profs as string[]);
-    } catch (err: any) {
-      setStatusMsg('Scan failed: ' + (err?.message ?? 'unknown'));
+    } catch (err) {
+      setStatusMsg('Scan failed: ' + (err instanceof Error ? err.message : 'unknown'));
     } finally {
       setScanning(false);
     }
@@ -221,8 +221,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
       } else {
         setStatusMsg(`Failed: ${res.reason ?? 'unknown'}`);
       }
-    } catch (err: any) {
-      setStatusMsg('Error: ' + (err?.message ?? 'unknown'));
+    } catch (err) {
+      setStatusMsg('Error: ' + (err instanceof Error ? err.message : 'unknown'));
     } finally {
       setConnecting(null);
     }
@@ -236,8 +236,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
       await el.wifiDisconnect();
       setStatusMsg('Disconnected.');
       setTimeout(() => { loadDetail(); setStatusMsg(null); }, 1500);
-    } catch (err: any) {
-      setStatusMsg('Error: ' + (err?.message ?? 'unknown'));
+    } catch (err) {
+      setStatusMsg('Error: ' + (err instanceof Error ? err.message : 'unknown'));
     } finally {
       setConnecting(null);
     }

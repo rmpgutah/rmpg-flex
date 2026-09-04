@@ -91,8 +91,8 @@ export default function AndroidUpdateChecker() {
         setUpdateInfo(null);
         setDismissed(false); // allow future prompts
       }
-    } catch (err: any) {
-      console.error('[ANDROID-UPDATE] Check failed:', err.message);
+    } catch (err) {
+      console.error('[ANDROID-UPDATE] Check failed:', err instanceof Error ? err.message : 'Unknown error');
     }
   }, []);
 

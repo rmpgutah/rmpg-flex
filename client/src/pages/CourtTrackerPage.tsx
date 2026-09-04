@@ -396,7 +396,7 @@ export default function CourtTrackerPage() {
       setEvents(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { if (mountedRef.current) setFetchError(err?.message || 'Failed to load data'); } finally { if (mountedRef.current) setLoading(false); }
+    } catch (err) { if (mountedRef.current) setFetchError(err instanceof Error ? err.message : 'Failed to load data'); } finally { if (mountedRef.current) setLoading(false); }
   }, [page, searchQuery, filterType]);
 
   const fetchUpcoming = useCallback(async () => {

@@ -76,9 +76,9 @@ export function useMapboxSpeedHeatmap(map: mapboxgl.Map | null) {
       const list = Array.isArray(data) ? data : [];
       setCells(list);
       renderOnMap(list, map);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxSpeedHeatmap] fetch failed:', err);
-      setError(err?.message || 'Failed to load speed heatmap');
+      setError(err instanceof Error ? err.message : 'Failed to load speed heatmap');
     } finally {
       setLoading(false);
     }

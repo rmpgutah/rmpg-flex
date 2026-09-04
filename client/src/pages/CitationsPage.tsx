@@ -467,8 +467,8 @@ export default function CitationsPage() {
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
       setCitations(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
-    } catch (err: any) {
-      if (!options?.silent) setError(err.message || 'Failed to load citations');
+    } catch (err) {
+      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load citations');
     } finally {
       if (!options?.silent) setLoading(false);
     }
@@ -595,7 +595,7 @@ export default function CitationsPage() {
       setShowPaymentForm(false);
       setPaymentForm({ amount: '', payment_date: localToday(), payment_method: 'cash', reference_number: '', notes: '' });
       fetchCitations({ silent: true }); fetchStats();
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed to record payment', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to record payment', 'error'); }
     finally { setPaymentSubmitting(false); }
   };
 
@@ -841,8 +841,8 @@ export default function CitationsPage() {
           fetchStats();
         }, 1200);
       }
-    } catch (err: any) {
-      setSaveError(err.message || 'Failed to save citation');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save citation');
     } finally {
       setSaving(false);
     }
@@ -868,8 +868,8 @@ export default function CitationsPage() {
       fetchStats();
       if (selectedCitation?.id === voidTarget.id) setSelectedCitation(null);
       setVoidTarget(null);
-    } catch (err: any) {
-      addToast(err.message || 'Failed to void citation', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to void citation', 'error');
     } finally {
       setVoiding(false);
     }

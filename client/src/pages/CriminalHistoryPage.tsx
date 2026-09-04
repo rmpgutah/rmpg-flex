@@ -185,8 +185,8 @@ export default function CriminalHistoryPage() {
       setPersons(list.map(normPerson));
       setSelectedPerson(null);
       setHistory([]);
-    } catch (err: any) {
-      setFetchError(err?.message || 'Failed to load data');
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to load data');
       addToast('Failed to search persons', 'error');
       setPersons([]);
     } finally {

@@ -187,8 +187,8 @@ export default function CustomReportBuilder() {
       setRowCount(data.count || 0);
       setStep('preview');
       addToast(`Query returned ${data.count || 0} rows`, 'success');
-    } catch (err: any) {
-      setError(err?.message || 'Query failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Query failed');
       addToast('Failed to run report query', 'error');
     } finally {
       setLoading(false);

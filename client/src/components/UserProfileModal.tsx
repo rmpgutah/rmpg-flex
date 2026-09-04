@@ -464,8 +464,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       // Refresh AuthContext user so header/OPR name updates immediately
       await refreshUser();
       setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
-    } catch (err: any) {
-      setProfileMsg({ type: 'error', text: err?.message || 'Failed to update profile' });
+    } catch (err) {
+      setProfileMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update profile' });
     } finally {
       setProfileSaving(false);
     }
@@ -485,8 +485,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       });
       setPwMsg({ type: 'success', text: result.message || 'Password changed. You will be logged out.' });
       logoutTimerRef.current = setTimeout(() => logout(), 2500);
-    } catch (err: any) {
-      setPwMsg({ type: 'error', text: err?.message || 'Failed to change password' });
+    } catch (err) {
+      setPwMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to change password' });
     } finally {
       setPwSaving(false);
     }
@@ -521,8 +521,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       });
       setRegenCodes(data.backupCodes);
       setRegenPassword('');
-    } catch (err: any) {
-      setRegenError(err?.message || 'Failed to regenerate codes');
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : 'Failed to regenerate codes');
     }
     setRegenLoading(false);
   };
@@ -547,8 +547,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setSqAnswers(['', '', '']);
       setSqCurrentPassword('');
       setSqMsg({ type: 'success', text: 'Security questions saved. You can now use "Forgot password?" on the login screen.' });
-    } catch (err: any) {
-      setSqMsg({ type: 'error', text: err?.message || 'Failed to save security questions' });
+    } catch (err) {
+      setSqMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save security questions' });
     }
     setSqBusy(false);
   };

@@ -242,10 +242,10 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       );
       if (requestedVideoId !== video?.id) return; // stale result — video switched mid-request
       setLocalAnalysis(result.analysis);
-    } catch (err: any) {
+    } catch (err) {
       if (requestedVideoId !== video?.id) return; // stale error — don't surface against the new video
       console.warn('[VideoPlayer] AI analysis failed:', err);
-      setAnalyzeError(err?.message || 'AI analysis failed.');
+      setAnalyzeError(err instanceof Error ? err.message : 'AI analysis failed.');
     } finally {
       if (requestedVideoId === video?.id) {
         setAnalyzing(false);

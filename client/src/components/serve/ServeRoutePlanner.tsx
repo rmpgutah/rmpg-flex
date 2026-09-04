@@ -1609,8 +1609,8 @@ export default function ServeRoutePlanner({
       if (degradedWarning || deadlineWarning || droppedWarning) {
         setError([degradedWarning, droppedWarning, deadlineWarning].filter(Boolean).join(' '));
       }
-    } catch (err: any) {
-      setError(err?.message || 'Route optimization failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Route optimization failed');
     } finally {
       setOptimizing(false);
     }

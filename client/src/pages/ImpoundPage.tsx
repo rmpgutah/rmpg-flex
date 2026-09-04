@@ -141,9 +141,9 @@ export default function ImpoundPage() {
       const m: Record<string, number> = {};
       statRows.forEach((r) => { m[r.status] = r.count; });
       setStats(m);
-    } catch (err: any) {
+    } catch (err) {
       setLoadError(true);
-      addToast(err?.message || 'Failed to load impounds', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to load impounds', 'error');
     } finally {
       setLoading(false);
     }

@@ -80,8 +80,8 @@ export default function StartingMileageModal({
     try {
       await onConfirm(num);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to confirm starting mileage');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm starting mileage');
     } finally {
       setLoading(false);
     }

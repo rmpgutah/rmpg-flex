@@ -208,9 +208,9 @@ export default function IpedPage() {
       const data = await apiFetch<any>(`/iped/jobs?${qs}`);
       setJobs(data.jobs || []);
       setJobsTotal(data.total || 0);
-    } catch (err: any) {
-      setFetchError(err?.message || 'Failed to load data');
-      addToast(err.message || 'Failed to load jobs', 'error');
+    } catch (err) {
+      setFetchError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to load data');
+      addToast(err instanceof Error ? err.message : 'Failed to load jobs', 'error');
     } finally {
       setJobsLoading(false);
     }
@@ -236,8 +236,8 @@ export default function IpedPage() {
       const results = data.results || data.data || [];
       setHashSearchResults(results);
       setHashSearchDone(true);
-    } catch (err: any) {
-      setHashSearchError(err?.message || 'Search failed');
+    } catch (err) {
+      setHashSearchError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Search failed');
       setHashSearchResults([]);
       setHashSearchDone(true);
     } finally {
@@ -252,8 +252,8 @@ export default function IpedPage() {
       setSelectedJob(data.job ?? data);
       setJobHashes(data.hashes || []);
       setJobProgress(data.progress || null);
-    } catch (err: any) {
-      addToast(err.message || 'Failed to load job', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to load job', 'error');
     } finally {
       setDetailLoading(false);
     }
@@ -318,7 +318,7 @@ export default function IpedPage() {
           if (results.length === 0) addToast(`No hash matches for "${searchParam}".`, 'warning');
         })
         .catch((err: any) => {
-          setHashSearchError(err?.message || 'Search failed');
+          setHashSearchError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Search failed');
           setHashSearchDone(true);
         });
     }, 100);
@@ -409,8 +409,8 @@ export default function IpedPage() {
       setNewJob({ jobType: 'hash', inputPath: '', outputPath: '', evidenceId: '', profile: 'forensic', description: '' });
       fetchJobs();
       fetchStatus();
-    } catch (err: any) {
-      addToast(err.message || 'Failed to create job', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to create job', 'error');
     } finally {
       setNewJobSubmitting(false);
     }
@@ -427,8 +427,8 @@ export default function IpedPage() {
       fetchJobs();
       fetchStatus();
       if (selectedJob?.id === id) fetchJobDetail(id);
-    } catch (err: any) {
-      addToast(err.message || 'Failed to cancel job', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to cancel job', 'error');
     } finally {
       setCancelJobLoading(false);
     }
@@ -449,8 +449,8 @@ export default function IpedPage() {
       setShowImportHashSet(false);
       setImportData({ filePath: '', setName: '', category: 'known_bad', hashType: 'md5' });
       fetchHashSets();
-    } catch (err: any) {
-      addToast(err.message || 'Failed to import hash set', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to import hash set', 'error');
     } finally {
       setImportSubmitting(false);
     }
@@ -465,8 +465,8 @@ export default function IpedPage() {
       addToast(`Hash set "${name}" removed`, 'success');
       setRemoveHashSetTarget(null);
       fetchHashSets();
-    } catch (err: any) {
-      addToast(err.message || 'Failed to remove hash set', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to remove hash set', 'error');
     } finally {
       setRemoveHashSetLoading(false);
     }

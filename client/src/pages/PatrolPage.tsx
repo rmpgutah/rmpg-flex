@@ -543,10 +543,10 @@ const PatrolPage: React.FC = () => {
         // before any data appeared.
         await Promise.all([loadShiftSummary(), loadEfficiency()]);
       }
-    } catch (err: any) {
+    } catch (err) {
       if (!options?.silent) {
         console.error('Error loading data:', err);
-        setError(err?.message || 'Failed to load data');
+        setError(err instanceof Error ? err.message : 'Failed to load data');
       }
     } finally {
       if (!options?.silent) setLoading(false);
@@ -691,9 +691,9 @@ const PatrolPage: React.FC = () => {
       clearFormDraft();
       loadCheckpoints();
       addToast(editingCheckpoint ? 'Checkpoint updated' : 'Checkpoint created', 'success');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error saving checkpoint:', err);
-      addToast(err?.message || 'Failed to save checkpoint', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save checkpoint', 'error');
     }
   };
 
@@ -705,9 +705,9 @@ const PatrolPage: React.FC = () => {
       setDeleteConfirmId(null);
       loadCheckpoints();
       addToast('Checkpoint deleted', 'success');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error deleting checkpoint:', err);
-      addToast(err?.message || 'Failed to delete checkpoint', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to delete checkpoint', 'error');
     }
   };
 
@@ -716,9 +716,9 @@ const PatrolPage: React.FC = () => {
       await apiFetch(`/patrol/checkpoints/${id}/archive`, { method: 'POST' });
       loadCheckpoints();
       addToast('Checkpoint archived', 'success');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error archiving checkpoint:', err);
-      addToast(err?.message || 'Failed to archive checkpoint', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to archive checkpoint', 'error');
     }
   };
 
@@ -727,9 +727,9 @@ const PatrolPage: React.FC = () => {
       await apiFetch(`/patrol/checkpoints/${id}/unarchive`, { method: 'POST' });
       loadCheckpoints();
       addToast('Checkpoint restored', 'success');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error unarchiving checkpoint:', err);
-      addToast(err?.message || 'Failed to restore checkpoint', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to restore checkpoint', 'error');
     }
   };
 

@@ -355,19 +355,19 @@ export default function ForensicLabPage() {
   const fetchTurnaroundData = async () => {
     setTurnaroundLoading(true);
     try { const r = await apiFetch<any>('/forensics/turnaround-times'); setTurnaroundData(r?.data || null); }
-    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load turnaround data', 'error'); } finally { setTurnaroundLoading(false); }
+    catch (err) { if ((err as { name?: string }).name !== 'AbortError') addToast('Failed to load turnaround data', 'error'); } finally { setTurnaroundLoading(false); }
   };
 
   const fetchBacklogData = async () => {
     setBacklogLoading(true);
     try { const r = await apiFetch<any>('/forensics/metrics/backlog'); setBacklogData(r?.data || null); }
-    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load backlog data', 'error'); } finally { setBacklogLoading(false); }
+    catch (err) { if ((err as { name?: string }).name !== 'AbortError') addToast('Failed to load backlog data', 'error'); } finally { setBacklogLoading(false); }
   };
 
   const fetchQcHistory = async (caseId: number) => {
     setQcLoading(true);
     try { const r = await apiFetch<any>(`/forensics/${caseId}/qc-history`); setQcHistory(r?.data || []); }
-    catch (err: any) { setQcHistory([]); if (err?.name !== 'AbortError') addToast('Failed to load QC history', 'error'); } finally { setQcLoading(false); }
+    catch (err) { setQcHistory([]); if ((err as { name?: string }).name !== 'AbortError') addToast('Failed to load QC history', 'error'); } finally { setQcLoading(false); }
   };
 
   // (Removed: fetchAnalysisTemplates + analysisTemplates state — declared
@@ -440,9 +440,9 @@ export default function ForensicLabPage() {
       ]);
       setCases(casesRes.data || []);
       setStats(statsRes);
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-      setFetchError(err?.message || 'Failed to load forensic cases');
+    } catch (err) {
+      if (((err as { name?: string }).name === 'AbortError')) return;
+      setFetchError(err instanceof Error ? err.message : 'Failed to load forensic cases');
       addToast('Failed to load forensic cases', 'error');
     } finally {
       setLoading(false);
@@ -474,8 +474,8 @@ export default function ForensicLabPage() {
       apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`, { signal })
         .then(d => { setHashes(asArray(d?.hashes)); setHashStats(d?.stats || null); })
         .catch(() => { setHashes([]); setHashStats(null); });
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
+    } catch (err) {
+      if (((err as { name?: string }).name === 'AbortError')) return;
       addToast('Failed to load case details', 'error');
     }
   }, [addToast]);
@@ -745,7 +745,7 @@ export default function ForensicLabPage() {
     try {
       const links = await apiFetch<any[]>(`/forensic-lab/${id}/links`);
       setCaseLinks(links || []);
-    } catch (err: any) { setCaseLinks([]); if (err?.name !== 'AbortError') addToast('Failed to load case links', 'error'); }
+    } catch (err) { setCaseLinks([]); if (((err as { name?: string }).name !== 'AbortError')) addToast('Failed to load case links', 'error'); }
   }, [addToast]);
 
   // ── Hashes ─────────────────────────────────────────────
@@ -755,7 +755,7 @@ export default function ForensicLabPage() {
       const data = await apiFetch<{ hashes: any[]; stats: { total: number; flagged: number; matched: number } }>(`/forensic-lab/${id}/hashes`);
       setHashes(data.hashes || []);
       setHashStats(data.stats || null);
-    } catch (err: any) { setHashes([]); setHashStats(null); if (err?.name !== 'AbortError') addToast('Failed to load hashes', 'error'); }
+    } catch (err) { setHashes([]); setHashStats(null); if (((err as { name?: string }).name !== 'AbortError')) addToast('Failed to load hashes', 'error'); }
   }, [addToast]);
 
   // ── Metadata helpers ─────────────────────────────────────

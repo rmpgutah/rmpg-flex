@@ -133,8 +133,8 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
       }
       clearDraft();
       onSaved();
-    } catch (err: any) {
-      setError(err.message || 'Failed to submit grievance');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit grievance');
     } finally {
       setSaving(false);
     }

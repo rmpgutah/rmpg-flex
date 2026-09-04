@@ -236,8 +236,8 @@ export default function CourtRecordsPage() {
       );
       setEvents(res.data);
       setPagination(res.pagination);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load court events');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load court events');
     } finally {
       setLoading(false);
     }
@@ -268,8 +268,8 @@ export default function CourtRecordsPage() {
       setFormData(EMPTY_CREATE);
       fetchEvents(pagination.page);
       addToast('Court event created', 'success');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create court event');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create court event');
     } finally {
       setSaving(false);
     }
@@ -299,8 +299,8 @@ export default function CourtRecordsPage() {
       // without having to collapse + re-expand.
       if (expandedId === closedId) hydrateDetail(closedId);
       addToast('Outcome recorded', 'success');
-    } catch (err: any) {
-      setError(err.message || 'Failed to record outcome');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record outcome');
     } finally {
       setSaving(false);
     }
@@ -374,7 +374,7 @@ export default function CourtRecordsPage() {
         preparedBy,
       });
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to generate court PDF', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to generate court PDF', 'error');
     }
   }, [hydratedDetail, user, addToast]);
 

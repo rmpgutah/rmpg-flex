@@ -355,8 +355,8 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
         }),
       });
       onLinked();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to create link');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create link');
     } finally {
       setSubmitting(false);
     }

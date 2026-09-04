@@ -67,8 +67,8 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
     try {
       const data = await apiFetch<Session[]>('/admin/sessions');
       setSessions(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load sessions');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
       setLoading(false);
     }
@@ -83,8 +83,8 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       await apiFetch(`/admin/sessions/${sessionId}`, { method: 'DELETE' });
       fetchSessions();
       addToast('Session revoked', 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Failed to revoke session', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to revoke session', 'error');
     }
   };
 

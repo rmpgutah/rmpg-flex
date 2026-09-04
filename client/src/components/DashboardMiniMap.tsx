@@ -87,7 +87,7 @@ export default function DashboardMiniMap() {
         const markReady = () => { if (!cancelled) { onMapLoaded(map); setLoaded(true); } };
         map.on('load', markReady);
         map.on('idle', markReady);
-        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
+        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error instanceof Error ? e.error.message : 'Map error'); });
         mapRef.current = map;
         webglRecoveryCleanupRef.current = attach(map, 'DashboardMiniMap');
       } catch (err) {

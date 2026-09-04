@@ -98,8 +98,8 @@ export default function CitationPicker({
         setResults(list.slice(0, 20));
         setError(null);
         setOpen(true);
-      } catch (err: any) {
-        if (!cancelled) setError(err?.message || 'Citation search failed');
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Citation search failed');
       } finally {
         if (!cancelled) setLoading(false);
       }

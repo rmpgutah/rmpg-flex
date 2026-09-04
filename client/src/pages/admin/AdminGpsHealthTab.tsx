@@ -83,8 +83,8 @@ export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {
       setUnits(data.units || []);
       setGeneratedAt(data.generated_at);
       setError(null);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load GPS health');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load GPS health');
     } finally {
       setLoading(false);
     }

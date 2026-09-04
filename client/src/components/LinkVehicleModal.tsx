@@ -96,8 +96,8 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       };
       setSelectedVehicle(newVehicle);
       setShowCreateVehicle(false);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to create vehicle');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create vehicle');
     } finally {
       setIsCreating(false);
     }
@@ -119,8 +119,8 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       });
       onLinked();
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to link vehicle');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to link vehicle');
     } finally {
       setIsSubmitting(false);
     }

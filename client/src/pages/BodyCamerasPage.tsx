@@ -149,9 +149,9 @@ export default function BodyCamerasPage() {
         }))
       );
       setError(null);
-    } catch (err: any) {
+    } catch (err) {
       if (!mountedRef.current) return;
-      setError(err?.message || 'Failed to load body camera data');
+      setError(err instanceof Error ? err.message : 'Failed to load body camera data');
     } finally {
       if (mountedRef.current) setLoading(false);
     }

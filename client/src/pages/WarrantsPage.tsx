@@ -1093,8 +1093,8 @@ export default function WarrantsPage() {
       }
       clearFormDraft();
       setFormOpen(false);
-    } catch (err: any) {
-      listTabRef.current?.setListError(err?.message || 'Failed to save warrant');
+    } catch (err) {
+      listTabRef.current?.setListError(err instanceof Error ? err.message : 'Failed to save warrant');
     } finally {
       setSubmitting(false);
     }

@@ -134,8 +134,8 @@ export default function PersonPicker({
         setResults(list);
         setError(null);
         setOpen(true);
-      } catch (err: any) {
-        if (!cancelled) setError(err?.message || 'Search failed');
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Search failed');
       } finally {
         if (!cancelled) setLoading(false);
       }

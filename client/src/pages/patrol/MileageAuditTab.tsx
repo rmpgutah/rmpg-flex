@@ -276,9 +276,9 @@ export default function MileageAuditTab() {
         if (!mountedRef.current) return;
         setAnchor(data.anchor || null);
         setRows(data.rows || []);
-      } catch (err: any) {
+      } catch (err) {
         if (!mountedRef.current) return;
-        setError(err?.message || 'Failed to load chain');
+        setError(err instanceof Error ? err.message : 'Failed to load chain');
         setRows([]);
       }
 
@@ -354,8 +354,8 @@ export default function MileageAuditTab() {
       );
       cancelFix();
       refresh();
-    } catch (err: any) {
-      addToast(err?.message || 'Fix failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Fix failed', 'error');
       setFixSubmitting(false);
     }
   };

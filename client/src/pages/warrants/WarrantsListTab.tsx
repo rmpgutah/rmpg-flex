@@ -594,8 +594,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         setTotalPages(res.pagination?.totalPages || 1);
         setTotalCount(res.pagination?.total || 0);
       }
-    } catch (err: any) {
-      if (!options?.silent) setError(err?.message || 'Failed to load warrants');
+    } catch (err) {
+      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load warrants');
     } finally {
       if (!options?.silent) setLoading(false);
     }
@@ -729,8 +729,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       setSelectedWarrant(prev => prev ? { ...prev, ...updated } : prev);
       setServeModalOpen(false);
       setServeLocation('');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to serve warrant');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to serve warrant');
     } finally {
       setServing(false);
     }
@@ -742,8 +742,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       await apiFetch(`/warrants/${id}/archive`, { method: 'POST' });
       await fetchWarrants({ silent: true });
       if (selectedWarrant?.id === id) setSelectedWarrant(null);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to archive warrant');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive warrant');
     }
   };
 
@@ -760,8 +760,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       await apiFetch(`/warrants/${id}/unarchive`, { method: 'POST' });
       await fetchWarrants({ silent: true });
       if (selectedWarrant?.id === id) fetchWarrantDetail(id);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to unarchive warrant');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unarchive warrant');
     }
   };
 
@@ -778,8 +778,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       setDeletingWarrant(null);
       if (selectedWarrant?.id === deletingWarrant.id) setSelectedWarrant(null);
       await fetchWarrants({ silent: true });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete warrant');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete warrant');
       setDeletingWarrant(null);
     } finally {
       setDeleteLoading(false);
@@ -795,8 +795,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       });
       setWarrants((prev) => prev.map((w) => w.id === id ? { ...w, ...updated } : w));
       if (selectedWarrant?.id === id) fetchWarrantDetail(id);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to update status');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
     }
   };
 
@@ -806,8 +806,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       const updated = await apiFetch<Warrant>(`/warrants/${id}/reopen`, { method: 'POST' });
       setWarrants((prev) => prev.map((w) => w.id === id ? { ...w, ...updated } : w));
       if (selectedWarrant?.id === id) fetchWarrantDetail(id);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to reopen warrant');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reopen warrant');
     }
   };
 

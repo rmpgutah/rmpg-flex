@@ -137,9 +137,9 @@ export default function SkipTracerPage() {
           break;
       }
       setResults(data);
-    } catch (err: any) {
-      setError(err?.message || 'Search failed');
-      addToast(err?.message || 'Skip trace search failed', 'error');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+      addToast(err instanceof Error ? err.message : 'Skip trace search failed', 'error');
       setResults(null);
     } finally {
       setLoading(false);
@@ -251,8 +251,8 @@ export default function SkipTracerPage() {
     try {
       const data = await apiFetch(`/skiptracer/person/${encodeURIComponent(id)}`);
       setPersonDetail(data);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to get person details');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get person details');
       addToast('Failed to load person details', 'error');
     } finally {
       setLoadingDetail(false);

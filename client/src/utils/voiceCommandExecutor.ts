@@ -54,8 +54,8 @@ export async function executeVoiceCommand(
       default:
         return { success: false, message: `Unknown command: ${formatAction(action)}` };
     }
-  } catch (err: any) {
-    console.error('[VoiceExecutor] Command failed:', action, err?.message || err);
+  } catch (err) {
+    console.error('[VoiceExecutor] Command failed:', action, err instanceof Error ? err.message : err);
     return { success: false, message: 'Command failed. Please try again.' };
   }
 }

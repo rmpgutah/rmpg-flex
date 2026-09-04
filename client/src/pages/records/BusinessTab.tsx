@@ -150,8 +150,8 @@ export function useBusinessTab(props: {
       setLoading(true);
       const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`));
       setBusinesses((data || []).map(mapDbBusiness));
-    } catch (err: any) {
-      reportError(err.message || 'Failed to load businesses', () => { void fetchBusinesses(); });
+    } catch (err) {
+      reportError(err instanceof Error ? err.message : 'Failed to load businesses', () => { void fetchBusinesses(); });
     }
     setLoading(false);
   }, [showArchived, reportError]);
@@ -188,8 +188,8 @@ export function useBusinessTab(props: {
       fetchBusinesses();
       setFormSubmitting(false);
       return true;
-    } catch (err: any) {
-      setError(err.message || 'Failed to save business');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save business');
       setFormSubmitting(false);
       return false;
     }

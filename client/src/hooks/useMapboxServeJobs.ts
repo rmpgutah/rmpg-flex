@@ -68,9 +68,9 @@ export function useMapboxServeJobs(map: mapboxgl.Map | null) {
       const rows = data?.jobs ?? [];
       setJobs(rows);
       whenStyleReady(map, () => { renderOnMap(rows, map); });
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxServeJobs] fetch failed:', err);
-      setError(err?.message || 'Failed to load serve jobs');
+      setError(err instanceof Error ? err.message : 'Failed to load serve jobs');
     } finally {
       setLoading(false);
     }

@@ -1086,7 +1086,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => { if (!cancelled) { onMapLoaded(map); setMapLoaded(true); } });
-        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
+        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error instanceof Error ? e.error.message : 'Map error'); });
         mapRef.current = map;
         webglRecoveryCleanupRef.current = attach(map, 'NavPage-RouteHeatmap');
       } catch (err) {

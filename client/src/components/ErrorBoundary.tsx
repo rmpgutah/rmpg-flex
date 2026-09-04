@@ -196,7 +196,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 An unexpected error occurred. This page could not be rendered.
               </p>
               <p className="text-xs text-rmpg-400 mb-4">
-                {error?.message || 'Unknown error'}
+                {error instanceof Error ? error.message : 'Unknown error'}
               </p>
 
               {/* Action buttons */}

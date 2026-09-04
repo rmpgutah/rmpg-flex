@@ -27,12 +27,13 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
         body: JSON.stringify({ notes, incident_type: incidentType, location_address: locationAddress }),
       });
       setPreview(data.narrative || data.text || '');
-    } catch (err: any) {
-      if (err?.status === 503 || err?.status === 501) {
+    } catch (err) {
+      const apiErr = err as { status?: number };
+      if (apiErr.status === 503 || apiErr.status === 501) {
         setAiUnavailable(true);
         setError('AI service unavailable');
       } else {
-        setError(err?.message || 'Failed to generate narrative');
+        setError(err instanceof Error ? err.message : 'Failed to generate narrative');
       }
     } finally {
       setIsLoading(false);

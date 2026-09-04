@@ -90,8 +90,8 @@ export default function OsintPortalPage() {
         body: JSON.stringify({ query: dsQuery, site: dsSite || undefined }),
       });
       setDsResult(res);
-    } catch (err: any) {
-      setError(err?.message || 'Deep search failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Deep search failed');
     } finally {
       setLoading(false);
     }
@@ -108,8 +108,8 @@ export default function OsintPortalPage() {
         body: JSON.stringify({ name: pplName, city: pplCity, state: pplState }),
       });
       setPplResult(res);
-    } catch (err: any) {
-      setError(err?.message || 'People search failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'People search failed');
     } finally {
       setLoading(false);
     }
@@ -126,8 +126,8 @@ export default function OsintPortalPage() {
         body: JSON.stringify({ username: usrName, check_breaches: usrBreaches }),
       });
       setUsrResult(res);
-    } catch (err: any) {
-      setError(err?.message || 'Username search failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Username search failed');
     } finally {
       setLoading(false);
     }

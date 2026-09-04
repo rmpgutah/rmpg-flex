@@ -914,8 +914,8 @@ export default function ServePage() {
       } else {
         setLinkedCalls({});
       }
-    } catch (err: any) {
-      setFetchError(err?.message || 'Failed to load data');
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }

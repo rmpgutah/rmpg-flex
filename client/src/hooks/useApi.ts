@@ -72,8 +72,8 @@ export async function fetchWithTimeout(
 
   try {
     return await fetch(url, { ...rest, signal: controller.signal });
-  } catch (err: any) {
-    if (err && err.name === 'AbortError') {
+  } catch (err) {
+    if (err && (err as { name?: string }).name === 'AbortError') {
       if (timedOut) throw new TimeoutError(timeoutMs, url);
       // External abort (component unmount, etc.) — propagate as-is.
       throw err;

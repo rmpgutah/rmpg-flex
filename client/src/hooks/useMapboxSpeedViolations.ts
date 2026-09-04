@@ -90,9 +90,9 @@ export function useMapboxSpeedViolations(map: mapboxgl.Map | null) {
       const list = Array.isArray(data) ? data : [];
       setViolations(list);
       renderOnMap(list, map);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxSpeedViolations] fetch failed:', err);
-      setError(err?.message || 'Failed to load speed violations');
+      setError(err instanceof Error ? err.message : 'Failed to load speed violations');
     } finally {
       setLoading(false);
     }

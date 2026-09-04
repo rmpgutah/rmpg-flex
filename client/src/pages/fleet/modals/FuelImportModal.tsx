@@ -130,8 +130,8 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
       setPreview(data);
       setDraft({ rows: data.rows });
       setPhase('preview');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to parse CSV');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to parse CSV');
     }
   };
 
@@ -162,8 +162,8 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
       setPhase('done');
       clearDraft();
       if (result.inserted > 0) onImported();
-    } catch (err: any) {
-      setError(err?.message || 'Commit failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Commit failed');
       setPhase('preview');
     }
   };

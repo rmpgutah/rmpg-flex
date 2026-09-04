@@ -570,7 +570,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
       setLinkNotes('');
       fetchLinks();
       onSnackbar('Email linked successfully');
-    } catch (err: any) { onSnackbar(err.message || 'Failed to link', 'error'); }
+    } catch (err) { onSnackbar(err instanceof Error ? err.message : 'Failed to link', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -1148,7 +1148,7 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
       clearDraft(userId);
       onSent();
       onClose();
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err) { setError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Operation failed'); }
     finally { setSending(false); setShowScheduleModal(false); }
   };
 
@@ -1223,7 +1223,7 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
       clearDraft(userId);
       onSent();
       onClose();
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err) { setError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Operation failed'); }
     finally { setSending(false); }
   };
 
@@ -1252,7 +1252,7 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
       clearDraft(userId);
       onSent();
       onClose();
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err) { setError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Operation failed'); }
     finally { setSending(false); }
   };
 
@@ -1658,7 +1658,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
     try {
       await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', body: JSON.stringify({ body }) });
       setBody(''); setExpanded(false); onSent();
-    } catch (err: any) { onError?.(err?.message || 'Failed to send reply'); } finally { setSending(false); }
+    } catch (err) { onError?.(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to send reply'); } finally { setSending(false); }
   };
 
   if (!expanded) {
@@ -2052,8 +2052,8 @@ export default function EmailPage() {
         throw new Error('Unexpected OAuth redirect domain');
       }
       window.location.href = data.url;
-    } catch (err: any) {
-      setConnectError(err.message);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Unknown error');
       setConnecting(false);
     }
   };
@@ -2890,8 +2890,8 @@ export default function EmailPage() {
       setConnectStatus({ connected: false, mailbox: null });
       setMessages([]);
       setFolders([]);
-    } catch (err: any) {
-      addToast(err.message || 'Failed to disconnect mailbox', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to disconnect mailbox', 'error');
     } finally {
       setConfirmLoading(false);
       setConfirmAction(null);

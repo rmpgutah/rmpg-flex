@@ -45,8 +45,8 @@ export default function IncidentDetailWindow() {
         setIncident(data);
         // Update window title
         document.title = `${data.incident_number} — RMPG Flex`;
-      } catch (err: any) {
-        setError(err.message || 'Failed to load incident');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load incident');
       } finally {
         setLoading(false);
       }

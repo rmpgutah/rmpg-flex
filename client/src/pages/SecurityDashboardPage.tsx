@@ -145,8 +145,8 @@ export default function SecurityDashboardPage() {
       if (pc) setPasswordCompliance(pc);
       if (sa) setSessionAnalytics(sa);
       if (et) setEventTimeline(et.data || []);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load security data');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load security data');
     } finally { setLoading(false); }
   }, [isAdmin]);
 
@@ -184,8 +184,8 @@ export default function SecurityDashboardPage() {
       await apiFetch('/auth/security/unblock-ip', { method: 'POST', body: JSON.stringify({ ip: unblockTarget }) });
       setBlockedIps(prev => prev.filter(b => b.ip !== unblockTarget));
       setUnblockTarget(null);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to unblock IP');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unblock IP');
     } finally {
       setUnblocking(false);
     }
@@ -198,8 +198,8 @@ export default function SecurityDashboardPage() {
       await apiFetch('/auth/security/unlock-account', { method: 'POST', body: JSON.stringify({ username: unlockTarget }) });
       setLockedAccounts(prev => prev.filter(a => a.username !== unlockTarget));
       setUnlockTarget(null);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to unlock account');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unlock account');
     } finally {
       setUnlocking(false);
     }

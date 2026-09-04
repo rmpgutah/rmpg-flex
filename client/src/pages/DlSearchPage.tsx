@@ -227,7 +227,7 @@ export default function DlSearchPage() {
       addToast('Data-source config saved', 'success');
       loadSources();
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Save failed', 'error');
     } finally { setSourcesSaving(false); }
   }, [sorUrl, sorKey, clToken, addToast, loadSources]);
 
@@ -236,7 +236,7 @@ export default function DlSearchPage() {
       const r = await apiFetch<any>('/dl-records/sor/poll', { method: 'POST' });
       addToast(r?.configured ? `SOR poll: ${r.upserted} record(s) loaded` : 'No SOR feed configured', r?.configured ? 'success' : 'warning');
       loadSources();
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Poll failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Poll failed', 'error'); }
   }, [addToast, loadSources]);
 
   // Bulk-import offender rows the agency lawfully holds — JSON array or CSV
@@ -271,7 +271,7 @@ export default function DlSearchPage() {
       setSorImportText('');
       loadSources();
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Import failed', 'error');
+      addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Import failed', 'error');
     } finally { setSorImporting(false); }
   }, [sorImportText, addToast, loadSources]);
 
@@ -525,7 +525,7 @@ export default function DlSearchPage() {
         method: 'POST', body: JSON.stringify({ plate_number: stolenPlate.trim() }),
       });
       setStolenResult(data?.data || data);
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Stolen check failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Stolen check failed', 'error'); }
   };
 
   // ── ?dl= / ?dl_number= / ?last= / ?person_id= URL deep-link ──
@@ -571,8 +571,8 @@ export default function DlSearchPage() {
       } else {
         addToast('DL could not be verified', 'warning');
       }
-    } catch (err: any) {
-      addToast(err.message || 'Verification failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Verification failed', 'error');
     } finally {
       setVerifying(false);
     }
@@ -600,8 +600,8 @@ export default function DlSearchPage() {
       if (resp?.id) {
         addToast(`Person record #${resp.id} created from verification`, 'success');
       }
-    } catch (err: any) {
-      addToast(err.message || 'Failed to create person record', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to create person record', 'error');
     }
   }, [verifyResult, addToast]);
 
@@ -633,9 +633,9 @@ export default function DlSearchPage() {
         addToast('No DL records found for the linked query', 'warning');
       }
       fromDeepLinkRef.current = false;
-    } catch (err: any) {
+    } catch (err) {
       console.error('DL search error:', err);
-      setFetchError(err?.message || 'Failed to load data');
+      setFetchError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to load data');
       addToast('Failed to search driver\'s license records', 'error');
       setResults([]);
       setSource('ERROR');
@@ -814,8 +814,8 @@ export default function DlSearchPage() {
       } else {
         addToast(data.error || 'OCR could not read this photo — try the BACK barcode instead', 'warning');
       }
-    } catch (err: any) {
-      addToast(err.message || 'DL scan failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'DL scan failed', 'error');
     } finally {
       setOcrLoading(false);
     }
@@ -840,8 +840,8 @@ export default function DlSearchPage() {
       if (resp?.property) bits.push(`Property #${resp.property.id} ${resp.property_created ? 'created' : 'linked'}`);
       addToast(bits.length ? bits.join(' · ') : 'No records created', 'success');
       if (resp?.person?.id) setUploadedRecord(resp.person.id);
-    } catch (err: any) {
-      addToast(err.message || 'Create & link failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Create & link failed', 'error');
     }
   }, [ocrResult, linkPlate, addToast]);
 
@@ -889,8 +889,8 @@ export default function DlSearchPage() {
           });
         } catch { /* secondary — person record is primary */ }
       }
-    } catch (err: any) {
-      addToast(err.message || 'Failed to create person record', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to create person record', 'error');
     }
   }, [ocrResult, addToast, fileCardImagesTo]);
 
@@ -2078,7 +2078,7 @@ export default function DlSearchPage() {
                     doc.save(`safety-brief-${(ocrResult?.last_name || 'subject')}-${Date.now()}.pdf`);
                     addToast('Safety sheet generated', 'success');
                   } catch (err) {
-                    addToast(err instanceof Error ? err.message : 'Failed to generate safety sheet', 'error');
+                    addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to generate safety sheet', 'error');
                   }
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[11px] font-bold text-black transition-colors"

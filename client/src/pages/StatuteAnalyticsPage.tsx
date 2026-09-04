@@ -116,8 +116,8 @@ export default function StatuteAnalyticsPage() {
       setTrend(data.trend ?? []);
       setIncidentStatutes(data.incidentStatutes ?? []);
       setHasLoaded(true);
-    } catch (err: any) {
-      setFetchError(err?.message || 'Failed to load data');
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to load data');
       addToast('Failed to load statute analytics', 'error');
     }
     setLoading(false);

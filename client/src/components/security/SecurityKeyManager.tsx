@@ -113,20 +113,20 @@ export default function SecurityKeyManager() {
       setNewKeyName('');
       setShowNameInput(false);
       fetchCredentials();
-    } catch (err: any) {
-      console.warn('[WEBAUTHN] Registration error:', err?.name, err?.code, err?.message);
-      if (err?.name === 'NotAllowedError') {
+    } catch (err) {
+      const webAuthnErr = err as { name?: string; code?: string };
+      if (webAuthnErr.name === 'NotAllowedError') {
         setError('Registration was cancelled or timed out. Please try again.');
-      } else if (err?.name === 'InvalidStateError' || err?.code === 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED') {
+      } else if (webAuthnErr.name === 'InvalidStateError' || webAuthnErr.code === 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED') {
         setError('This security key is already registered. Use a different key.');
-      } else if (err?.name === 'SecurityError') {
+      } else if (webAuthnErr.name === 'SecurityError') {
         setError('Security key registration is not available on this domain.');
-      } else if (err?.name === 'NotSupportedError') {
+      } else if (webAuthnErr.name === 'NotSupportedError') {
         setError('This security key is not supported by your browser.');
-      } else if (err?.message?.includes('not supported')) {
+      } else if (err instanceof Error && err.message.includes('not supported')) {
         setError('WebAuthn is not supported in this browser. Use a modern browser like Chrome or Safari.');
       } else {
-        setError(err?.message || 'Failed to register security key');
+        setError(err instanceof Error ? err.message : 'Failed to register security key');
       }
     } finally {
       setRegistering(false);
