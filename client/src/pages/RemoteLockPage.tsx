@@ -299,6 +299,8 @@ export default function RemoteLockPage() {
       {/* Unit list */}
       {loading ? (
         <div style={{ fontSize: 9, color: 'var(--text-secondary)', padding: 12 }}>Loading units…</div>
+      ) : fetchError ? (
+        <div style={{ fontSize: 9, color: 'var(--sev-critical)', padding: 12 }}>Failed to load unit status. Check your connection and try again.</div>
       ) : filtered.length === 0 ? (
         <div style={{ fontSize: 9, color: 'var(--text-secondary)', padding: 12 }}>{search ? 'No units match your search.' : 'No online units.'}</div>
       ) : (

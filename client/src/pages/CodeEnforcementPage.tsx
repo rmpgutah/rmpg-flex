@@ -268,7 +268,12 @@ export default function CodeEnforcementPage() {
     setSubmitting(true);
     try {
       const zoneBeat = [vFormData.zone_id, vFormData.beat_id].filter(Boolean).join('/') || undefined;
-      await apiFetch('/code-enforcement/violations', { method: 'POST', body: JSON.stringify({ ...vFormData, zone_beat: zoneBeat }) });
+      const vPayload = {
+        ...vFormData,
+        zone_beat: zoneBeat,
+        fine_amount: vFormData.fine_amount !== '' ? parseFloat(vFormData.fine_amount) : null,
+      };
+      await apiFetch('/code-enforcement/violations', { method: 'POST', body: JSON.stringify(vPayload) });
       addToast('Violation created', 'success');
       clearVFormDraft();
       setVFormOpen(false);
@@ -288,7 +293,11 @@ export default function CodeEnforcementPage() {
     if (!isValid) return;
     setSubmitting(true);
     try {
-      await apiFetch('/code-enforcement/tows', { method: 'POST', body: JSON.stringify(tFormData) });
+      const tPayload = {
+        ...tFormData,
+        tow_fee: tFormData.tow_fee !== '' ? parseFloat(tFormData.tow_fee) : null,
+      };
+      await apiFetch('/code-enforcement/tows', { method: 'POST', body: JSON.stringify(tPayload) });
       addToast('Tow order created', 'success');
       clearTFormDraft();
       setTFormOpen(false);
