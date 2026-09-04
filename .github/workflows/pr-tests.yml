@@ -148,7 +148,9 @@ jobs:
     name: Client desktop tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 2026-09-04: suite consistently hits 25 min across PRs #4111/#4112/#4113.
+    # No new tests added — runner growth + existing suite depth. Raised to 35.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
