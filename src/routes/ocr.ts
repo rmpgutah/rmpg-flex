@@ -16,19 +16,27 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import {
-  extractFromText,
-  extractFromTextClaude,
   extractFromImage,
   extractTextFromPdf,
+  extractPdfMarkdown,
+  isScanStub,
+  familyFromFileName,
+  type PdfTextResult,
+  type ExtractionResult,
+  type ExtractedField,
 } from '../utils/serveIntakeExtract';
+import { aiBudget, withTimeout, ocrText } from '../utils/serveIntakeOcr';
+import { precleanText, detectHomoglyphs } from '../utils/serveIntakePreclean';
+import { finalizeFields } from '../utils/serveIntakeValidate';
 import { extractVision, extractVisionWorkersAI } from '../utils/visionExtract';
 import type { OcrProfileSelector } from '../utils/ocrProfiles';
 import { getContainer } from '@cloudflare/containers';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
 import { getOpenAiKey } from '../utils/openai';
 import { getProviderCooldownReason } from '../utils/callAi';
-
+import { log } from '../utils/logger';
 import { dbErrorResponse } from '../utils/dbErrors';
+
 const ocr = new Hono<Env>();
 
 const PDF_TOOLS_NAME = 'shared';
@@ -40,37 +48,23 @@ const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer']
 // Mirrors serveIntake.ts MIN_CLIENT_TEXT_CHARS.
 const MIN_CLIENT_TEXT_CHARS = 200;
 
-// Per-call timeout ceilings — mirror serveIntake.ts so the in-page preview
-// path can't hang forever on a stalled Vision/PDF/LLM call (the "stuck on
-// upload" failure mode the commit pipeline already guards against). The
-// catch block below turns a thrown timeout into a clean HTTP 500.
-// Per-ATTEMPT ceiling, raised from 35s on 2026-07-24 to match serveIntake.ts.
-const AI_TIMEOUT_MS = 45_000;
+// toMarkdown (env.AI.toMarkdown) is zero-neuron — it walks the PDF StructTree
+// without any model inference, so it gets a tight ceiling separate from the
+// shared AI budget. Mirror serveIntake.ts.
+const TOMARKDOWN_TIMEOUT_MS = 8_000;
 const CONTAINER_TIMEOUT_MS = 12_000;
 
-// Per-attempt ceilings do NOT compose, and the image path below is a THREE-leg
-// sequential fallback (Claude vision → profile-aware Workers-AI → legacy
-// extractor). At the old flat 35s that was already a 105s worst case — past the
-// ~100s point where Cloudflare's edge abandons the request with a 524 and our
-// clean "timed out" error is replaced by an opaque edge failure.
-//
-// So the legs share one deadline: each attempt gets
-// min(perLegCeiling, budgetRemaining), and the total can never breach the cutoff
-// no matter how many fallbacks are added later.
-const TOTAL_AI_BUDGET_MS = 90_000;
+// aiBudget + withTimeout are imported from serveIntakeOcr.ts so the per-attempt
+// ceiling (AI_TIMEOUT_MS) and the shared total-budget (TOTAL_AI_BUDGET_MS) are
+// defined exactly once. A local copy would silently diverge when the canonical
+// values are tuned in serveIntakeOcr.ts (happened during the 35→45 s raise).
 
-/** A shared deadline for one sequential fallback chain. See serveIntake.ts. */
-function aiBudget(totalMs: number = TOTAL_AI_BUDGET_MS): (perLegMs?: number) => number {
-  const start = Date.now();
-  return (perLegMs: number = AI_TIMEOUT_MS) =>
-    Math.min(perLegMs, Math.max(0, totalMs - (Date.now() - start)));
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
-  ]);
+function emptyExtraction(model: string, error?: string): ExtractionResult {
+  return {
+    success: false, documentType: 'other', confidence: 0,
+    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
+    model, ms: 0, error,
+  };
 }
 
 // GET /api/ocr/claude-health — verify the configured Claude key + model can be
@@ -195,20 +189,116 @@ ocr.post('/scan-document', async (c) => {
         profile: sel, model: r.model, extractionMs: r.ms, error: r.error,
       });
     }
+
     if (file.type === 'application/pdf') {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      // Shared deadline so the container's time counts against the total too.
-      const leg = aiBudget();
-      const txt = await withTimeout(extractTextFromPdf(container, bytes, file.name || 'doc.pdf'), leg(CONTAINER_TIMEOUT_MS), 'PDF text extraction timed out');
-      const r = await withTimeout(extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA), leg(), 'Text extraction timed out');
+
+      // Optional browser-extracted pdfjs text sent alongside the file.
+      // If present and long enough, it skips both the toMarkdown tier and the
+      // container — mirrors the /serve-intake/scan-document path so the two
+      // endpoints stay behaviorally identical.
+      const clientText = (() => {
+        const raw = form.get('client_text');
+        return typeof raw === 'string' ? raw.trim() : '';
+      })();
+
+      let text: string;
+      let pageCount = 0;
+      let ocrEngine: string;
+
+      // Tier 1 — zero-neuron structured extraction: env.AI.toMarkdown() walks
+      // the PDF StructTree and avoids the two-column interleaving hazard that
+      // pdfjs's positional concatenation produces on court forms. Preferred
+      // over client text because pdfjs is exactly the source of that hazard.
+      const EMPTY_PDF: PdfTextResult = { text: '', source: 'empty', structured: false, page_count: 0 };
+      const md = await withTimeout(
+        extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+        TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+      ).catch(() => EMPTY_PDF);
+
+      if (md.text && !isScanStub(md.text, md.page_count)) {
+        text = md.text;
+        pageCount = md.page_count;
+        ocrEngine = 'workers-ai-tomarkdown';
+        log.info('ocr/scan-document: toMarkdown structured extraction used', {
+          traceId: c.get('traceId'), file: file.name, chars: md.text.length,
+          structured: md.structured, page_count: md.page_count,
+        });
+      } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        // Tier 2 — browser-extracted pdfjs text (born-digital PDFs only).
+        text = clientText;
+        ocrEngine = 'pdfjs-client';
+      } else {
+        // Tier 3 — container Tesseract (scan-only PDFs / toMarkdown misses).
+        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+        const leg = aiBudget();
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            leg(CONTAINER_TIMEOUT_MS), 'PDF text extraction timed out',
+          );
+          text = txt.text;
+          pageCount = txt.page_count ?? 0;
+          ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
+        } catch (e) {
+          log.warn('ocr/scan-document: container unavailable, using empty text', {
+            traceId: c.get('traceId'),
+            error: e instanceof Error ? e.message : String(e),
+          });
+          text = clientText;
+          ocrEngine = 'container-unavailable';
+        }
+      }
+
+      // Single choke point for OCR-noise scrubbing — applied after tier
+      // selection so every path (toMarkdown, pdfjs-client, container) receives
+      // homoglyph normalization, watermark-stamp removal, and typography fixes
+      // before reaching the model or the ZIP/state validator. Idempotent, so
+      // already-clean container text is safe to pass through.
+      const rawTextForHomoglyphCheck = text;
+      text = precleanText(text);
+      const homoglyphSubstitutions = detectHomoglyphs(rawTextForHomoglyphCheck);
+      if (homoglyphSubstitutions.length > 0) {
+        log.info('ocr/scan-document: homoglyph substitutions detected', {
+          traceId: c.get('traceId'), substitutions: homoglyphSubstitutions,
+        });
+      }
+
+      // Derive the document family from the filename so both the Claude and
+      // Workers-AI extraction legs get the same layout-specific prompt guidance
+      // that the /upload commit path uses — without this, the preview (what the
+      // officer reviews) and the commit (what saves to the DB) could disagree.
+      const docFamily = familyFromFileName(file.name);
+      const r: ExtractionResult = text.trim().length >= 20
+        ? await ocrText(c.env, text, docFamily)
+        : emptyExtraction('none', 'Insufficient text to extract');
+
+      // finalizeFields = normalizeFields + validateFields as a pair.
+      // The officer reviews THIS preview, so it must show the same normalized,
+      // validated values that /upload will actually commit. Previously this
+      // path returned raw model output while /upload normalized — the officer
+      // then reviewed "6/26/2026" / "Utah" / "(435) 986-1200" on screen but
+      // the DB received "2026-06-26" / "UT" / "4359861200". In this domain,
+      // reviewing one value and saving another is a correctness failure, not
+      // a display quirk.
+      const preview = finalizeFields(r.fields, new Date().toISOString());
+      if (preview.issues.length > 0) {
+        log.warn('ocr/scan-document: validation issues', {
+          traceId: c.get('traceId'),
+          count: preview.issues.length,
+          issues: preview.issues.slice(0, 10),
+        });
+      }
+
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
-        fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        pageCount: txt.page_count ?? null, ocrUsed: true, ocrEngine: 'workers-ai-text',
+        fields: preview.adjusted, validationIssues: preview.issues,
+        rawText: r.rawText, allDates: r.allDates,
+        pageCount, ocrUsed: true, ocrEngine,
         model: r.model, extractionMs: r.ms, error: r.error,
       });
     }
+
     return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
   } catch (err) {
     return dbErrorResponse(c, err, 'Extraction failed');
