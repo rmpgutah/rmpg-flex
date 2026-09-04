@@ -705,7 +705,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-appearance' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset this category to default
                 </button>
@@ -770,7 +770,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-layout' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset to Default
                 </button>
@@ -817,7 +817,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-snap' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset this category to default
                 </button>
@@ -871,7 +871,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-taskbar' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset this category to default
                 </button>
