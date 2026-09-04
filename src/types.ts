@@ -132,6 +132,7 @@ export type Bindings = {
   HIBP_API_KEY?: string;
   COURTLISTENER_TOKEN?: string;
   CARXE_API_KEY?: string;
+  AUTO_DEV_API_KEY?: string;
   CARXE_API_BASE?: string;
   PLATE_TO_VIN_API_KEY?: string;
   VIN_DECODER_API_KEY?: string;

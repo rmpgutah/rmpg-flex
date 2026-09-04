@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Car, Loader2 } from 'lucide-react';
 import FormModal from './FormModal';
 import FormField from './records/FormField';
+import PlateLookupBar, { type PlateLookupResult } from './PlateLookupBar';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
@@ -453,6 +454,26 @@ export default function VehicleFormModal({
 
       {activeSection === 'vehicle' && (
         <>
+          {/* Plate-to-VIN quick fill — new records only */}
+          {!editingVehicle && (
+            <PlateLookupBar
+              defaultState={form.state}
+              defaultPlate={form.plate_number}
+              onApply={(r: PlateLookupResult) => {
+                setForm((prev) => ({
+                  ...prev,
+                  vin: r.vin || prev.vin,
+                  year: r.year ? String(r.year) : prev.year,
+                  make: r.make || prev.make,
+                  model: r.model || prev.model,
+                  trim: r.trim || prev.trim,
+                  transmission: r.transmission || prev.transmission,
+                  drive_type: r.drivetrain || prev.drive_type,
+                }));
+              }}
+            />
+          )}
+
           {/* Plate / State */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Plate Number">
