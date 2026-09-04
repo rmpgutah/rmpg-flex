@@ -35,7 +35,7 @@ export default function AdminEmailRulesTab() {
         conditions_json: JSON.stringify(r.conditions ?? {}, null, 2),
         actions_json: JSON.stringify(r.actions ?? [], null, 2),
       }))))
-      .catch(err => console.error('Failed to load rules:', err));
+      .catch(err => { console.error('Failed to load rules:', err); addToast(err instanceof Error ? err.message : 'Failed to load email rules', 'error'); });
 
   useEffect(() => {
     load();
