@@ -154,7 +154,9 @@ jobs:
     # active data; 24 jsdom environments in parallel each hold 300–500 MB).
     # Raised to 12288 to match client-tests; parallelism capped at 2 forks in
     # vitest.desktop.config.ts to bound peak RSS across concurrent environments.
-    timeout-minutes: 35
+    # 2026-09-04: maxForks:2 trades parallelism for memory; wall-clock rose past
+    # 35 min (job cancelled at timeout). Raised to 60 to match client-tests.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
