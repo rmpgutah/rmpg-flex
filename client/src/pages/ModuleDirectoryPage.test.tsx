@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 const apiFetchMock = vi.fn().mockResolvedValue({});
@@ -23,22 +23,22 @@ describe('ModuleDirectoryPage (post-catalog-extraction regression)', () => {
     apiFetchMock.mockClear();
   });
 
-  it('renders category navigation from the extracted NAV_CATEGORIES', () => {
-    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+  it('renders category navigation from the extracted NAV_CATEGORIES', async () => {
+    await act(async () => { render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>); });
     expect(screen.getByText(/Modules/i)).toBeInTheDocument();
     expect(screen.getAllByText(/functions/i).length).toBeGreaterThan(0);
   });
 
-  it('search filters the catalog down to matching modules', () => {
-    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+  it('search filters the catalog down to matching modules', async () => {
+    await act(async () => { render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>); });
     const search = screen.getByPlaceholderText(/Search modules/i);
     fireEvent.change(search, { target: { value: 'Dispatch Console' } });
     expect(screen.getByText('Dispatch Console')).toBeInTheDocument();
     expect(screen.queryByText('Body Cameras')).not.toBeInTheDocument();
   });
 
-  it('favoriting a module persists to the shared FAVORITES_KEY in localStorage', () => {
-    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+  it('favoriting a module persists to the shared FAVORITES_KEY in localStorage', async () => {
+    await act(async () => { render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>); });
     const search = screen.getByPlaceholderText(/Search modules/i);
     fireEvent.change(search, { target: { value: 'Dispatch Console' } });
     const star = screen.getByLabelText(/Add Dispatch Console to favorites/i);
@@ -54,8 +54,8 @@ describe('ModuleDirectoryPage — Pin to Taskbar', () => {
     apiFetchMock.mockClear();
   });
 
-  it('right-clicking a module card offers "Pin to Taskbar"', () => {
-    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+  it('right-clicking a module card offers "Pin to Taskbar"', async () => {
+    await act(async () => { render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>); });
     const search = screen.getByPlaceholderText(/Search modules/i);
     fireEvent.change(search, { target: { value: 'Dispatch Console' } });
     fireEvent.contextMenu(screen.getByText('Dispatch Console'));
@@ -73,22 +73,22 @@ describe('ModuleDirectoryPage — feature-toggle gating', () => {
     vi.mocked(isFeatureEnabled).mockReturnValue(true);
   });
 
-  it('hides Fleet Management when feature_fleet is disabled', () => {
+  it('hides Fleet Management when feature_fleet is disabled', async () => {
     vi.mocked(isFeatureEnabled).mockImplementation((path: string) => path !== '/fleet');
-    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+    await act(async () => { render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>); });
     const search = screen.getByPlaceholderText(/Search modules/i);
     fireEvent.change(search, { target: { value: 'Fleet Management' } });
     expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
   });
 
-  it('shows Fleet Management when feature_fleet is enabled', () => {
-    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+  it('shows Fleet Management when feature_fleet is enabled', async () => {
+    await act(async () => { render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>); });
     const search = screen.getByPlaceholderText(/Search modules/i);
     fireEvent.change(search, { target: { value: 'Fleet Management' } });
     expect(screen.getByText('Fleet Management')).toBeInTheDocument();
   });
 
-  it('recomputes visibleCategories and hides Fleet Management after flagsTick changes on a rerender (no prop change)', () => {
+  it('recomputes visibleCategories and hides Fleet Management after flagsTick changes on a rerender (no prop change)', async () => {
     let mockTick = 0;
     vi.mocked(useFeatureFlags).mockImplementation(() => mockTick);
     vi.mocked(isFeatureEnabled).mockReturnValue(true);
@@ -99,7 +99,8 @@ describe('ModuleDirectoryPage — feature-toggle gating', () => {
     // all, which would make this test pass vacuously regardless of whether
     // flagsTick is wired correctly.
     const renderUi = () => <MemoryRouter><ModuleDirectoryPage /></MemoryRouter>;
-    const { rerender } = render(renderUi());
+    let rerender!: ReturnType<typeof render>['rerender'];
+    await act(async () => { ({ rerender } = render(renderUi())); });
     const search = screen.getByPlaceholderText(/Search modules/i);
     fireEvent.change(search, { target: { value: 'Fleet Management' } });
     expect(screen.getByText('Fleet Management')).toBeInTheDocument();
