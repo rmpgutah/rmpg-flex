@@ -434,7 +434,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
           <button
             type="button"
             className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300"
-            onClick={() => apiFetch('/dialer-connect/presence', { method: 'PUT', body: JSON.stringify({ status: presence, message: presenceMsg }) }).then(() => { addToast('Presence updated', 'success'); load(); }).catch(() => addToast('Failed to update presence', 'error'))}
+            onClick={() => apiFetch('/dialer-connect/presence', { method: 'PUT', body: JSON.stringify({ status: presence, message: presenceMsg }) }).then(() => { addToast('Presence updated', 'success'); return load(); }).catch(() => addToast('Failed to update presence', 'error'))}
           >Set presence</button>
           <div className="space-y-1 pt-2">
             {agents.map((a) => (
@@ -586,12 +586,12 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
               ><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: vmToPdf(v), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
-              <IconAction label="Copy transcript" onClick={() => copyToClipboard(v.transcript || '').then((ok) => addToast(ok ? 'Copied transcript' : 'Nothing to copy', ok ? 'success' : 'warning'))}><Copy className="w-3 h-3" /></IconAction>
-              <IconAction label={v.starred ? 'Unstar' : 'Star'} onClick={() => patch(v.id, { starred: !v.starred })}><Star className={`w-3 h-3 ${v.starred ? 'text-brand-400' : ''}`} /></IconAction>
-              <IconAction label="Mark heard" onClick={() => patch(v.id, { is_read: !v.is_read })}><CheckCheck className="w-3 h-3" /></IconAction>
+              <IconAction label="Copy transcript" onClick={() => copyToClipboard(v.transcript || '').then((ok) => addToast(ok ? 'Copied transcript' : 'Nothing to copy', ok ? 'success' : 'warning')).catch(() => addToast('Copy failed', 'error'))}><Copy className="w-3 h-3" /></IconAction>
+              <IconAction label={v.starred ? 'Unstar' : 'Star'} onClick={() => patch(v.id, { starred: !v.starred }).catch((e) => addToast(e instanceof Error ? e.message : 'Update failed', 'error'))}><Star className={`w-3 h-3 ${v.starred ? 'text-brand-400' : ''}`} /></IconAction>
+              <IconAction label="Mark heard" onClick={() => patch(v.id, { is_read: !v.is_read }).catch((e) => addToast(e instanceof Error ? e.message : 'Update failed', 'error'))}><CheckCheck className="w-3 h-3" /></IconAction>
               <IconAction label="Return call" onClick={() => { window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(v.from_number || '') } })); addToast('Returning call', 'success'); }}><Phone className="w-3 h-3" /></IconAction>
-              <IconAction label="Archive" onClick={() => patch(v.id, { archived: !v.archived })}><Archive className="w-3 h-3" /></IconAction>
-              <IconAction label="Assign to me" onClick={() => patch(v.id, { assigned_name: exportedBy })}><UserPlus className="w-3 h-3" /></IconAction>
+              <IconAction label="Archive" onClick={() => patch(v.id, { archived: !v.archived }).catch((e) => addToast(e instanceof Error ? e.message : 'Update failed', 'error'))}><Archive className="w-3 h-3" /></IconAction>
+              <IconAction label="Assign to me" onClick={() => patch(v.id, { assigned_name: exportedBy }).catch((e) => addToast(e instanceof Error ? e.message : 'Update failed', 'error'))}><UserPlus className="w-3 h-3" /></IconAction>
               {v.call_id ? (
                 <IconAction label="Open CFS" onClick={() => navigate(`/dispatch?call_id=${v.call_id}`)}><Link2 className="w-3 h-3" /></IconAction>
               ) : null}
@@ -694,7 +694,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
         <input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
         <input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
         <button type="button" onClick={() => exportCsv().catch((e) => addToast(String(e), 'error'))} className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300">CSV</button>
-        <button type="button" onClick={() => load()} className="ml-auto text-rmpg-400" aria-label="Refresh history"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => { void load(); }} className="ml-auto text-rmpg-400" aria-label="Refresh history"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {summary && (
         <div className="px-3 py-1 border-b border-rmpg-800 flex gap-3 text-[9px] font-mono text-rmpg-400 shrink-0">
@@ -719,13 +719,17 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
         onChange={async (e) => {
           const file = e.target.files?.[0];
           if (!file || uploadId == null) return;
-          const fd = new FormData();
-          fd.append('audio', file);
-          await apiPostForm(`/dialer-connect/calls/${uploadId}/recording`, fd);
-          addToast('Recording attached', 'success');
-          setUploadId(null);
-          e.target.value = '';
-          await load();
+          try {
+            const fd = new FormData();
+            fd.append('audio', file);
+            await apiPostForm(`/dialer-connect/calls/${uploadId}/recording`, fd);
+            addToast('Recording attached', 'success');
+            setUploadId(null);
+            e.target.value = '';
+            await load();
+          } catch (err) {
+            addToast(err instanceof Error ? err.message : 'Upload failed', 'error');
+          }
         }}
       />
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-2 space-y-1">
@@ -768,7 +772,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
                       notes: noteDraft[c.id] ?? c.notes,
                       tags: tagDraft[c.id] ?? parseTags(c.tags),
                     }),
-                  }).then(() => { addToast('Saved notes', 'success'); load(); })}
+                  }).then(() => { addToast('Saved notes', 'success'); return load(); }).catch((e) => addToast(e instanceof Error ? e.message : 'Save failed', 'error'))}
                 >Save</button>
               </div>
             )}
@@ -791,7 +795,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
               ><Download className="w-3 h-3" /></IconAction>
               <IconAction label="Print transcript PDF" onClick={() => openDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><Printer className="w-3 h-3" /></IconAction>
               <IconAction label="Download PDF" onClick={() => downloadDialerCallRecordPdf({ record: callToPdf(c), exportedBy })}><FileDown className="w-3 h-3" /></IconAction>
-              <IconAction label="Copy transcript" onClick={() => copyToClipboard(c.transcript || counterparty(c)).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}><Copy className="w-3 h-3" /></IconAction>
+              <IconAction label="Copy transcript" onClick={() => copyToClipboard(c.transcript || counterparty(c)).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error')).catch(() => addToast('Copy failed', 'error'))}><Copy className="w-3 h-3" /></IconAction>
               <IconAction label="Redial" onClick={() => window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: normalizeDialTarget(counterparty(c)) } }))}><PhoneCall className="w-3 h-3" /></IconAction>
               <IconAction label="Star" onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, { method: 'PATCH', body: JSON.stringify({ starred: !c.starred }) }).then(load).catch(() => addToast('Failed to update star', 'error'))}><Star className={`w-3 h-3 ${c.starred ? 'text-brand-400' : ''}`} /></IconAction>
               <IconAction label="Attach recording" onClick={() => { setUploadId(c.id); fileRef.current?.click(); }}><Link2 className="w-3 h-3" /></IconAction>
