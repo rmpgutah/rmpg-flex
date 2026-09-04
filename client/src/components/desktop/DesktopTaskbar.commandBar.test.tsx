@@ -11,13 +11,26 @@ vi.mock('../../hooks/useClock', () => ({ useClock: () => ({ time: '12:00:00', da
 vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', role: 'officer' } }),
 }));
-// Clock in/out failures are surfaced via useToast() (see handleClockToggle);
+// Clock success/warning toasts are surfaced via useToast() in handleMileageModalSuccess;
 // without a real ToastProvider in the tree it throws "useToast must be used
-// within a ToastProvider". Mock it the same way useAuth is mocked above, and
-// capture calls so the error-surfacing test can assert on them.
+// within a ToastProvider". Mock it and capture calls for assertions.
 const addToastMock = vi.fn();
 vi.mock('../ToastProvider', () => ({
   useToast: () => ({ addToast: addToastMock }),
+}));
+// ClockInOutMileageModal is now the intermediary for all clock-in/out actions.
+// Mock it so tests can drive the happy-path without rendering the real form
+// (which requires mileage entry, vehicle selection, and its own API calls).
+vi.mock('../time/ClockInOutMileageModal', () => ({
+  default: ({ isOpen, onSuccess, isClockingOut, onClose }: any) => {
+    if (!isOpen) return null;
+    return (
+      <div data-testid="mileage-modal" data-clocking-out={String(isClockingOut)}>
+        <button data-testid="modal-submit" onClick={() => onSuccess({})}>Submit</button>
+        <button data-testid="modal-cancel" onClick={onClose}>Cancel</button>
+      </div>
+    );
+  },
 }));
 
 const navigateMock = vi.fn();
@@ -34,24 +47,26 @@ describe('DesktopTaskbar — command bar quick actions', () => {
     fireEvent.click(screen.getByLabelText('Open app launcher'));
   }
 
-  it('shows Clock In when off duty, and clicking it calls the clock-in endpoint', async () => {
+  it('shows Clock In when off duty, and clicking it opens the mileage modal in clock-in mode', async () => {
     apiFetchMock.mockImplementation((path: string) => path === '/personnel/time/mine/active'
       ? Promise.resolve({ active: false, entry: null })
       : Promise.resolve({}));
     openLauncher();
     await waitFor(() => expect(screen.getByText('Clock In')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Clock In'));
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/personnel/time/clock-in', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(screen.getByTestId('mileage-modal')).toBeInTheDocument());
+    expect(screen.getByTestId('mileage-modal').getAttribute('data-clocking-out')).toBe('false');
   });
 
-  it('shows Clock Out when on duty, and clicking it calls the clock-out endpoint', async () => {
+  it('shows Clock Out when on duty, and clicking it opens the mileage modal in clock-out mode', async () => {
     apiFetchMock.mockImplementation((path: string) => path === '/personnel/time/mine/active'
       ? Promise.resolve({ active: true, entry: { clock_in: new Date().toISOString() } })
       : Promise.resolve({}));
     openLauncher();
     await waitFor(() => expect(screen.getByText('Clock Out')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Clock Out'));
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/personnel/time/clock-out', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(screen.getByTestId('mileage-modal')).toBeInTheDocument());
+    expect(screen.getByTestId('mileage-modal').getAttribute('data-clocking-out')).toBe('true');
   });
 
   it('New Call navigates to /dispatch?newCall=1, New Incident to /incidents?newIncident=1', async () => {
@@ -65,27 +80,18 @@ describe('DesktopTaskbar — command bar quick actions', () => {
     expect(navigateMock).toHaveBeenCalledWith('/incidents?newIncident=1');
   });
 
-  it('surfaces a visible toast when the clock-in call fails', async () => {
-    apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/personnel/time/mine/active') return Promise.resolve({ active: false, entry: null });
-      if (path === '/personnel/time/clock-in') return Promise.reject(new Error('Already clocked in'));
-      return Promise.resolve({});
-    });
+  it('shows a success toast after confirming clock-in through the mileage modal', async () => {
+    apiFetchMock.mockResolvedValue({ active: false, entry: null });
     openLauncher();
     await waitFor(() => expect(screen.getByText('Clock In')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Clock In'));
-    await waitFor(() => expect(addToastMock).toHaveBeenCalledWith('Already clocked in', 'error'));
+    await waitFor(() => expect(screen.getByTestId('mileage-modal')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('modal-submit'));
+    await waitFor(() => expect(addToastMock).toHaveBeenCalledWith('Clocked in successfully', 'success'));
   });
 
-  it('rapid double-click on the clock toggle only fires the endpoint once (in-flight guard)', async () => {
-    let resolveClockIn: (() => void) | undefined;
-    apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/personnel/time/mine/active') return Promise.resolve({ active: false, entry: null });
-      if (path === '/personnel/time/clock-in') {
-        return new Promise<void>(resolve => { resolveClockIn = () => resolve(); });
-      }
-      return Promise.resolve({});
-    });
+  it('rapid double-click on the clock toggle only opens the modal once (in-flight guard)', async () => {
+    apiFetchMock.mockResolvedValue({ active: false, entry: null });
     openLauncher();
     await waitFor(() => expect(screen.getByText('Clock In')).toBeInTheDocument());
     const clockButton = screen.getByText('Clock In');
@@ -107,12 +113,13 @@ describe('DesktopTaskbar — command bar quick actions', () => {
     // invocations run synchronously back-to-back against the SAME
     // pre-update closure — both reading stale `clockBusy === false` — which
     // is exactly the race `clockToggleInFlightRef` exists to close.
+    // The idempotent setMileageModalOpen(true) call on the second invocation
+    // must not produce a second modal in the DOM.
     act(() => {
       clockButton.click();
       clockButton.click();
     });
 
-    resolveClockIn?.();
-    await waitFor(() => expect(apiFetchMock.mock.calls.filter(c => c[0] === '/personnel/time/clock-in').length).toBe(1));
+    await waitFor(() => expect(screen.getAllByTestId('mileage-modal')).toHaveLength(1));
   });
 });
