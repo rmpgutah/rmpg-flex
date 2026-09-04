@@ -178,7 +178,7 @@ async function persistJobOps(
     ops: mergedOps,
   });
   const json = intakePatchFromPreview(row.parsed_data, preview);
-  await execute(db, `UPDATE serve_queue SET parsed_data = ?, updated_at = datetime('now') WHERE id = ?`, json, id);
+  await execute(db, `UPDATE serve_queue SET parsed_data = ?, updated_at = datetime(\'now\') WHERE id = ?`, json, id);
   return preview;
 }
 
@@ -203,7 +203,7 @@ function restoreServeOfficerUnit(
   // Never drop a unit off a different live CFS (patrol/alarm) just because
   // the officer logged a paper-serve attempt.
   return execute(db,
-    `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+    `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime(\'now\'), updated_at = datetime(\'now\')
      WHERE officer_id = ?
        AND status NOT IN ('off_duty','out_of_service')
        AND (current_call_id IS NULL OR current_call_id = ?)`,
@@ -517,7 +517,7 @@ sv.put('/reorder', async (c) => {
   // D1 doesn't support transactions across multiple .run() calls in
   // a single batch the same way as better-sqlite3; use db.batch().
   await db.batch(body.items.map((it) => db.prepare(
-    "UPDATE serve_queue SET sort_order = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE serve_queue SET sort_order = ?, updated_at = datetime(\'now\') WHERE id = ?",
   ).bind(it.sort_order, it.id)));
   return c.json({ success: true, updated: body.items.length });
 });
@@ -797,12 +797,12 @@ sv.post('/assignments/assign', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const b = await c.req.json<any>();
-  const jobIds: number[] = Array.isArray(b.job_ids) ? b.job_ids.map((x: any) => parseInt(x, 10)).filter((n: number) => !isNaN(n)) : [];
+  const jobIds: number[] = Array.isArray(b.job_ids) ? b.job_ids.map((x: any) => parseInt(x, 10)).filter((n: number) => Number.isFinite(n) && n > 0) : [];
   if (!jobIds.length) return c.json({ error: 'job_ids required' }, 400);
   let officerId: number | null = null;
   if (b.officer_id != null) {
     officerId = parseInt(b.officer_id, 10);
-    if (isNaN(officerId)) return c.json({ error: 'invalid officer_id' }, 400);
+    if (!Number.isFinite(officerId) || officerId < 1) return c.json({ error: 'invalid officer_id' }, 400);
     const ok = await queryFirst<any>(db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", officerId);
     if (!ok) return c.json({ error: 'officer_id is not an assignable user' }, 400);
   }
@@ -815,7 +815,7 @@ sv.post('/assignments/assign', async (c) => {
     if (!job) { skipped.push(id); continue; }
     if (['served', 'cancelled', 'failed'].includes(job.status)) { skipped.push(id); continue; }
     const newStatus = officerId == null ? 'pending' : (job.status === 'pending' ? 'assigned' : job.status);
-    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?", officerId, newStatus, id);
+    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?", officerId, newStatus, id);
     await execute(db,
       `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`,
       user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null }));
@@ -1344,7 +1344,7 @@ sv.get('/:id', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const row = await queryFirst<any>(
     db,
@@ -1397,7 +1397,7 @@ sv.get('/:id/audit', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const queueIdStr = String(id);
   const rows = await query<any>(
@@ -1533,7 +1533,7 @@ sv.patch('/:id/address-class', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
   const VALID_KLASS = new Set([
     'residential', 'business', 'corporate', 'small_business',
@@ -1569,13 +1569,13 @@ sv.patch('/:id/ops', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   const db = getDb(c.env);
   const preview = await persistJobOps(db, id, body);
   if (!preview) return c.json({ error: 'Not found' }, 404);
   if (typeof body.court_date === 'string' && await columnExists(db, 'serve_queue', 'court_date')) {
-    await execute(db, `UPDATE serve_queue SET court_date = ?, updated_at = datetime('now') WHERE id = ?`, body.court_date || null, id);
+    await execute(db, `UPDATE serve_queue SET court_date = ?, updated_at = datetime(\'now\') WHERE id = ?`, body.court_date || null, id);
   }
   return c.json({
     success: true,
@@ -1625,7 +1625,7 @@ export function deviceAttemptAt(raw: unknown): string | null {
 
 async function logAttempt(c: Context<Env>, defaultResult: string) {
   const id = parseInt(c.req.param('id') ?? '', 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = (await c.req.json().catch(() => ({}))) as any;
   const user = c.get('user') as { id: number; role: string } | undefined;
   const db = getDb(c.env);
@@ -1802,13 +1802,13 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   if (hasNextAttemptCol) {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime(\'now\')${closedClause} WHERE id = ?`,
       nextNum, newStatus, body.next_attempt_note || null, id,
     );
   } else {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime(\'now\')${closedClause} WHERE id = ?`,
       nextNum, newStatus, id,
     );
   }
@@ -1823,7 +1823,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // transitions calls that are still open — never re-opens a cleared call.
     if (newStatus === 'served' && queue.call_id) {
       execute(db,
-        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime('now'),
+        `UPDATE calls_for_service SET status = 'cleared', cleared_at = datetime(\'now\'),
          ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime('now')
          WHERE id = ? AND status NOT IN ('cleared','archived')`,
         queue.call_id,
@@ -1865,7 +1865,7 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     }).catch(() => {});
     if (queue.call_id) {
       execute(db,
-        `UPDATE calls_for_service SET ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime('now')
+        `UPDATE calls_for_service SET ${STAMP_ONSCENE_DURATION_SQL}, updated_at = datetime(\'now\')
          WHERE id = ? AND onscene_at IS NOT NULL`,
         queue.call_id,
       ).catch(() => {});
@@ -2013,7 +2013,7 @@ sv.post('/:id/substitute-service', async (c) => {
   body.result = 'sub_served';
   body.attempt_type = body.attempt_type ?? 'substitute';
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number; role?: string } | undefined;
   const db = getDb(c.env);
   const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null; officer_id: number | null }>(
@@ -2047,7 +2047,7 @@ sv.post('/:id/substitute-service', async (c) => {
   await linkServeAttemptToShift(db, Number(ins.meta.last_row_id) || 0, officerForAttempt != null ? Number(officerForAttempt) : null).catch(() => {});
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now'), closed_at = datetime('now') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime(\'now\'), closed_at = datetime(\'now\') WHERE id = ?`,
     nextNum, id,
   );
   // generateServeCharges must never surface a billing failure as an HTTP 500
@@ -2092,7 +2092,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('queueId'), 10);
   const attemptId = parseInt(c.req.param('attemptId'), 10);
-  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1 || !Number.isFinite(attemptId) || attemptId < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const db = getDb(c.env);
 
@@ -2260,7 +2260,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
       }
       if (nextStatus !== queue.status) {
         await execute(db,
-          `UPDATE serve_queue SET status = ?, updated_at = datetime('now') WHERE id = ?`,
+          `UPDATE serve_queue SET status = ?, updated_at = datetime(\'now\') WHERE id = ?`,
           nextStatus, queueId);
         recomputed = { status: nextStatus };
         if (nextStatus === 'served' || nextStatus === 'failed') {
@@ -2297,7 +2297,7 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('queueId'), 10);
   const attemptId = parseInt(c.req.param('attemptId'), 10);
-  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1 || !Number.isFinite(attemptId) || attemptId < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const user = c.get('user') as { id: number } | undefined;
 
@@ -2347,7 +2347,7 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
   const clearClosed = (newStatus !== 'served' && newStatus !== 'failed') ? ", closed_at = NULL" : "";
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${clearClosed} WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime(\'now\')${clearClosed} WHERE id = ?`,
     newCount, newStatus, queueId,
   );
 
@@ -2400,7 +2400,7 @@ sv.post('/:queueId/renumber-attempts', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('queueId'), 10);
-  if (isNaN(queueId)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const user = c.get('user') as { id: number } | undefined;
 
@@ -2464,7 +2464,7 @@ sv.get('/:id/gps-trail', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const rows = await query<{ attempt_at: string; latitude: number | null; longitude: number | null; result: string }>(
     getDb(c.env),
     `SELECT attempt_at, latitude, longitude, result FROM serve_attempts
@@ -2497,7 +2497,7 @@ sv.patch('/bulk-deadline', async (c) => {
   const updated = await executeInChunks(
     db,
     body.ids,
-    (phs) => `UPDATE serve_queue SET deadline = ?, updated_at = datetime('now') WHERE id IN (${phs})`,
+    (phs) => `UPDATE serve_queue SET deadline = ?, updated_at = datetime(\'now\') WHERE id IN (${phs})`,
     [body.deadline],
   );
   return c.json({ success: true, updated });
@@ -2514,7 +2514,7 @@ sv.patch('/bulk-assign', async (c) => {
   const updated = await executeInChunks(
     db,
     body.ids,
-    (phs) => `UPDATE serve_queue SET officer_id = ?, updated_at = datetime('now') WHERE id IN (${phs})`,
+    (phs) => `UPDATE serve_queue SET officer_id = ?, updated_at = datetime(\'now\') WHERE id IN (${phs})`,
     [officerId],
   );
   return c.json({ success: true, updated });
@@ -2525,7 +2525,7 @@ sv.get('/:id/comments', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const rows = await query<Record<string, unknown>>(
     getDb(c.env),
     `SELECT id, author_name, author_role, body, created_at, edited_at, is_system, parent_id
@@ -2542,7 +2542,7 @@ sv.post('/:id/comments', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id?: number; role?: string; full_name?: string; username?: string } | undefined;
   const body = await c.req.json<{ body: string; parent_id?: number }>().catch(() => null);
   const text = (body?.body ?? '').trim().slice(0, 4000);
@@ -2569,7 +2569,7 @@ sv.patch('/:id/court-filing', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<{ filed?: boolean; filed_at?: string }>().catch(() => null);
   const filedAt = body?.filed
     ? (body.filed_at ?? new Date().toISOString().slice(0, 10))
@@ -2627,7 +2627,7 @@ sv.get('/:id/address-history', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const job = await queryFirst<{ recipient_address: string }>(db,
     'SELECT recipient_address FROM serve_queue WHERE id = ?', id,
@@ -2720,7 +2720,7 @@ sv.get('/:id/affidavit-prefill', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const job = await queryFirst<{ recipient_name: string; recipient_address: string; case_number: string; document_type: string; attorney_name: string }>(db,
     'SELECT recipient_name, recipient_address, case_number, document_type, attorney_name FROM serve_queue WHERE id = ?', id,

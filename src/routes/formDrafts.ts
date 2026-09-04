@@ -35,7 +35,7 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
 formDrafts.get('/:formId/:entityId?', async (c) => {
   const db = getDb(c.env);
   await ensureTable(db);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const formId = c.req.param('formId');
   const entityId = c.req.param('entityId') || DEFAULT_ENTITY;
 
@@ -56,7 +56,7 @@ formDrafts.get('/:formId/:entityId?', async (c) => {
 formDrafts.put('/:formId/:entityId?', async (c) => {
   const db = getDb(c.env);
   await ensureTable(db);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const formId = c.req.param('formId');
   const entityId = c.req.param('entityId') || DEFAULT_ENTITY;
   const body = await c.req.json().catch(() => ({}));
@@ -84,7 +84,7 @@ formDrafts.put('/:formId/:entityId?', async (c) => {
 formDrafts.delete('/:formId/:entityId?', async (c) => {
   const db = getDb(c.env);
   await ensureTable(db);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const formId = c.req.param('formId');
   const entityId = c.req.param('entityId') || DEFAULT_ENTITY;
 

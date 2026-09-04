@@ -16,7 +16,7 @@ const router = new Hono<Env>();
 
 router.get('/', requireRole(...ALL_ROLES), async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const role = (c.get('user') as { role: string } | undefined)?.role ?? '';
   const isAdmin = ADMIN_ROLES.includes(role as any);
 
@@ -40,7 +40,7 @@ router.get('/', requireRole(...ALL_ROLES), async (c) => {
 
 router.post('/', requireRole(...ALL_ROLES), async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const role = (c.get('user') as { role: string } | undefined)?.role ?? '';
   const isAdmin = ADMIN_ROLES.includes(role as any);
   const body = await c.req.json<{
@@ -89,7 +89,7 @@ router.post('/', requireRole(...ALL_ROLES), async (c) => {
 
 router.put('/:id', requireRole(...ALL_ROLES), async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const role = (c.get('user') as { role: string } | undefined)?.role ?? '';
   const isAdmin = ADMIN_ROLES.includes(role as any);
   const id = Number(c.req.param('id'));
@@ -149,7 +149,7 @@ router.put('/:id', requireRole(...ALL_ROLES), async (c) => {
 
 router.delete('/:id', requireRole(...ALL_ROLES), async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const role = (c.get('user') as { role: string } | undefined)?.role ?? '';
   const isAdmin = ADMIN_ROLES.includes(role as any);
   const id = Number(c.req.param('id'));
@@ -193,7 +193,7 @@ interface ClientFiringRecord {
 
 router.post('/firings/client', requireRole(...ALL_ROLES), async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
   const body = await c.req.json<{ firings: ClientFiringRecord[] }>().catch(() => ({ firings: [] as ClientFiringRecord[] }));
   const firings = Array.isArray(body.firings) ? body.firings : [];
 

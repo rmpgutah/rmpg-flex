@@ -70,7 +70,7 @@ jail.get('/inmates/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT i.*, u.full_name as arresting_officer_name FROM inmates i LEFT JOIN users u ON i.arresting_officer_id = u.id WHERE i.id = ?', id);
     if (!row) return c.json({ error: 'Inmate not found', code: 'NOT_FOUND' }, 404);
     return c.json({ data: row });
@@ -144,7 +144,7 @@ jail.put('/inmates/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM inmates WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Inmate not found', code: 'NOT_FOUND' }, 404);
     const b = await c.req.json<Record<string, unknown>>();
@@ -171,7 +171,7 @@ jail.delete('/inmates/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     await execute(db, 'DELETE FROM inmate_charges WHERE inmate_id = ?', id);
     await execute(db, 'DELETE FROM inmate_visitors WHERE inmate_id = ?', id);
     await execute(db, 'DELETE FROM inmate_property WHERE inmate_id = ?', id);
@@ -195,7 +195,7 @@ jail.get('/inmates/:id/charges', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM inmate_charges WHERE inmate_id = ? ORDER BY id', id);
     return c.json({ data: rows });
   } catch (err) {
@@ -210,7 +210,7 @@ jail.post('/inmates/:id/charges', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM inmates WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Inmate not found' }, 404);
     const b = await c.req.json<Record<string, unknown>>();

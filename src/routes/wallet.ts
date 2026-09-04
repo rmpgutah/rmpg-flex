@@ -85,7 +85,8 @@ async function auditCredential(c: any, actorUserId: number, action: string, wall
 // GET /api/wallet/me — my badge + wallet_id + a fresh rotating QR token.
 wallet.get('/me', async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
   const cred = await getOrCreateCredential(db, userId);
   const officer = await queryFirst<any>(db, `SELECT ${OFFICER_SELECT} FROM users WHERE id = ?`, userId);
   if (!officer) return c.json({ error: 'Officer not found' }, 404);
@@ -102,7 +103,8 @@ wallet.get('/me', async (c) => {
 // this every ~30s). Issues a credential if somehow absent.
 wallet.get('/qr-token', async (c) => {
   const db = getDb(c.env);
-  const userId = c.get('userId') as number;
+  const userId = c.get('userId') as number | undefined;
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
   const cred = await getOrCreateCredential(db, userId);
   const token = await signWalletToken(cred.wallet_id, c.env.JWT_SECRET);
   return c.json({ qr_token: token });
@@ -150,7 +152,8 @@ wallet.post('/:walletId/revoke', requireRole(...ADMIN_ROLES), async (c) => {
   const db = getDb(c.env);
   const walletId = c.req.param('walletId');
   if (!walletId) return c.json({ error: 'wallet_id required' }, 400);
-  const actor = c.get('userId') as number;
+  const actor = c.get('userId') as number | undefined;
+  if (!actor) return c.json({ error: 'Unauthorized' }, 401);
   const cred = await queryFirst<CredentialRow>(db, 'SELECT wallet_id, user_id, status, issued_at, revoked_at FROM wallet_credentials WHERE wallet_id = ?', walletId);
   if (!cred) return c.json({ error: 'Credential not found' }, 404);
   await execute(
@@ -165,7 +168,8 @@ wallet.post('/:walletId/reinstate', requireRole(...ADMIN_ROLES), async (c) => {
   const db = getDb(c.env);
   const walletId = c.req.param('walletId');
   if (!walletId) return c.json({ error: 'wallet_id required' }, 400);
-  const actor = c.get('userId') as number;
+  const actor = c.get('userId') as number | undefined;
+  if (!actor) return c.json({ error: 'Unauthorized' }, 401);
   const cred = await queryFirst<CredentialRow>(db, 'SELECT wallet_id, user_id, status, issued_at, revoked_at FROM wallet_credentials WHERE wallet_id = ?', walletId);
   if (!cred) return c.json({ error: 'Credential not found' }, 404);
   await execute(

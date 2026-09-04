@@ -62,7 +62,7 @@ function wmoCondition(code: number): string {
 dispatchWeather.get('/weather', async (c) => {
   const lat = Number(c.req.query('lat'));
   const lng = Number(c.req.query('lng'));
-  if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+  if (!lat || !lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
     return c.json({ ok: false, error: 'lat and lng are required' }, 400);
   }
 

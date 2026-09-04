@@ -152,7 +152,7 @@ offenderRegistry.put('/:id/clear', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const result = await execute(
       db,
       `UPDATE offender_alerts SET status = 'cleared', alert_enabled = 0, updated_at = datetime('now') WHERE id = ?`,
@@ -176,7 +176,7 @@ offenderRegistry.put('/:id/verify', async (c) => {
     const db = getDb(c.env);
     await ensureComplianceColumns(db);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const b = (await c.req.json().catch(() => ({}))) as { status?: string };
     const status = b.status === 'non_compliant' ? 'non_compliant' : 'compliant';
 
@@ -223,7 +223,7 @@ offenderRegistry.put('/:id', async (c) => {
     const db = getDb(c.env);
     await ensureComplianceColumns(db);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
     const sets: string[] = [];
@@ -290,7 +290,7 @@ offenderRegistry.get('/:id/risk-score', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const alert = await queryFirst<Record<string, unknown>>(
       db, `${ALERT_SELECT} WHERE a.id = ?`, id,
     );
@@ -335,7 +335,7 @@ offenderRegistry.get('/:id/contacts', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT oc.*, u.full_name AS officer_name
@@ -354,7 +354,7 @@ offenderRegistry.post('/:id/contact', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const user = c.get('user') as { id: number } | undefined;
     const b = (await c.req.json()) as { contact_type?: string; notes?: string };
     const alert = await queryFirst<{ id: number }>(db, 'SELECT id FROM offender_alerts WHERE id = ?', id);

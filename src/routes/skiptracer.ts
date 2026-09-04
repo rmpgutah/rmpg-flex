@@ -119,7 +119,7 @@ skiptracer.get('/stats', async (c) => {
     ))?.count ?? 0;
 
     // SQLite-style "start of current month" — UTC, matching the column
-    // default (datetime('now')). Avoids timezone drift between INSERT
+    // default (datetime(\'now\')). Avoids timezone drift between INSERT
     // and SELECT that bit us on call_number generation.
     const thisMonth = (await queryFirst<{ count: number }>(
       db,
@@ -311,8 +311,8 @@ skiptracer.get('/search/byphone', async (c) => {
     if (candidates.length === 0) return c.json({ PeopleDetails: [], Records: 0, Page: page, source: 'LOCAL' });
 
     const where = candidates.map(() =>
-      '(REPLACE(REPLACE(REPLACE(REPLACE(phone,\'-\',\'\'),\' \',\'\'),\'(\',\'\'),\')\',\'\') LIKE ? OR ' +
-      'REPLACE(REPLACE(REPLACE(REPLACE(phone_secondary,\'-\',\'\'),\' \',\'\'),\'(\',\'\'),\')\',\'\') LIKE ?)'
+      "(REPLACE(REPLACE(REPLACE(REPLACE(phone,'-',''),' ',''),'(',''),')','') LIKE ? OR " +
+      "REPLACE(REPLACE(REPLACE(REPLACE(phone_secondary,'-',''),' ',''),'(',''),')','') LIKE ?)"
     ).join(' OR ');
     const params: unknown[] = [];
     // D1 LIKE cap: pattern >50 chars silently returns nothing
@@ -543,7 +543,7 @@ skiptracer.get('/dossiers/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const row = await queryFirst<Record<string, unknown>>(
       db,

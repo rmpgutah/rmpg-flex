@@ -265,7 +265,7 @@ skiptracerV2.put('/dossiers/:id', async (c) => {
       linkedIncidentId?: string;
       linkedCaseId?: string;
     }>();
-    const sets: string[] = ['updated_at = datetime(\'now\')'];
+    const sets: string[] = ["updated_at = datetime('now')"];
     const binds: unknown[] = [];
     if (body.notes !== undefined) { sets.push('notes = ?'); binds.push(body.notes); }
     if (body.tags !== undefined) { sets.push('tags = ?'); binds.push(JSON.stringify(body.tags)); }

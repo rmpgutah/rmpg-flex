@@ -122,7 +122,7 @@ psb.put('/ps-pricing/items/:id', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const before = await queryFirst<any>(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
   if (!before) return c.json({ error: 'Not found' }, 404);
   const b = await c.req.json<any>();
@@ -174,7 +174,7 @@ psb.delete('/ps-pricing/items/:id', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number } | undefined;
   // Soft-delete: charges reference codes historically.
   await execute(db, `UPDATE ps_pricing_items SET is_active = 0, updated_at = datetime('now'), updated_by = ? WHERE id = ?`, user?.id ?? null, id);
@@ -188,7 +188,7 @@ psb.get('/contracts/:id/ps-terms', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst(db, 'SELECT * FROM ps_contract_terms WHERE contract_id = ?', id);
   // 404-safe: return defaults so the UI can render an empty form.
   return c.json({ data: row ?? { contract_id: id, billing_trigger: 'on_completion', sla_days: null, retainer_amount: null, doc_types_json: null, rate_overrides_json: null, notes: null } });
@@ -199,7 +199,7 @@ psb.put('/contracts/:id/ps-terms', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const b = await c.req.json<any>();
   const user = c.get('user') as { id: number } | undefined;
   const before = await queryFirst<any>(db, 'SELECT * FROM ps_contract_terms WHERE contract_id = ?', id);
@@ -230,7 +230,7 @@ psb.get('/contracts/:id/audit', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const rows = await query(db,
     `SELECT a.id, a.action, a.entity_type, a.details, a.created_at, u.full_name AS user_name
        FROM activity_log a LEFT JOIN users u ON a.user_id = u.id
@@ -264,7 +264,7 @@ psb.put('/serve-charges/:id', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const current = await queryFirst<any>(db, 'SELECT status FROM serve_charges WHERE id = ?', id);
   if (!current) return c.json({ error: 'Not found' }, 404);
   if (current.status === 'invoiced') return c.json({ error: 'Charge already invoiced — locked' }, 409);
@@ -328,7 +328,7 @@ psb.post('/serve-charges/:id/approve', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const cur = await queryFirst<any>(db, 'SELECT status FROM serve_charges WHERE id = ?', id);
   if (!cur) return c.json({ error: 'Not found' }, 404);
   if (cur.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
@@ -343,7 +343,7 @@ psb.post('/serve-charges/:id/void', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const cur = await queryFirst<any>(db, 'SELECT status FROM serve_charges WHERE id = ?', id);
   if (!cur) return c.json({ error: 'Not found' }, 404);
   if (cur.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
@@ -359,7 +359,7 @@ psb.post('/serve-charges/:id/recompute', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const charge = await queryFirst<any>(db, 'SELECT serve_queue_id, status FROM serve_charges WHERE id = ?', id);
   if (!charge) return c.json({ error: 'Not found' }, 404);
   if (charge.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);

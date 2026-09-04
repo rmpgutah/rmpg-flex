@@ -18,6 +18,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { log } from '../utils/logger';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
@@ -101,7 +102,7 @@ function sqlErrorResponse(c: Context<Env>, err: unknown): Response {
     );
   }
   if (err instanceof R2SqlHttpError) {
-    console.error('[analytics] R2 SQL error:', err.status, err.message);
+    log.error('[analytics] R2 SQL error', { status: err.status, message: err.message });
     // An AUTH rejection from R2 SQL is a configuration state, not an outage:
     // the R2_SQL_TOKEN is missing scopes, expired, or was minted for a
     // different warehouse. Retrying cannot fix it, so it belongs on the same
@@ -132,7 +133,7 @@ function sqlErrorResponse(c: Context<Env>, err: unknown): Response {
     // Anything else (5xx, malformed query, quota) is a real runtime failure.
     return dbErrorResponse(c, err, 'analytics query failed');
   }
-  console.error('[analytics] unexpected error:', err instanceof Error ? err.message : String(err));
+  log.error('[analytics] unexpected error', {}, err instanceof Error ? err : new Error(String(err)));
   return c.json({ error: 'analytics query failed' }, 500);
 }
 

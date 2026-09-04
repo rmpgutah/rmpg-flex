@@ -391,7 +391,10 @@ geography.get('/zone-allocation', async (c) => {
        WHERE dz.active = 1
        GROUP BY dz.id ORDER BY dz.zone_code`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) {
+    log.error('dispatch GET /geography zone-summary failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // ── Posted speed limit at a point ───────────────────────────────────────────

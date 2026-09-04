@@ -98,7 +98,7 @@ ce.get('/violations/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM code_violations WHERE id = ?', id,
     );
@@ -159,7 +159,7 @@ ce.put('/violations/:id/status', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const b = (await c.req.json()) as { status?: string; resolution_notes?: string };
     if (!b.status || !VIOLATION_STATUSES.has(b.status)) {
       return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
@@ -225,7 +225,7 @@ ce.get('/tows/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM vehicle_tows WHERE id = ?', id,
     );
@@ -288,7 +288,7 @@ ce.put('/tows/:id/status', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const b = (await c.req.json()) as { status?: string; released_to?: string };
     if (!b.status || !TOW_STATUSES.has(b.status)) {
       return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);

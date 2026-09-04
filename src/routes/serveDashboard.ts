@@ -754,7 +754,7 @@ sd.get('/attempt-timeline/:queueId', async (c) => {
   const denied = requireRole(c, ...DASHBOARD_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const queueId = parseInt(c.req.param('queueId'), 10);
-  if (isNaN(queueId)) return c.json({ error: 'Invalid queueId' }, 400);
+  if (!Number.isFinite(queueId) || queueId < 1) return c.json({ error: 'Invalid queueId' }, 400);
 
   const db = getDb(c.env);
 

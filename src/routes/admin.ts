@@ -402,7 +402,10 @@ admin.get('/clients/:id/incidents', async (c) => {
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 100`, Number(c.req.param('id'))));
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('admin GET /clients/:id/incidents failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to fetch incidents' }, 500);
+  }
 });
 
 admin.get('/clients/:id/calls', async (c) => {
@@ -411,7 +414,10 @@ admin.get('/clients/:id/calls', async (c) => {
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`, Number(c.req.param('id'))));
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('admin GET /clients/:id/calls failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to fetch calls' }, 500);
+  }
 });
 
 admin.get('/clients/:id/billing', async (c) => {
@@ -422,7 +428,10 @@ admin.get('/clients/:id/billing', async (c) => {
     const db = getDb(c.env);
     const client = await queryFirst<Record<string, unknown>>(db, 'SELECT total_invoiced, total_paid, outstanding_balance, billing_cycle, payment_terms, rate_per_hour, rate_per_incident, rate_per_cfs FROM clients WHERE id = ?', Number(c.req.param('id')));
     return c.json(client || {});
-  } catch { return c.json({}); }
+  } catch (err) {
+    log.error('admin GET /clients/:id/billing failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to fetch billing' }, 500);
+  }
 });
 
 const CLIENT_EDITABLE = [
@@ -536,7 +545,10 @@ admin.get('/shift-stats', async (c) => {
     const citations = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE ${dateCondition.replace(/created_at/g, 'citation_date')}`))?.n ?? 0;
     const patrolScans = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM patrol_scans'))?.n ?? 0;
     return c.json({ shift_name: shiftName, calls, incidents, citations, patrol_scans: patrolScans });
-  } catch { return c.json({ shift_name: 'Unknown', calls: 0, incidents: 0, citations: 0, patrol_scans: 0 }); }
+  } catch (err) {
+    log.error('admin GET /shift-stats failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ shift_name: 'Unknown', calls: 0, incidents: 0, citations: 0, patrol_scans: 0 });
+  }
 });
 
 admin.get('/upcoming-court-dates', async (c) => {
@@ -544,7 +556,8 @@ admin.get('/upcoming-court-dates', async (c) => {
   if (denied) return denied;
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '30', 10);
+    const daysRaw = parseInt(c.req.query('days') || '30', 10);
+    const days = Number.isFinite(daysRaw) ? daysRaw : 30;
     // hearing_date is a plain calendar date (no time-of-day), but "today" needs
     // to be Denver's calendar date, not UTC's — DATE('now') is UTC and drifts a
     // day off for ~6-7 hours around each midnight. Uses the shared
@@ -559,13 +572,17 @@ admin.get('/upcoming-court-dates', async (c) => {
        WHERE ce.event_date BETWEEN ${denverNowDateExpr()} AND ${denverNowDateExpr(`+${Math.min(days, 90)} days`)}
        ORDER BY ce.event_date LIMIT 50`);
     return c.json({ count: rows.length, dates: rows });
-  } catch { return c.json({ count: 0, dates: [] }); }
+  } catch (err) {
+    log.error('admin GET /upcoming-court-dates failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ count: 0, dates: [] });
+  }
 });
 
 admin.get('/expiring-certifications', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '30', 10);
+    const daysRaw = parseInt(c.req.query('days') || '30', 10);
+    const days = Number.isFinite(daysRaw) ? daysRaw : 30;
     const rows = await query<{ officer_name: string; cert: string; days_left: number; expiry_date: string }>(db,
       // No personnel_certifications table: it's officer_certifications, keyed
       // by officer_id, with expiration_date and a cert_type_id FK into
@@ -588,7 +605,10 @@ admin.get('/expiring-certifications', async (c) => {
        LEFT JOIN certification_types ct ON ct.id = pc.cert_type_id
        WHERE pc.expiration_date < DATE('now') ORDER BY pc.expiration_date LIMIT 20`);
     return c.json({ expiring_count: rows.length, expired_count: expired.length, items: [...rows, ...expired.map(e => ({ ...e, expiry_date: 'EXPIRED' }))] });
-  } catch { return c.json({ expiring_count: 0, expired_count: 0, items: [] }); }
+  } catch (err) {
+    log.error('admin GET /expiring-certifications failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ expiring_count: 0, expired_count: 0, items: [] });
+  }
 });
 
 admin.get('/google-maps-config', (c) => c.json({}));
@@ -676,7 +696,10 @@ admin.get('/users-activity-summary', async (c) => {
         GROUP BY u.id
         ORDER BY action_count DESC LIMIT 50`);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) {
+    log.error('admin GET top-users failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ data: [] });
+  }
 });
 
 admin.get('/realtime-stats', async (c) => {
@@ -792,7 +815,10 @@ admin.get('/config-history', async (c) => {
        WHERE al.action IN ('config_update','setting_update','system_config_update')
        ORDER BY al.created_at DESC LIMIT ?`, limit);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) {
+    log.error('admin GET config-changes failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ data: [] });
+  }
 });
 
 // Maintenance-mode GET/PUT now persist to system_config — see appended block.
@@ -870,7 +896,7 @@ admin.put('/departments/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     // Never let a department become its own parent.
     if (b.parent_id != null && Number(b.parent_id) === id) b.parent_id = null;
@@ -890,7 +916,7 @@ admin.delete('/departments/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const delResult = await execute(db, `DELETE FROM departments WHERE id = ?`, id);
     if (!delResult.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
@@ -947,7 +973,7 @@ admin.put('/announcements/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     const upd = buildPartialUpdate(b, ['title', 'body', 'type', 'priority', 'target_roles', 'is_active', 'starts_at', 'expires_at']);
     if (!upd) return c.json({ error: 'No fields to update' }, 400);
@@ -965,7 +991,7 @@ admin.delete('/announcements/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `DELETE FROM announcements WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
@@ -1029,7 +1055,7 @@ admin.put('/notification-rules/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     const upd = buildPartialUpdate(b, ['name', 'description', 'trigger_event', 'conditions', 'target_roles', 'target_user_ids', 'notification_type', 'is_active']);
     if (!upd) return c.json({ error: 'No fields to update' }, 400);
@@ -1047,7 +1073,7 @@ admin.delete('/notification-rules/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `DELETE FROM notification_rules WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
@@ -1064,7 +1090,7 @@ admin.post('/notification-rules/:id/test', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const rule = await queryFirst<NotificationRuleRow>(
       db, `SELECT * FROM notification_rules WHERE id = ?`, id,
     );
@@ -1366,7 +1392,7 @@ admin.get('/users/:id/security', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const user = await queryFirst<{ totp_enabled: number | null; must_change_password: number | null; password_changed_at: string | null }>(
       db, 'SELECT totp_enabled, must_change_password, password_changed_at FROM users WHERE id = ?', id);
     if (!user) return c.json({ error: 'User not found' }, 404);
@@ -1410,7 +1436,7 @@ admin.post('/users/:id/reset-2fa', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await resetUserTotp(db, id);
     await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (POST /reset-2fa)' });
     return c.json({ message: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
@@ -1426,7 +1452,7 @@ admin.delete('/users/:id/totp', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await resetUserTotp(db, id);
     await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (DELETE /totp)' });
     return c.json({ success: true });
@@ -1443,7 +1469,7 @@ admin.post('/users/:id/force-password-change', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `UPDATE users SET must_change_password = 1, updated_at = datetime('now') WHERE id = ?`, id);
     await recordAudit(c, { action: 'USER_FORCE_PASSWORD_CHANGE', entityType: 'user', entityId: id, details: 'Admin forced password change on next login' });
     return c.json({ message: 'User will be required to change their password on next login.' });
@@ -1460,7 +1486,7 @@ admin.post('/users/:id/revoke-sessions', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const result = await execute(db,
       `UPDATE sessions SET is_active = 0 WHERE user_id = ? AND COALESCE(is_active, 1) = 1`, id);
     const count = result.meta.changes ?? 0;
@@ -1481,7 +1507,7 @@ admin.get('/users/:id/security-questions', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
       db, 'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?', id);
     return c.json({ configured: !!sq, questions: sq ? [sq.question_1, sq.question_2, sq.question_3] : [] });
@@ -1501,7 +1527,7 @@ admin.delete('/users/:id/security-questions', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, 'DELETE FROM user_security_questions WHERE user_id = ?', id);
     await recordAudit(c, { action: 'USER_SECURITY_QUESTIONS_CLEARED', entityType: 'user', entityId: id, details: 'Admin cleared security questions' });
     return c.json({ success: true });
@@ -1524,7 +1550,7 @@ admin.get('/users/:id/email-status', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const token = await getUserGraphToken(db, c.env, id);
     return c.json({ connected: !!token, mailbox: token?.mailbox ?? null });
   } catch (err) {
@@ -2013,8 +2039,8 @@ admin.post('/query', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, sql);
     return c.json({ data: rows, count: rows.length });
-  } catch (err: any) {
-    console.error('POST /admin/query failed:', err);
+  } catch (err) {
+    log.error('POST /admin/query failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Query failed' }, 400);
   }
 });
@@ -2029,7 +2055,10 @@ admin.get('/activity-feed', async (c) => {
        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
        ORDER BY a.created_at DESC LIMIT ?`, limit);
     return c.json({ data: rows, actions: rows });
-  } catch { return c.json({ data: [], actions: [] }); }
+  } catch (err) {
+    log.error('admin GET /activity-feed failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ data: [], actions: [] });
+  }
 });
 
 // ── Client-error telemetry (ErrorBoundary crash reports) ────
@@ -2062,7 +2091,10 @@ admin.get('/health/client-error', async (c) => {
       `SELECT ce.*, u.full_name FROM client_errors ce LEFT JOIN users u ON u.id = ce.user_id
        ORDER BY ce.created_at DESC LIMIT ?`, limit);
     return c.json({ data: rows, errors: rows, total: rows.length });
-  } catch { return c.json({ data: [], errors: [], total: 0 }); }
+  } catch (err) {
+    log.error('admin GET /health/client-error failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ data: [], errors: [], total: 0 });
+  }
 });
 
 // ── System settings (org-wide config) ──────────────────────
@@ -2086,7 +2118,10 @@ admin.get('/system-settings', async (c) => {
       try { settings[r.config_key] = JSON.parse(r.config_value); } catch { settings[r.config_key] = r.config_value; }
     }
     return c.json(settings);
-  } catch { return c.json({}); }
+  } catch (err) {
+    log.error('admin GET /system-settings failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({});
+  }
 });
 
 admin.put('/system-settings', async (c) => {
@@ -2113,8 +2148,8 @@ admin.put('/system-settings', async (c) => {
         key, val);
     }
     return c.json({ success: true });
-  } catch (err: any) {
-    log.error('PUT /system-settings failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: err?.message || 'Failed' }, 500); }
+  } catch (err) {
+    log.error('PUT /system-settings failed', { src: 'src/routes/admin.ts' }, err instanceof Error ? err : new Error(String(err))); return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 500); }
 });
 
 // ── Map config ─────────────────────────────────────────────
@@ -2161,7 +2196,10 @@ admin.get('/map-config', async (c) => {
     let stored: Record<string, unknown> = {};
     if (row?.config_value) { try { stored = JSON.parse(row.config_value); } catch { stored = {}; } }
     return c.json({ ...MAP_DEFAULT_SETTINGS, ...stored });
-  } catch { return c.json({ ...MAP_DEFAULT_SETTINGS }); }
+  } catch (err) {
+    log.error('admin GET /map-config failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ ...MAP_DEFAULT_SETTINGS });
+  }
 });
 
 admin.put('/map-config', async (c) => {
@@ -2179,8 +2217,8 @@ admin.put('/map-config', async (c) => {
        VALUES ('map_settings', ?, 'map_settings', 0, 1, datetime('now'), datetime('now'))`,
       JSON.stringify(merged));
     return c.json(merged);
-  } catch (err: any) {
-    log.error('PUT /map-config failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('PUT /map-config failed', { src: 'src/routes/admin.ts' }, err instanceof Error ? err : new Error(String(err))); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Impersonate (admin-only view-as) ───────────────────────
@@ -2196,7 +2234,7 @@ admin.post('/impersonate/:id', async (c) => {
     if (!target) return c.json({ error: 'User not found' }, 404);
     return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
   } catch (err) {
-    log.error('POST /impersonate/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
+    log.error('POST /impersonate/:id failed', { src: 'src/routes/admin.ts' }, err instanceof Error ? err : new Error(String(err))); return c.json({ error: 'Failed' }, 500); }
 });
 
 // NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
@@ -2215,7 +2253,10 @@ admin.get('/shift-plans', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM shift_plans WHERE active = 1 ORDER BY name LIMIT 100`);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('admin GET /shift-plans failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // ── System lockdown ────────────────────────────────────────
@@ -2227,7 +2268,10 @@ admin.get('/system/lockdown', async (c) => {
       `SELECT config_value FROM system_config WHERE config_key = 'system_lockdown'`);
     const parsed = row?.config_value ? JSON.parse(row.config_value) : { enabled: false };
     return c.json({ enabled: !!parsed.enabled, reason: parsed.reason ?? null, at: parsed.at ?? null });
-  } catch { return c.json({ enabled: false }); }
+  } catch (err) {
+    log.error('admin GET /system/lockdown failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ enabled: false });
+  }
 });
 
 admin.post('/system/lockdown', async (c) => {

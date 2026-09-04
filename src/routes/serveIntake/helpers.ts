@@ -2,6 +2,7 @@
 // Extracted from the monolithic serveIntake.ts to keep each sub-route file focused.
 
 import type { D1Database } from '@cloudflare/workers-types';
+import { log } from '../../utils/logger';
 import type { Env } from '../../types';
 import { getDb, execute, columnExists } from '../../utils/db';
 import { getContainer } from '@cloudflare/containers';
@@ -27,7 +28,7 @@ export async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
+    } catch (err) { log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) }); allOk = false; }
   }
 
   for (const [name, type] of [
@@ -39,7 +40,7 @@ export async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
+    } catch (err) { log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) }); allOk = false; }
   }
 
   for (const [name, type] of [
@@ -49,7 +50,7 @@ export async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
+    } catch (err) { log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) }); allOk = false; }
   }
 
   if (allOk) scheduleSchemaReconciled = true;
@@ -74,7 +75,7 @@ export async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       upload_user_id INTEGER
     )`);
   } catch (err) {
-    console.warn('[serve-intake] judge_runs create failed:', err);
+    log.warn('[serve-intake] judge_runs create failed', { error: err instanceof Error ? err.message : String(err) });
     allOk = false;
   }
 
@@ -89,7 +90,7 @@ export async function ensureQualityGateColumns(db: D1Database): Promise<void> {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
     } catch (err) {
-      console.warn(`[serve-intake] reconcile ${name} failed:`, err);
+      log.warn(`[serve-intake] reconcile ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) });
       allOk = false;
     }
   }

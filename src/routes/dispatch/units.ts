@@ -122,9 +122,9 @@ units.post('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), asy
 
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', newId);
     return c.json(unit, 201);
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST / failed', { src: 'src/routes/dispatch/units.ts' }, err);
-    if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
+    if (err instanceof Error ? err.message : String(err)?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
     return c.json({ error: 'Failed to create unit' }, 500);
   }
 });
@@ -235,21 +235,22 @@ units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
       await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated });
     } catch { log.warn('Broadcast unit_updated failed after PUT', { unitId: id }); /* non-fatal */ }
     return c.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     log.error('PUT /dispatch/units/:id failed', {}, err);
-    if (err?.message?.includes('CHECK constraint')) {
+    if (err instanceof Error ? err.message : String(err)?.includes('CHECK constraint')) {
       return c.json({ error: 'Invalid value for a constrained field (status, etc.)', code: 'CHECK_CONSTRAINT' }, 400);
     }
     // units.call_sign is UNIQUE NOT NULL — renaming a unit to an existing call
     // sign is a user-fixable conflict, not a server error.
-    if (err?.message?.includes('UNIQUE constraint')) {
+    if (err instanceof Error ? err.message : String(err)?.includes('UNIQUE constraint')) {
       return c.json({ error: 'That call sign is already in use by another unit', code: 'CALL_SIGN_TAKEN' }, 409);
     }
-    if (err?.message?.includes('FOREIGN KEY constraint')) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+    if (errMsg.includes('FOREIGN KEY constraint')) {
       return c.json({ error: 'officer_id does not reference a valid user', code: 'INVALID_OFFICER' }, 400);
     }
-    if (err?.message?.includes('no such column')) {
-      log.error('PUT /dispatch/units/:id column mismatch', { message: err.message });
+    if (errMsg.includes('no such column')) {
+      log.error('PUT /dispatch/units/:id column mismatch', { message: errMsg });
       return c.json({ error: 'Update failed: schema mismatch', code: 'COLUMN_MISSING' }, 500);
     }
     return c.json({ error: 'Failed to update unit' }, 500);

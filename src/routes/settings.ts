@@ -23,6 +23,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { log } from '../utils/logger';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const settings = new Hono<Env>();
@@ -61,7 +62,7 @@ settings.get('/', async (c) => {
     }
     return c.json({ org: parseBlob(orgRow?.settings_json), user: parseBlob(userRow?.settings_json), system });
   } catch (err) {
-    console.error('GET /settings failed:', err);
+    log.error('GET /settings failed', {}, err instanceof Error ? err : new Error(String(err)));
     // Soft-fail so the client falls back to local prefs rather than erroring.
     return c.json({ org: {}, user: {}, system: {} });
   }
@@ -89,7 +90,7 @@ settings.put('/user', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
-    console.error('PUT /settings/user failed:', err);
+    log.error('PUT /settings/user failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed to save');
   }
 });
@@ -116,7 +117,7 @@ settings.put('/org', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
-    console.error('PUT /settings/org failed:', err);
+    log.error('PUT /settings/org failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed to save');
   }
 });

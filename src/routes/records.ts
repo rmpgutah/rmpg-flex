@@ -164,7 +164,7 @@ records.get('/properties/export', async (c): Promise<Response> => {
   try {
     const db = getDb(c.env);
     const { archived } = c.req.query();
-    const sql = `SELECT * FROM properties WHERE ${archived === 'true' ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 50000`;
+    const sql = `SELECT * FROM properties WHERE ${archived === 'true' ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 10000`;
     const rows = await query<Record<string, unknown>>(db, sql);
     if (rows.length === 0) return c.newResponse('', 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
     const keys = ['name', 'address', 'city', 'state', 'zip', 'property_type', 'client_id', 'is_active', 'notes'];
@@ -768,7 +768,7 @@ records.get('/persons/export', async (c) => {
     if (archived !== 'true') {
       sql += " WHERE (flags IS NULL OR flags = '[]' OR flags NOT LIKE '%archived%')";
     }
-    sql += ' ORDER BY last_name, first_name LIMIT 50000';
+    sql += ' ORDER BY last_name, first_name LIMIT 10000';
     const rows = await query<Record<string, unknown>>(db, sql);
     if (rows.length === 0) return c.json([]);
     const keys = ['first_name','last_name','dob','gender','race','height','weight','hair_color','eye_color','address','phone','email'];
@@ -1460,7 +1460,7 @@ records.get('/vehicles/:id/history', async (c) => {
 records.get('/vehicles/export', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id ORDER BY v.plate_number LIMIT 50000');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id ORDER BY v.plate_number LIMIT 10000');
     const csv = ['plate_number,state,make,model,year,color,vin,owner_first_name,owner_last_name,notes', ...rows.map((r: any) => [r.plate_number, r.state, r.make, r.model, r.year, r.color, r.vin, r.first_name, r.last_name, r.notes].map((v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=vehicles_export.csv' });
   } catch (err) {
@@ -1782,7 +1782,7 @@ records.get('/evidence/aging-report', async (c) => {
 records.get('/evidence/export', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id ORDER BY e.created_at DESC LIMIT 50000');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id ORDER BY e.created_at DESC LIMIT 10000');
     if (rows.length === 0) return c.json([]);
     const keys = Object.keys(rows[0] as object);
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');

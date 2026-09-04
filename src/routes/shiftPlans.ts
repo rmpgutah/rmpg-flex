@@ -503,7 +503,7 @@ sp.post('/shift-swaps/:id/respond', async (c) => {
   const user = c.get('user') as { id: number; full_name?: string } | undefined;
   if (!user) return c.json({ error: 'Unauthenticated' }, 401);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<{ accept?: boolean }>().catch(() => ({} as { accept?: boolean }));
   if (typeof body.accept !== 'boolean') {
     return c.json({ error: 'accept (boolean) is required' }, 400);
@@ -571,7 +571,7 @@ sp.post('/shift-swaps/:id/cancel', async (c) => {
   const user = c.get('user') as { id: number; full_name?: string } | undefined;
   if (!user) return c.json({ error: 'Unauthenticated' }, 401);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
 
   const swap = await queryFirst<{ requester_id: number; shift_date: string; status: string }>(
@@ -597,7 +597,7 @@ sp.put('/shift-swaps/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   if (!['approved', 'denied'].includes(body.status)) {
     return c.json({ error: 'status must be approved or denied' }, 400);
@@ -804,7 +804,7 @@ sp.post('/shift-plans/apply-template/:templateId', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const templateId = parseInt(c.req.param('templateId'), 10);
-  if (isNaN(templateId)) return c.json({ error: 'Invalid template id' }, 400);
+  if (!Number.isFinite(templateId) || templateId < 1) return c.json({ error: 'Invalid template id' }, 400);
   const user = c.get('user') as { id: number } | undefined;
   const body = await c.req.json<{ start_date?: string; end_date?: string; override_name?: string }>().catch(
     () => ({} as { start_date?: string; end_date?: string; override_name?: string }),

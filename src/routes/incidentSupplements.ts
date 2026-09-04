@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { log } from '../utils/logger';
 
 const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
@@ -80,7 +81,7 @@ function buildHandlers(table: 'dv_supplements' | 'pursuit_supplements', cols: st
         if (!row) return c.json({ error: 'Supplement not found', code: 'SUPPLEMENT_NOT_FOUND' }, 404);
         return c.json(row);
       } catch (err) {
-        console.error(`[supplements] ${table} get`, err);
+        log.error(`supplements \${table} get`, {}, err instanceof Error ? err : new Error(String(err)));
         return c.json({ error: 'Failed to fetch supplement', code: 'SUPPLEMENT_FETCH_ERR' }, 500);
       }
     },
@@ -119,7 +120,7 @@ function buildHandlers(table: 'dv_supplements' | 'pursuit_supplements', cols: st
           incidentId, ...Object.values(data), userId);
         return c.json(await queryFirst(db, `SELECT * FROM ${table} WHERE id = ?`, result.meta.last_row_id), 201);
       } catch (err) {
-        console.error(`[supplements] ${table} upsert`, err);
+        log.error(`supplements \${table} upsert`, {}, err instanceof Error ? err : new Error(String(err)));
         return c.json({ error: 'Failed to save supplement', code: 'SUPPLEMENT_SAVE_ERR' }, 500);
       }
     },
@@ -133,7 +134,7 @@ function buildHandlers(table: 'dv_supplements' | 'pursuit_supplements', cols: st
         await execute(db, `DELETE FROM ${table} WHERE incident_id = ?`, incidentId);
         return c.json({ success: true });
       } catch (err) {
-        console.error(`[supplements] ${table} delete`, err);
+        log.error(`supplements \${table} delete`, {}, err instanceof Error ? err : new Error(String(err)));
         return c.json({ error: 'Failed to delete supplement', code: 'SUPPLEMENT_DEL_ERR' }, 500);
       }
     },

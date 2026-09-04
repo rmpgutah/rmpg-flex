@@ -41,6 +41,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const pt = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -84,7 +85,7 @@ pt.get('/checkpoints/map', async (c) => {
 // GET /checkpoints/property/:propertyId
 pt.get('/checkpoints/property/:propertyId', async (c) => {
   const propertyId = parseInt(c.req.param('propertyId'), 10);
-  if (isNaN(propertyId)) return c.json({ error: 'Invalid propertyId' }, 400);
+  if (!Number.isFinite(propertyId) || propertyId < 1) return c.json({ error: 'Invalid propertyId' }, 400);
   const includeArchived = c.req.query('include_archived') === '1';
   const sql = `SELECT * FROM patrol_checkpoints WHERE property_id = ?
                ${includeArchived ? '' : 'AND is_active = 1'}
@@ -95,7 +96,7 @@ pt.get('/checkpoints/property/:propertyId', async (c) => {
 // GET /checkpoints/:id/instructions
 pt.get('/checkpoints/:id/instructions', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst<{ id: number; name: string; special_instructions: string; location_description: string }>(
     getDb(c.env),
     'SELECT id, name, special_instructions, location_description FROM patrol_checkpoints WHERE id = ?',
@@ -151,7 +152,7 @@ pt.put('/checkpoints/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const allowed = [
     'property_id', 'assigned_officer_id', 'name', 'description', 'location_description',
@@ -176,7 +177,7 @@ pt.delete('/checkpoints/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   try {
     const db = getDb(c.env);
     // patrol_scans.checkpoint_id is a NOT NULL RESTRICT FK — a checkpoint that
@@ -186,7 +187,7 @@ pt.delete('/checkpoints/:id', async (c) => {
     await execute(db, 'DELETE FROM patrol_checkpoints WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[patrol] delete checkpoint failed:', err);
+    log.error('patrol delete checkpoint failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed to delete checkpoint');
   }
 });
@@ -196,7 +197,7 @@ pt.post('/checkpoints/:id/archive', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(
     getDb(c.env),
     `UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now') WHERE id = ?`,
@@ -210,7 +211,7 @@ pt.post('/checkpoints/:id/unarchive', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(
     getDb(c.env),
     `UPDATE patrol_checkpoints SET is_active = 1, archived_at = NULL WHERE id = ?`,
@@ -652,7 +653,7 @@ pt.get('/log/generate', async (c) => {
     );
     return c.json({ start, end, days: rows });
   } catch (err) {
-    console.error('GET /patrol/log/generate failed:', err);
+    log.error('GET /patrol/log/generate failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: [] });
   }
 });
@@ -810,7 +811,7 @@ pt.get('/optimize-route', async (c) => {
       optimized_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('GET /patrol/optimize-route failed:', err);
+    log.error('GET /patrol/optimize-route failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'optimization failed');
   }
 });
@@ -852,7 +853,7 @@ pt.get('/time-tracking', async (c) => {
     );
     return c.json({ days, summary: rows });
   } catch (err) {
-    console.error('GET /patrol/time-tracking failed:', err);
+    log.error('GET /patrol/time-tracking failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: 0, summary: [] });
   }
 });
@@ -875,7 +876,7 @@ pt.get('/coverage-heatmap', async (c) => {
     );
     return c.json({ days, cells: rows });
   } catch (err) {
-    console.error('GET /patrol/coverage-heatmap failed:', err);
+    log.error('GET /patrol/coverage-heatmap failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: 0, cells: [] });
   }
 });
@@ -908,7 +909,7 @@ pt.get('/efficiency', async (c) => {
       efficiency_pct: row?.total_scans ? Math.round(((row.on_time_scans ?? 0) / row.total_scans) * 100) : 0,
     });
   } catch (err) {
-    console.error('GET /patrol/efficiency failed:', err);
+    log.error('GET /patrol/efficiency failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: 0, total_scans: 0, on_time_scans: 0, efficiency_pct: 0 });
   }
 });

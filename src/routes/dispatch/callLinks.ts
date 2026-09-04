@@ -826,7 +826,10 @@ links.get('/persons/:id/risk-score', requireRole('officer', 'dispatcher', 'super
     ).catch(() => null);
     if (violentCount?.n) { score += Math.min(violentCount.n * 3, 15); flags.push(`${violentCount.n} violent incident(s)`); }
     return c.json({ person_id: personId, risk_score: Math.min(score, 100), risk_level: score >= 50 ? 'high' : score >= 20 ? 'medium' : 'low', flags });
-  } catch { return c.json({ risk_score: 0, risk_level: 'unknown', flags: [] }); }
+  } catch (err) {
+    log.error('[callLinks] person risk score failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Risk lookup failed' }, 500);
+  }
 });
 
 // ── Protection Order Check ───────────────────────────────────
@@ -836,9 +839,12 @@ links.get('/persons/:id/protection-orders', requireRole('officer', 'dispatcher',
   try {
     const orders = await query<{ case_number: string; status: string }>(
       db, "SELECT case_number, status FROM protection_orders WHERE respondent_person_id = ? AND status = 'active'", personId,
-    ).catch(() => []);
+    );
     return c.json({ person_id: personId, active_orders: orders.length, orders });
-  } catch { return c.json({ person_id: personId, active_orders: 0, orders: [] }); }
+  } catch (err) {
+    log.error('[callLinks] protection-orders query failed', { personId }, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to check protection orders' }, 500);
+  }
 });
 
 // ── INVOLVED PERSONS (inline — no FK to persons table) ─────────────────────

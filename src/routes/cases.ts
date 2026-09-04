@@ -400,7 +400,7 @@ cases.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(
       db,
       `SELECT c.*, u.full_name as lead_investigator_name, cu.full_name as created_by_name
@@ -437,7 +437,7 @@ cases.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const user = c.get('user');
 
     const existing = await queryFirst<{ id: number; status: string | null }>(
@@ -501,7 +501,7 @@ cases.put('/:id/submit-review', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
     // Allow submission from any non-terminal open-work status (previously only 'open').
@@ -529,7 +529,7 @@ cases.put('/:id/approve', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
     if (existing.status !== 'under_review') {
@@ -573,7 +573,7 @@ cases.put('/:id/status', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const { status, disposition } = await c.req.json<{ status?: string; disposition?: string }>();
     if (typeof status !== 'string') return c.json({ error: 'status required', code: 'STATUS_REQUIRED' }, 400);
 
@@ -604,7 +604,7 @@ cases.post('/:id/archive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const result = await execute(
       db, `UPDATE cases SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id,
     );
@@ -623,7 +623,7 @@ cases.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     // Pull identifying fields BEFORE destruction — audit 2026-06-21
     // caught that case deletion (cascading case_notes + case_person_links)
     // wrote zero audit_log entries while case-task delete at line 1316
@@ -659,7 +659,7 @@ cases.get('/:id/notes', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     // Order: pinned first, then newest first
     const rows = await query<Record<string, unknown>>(
       db,
@@ -683,7 +683,7 @@ cases.post('/:id/notes', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const userId = c.get('userId') as number;
 
     const { content, note_type, is_pinned } = await c.req.json<{
@@ -722,7 +722,7 @@ cases.put('/:id/notes/:noteId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('id'), 10);
     const noteId = parseInt(c.req.param('noteId'), 10);
-    if (isNaN(caseId) || isNaN(noteId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(noteId) || noteId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const userId = c.get('userId') as number | undefined;
     const user = c.get('user');
 
@@ -775,7 +775,7 @@ cases.delete('/:id/notes/:noteId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('id'), 10);
     const noteId = parseInt(c.req.param('noteId'), 10);
-    if (isNaN(caseId) || isNaN(noteId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(noteId) || noteId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const userId = c.get('userId') as number | undefined;
     const user = c.get('user');
 
@@ -827,7 +827,7 @@ cases.post('/:id/calculate-solvability', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
 
@@ -871,7 +871,7 @@ cases.get('/:id/solvability', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const caseRow = await queryFirst<{ id: number; solvability_score: number | null; solvability_factors: string | null }>(
       db, 'SELECT id, solvability_score, solvability_factors FROM cases WHERE id = ?', id,
     );
@@ -925,7 +925,7 @@ cases.get('/:id/completeness', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<{ case_type: string | null; lead_investigator_id: number | null; narrative: string | null; summary: string | null; solvability_score: number | null }>(
       db, 'SELECT case_type, lead_investigator_id, narrative, summary, solvability_score FROM cases WHERE id = ?', id,
     );
@@ -965,7 +965,7 @@ cases.get('/:id/activity', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500);
     const rows = await query<Record<string, unknown>>(
       db,
@@ -990,7 +990,7 @@ cases.get('/:id/persons', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT cpl.id as link_id, cpl.relationship, cpl.created_at,
@@ -1014,7 +1014,7 @@ cases.post('/:id/persons', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const { person_id, relationship } = await c.req.json<{ person_id?: number; relationship?: string }>();
     if (!person_id) return c.json({ error: 'person_id required', code: 'PERSON_ID_REQUIRED' }, 400);
 
@@ -1050,7 +1050,7 @@ cases.put('/:id/persons/:personEntryId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('id'), 10);
     const linkId = parseInt(c.req.param('personEntryId'), 10);
-    if (isNaN(caseId) || isNaN(linkId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(linkId) || linkId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const { relationship } = await c.req.json<{ relationship?: string }>();
     if (typeof relationship !== 'string') return c.json({ error: 'relationship required', code: 'RELATIONSHIP_REQUIRED' }, 400);
     const result = await execute(
@@ -1073,7 +1073,7 @@ cases.delete('/:id/persons/:personEntryId', async (c) => {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('id'), 10);
     const ref = parseInt(c.req.param('personEntryId'), 10);
-    if (isNaN(caseId) || isNaN(ref)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(ref) || ref < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     // The detail view passes the person's id (from /full); accept the link
     // PK as a fallback for any older caller.
     let result = await execute(db, 'DELETE FROM case_person_links WHERE person_id = ? AND case_id = ?', ref, caseId);
@@ -1134,7 +1134,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
     try {
       const db = getDb(c.env);
       const caseId = parseInt(c.req.param('id'), 10);
-      if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+      if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
       const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', caseId);
       if (!exists) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
 
@@ -1169,7 +1169,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
       const db = getDb(c.env);
       const caseId = parseInt(c.req.param('id'), 10);
       const entityId = parseInt(c.req.param('entityId'), 10);
-      if (isNaN(caseId) || isNaN(entityId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+      if (!Number.isFinite(caseId) || caseId < 1 || !Number.isFinite(entityId) || entityId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
       // The client unlinks by the entity's own id; tolerate the junction PK too.
       let res = await execute(db, `DELETE FROM ${cfg.table} WHERE case_id = ? AND ${cfg.fk} = ?`, caseId, entityId);
       if (res.meta.changes === 0) {
@@ -1225,7 +1225,7 @@ cases.get('/:id/tasks', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT * FROM case_tasks WHERE case_id = ?
@@ -1248,7 +1248,7 @@ cases.post('/:id/tasks', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
     if (!exists) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
 
@@ -1287,7 +1287,7 @@ cases.post('/:id/tasks/apply-template', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<{ case_type: string | null }>(db, 'SELECT case_type FROM cases WHERE id = ?', id);
     if (!row) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
 
@@ -1320,7 +1320,7 @@ cases.put('/:id/tasks/:taskId', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(id) || isNaN(taskId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1 || !Number.isFinite(taskId) || taskId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number; status: string; completed_at: string | null; title: string }>(
       db, 'SELECT id, status, completed_at, title FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id,
     );
@@ -1369,7 +1369,7 @@ cases.delete('/:id/tasks/:taskId', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const taskId = parseInt(c.req.param('taskId'), 10);
-    if (isNaN(id) || isNaN(taskId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1 || !Number.isFinite(taskId) || taskId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ title: string }>(db, 'SELECT title FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id);
     const res = await execute(db, 'DELETE FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id);
     if (res.meta.changes === 0) return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404);
@@ -1391,7 +1391,7 @@ cases.get('/:id/related', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       // Explicit aliases: SQLite rejects ORDER BY on an unaliased column in a
@@ -1421,7 +1421,7 @@ cases.post('/:id/related', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const { related_case_id, link_type } = await c.req.json<{ related_case_id?: number; link_type?: string }>()
       .catch(() => ({} as Record<string, never>));
     const relId = Number(related_case_id);
@@ -1460,7 +1460,7 @@ cases.delete('/:id/related/:relatedId', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const relId = parseInt(c.req.param('relatedId'), 10);
-    if (isNaN(id) || isNaN(relId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1 || !Number.isFinite(relId) || relId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const res = await execute(
       db,
       `DELETE FROM case_links WHERE (case_id = ? AND related_case_id = ?) OR (case_id = ? AND related_case_id = ?)`,
@@ -1554,7 +1554,7 @@ cases.get('/:id/full', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
 
     const caseRow = await queryFirst<Record<string, unknown>>(
       db,
