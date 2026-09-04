@@ -246,7 +246,7 @@ function UnitCard({ unit, canChangeStatus, onClick }: UnitCardProps) {
           {(unit.queued_call_ids?.length ?? 0) > 0 && (
             <span
               className="text-[9px] font-semibold px-1 rounded-[2px]"
-              style={{ background: 'var(--sev-warn)', color: '#000', lineHeight: '14px' }}
+              style={{ background: 'var(--sev-warn)', color: 'var(--surface-base)', lineHeight: '14px' }}
               title={`${unit.queued_call_ids!.length} call${unit.queued_call_ids!.length > 1 ? 's' : ''} queued`}
             >
               +{unit.queued_call_ids!.length} queued

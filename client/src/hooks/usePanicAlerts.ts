@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 
@@ -23,12 +23,18 @@ export function usePanicAlerts(): UsePanicAlertsResult {
   const [alerts, setAlerts] = useState<PanicAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const { subscribe } = useWebSocket();
+  const mountedRef = useRef(true);
 
   const refetch = useCallback(() => {
     apiFetch<PanicAlert[]>('/dispatch/panic')
-      .then((rows) => setAlerts(rows.filter(a => a.status === 'active' || a.status === 'acknowledged')))
+      .then((rows) => { if (mountedRef.current) setAlerts(rows.filter(a => a.status === 'active' || a.status === 'acknowledged')); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (mountedRef.current) setLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
 
   useEffect(() => { refetch(); }, [refetch]);
