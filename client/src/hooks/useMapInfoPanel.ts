@@ -232,7 +232,6 @@ export function useMapInfoPanel(
   const [loading, setLoading] = useState(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const mountedRef = useRef(true);
-  const mountedRef = useRef(true);
 
   const showPanel = useCallback((data: InfoPanelData) => {
     setPanel(data);

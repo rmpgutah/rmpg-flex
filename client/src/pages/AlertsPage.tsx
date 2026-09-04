@@ -174,7 +174,7 @@ export default function AlertsPage() {
 
   const handleSave = useCallback(async () => {
     if (submitting) return;
-    if (!formData.template_name?.trim()) {
+    if (!String(formData.template_name ?? '').trim()) {
       addToast('Template name is required', 'error');
       return;
     }
