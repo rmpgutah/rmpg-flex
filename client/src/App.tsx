@@ -728,7 +728,7 @@ function AppRoutes() {
             <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/osint" element={<RouteErrorBoundary><OsintPortalPage /></RouteErrorBoundary>} />
-            <Route path="/device-scanner" element={<ProtectedRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/device-scanner" element={<AdminRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />

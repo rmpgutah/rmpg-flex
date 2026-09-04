@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
+import { log } from '../utils/logger';
 
 const adminMapData = new Hono<Env>();
 
@@ -51,7 +52,7 @@ adminMapData.get('/files', async (c) => {
     }));
     return c.json({ files });
   } catch (err) {
-    console.error('GET /admin/map-data/files failed:', err);
+    log.error('GET /admin/map-data/files failed:', { src: 'routes/adminMapData.ts' }, err instanceof Error ? err.message : String(err));
     return c.json({ error: 'Failed to list files' }, 500);
   }
 });
@@ -84,7 +85,7 @@ adminMapData.post('/presign', async (c) => {
     const uploadUrl = await presignPutUrl(c.env, BUCKET_NAME, key, PRESIGN_EXPIRES_SECONDS);
     return c.json({ upload_url: uploadUrl, key });
   } catch (err) {
-    console.error('POST /admin/map-data/presign failed:', err);
+    log.error('POST /admin/map-data/presign failed:', { src: 'routes/adminMapData.ts' }, err instanceof Error ? err.message : String(err));
     return c.json({ error: 'Failed to create upload URL' }, 500);
   }
 });
@@ -102,7 +103,7 @@ adminMapData.delete('/files/:key{[\\s\\S]*}', async (c) => {
     await c.env.MAP_DATA.delete(key);
     return c.json({ ok: true });
   } catch (err) {
-    console.error('DELETE /admin/map-data/files failed:', err);
+    log.error('DELETE /admin/map-data/files failed:', { src: 'routes/adminMapData.ts' }, err instanceof Error ? err.message : String(err));
     return c.json({ error: 'Failed to delete file' }, 500);
   }
 });

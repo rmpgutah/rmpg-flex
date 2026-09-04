@@ -34,6 +34,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { log } from '../utils/logger';
 import { clampIntParam } from '../utils/paginationParams';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
@@ -104,7 +105,7 @@ pm.get('/mileage/suggest', async (c) => {
       message: 'No prior mileage entry for this scope. Enter a starting mileage manually.',
     });
   } catch (err) {
-    console.error('GET /patrol/mileage/suggest failed:', err);
+    log.error('GET /patrol/mileage/suggest failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed to suggest mileage');
   }
 });
@@ -301,7 +302,7 @@ pm.get('/mileage/chain', async (c) => {
       rows: annotated,
     });
   } catch (err) {
-    console.error('GET /patrol/mileage/chain failed:', err);
+    log.error('GET /patrol/mileage/chain failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed to load chain');
   }
 });
@@ -342,7 +343,7 @@ pm.get('/mileage/audit', async (c) => {
     const rows = await query<Record<string, unknown>>(db, sql, ...params, limit);
     return c.json({ rows });
   } catch (err) {
-    console.error('GET /patrol/mileage/audit failed:', err);
+    log.error('GET /patrol/mileage/audit failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed to load audit');
   }
 });
@@ -507,7 +508,7 @@ pm.get('/mileage/fix-suggestions', async (c) => {
       candidates,
     });
   } catch (err) {
-    console.error('GET /patrol/mileage/fix-suggestions failed:', err);
+    log.error('GET /patrol/mileage/fix-suggestions failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed to compute suggestions');
   }
 });
@@ -818,7 +819,7 @@ pm.post('/mileage/fix', async (c) => {
       fixed_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('POST /patrol/mileage/fix failed:', err);
+    log.error('POST /patrol/mileage/fix failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed to apply fix');
   }
 });
@@ -1177,7 +1178,7 @@ pm.get('/trip-log/generate', async (c) => {
       totals,
     });
   } catch (err) {
-    console.error('GET /patrol/trip-log/generate failed:', err);
+    log.error('GET /patrol/trip-log/generate failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed to generate trip log');
   }
 });
@@ -1257,7 +1258,7 @@ pm.get('/trips', async (c) => {
       .sort((a, b) => (String(a.start_time) < String(b.start_time) ? 1 : -1));
     return c.json({ trips });
   } catch (err) {
-    console.error('GET /patrol/trips failed:', err);
+    log.error('GET /patrol/trips failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1294,7 +1295,7 @@ pm.post('/trips', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM unit_trips WHERE id = ?', id);
     return c.json({ success: true, trip: created }, 201);
   } catch (err) {
-    console.error('POST /patrol/trips failed:', err);
+    log.error('POST /patrol/trips failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1349,7 +1350,7 @@ pm.put('/trips/:source/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${table} WHERE id = ?`, id);
     return c.json({ success: true, trip: updated });
   } catch (err) {
-    console.error('PUT /patrol/trips failed:', err);
+    log.error('PUT /patrol/trips failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1376,7 +1377,7 @@ pm.delete('/trips/:source/:id', async (c) => {
     });
     return c.json({ success: true });
   } catch (err) {
-    console.error('DELETE /patrol/trips failed:', err);
+    log.error('DELETE /patrol/trips failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1600,7 +1601,7 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
       errors: errors.slice(0, 20),
     });
   } catch (err) {
-    console.error('POST /patrol/mileage/backfill-patrol-trips failed:', err);
+    log.error('POST /patrol/mileage/backfill-patrol-trips failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1874,7 +1875,7 @@ pm.post('/mileage/auto-fix-gaps', async (c) => {
       errors: errors.slice(0, 20),
     });
   } catch (err) {
-    console.error('POST /patrol/mileage/auto-fix-gaps failed:', err);
+    log.error('POST /patrol/mileage/auto-fix-gaps failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
@@ -1942,7 +1943,7 @@ pm.post('/trips/discard-zero-mile', async (c) => {
 
     return c.json({ success: true, examined: candidates.length, deleted, threshold_mi: 0.5, errors: errors.slice(0, 20) });
   } catch (err) {
-    console.error('POST /patrol/trips/discard-zero-mile failed:', err);
+    log.error('POST /patrol/trips/discard-zero-mile failed:', { src: 'routes/patrolMileage.ts' }, err instanceof Error ? err.message : String(err));
     return dbErrorResponse(c, err, 'Failed');
   }
 });
