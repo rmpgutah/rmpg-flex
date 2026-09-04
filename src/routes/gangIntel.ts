@@ -59,7 +59,7 @@ gangIntel.post('/', async (c) => {
     (body.name || (() => { throw new Error("name required"); })()), body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
-  } catch (err) { console.error('[gangIntel] POST / failed', err); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
+  } catch (err) { log.error('gangIntel POST / failed', {}, err instanceof Error ? err : new Error(String(err))); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
 });
 
 gangIntel.put('/:id', async (c) => {
@@ -76,7 +76,7 @@ gangIntel.put('/:id', async (c) => {
     (body.name || (() => { throw new Error("name required"); })()), body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null, id
   );
   return c.json({ success: true });
-  } catch (err) { console.error('[gangIntel] PUT /:id failed', err); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
+  } catch (err) { log.error('gangIntel PUT /:id failed', {}, err instanceof Error ? err : new Error(String(err))); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
 });
 
 gangIntel.delete('/:id', requireRole('admin', 'manager', 'supervisor'), async (c) => {
@@ -113,7 +113,7 @@ gangIntel.post('/gangs', async (c) => {
     (body.name || (() => { throw new Error("name required"); })()), body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
-  } catch (err) { console.error('[gangIntel] POST /gangs failed', err); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
+  } catch (err) { log.error('gangIntel POST /gangs failed', {}, err instanceof Error ? err : new Error(String(err))); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
 });
 
 gangIntel.put('/gangs/:id', async (c) => {
@@ -131,7 +131,7 @@ gangIntel.put('/gangs/:id', async (c) => {
     (body.name || (() => { throw new Error("name required"); })()), body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null, id
   );
   return c.json({ success: true });
-  } catch (err) { console.error('[gangIntel] PUT /gangs/:id failed', err); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
+  } catch (err) { log.error('gangIntel PUT /gangs/:id failed', {}, err instanceof Error ? err : new Error(String(err))); return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500); }
 });
 
 gangIntel.delete('/gangs/:id', requireRole('admin', 'manager', 'supervisor'), async (c) => {

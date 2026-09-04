@@ -1413,7 +1413,10 @@ callActions.get('/:id/referrals', requireRole(...READ_ROLES), async (c) => {
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM external_referrals WHERE call_id = ? ORDER BY created_at DESC', id).catch(() => []);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('dispatch GET external-referrals failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // ── BOLO Metrics ─────────────────────────────────────────────
@@ -1426,7 +1429,10 @@ callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
     const avgResolve = await queryFirst<{ avg_hours: number }>(db,
       "SELECT AVG((julianday(r.resolved_at) - julianday(b.created_at)) * 24) AS avg_hours FROM bolo_resolutions r JOIN bolos b ON r.bolo_id = b.id");
     return c.json({ total: total?.n ?? 0, active: active?.n ?? 0, expired: (total?.n ?? 0) - (active?.n ?? 0), resolved: resolved?.n ?? 0, avg_resolve_hours: Math.round(avgResolve?.avg_hours ?? 0) });
-  } catch { return c.json({ total: 0, active: 0, expired: 0, resolved: 0 }); }
+  } catch (err) {
+    log.error('dispatch GET /bolos/metrics failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ total: 0, active: 0, expired: 0, resolved: 0 });
+  }
 });
 
 // ── Geofence CRUD (LEGACY — do not use for new work) ─────────
@@ -1442,7 +1448,10 @@ callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE is_active = 1 ORDER BY name').catch(() => []);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('dispatch GET /geofences failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), async (c) => {
   try {

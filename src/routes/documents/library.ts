@@ -16,6 +16,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { containsAnyClause } from '../../utils/searchText';
+import { log } from '../../utils/logger';
 
 const lib = new Hono<Env>();
 
@@ -97,7 +98,7 @@ lib.get('/', async (c) => {
       ...joinParams, ...whereParams, limit, offset);
     return c.json({ data: rows });
   } catch (err) {
-    console.error('List documents error:', err);
+    log.error('List documents error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to list documents', code: 'DOC_LIST_ERROR' }, 500);
   }
 });
@@ -138,7 +139,7 @@ lib.post('/', async (c) => {
     const links = await linksFor(c, id);
     return c.json({ success: true, data: { ...(doc as object), links } });
   } catch (err) {
-    console.error('Create document error:', err);
+    log.error('Create document error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to create document', code: 'DOC_CREATE_ERROR' }, 500);
   }
 });
@@ -193,7 +194,7 @@ lib.post('/:id/revisions/:rev/restore', async (c) => {
     const links = await linksFor(c, id);
     return c.json({ success: true, data: { ...(updated as object), links } });
   } catch (err) {
-    console.error('Restore revision error:', err);
+    log.error('Restore revision error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to restore revision', code: 'DOC_RESTORE_ERROR' }, 500);
   }
 });
@@ -316,7 +317,7 @@ lib.put('/:id', async (c) => {
     const links = await linksFor(c, id);
     return c.json({ success: true, data: { ...(updated as object), links } });
   } catch (err) {
-    console.error('Save document error:', err);
+    log.error('Save document error', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ error: 'Failed to save document', code: 'DOC_SAVE_ERROR' }, 500);
   }
 });

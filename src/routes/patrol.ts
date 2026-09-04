@@ -41,6 +41,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const pt = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -186,7 +187,7 @@ pt.delete('/checkpoints/:id', async (c) => {
     await execute(db, 'DELETE FROM patrol_checkpoints WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[patrol] delete checkpoint failed:', err);
+    log.error('patrol delete checkpoint failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed to delete checkpoint');
   }
 });
@@ -652,7 +653,7 @@ pt.get('/log/generate', async (c) => {
     );
     return c.json({ start, end, days: rows });
   } catch (err) {
-    console.error('GET /patrol/log/generate failed:', err);
+    log.error('GET /patrol/log/generate failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: [] });
   }
 });
@@ -810,7 +811,7 @@ pt.get('/optimize-route', async (c) => {
       optimized_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('GET /patrol/optimize-route failed:', err);
+    log.error('GET /patrol/optimize-route failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'optimization failed');
   }
 });
@@ -852,7 +853,7 @@ pt.get('/time-tracking', async (c) => {
     );
     return c.json({ days, summary: rows });
   } catch (err) {
-    console.error('GET /patrol/time-tracking failed:', err);
+    log.error('GET /patrol/time-tracking failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: 0, summary: [] });
   }
 });
@@ -875,7 +876,7 @@ pt.get('/coverage-heatmap', async (c) => {
     );
     return c.json({ days, cells: rows });
   } catch (err) {
-    console.error('GET /patrol/coverage-heatmap failed:', err);
+    log.error('GET /patrol/coverage-heatmap failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: 0, cells: [] });
   }
 });
@@ -908,7 +909,7 @@ pt.get('/efficiency', async (c) => {
       efficiency_pct: row?.total_scans ? Math.round(((row.on_time_scans ?? 0) / row.total_scans) * 100) : 0,
     });
   } catch (err) {
-    console.error('GET /patrol/efficiency failed:', err);
+    log.error('GET /patrol/efficiency failed', {}, err instanceof Error ? err : new Error(String(err)));
     return c.json({ days: 0, total_scans: 0, on_time_scans: 0, efficiency_pct: 0 });
   }
 });

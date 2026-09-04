@@ -743,7 +743,10 @@ calls.get('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'mana
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM call_templates WHERE (owner_user_id = ? OR is_shared = 1) AND active = 1 ORDER BY use_count DESC, name`, userId ?? 0);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('dispatch GET /calls/templates failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // GET /dispatch/calls/:id - Single call

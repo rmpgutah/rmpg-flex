@@ -504,7 +504,10 @@ aggregates.get('/heatmap/types', async (c) => {
        GROUP BY incident_type
        ORDER BY count DESC LIMIT 50`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) {
+    log.error('dispatch GET /stats/incident-types failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // GET /dispatch/stats/dashboard — shift briefing dashboard stats.
@@ -761,7 +764,10 @@ aggregates.get('/call-volume', async (c) => {
        WHERE created_at >= datetime('now','-${days} days')
        GROUP BY DATE(created_at) ORDER BY date`);
     return c.json({ by_day: rows, days });
-  } catch { return c.json({ by_day: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_day failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_day: [], days: 7 });
+  }
 });
 
 // GET /dispatch/aggregates/by-zone?days=7
@@ -777,7 +783,10 @@ aggregates.get('/by-zone', async (c) => {
        WHERE created_at >= datetime('now','-${days} days')
        GROUP BY zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
-  } catch { return c.json({ by_zone: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_zone failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_zone: [], days: 7 });
+  }
 });
 
 // GET /dispatch/aggregates/priority-distribution?days=7
@@ -795,7 +804,10 @@ aggregates.get('/priority-distribution', async (c) => {
        GROUP BY priority
        ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
     return c.json({ by_priority: rows, days });
-  } catch { return c.json({ by_priority: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_priority failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_priority: [], days: 7 });
+  }
 });
 
 // GET /dispatch/aggregates/hourly-today
@@ -819,7 +831,10 @@ aggregates.get('/hourly-today', async (c) => {
     for (const r of rows) byHour[r.hour] = r.count;
     const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: byHour[h] ?? 0 }));
     return c.json({ hours });
-  } catch { return c.json({ hours: [] }); }
+  } catch (err) {
+    log.error('dispatch stats hours failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ hours: [] });
+  }
 });
 
 // GET /dispatch/aggregates/response-times?days=7
@@ -842,7 +857,10 @@ aggregates.get('/response-times', async (c) => {
        GROUP BY priority
        ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
     return c.json({ by_priority: rows, days });
-  } catch { return c.json({ by_priority: [], days: 7 }); }
+  } catch (err) {
+    log.error('dispatch stats by_priority failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ by_priority: [], days: 7 });
+  }
 });
 
 // GET /dispatch/ambient-stats — lightweight screensaver data (active calls, unit counts).
