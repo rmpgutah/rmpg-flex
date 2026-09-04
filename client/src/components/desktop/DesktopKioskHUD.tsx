@@ -73,6 +73,18 @@ function statusBadgeClass(status: FeatureItem['status']): string {
   }
 }
 
+const CATEGORY_NAV: { id: TabCategory; label: string; icon: React.ElementType }[] = [
+  { id: 'hardware',    label: 'Hardware',     icon: Cpu },
+  { id: 'kiosk',      label: 'Kiosk',        icon: Monitor },
+  { id: 'radar360',   label: 'Radar 360',    icon: Compass },
+  { id: 'diagnostics',label: 'Diagnostics',  icon: Activity },
+  { id: 'cad_apps',   label: 'CAD Apps',     icon: Radio },
+  { id: 'safety',     label: 'Safety',       icon: Shield },
+  { id: 'widgets',    label: 'Widgets',      icon: Layers },
+  { id: 'environment',label: 'Environment',  icon: Globe },
+  { id: 'security',   label: 'Security',     icon: Lock },
+  { id: 'utilities',  label: 'Utilities',    icon: Wrench },
+];
 
 export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: DesktopKioskHUDProps) {
   const navigate = useNavigate();
