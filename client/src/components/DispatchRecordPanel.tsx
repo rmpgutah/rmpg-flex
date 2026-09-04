@@ -41,7 +41,7 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
       : `/records/vehicles/${record.id}`;
     apiFetch<any>(endpoint)
       .then((d) => { if (alive) setData(d); })
-      .catch((e) => { if (alive) setError(e?.message || 'Failed to load record'); })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : 'Failed to load record'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [record.kind, record.id, retryTick]);

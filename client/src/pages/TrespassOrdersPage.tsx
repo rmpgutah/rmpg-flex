@@ -143,7 +143,7 @@ export default function TrespassOrdersPage() {
       setOrders(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setError(err?.message || 'Operation failed'); } finally { setLoading(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Operation failed'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, showArchived]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
@@ -274,7 +274,7 @@ export default function TrespassOrdersPage() {
       }
       clearFormDraft();
       setFormOpen(false); setEditingOrder(null); await fetchOrders();
-    } catch (err: any) { setError(err?.message || 'Operation failed'); } finally { setSubmitting(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Operation failed'); } finally { setSubmitting(false); }
   };
 
   const handleServe = async (order: TrespassOrder) => {
@@ -286,7 +286,7 @@ export default function TrespassOrdersPage() {
         const updated = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}`);
         setSelectedOrder(updated);
       }
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Operation failed'); }
   };
 
   // Lift confirmation — "Lift" is a permanent status change that removes
@@ -309,7 +309,7 @@ export default function TrespassOrdersPage() {
         const updated = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}`);
         setSelectedOrder(updated);
       }
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Operation failed'); }
     finally { setLifting(false); setOrderToLift(null); }
   };
 
@@ -322,7 +322,7 @@ export default function TrespassOrdersPage() {
         const updated = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}`);
         setSelectedOrder(updated);
       }
-    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Operation failed'); }
   };
 
   const handleRenew = async (order: TrespassOrder) => {

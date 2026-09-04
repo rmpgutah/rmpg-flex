@@ -291,7 +291,7 @@ export async function chunkedVideoUpload(opts: ChunkedUploadOptions): Promise<an
 
     if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
     return completeResp;
-  } catch (err: any) {
+  } catch (err) {
     if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
     // If we threw mid-upload and the user didn't explicitly cancel, also
     // fire the abort so the server doesn't sit on the half-session for 4h.

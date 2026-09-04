@@ -125,8 +125,8 @@ export default function ClockInOutMileageModal({
         onSuccess(res);
       }
       onClose();
-    } catch (err: any) {
-      setError(err?.message || `Failed to ${isClockingOut ? 'clock out' : 'clock in'}`);
+    } catch (err) {
+      setError((err instanceof Error ? err.message : null) || `Failed to ${isClockingOut ? 'clock out' : 'clock in'}`);
     } finally {
       setLoading(false);
     }

@@ -230,7 +230,7 @@ export function useMapCore({
           devWarn('[MapCore] map error', e);
           if (cancelled) return;
 
-          const msg = e.error?.message || 'Mapbox map error';
+          const msg = e.error instanceof Error ? e.error.message : 'Mapbox map error';
           const status = (e.error as any)?.status;
           const msgLower = msg.toLowerCase();
 

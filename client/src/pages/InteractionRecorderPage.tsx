@@ -164,7 +164,7 @@ export default function InteractionRecorderPage() {
       await apiFetch(`/intel/recordings/${r.id}`, { method: 'DELETE' });
       setList((prev) => prev.filter((x) => x.id !== r.id));
       addToast(`Recording #${r.id} deleted`, 'success');
-    } catch (err: any) {
+    } catch (err) {
       addToast((err as Error)?.message || 'Delete failed', 'error');
     }
   };

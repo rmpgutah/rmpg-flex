@@ -53,7 +53,7 @@ export function createVersionedDoc<T extends Record<string, unknown>>(
     },
     getHistory: () => {
       return Automerge.getHistory(doc).map((entry: any) => ({
-        message: entry.change?.message || '',
+        message: entry.change instanceof Error ? entry.change.message : '',
       }));
     },
     merge: (remote: any) => {
@@ -87,7 +87,7 @@ export function loadVersionedDoc<T extends Record<string, unknown>>(
     },
     getHistory: () => {
       return Automerge.getHistory(doc).map((entry: any) => ({
-        message: entry.change?.message || '',
+        message: entry.change instanceof Error ? entry.change.message : '',
       }));
     },
     merge: (remote: any) => {

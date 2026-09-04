@@ -135,9 +135,9 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
       const addrs = data?.addresses || [];
       setAddresses(addrs);
       whenStyleReady(map, () => { renderOnMap(addrs, map); });
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxRepeatAddresses] fetch failed:', err);
-      setError(err?.message || 'Failed to load repeat addresses');
+      setError(err instanceof Error ? err.message : 'Failed to load repeat addresses');
     } finally {
       setLoading(false);
     }

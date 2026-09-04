@@ -89,8 +89,8 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       await refreshUnits();
       resetUnitForm();
       setShowCreateUnitModal(false);
-    } catch (err: any) {
-      addToast(err?.error || err?.message || `Failed to ${editingUnit ? 'update' : 'create'} unit`, 'error');
+    } catch (err) {
+      addToast((err as {error?:string;message?:string}).error || (err as {error?:string;message?:string}).message || `Failed to ${editingUnit ? 'update' : 'create'} unit`, 'error');
     } finally {
       setUnitCreating(false);
     }
@@ -123,8 +123,8 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       await refreshUnits();
       addToast(mode === 'retire' ? `Unit ${deletingUnit.call_sign} retired (out of service)` : `Unit ${deletingUnit.call_sign} deleted`, 'success');
       setDeletingUnit(null);
-    } catch (err: any) {
-      addToast(err?.error || err?.message || `Failed to ${mode} unit`, 'error');
+    } catch (err) {
+      addToast((err as {error?:string;message?:string}).error || (err as {error?:string;message?:string}).message || `Failed to ${mode} unit`, 'error');
     } finally {
       setUnitDeleting(false);
     }
@@ -154,9 +154,9 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         announceLocalAction('unit_dispatched', `Unit ${assignedUnit.call_sign} dispatched to ${selectedCall.call_number}.`);
       }
       await refreshUnits();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to assign unit:', err);
-      addToast(err?.message || 'Failed to assign unit', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to assign unit', 'error');
     }
   }, [selectedCall, units, setCalls, setSelectedCall, onAssignSuccess, refreshUnits, addToast]);
 
@@ -174,8 +174,8 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       setSelectedCall((prev) => prev?.id === callId ? apply(prev) : prev);
       await refreshUnits();
       addToast(`Unit assigned to call`, 'success');
-    } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to assign unit via drag', 'error');
+    } catch (err) {
+      { const ae = err as {error?:string; message?:string}; addToast(ae.error || (err instanceof Error ? err.message : 'Failed to assign unit via drag'), 'error'); }
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 
@@ -194,9 +194,9 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? apply(c) : c));
       setSelectedCall((prev) => prev ? apply(prev) : prev);
       await refreshUnits();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to unassign unit:', err);
-      addToast(err?.message || 'Failed to unassign unit', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to unassign unit', 'error');
     }
   }, [selectedCall, setCalls, setSelectedCall, refreshUnits, addToast]);
 
@@ -215,8 +215,8 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       setCalls((prev) => prev.map((c) => c.id === callId ? apply(c) : c));
       setSelectedCall((prev) => prev?.id === callId ? apply(prev) : prev);
       await refreshUnits();
-    } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to unassign unit', 'error');
+    } catch (err) {
+      { const ae = err as {error?:string; message?:string}; addToast(ae.error || (err instanceof Error ? err.message : 'Failed to unassign unit'), 'error'); }
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 

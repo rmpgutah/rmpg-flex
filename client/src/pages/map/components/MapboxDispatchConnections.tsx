@@ -59,8 +59,8 @@ export default function MapboxDispatchConnections({
     setBusyAction(action);
     try {
       setResultText(await fn());
-    } catch (error: any) {
-      setResultText(error?.message || 'Mapbox action failed');
+    } catch (error) {
+      setResultText(error instanceof Error ? error.message : 'Mapbox action failed');
     } finally {
       setBusyAction(null);
     }

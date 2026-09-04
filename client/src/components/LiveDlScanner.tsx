@@ -159,10 +159,10 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
             decodingRef.current = false;
           }
         }, 350);
-      } catch (err: any) {
+      } catch (err) {
         if (!cancelled) {
           setStarting(false);
-          setError(err?.name === 'NotAllowedError'
+          setError(((err as { name?: string }).name === 'NotAllowedError')
             ? 'Camera permission denied — allow camera access or upload a photo instead.'
             : 'Camera unavailable on this device — upload a photo instead.');
         }

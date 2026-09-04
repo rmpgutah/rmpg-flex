@@ -195,9 +195,9 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
       map.on('mouseenter', FILL_LAYER_ID, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', FILL_LAYER_ID, () => { map.getCanvas().style.cursor = ''; });
       });
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxCoverageGaps] compute failed:', err);
-      setError(err?.message || 'Failed to compute coverage gaps');
+      setError(err instanceof Error ? err.message : 'Failed to compute coverage gaps');
     } finally {
       setLoading(false);
     }

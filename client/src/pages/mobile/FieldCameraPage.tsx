@@ -201,10 +201,10 @@ export default function FieldCameraPage() {
         await videoRef.current.play();
       }
       setCameraReady(true);
-    } catch (err: any) {
-      setCameraError(err?.name === 'NotAllowedError'
+    } catch (err) {
+      setCameraError(((err as { name?: string }).name === 'NotAllowedError')
         ? 'Camera permission denied. Use the file picker below or enable camera access in settings.'
-        : `Camera unavailable (${err?.message || 'unknown'}). Use the file picker below.`);
+        : `Camera unavailable (${err instanceof Error ? err.message : 'unknown'}). Use the file picker below.`);
     }
   }, []);
 

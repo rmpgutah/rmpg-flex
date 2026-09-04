@@ -1119,8 +1119,8 @@ export default function AdminSystemTab({
       setNewUnitOfficerId('');
       setNewUnitStatusVal('off_duty');
       await fetchAdminUnits();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to create unit');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create unit');
     } finally {
       setUnitSaving(false);
     }
@@ -1156,8 +1156,8 @@ export default function AdminSystemTab({
       });
       cancelEditUnit();
       await fetchAdminUnits();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to update unit');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update unit');
     } finally {
       setUnitSaving(false);
     }
@@ -1170,8 +1170,8 @@ export default function AdminSystemTab({
       await apiFetch(`/dispatch/units/${deletingUnitId}`, { method: 'DELETE' });
       setDeletingUnitId(null);
       await fetchAdminUnits();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete unit');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete unit');
       setDeletingUnitId(null);
     } finally {
       setUnitDeleteLoading(false);

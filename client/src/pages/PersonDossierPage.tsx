@@ -88,7 +88,7 @@ export default function PersonDossierPage() {
       .then((d) => { setData(d); setWatched(!!d.watched); })
       .catch((e: any) => {
         const notFound = e?.status === 404;
-        setError({ message: e?.message || 'Failed to load dossier', notFound });
+        setError({ message: e instanceof Error ? e.message : 'Failed to load dossier', notFound });
       });
   }, [id, reloadTick]);
 

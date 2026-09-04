@@ -124,7 +124,7 @@ export default function MobilePsoCfsPage() {
       })
       .catch((err) => {
         setStage('error');
-        setErrorMsg(err.message || String(err));
+        setErrorMsg(err instanceof Error ? err.message : String(err));
       });
   }, [callId, qrToken]);
 
@@ -154,8 +154,8 @@ export default function MobilePsoCfsPage() {
       persistAuth(data);
       setScansRemaining(data.scans_remaining);
       setStage('ready');
-    } catch (err: any) {
-      setErrorMsg(err.message || String(err));
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -173,8 +173,8 @@ export default function MobilePsoCfsPage() {
       if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'Status failed'); }
       const data = await r.json();
       setCall(data.call);
-    } catch (err: any) {
-      addToast(`Status update failed: ${err.message || err}`, 'error');
+    } catch (err) {
+      addToast(`Status update failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setStatusBusy(false);
     }
@@ -194,8 +194,8 @@ export default function MobilePsoCfsPage() {
       setNarrativeSaved(true);
       clearTimeout(narrativeTimerRef.current);
       narrativeTimerRef.current = setTimeout(() => setNarrativeSaved(false), 2500);
-    } catch (err: any) {
-      addToast(`Narrative save failed: ${err.message || err}`, 'error');
+    } catch (err) {
+      addToast(`Narrative save failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -235,8 +235,8 @@ export default function MobilePsoCfsPage() {
       setPsoSaved(true);
       clearTimeout(psoTimerRef.current);
       psoTimerRef.current = setTimeout(() => setPsoSaved(false), 2500);
-    } catch (err: any) {
-      addToast(`PSO save failed: ${err.message || err}`, 'error');
+    } catch (err) {
+      addToast(`PSO save failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setBusy(false);
     }

@@ -26,8 +26,8 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
     try {
       const res = await apiFetch<DuplicatePair[]>('/records/persons/duplicates');
       setPairs(res || []);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to fetch duplicates');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch duplicates');
     } finally {
       setLoading(false);
     }
@@ -52,8 +52,8 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
       ));
       setConfirmMerge(null);
       onMergeComplete();
-    } catch (err: any) {
-      setError(err?.message || 'Merge failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Merge failed');
     } finally {
       setMerging(null);
     }

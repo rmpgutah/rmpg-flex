@@ -247,9 +247,9 @@ export default function AdminUsersTab({
       await apiFetch(`/admin/users/${userId}/reset-2fa`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
       addToast('2FA reset successfully', 'success');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset 2FA' });
-      addToast(err.message || 'Failed to reset 2FA', 'error');
+    } catch (err) {
+      setSecurityMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to reset 2FA' });
+      addToast(err instanceof Error ? err.message : 'Failed to reset 2FA', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -348,9 +348,9 @@ export default function AdminUsersTab({
       setSecurityMsg({ type: 'success', text: result.message || `All sessions revoked.` });
       setUserSessions([]);
       addToast('All sessions revoked', 'success');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to revoke sessions' });
-      addToast(err.message || 'Failed to revoke sessions', 'error');
+    } catch (err) {
+      setSecurityMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to revoke sessions' });
+      addToast(err instanceof Error ? err.message : 'Failed to revoke sessions', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -373,9 +373,9 @@ export default function AdminUsersTab({
       if (selectedUser) {
         setSelectedUser({ ...selectedUser, role: newRole } as any);
       }
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to change role' });
-      addToast(err.message || 'Failed to change role', 'error');
+    } catch (err) {
+      setSecurityMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to change role' });
+      addToast(err instanceof Error ? err.message : 'Failed to change role', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -387,9 +387,9 @@ export default function AdminUsersTab({
       await apiFetch(`/admin/users/${userId}/force-password-change`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: 'User will be required to change their password on next login.' });
       addToast('Password change required on next login', 'success');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to force password change' });
-      addToast(err.message || 'Failed to force password change', 'error');
+    } catch (err) {
+      setSecurityMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to force password change' });
+      addToast(err instanceof Error ? err.message : 'Failed to force password change', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -403,9 +403,9 @@ export default function AdminUsersTab({
       setSqAdminQuestions([]);
       setSecurityMsg({ type: 'success', text: 'Security questions cleared. The user can set up new ones from their profile.' });
       addToast('Security questions cleared', 'success');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to clear security questions' });
-      addToast(err.message || 'Failed to clear security questions', 'error');
+    } catch (err) {
+      setSecurityMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to clear security questions' });
+      addToast(err instanceof Error ? err.message : 'Failed to clear security questions', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -939,7 +939,7 @@ export default function AdminUsersTab({
                         })
                         .catch((err) => {
                           console.warn('[AdminUsersTab] reset 2FA failed:', err);
-                          addToast(err?.message || 'Failed to reset 2FA', 'error');
+                          addToast(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to reset 2FA', 'error');
                         }),
                     })}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
@@ -1455,7 +1455,7 @@ export default function AdminUsersTab({
         onClose={() => { if (!confirmDlgLoading) setConfirmDlg(null); }}
         onConfirm={runConfirmDlg}
         title={confirmDlg?.title || ''}
-        message={confirmDlg?.message || ''}
+        message={confirmDlg instanceof Error ? confirmDlg.message : ''}
         confirmLabel={confirmDlg?.confirmLabel || 'Confirm'}
         confirmVariant={confirmDlg?.confirmVariant || 'danger'}
         isLoading={confirmDlgLoading}

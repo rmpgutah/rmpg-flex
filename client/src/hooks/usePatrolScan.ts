@@ -135,9 +135,9 @@ export function usePatrolScan({ getFrame, getGps, onError }: UsePatrolScanOpts) 
           }
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       // One bad frame must not kill patrol — log and keep going.
-      onError?.(err?.message || 'Patrol scan tick failed');
+      onError?.(err instanceof Error ? err.message : 'Patrol scan tick failed');
     } finally {
       if (runningRef.current) {
         timerRef.current = setTimeout(tick, PATROL_INTERVAL_MS);

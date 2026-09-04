@@ -291,8 +291,8 @@ export default function InvoicesPage() {
       setInvoices(res.data || []);
       setTotalCount(res.pagination?.total || 0);
       setTotalPages(res.pagination?.totalPages || 1);
-    } catch (err: any) {
-      if (!options?.silent) setError(err.message || 'Failed to load invoices');
+    } catch (err) {
+      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load invoices');
     } finally {
       if (!options?.silent) setLoading(false);
     }
@@ -318,8 +318,8 @@ export default function InvoicesPage() {
     try {
       const res = await apiFetch<{ data: InvoiceDetail }>(`/billing/invoices/${id}`);
       setSelectedInvoice(res.data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load invoice detail');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load invoice detail');
     } finally {
       setDetailLoading(false);
     }
@@ -404,8 +404,8 @@ export default function InvoicesPage() {
       fetchInvoices({ silent: true });
       fetchStats();
       setCreateForm({ client_id: '', period_start: '', period_end: '', issue_date: localToday(), notes: '', internal_notes: '' });
-    } catch (err: any) {
-      setSaveError(err.message || 'Failed to create invoice');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to create invoice');
     } finally {
       setSaving(false);
     }
@@ -421,8 +421,8 @@ export default function InvoicesPage() {
       await fetchDetail(invoiceId);
       fetchInvoices({ silent: true });
       fetchStats();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update status');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setActionLoading('');
     }
@@ -435,8 +435,8 @@ export default function InvoicesPage() {
       await fetchDetail(invoiceId);
       fetchInvoices({ silent: true });
       fetchStats();
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate line items');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate line items');
     } finally {
       setActionLoading('');
     }
@@ -455,8 +455,8 @@ export default function InvoicesPage() {
       fetchStats();
       setShowPaymentForm(false);
       setPaymentForm({ amount: '', payment_date: localToday(), payment_method: 'check', reference_number: '', notes: '' });
-    } catch (err: any) {
-      setError(err.message || 'Failed to record payment');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record payment');
     } finally {
       setPaymentSaving(false);
     }
@@ -472,8 +472,8 @@ export default function InvoicesPage() {
       fetchInvoices({ silent: true });
       fetchStats();
       addToast('Payment deleted', 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Failed to delete payment', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete payment', 'error');
     } finally {
       setConfirmDeleting(false);
     }
@@ -496,8 +496,8 @@ export default function InvoicesPage() {
       fetchStats();
       setShowLineItemForm(false);
       setLineItemForm({ line_type: 'custom', description: '', quantity: '1', unit_price: '0' });
-    } catch (err: any) {
-      setError(err.message || 'Failed to add line item');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add line item');
     } finally {
       setLineItemSaving(false);
     }
@@ -513,8 +513,8 @@ export default function InvoicesPage() {
       fetchInvoices({ silent: true });
       fetchStats();
       addToast('Line item removed', 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Failed to delete line item', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete line item', 'error');
     } finally {
       setConfirmDeleting(false);
     }

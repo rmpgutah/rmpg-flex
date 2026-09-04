@@ -88,9 +88,9 @@ export default function TextEditorPage() {
       const text = await res.text();
       setContent(text);
       setOriginalContent(text);
-    } catch (err: any) {
+    } catch (err) {
       setLoadFailed(true);
-      addToast(err.message || 'Failed to load file', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to load file', 'error');
     } finally {
       setLoading(false);
     }
@@ -113,8 +113,8 @@ export default function TextEditorPage() {
       if (!res.ok) { const j = await res.json() as { error?: string }; throw new Error(j.error || `HTTP ${res.status}`); }
       setOriginalContent(content);
       addToast('Saved', 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Save failed', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
     } finally {
       setSaving(false);
     }

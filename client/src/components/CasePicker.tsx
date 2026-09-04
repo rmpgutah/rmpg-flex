@@ -71,7 +71,7 @@ export default function CasePicker({
         setCases(list);
         setError(null);
       })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load cases'); })
+      .catch((err: any) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load cases'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

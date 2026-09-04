@@ -107,9 +107,9 @@ export function useMapboxPursuitSegments(map: mapboxgl.Map | null) {
       const list = Array.isArray(data) ? data : [];
       setSegments(list);
       await renderOnMap(list, map);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxPursuitSegments] fetch failed:', err);
-      setError(err?.message || 'Failed to load pursuit tracks');
+      setError(err instanceof Error ? err.message : 'Failed to load pursuit tracks');
     } finally {
       setLoading(false);
     }

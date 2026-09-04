@@ -56,8 +56,8 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
     try {
       const data = await apiFetch<{ links: LinkedEmail[] }>(`/email/links/by-entity/${entityType}/${encodeURIComponent(String(entityId))}`);
       setLinks(data?.links || []);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load');
       setLinks([]);
     } finally {
       setLoading(false);

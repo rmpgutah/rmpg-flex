@@ -34,8 +34,8 @@ export default function AIBehaviorPanel() {
     try {
       const data = await apiFetch<BehaviorConfig>('/ai/behavior');
       setConfig({ ...DEFAULTS, ...data });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load behavior config');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load behavior config');
     } finally {
       setLoading(false);
     }
@@ -51,8 +51,8 @@ export default function AIBehaviorPanel() {
         method: 'PUT',
         body: JSON.stringify(config),
       });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }

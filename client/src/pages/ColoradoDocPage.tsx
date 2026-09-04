@@ -129,11 +129,12 @@ export default function ColoradoDocPage() {
           setResults([offender]);
           setSelected(offender);
         })
-        .catch((err: any) => {
-          if (err.message?.includes('404') || err.message?.includes('not found')) {
+        .catch((err: unknown) => {
+          const errMsg = err instanceof Error ? err.message : '';
+          if (errMsg.includes('404') || errMsg.includes('not found')) {
             addToast(`DOC #${num} not found.`, 'warning');
           } else {
-            addToast(err.message || 'DOC lookup failed.', 'error');
+            addToast(errMsg || 'DOC lookup failed.', 'error');
           }
         })
         .finally(() => setLoading(false));
@@ -160,8 +161,8 @@ export default function ColoradoDocPage() {
         `/colorado-doc/search?${params.toString()}`
       );
       setResults(resp.data || []);
-    } catch (err: any) {
-      setError(err.message || 'Search failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
       setResults([]);
     } finally {
       setLoading(false);
@@ -184,11 +185,12 @@ export default function ColoradoDocPage() {
       );
       setResults([offender]);
       setSelected(offender);
-    } catch (err: any) {
-      if (err.message?.includes('404') || err.message?.includes('not found')) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '';
+      if (errMsg.includes('404') || errMsg.includes('not found')) {
         setError('No offender found with that DOC number');
       } else {
-        setError(err.message || 'Lookup failed');
+        setError(errMsg || 'Lookup failed');
       }
       setResults([]);
       setSelected(null);

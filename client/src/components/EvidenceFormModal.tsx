@@ -244,8 +244,8 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       clearDraft();
       onCreated();
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save evidence');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save evidence');
     } finally {
       setIsSubmitting(false);
     }

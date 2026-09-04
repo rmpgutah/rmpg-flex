@@ -290,7 +290,7 @@ export default function FleetDashboardPage() {
         const markReady = () => { if (!cancelled) { onMapLoaded(map); setMapLoaded(true); } };
         map.on('load', markReady);
         map.on('idle', markReady);
-        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setMapError(e.error?.message || 'Map error'); });
+        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setMapError(e.error instanceof Error ? e.error.message : 'Map error'); });
         mapRef.current = map;
         webglRecoveryCleanupRef.current = attach(map, 'FleetDashboardPage');
       } catch (err) {

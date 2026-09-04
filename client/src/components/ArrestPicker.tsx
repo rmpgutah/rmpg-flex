@@ -89,7 +89,7 @@ export default function ArrestPicker({
         setArrests(list);
         setError(null);
       })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load bookings'); })
+      .catch((err: any) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load bookings'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

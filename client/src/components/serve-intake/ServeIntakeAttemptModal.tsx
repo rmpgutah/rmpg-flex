@@ -212,8 +212,8 @@ export default function ServeIntakeAttemptModal({
       const now = new Date();
       setSubmittedWindow(nextAttemptWindow(result, body.attempt_number, now.getHours(), now.getDay()));
       onSuccess?.(body);
-    } catch (err: any) {
-      setSubmitError(err?.message || 'Failed to log attempt');
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to log attempt');
     } finally {
       setSubmitting(false);
     }

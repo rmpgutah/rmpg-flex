@@ -59,7 +59,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
         setError(null);
       })
       .catch((err: any) => {
-        if (!cancelled) setError(err?.message || 'Failed to load incidents');
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load incidents');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

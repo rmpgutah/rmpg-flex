@@ -550,8 +550,8 @@ export default function Layout() {
       setNameSetupOpen(false);
       // Fire-and-forget — don't await so the modal closes immediately
       refreshUser();
-    } catch (err: any) {
-      setSetupError(err?.message || 'Failed to save. Try again.');
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Failed to save. Try again.');
     } finally {
       setSetupSaving(false);
     }

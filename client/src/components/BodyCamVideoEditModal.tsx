@@ -99,8 +99,8 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
         recorded_at: recordedAt,
       });
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }

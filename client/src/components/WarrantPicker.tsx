@@ -125,8 +125,8 @@ export default function WarrantPicker({
         setResults(list);
         setError(null);
         setOpen(true);
-      } catch (err: any) {
-        if (!cancelled) setError(err?.message || 'Warrant search failed');
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Warrant search failed');
       } finally {
         if (!cancelled) setLoading(false);
       }

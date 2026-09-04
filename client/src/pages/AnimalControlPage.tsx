@@ -145,7 +145,7 @@ export default function AnimalControlPage() {
       setCases(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setError(err?.message || 'Failed to load cases'); } finally { setLoading(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load cases'); } finally { setLoading(false); }
   }, [page, searchQuery, filterType, filterStatus]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);

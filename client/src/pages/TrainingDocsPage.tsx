@@ -609,8 +609,8 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
         addToast('Document created successfully', 'success');
       }
       onSaved();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save document');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save document');
       addToast('Failed to save document', 'error');
     } finally {
       setSaving(false);

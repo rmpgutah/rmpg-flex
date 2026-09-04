@@ -70,8 +70,8 @@ export default function ServeQueueToolsPanel() {
         { method: 'POST', body: JSON.stringify({}) },
       );
       setDupes(res.duplicateGroups ?? []);
-    } catch (err: any) {
-      setDupeError(err?.message || 'Duplicate scan failed');
+    } catch (err) {
+      setDupeError(err instanceof Error ? err.message : 'Duplicate scan failed');
     } finally {
       setDupeBusy(false);
     }
@@ -86,8 +86,8 @@ export default function ServeQueueToolsPanel() {
         { method: 'POST', body: JSON.stringify({}) },
       );
       setScored((res.scored ?? []).slice(0, 10));
-    } catch (err: any) {
-      setScoreError(err?.message || 'Priority scoring failed');
+    } catch (err) {
+      setScoreError(err instanceof Error ? err.message : 'Priority scoring failed');
     } finally {
       setScoreBusy(false);
     }

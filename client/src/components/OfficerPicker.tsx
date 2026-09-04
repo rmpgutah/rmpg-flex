@@ -93,7 +93,7 @@ export default function OfficerPicker({
         setOfficers(list);
         setError(null);
       })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load officers'); })
+      .catch((err: any) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load officers'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [activeOnly]);

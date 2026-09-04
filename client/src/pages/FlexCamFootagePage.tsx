@@ -813,7 +813,7 @@ export default function FlexCamFootagePage() {
       // Ignore the noise event browsers fire when src is empty/cleared.
       if (!v.src || v.src === window.location.href) return;
       const code = v.error?.code;
-      const msg = v.error?.message || 'unknown';
+      const msg = v.error instanceof MediaError ? v.error.message : 'unknown';
       setPlaybackErr(`Video decode error (code ${code ?? '?'}): ${msg}`);
       setPlaying(false);
     },

@@ -71,7 +71,7 @@ export default function CallPicker({
         setCalls(list);
         setError(null);
       })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load calls'); })
+      .catch((err: any) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load calls'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

@@ -207,7 +207,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
         map.on('error', (e: mapboxgl.ErrorEvent) => {
           if (!cancelled) {
-            setError(e.error?.message || 'Map error');
+            setError(e.error instanceof Error ? e.error.message : 'Map error');
           }
         });
 
@@ -233,12 +233,12 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         const resizeObserver = new ResizeObserver(() => map.resize());
         resizeObserver.observe(containerRef.current);
         resizeObserverRef.current = resizeObserver;
-      } catch (err: any) {
+      } catch (err) {
         if (!cancelled) {
           if (attempt < MAX_INIT_ATTEMPTS) {
             setTimeout(() => { if (!cancelled) init(attempt + 1); }, attempt * BACKOFF_BASE_MS);
           } else {
-            setError(err?.message || 'Failed to load map');
+            setError(err instanceof Error ? err.message : 'Failed to load map');
           }
         }
       }

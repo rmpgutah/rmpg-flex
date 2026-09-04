@@ -288,9 +288,9 @@ export default function CrmPage() {
       setStats(statsRes);
       setRecentActivity(Array.isArray(activityRes) ? activityRes : []);
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
-    } catch (err: any) {
+    } catch (err) {
       if (!mountedRef.current) return;
-      setFetchError(err?.message || 'Failed to load data');
+      setFetchError(err instanceof Error ? err.message : 'Failed to load data');
     }
   }, []);
 

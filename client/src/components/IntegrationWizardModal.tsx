@@ -159,8 +159,8 @@ export default function IntegrationWizardModal({
         body: JSON.stringify(formValues),
       });
       setTestResult({ success: true, message: res.message || 'Connection successful' });
-    } catch (err: any) {
-      setTestResult({ success: false, message: err.message || 'Connection failed' });
+    } catch (err) {
+      setTestResult({ success: false, message: err instanceof Error ? err.message : 'Connection failed' });
     } finally {
       setTesting(false);
     }
@@ -179,8 +179,8 @@ export default function IntegrationWizardModal({
       setStep('testing');
       // Auto-start test
       handleTest();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save credentials');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save credentials');
     } finally {
       setSaving(false);
     }
@@ -196,8 +196,8 @@ export default function IntegrationWizardModal({
         headers: { 'Content-Type': 'application/json' },
       });
       setSyncResult({ success: true, message: res.message || 'Sync complete' });
-    } catch (err: any) {
-      setSyncResult({ success: false, message: err.message || 'Sync failed' });
+    } catch (err) {
+      setSyncResult({ success: false, message: err instanceof Error ? err.message : 'Sync failed' });
     } finally {
       setSyncing(false);
     }

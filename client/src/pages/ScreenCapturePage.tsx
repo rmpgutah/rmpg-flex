@@ -137,8 +137,8 @@ export default function ScreenCapturePage() {
       setActiveBox(null);
       setActiveTool('none');
       flash('Screenshot captured.', 'ok');
-    } catch (err: any) {
-      flash(`Capture failed: ${err?.message ?? 'unknown error'}`, 'err');
+    } catch (err) {
+      flash(`Capture failed: ${err instanceof Error ? err.message : 'unknown error'}`, 'err');
     } finally {
       setCapturing(false);
     }
@@ -223,8 +223,8 @@ export default function ScreenCapturePage() {
       setRecentCaptures(updated);
       saveRecentCaptures(updated);
       flash(`Saved: ${filename}`, 'ok');
-    } catch (err: any) {
-      flash(`Save failed: ${err?.message ?? 'unknown'}`, 'err');
+    } catch (err) {
+      flash(`Save failed: ${err instanceof Error ? err.message : 'unknown'}`, 'err');
     }
   }, [capturedImage, recentCaptures]);
 
@@ -243,8 +243,8 @@ export default function ScreenCapturePage() {
     try {
       await el.copyToClipboard(capturedImage);
       flash('Copied to clipboard.', 'ok');
-    } catch (err: any) {
-      flash(`Copy failed: ${err?.message ?? 'unknown'}`, 'err');
+    } catch (err) {
+      flash(`Copy failed: ${err instanceof Error ? err.message : 'unknown'}`, 'err');
     }
   }, [capturedImage]);
 
@@ -272,8 +272,8 @@ export default function ScreenCapturePage() {
       });
 
       flash(`Attached to Call #${activeCallId}.`, 'ok');
-    } catch (err: any) {
-      flash(`Attach failed: ${err?.message ?? 'unknown'}`, 'err');
+    } catch (err) {
+      flash(`Attach failed: ${err instanceof Error ? err.message : 'unknown'}`, 'err');
     } finally {
       setAttaching(false);
     }

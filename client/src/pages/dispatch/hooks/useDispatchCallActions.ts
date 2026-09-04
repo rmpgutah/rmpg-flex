@@ -199,7 +199,7 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
       // Reverting from cleared re-dispatches the unit → refresh units.
       await refreshUnits();
-    } catch (err: any) {
+    } catch (err) {
       addToast('Failed to revert call status', 'error');
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
@@ -229,11 +229,12 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
         try {
           await apiFetch(`/dispatch/calls/${callId}/generate-incident`, { method: 'POST' });
           navigate('/incidents');
-        } catch (err: any) {
-          addToast(err?.error || err?.message || 'Failed to create incident report', 'error');
+        } catch (err) {
+          const apiErr = err as { error?: string; message?: string };
+          addToast(apiErr.error || (err instanceof Error ? err.message : 'Failed to create incident report'), 'error');
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       addToast('Failed to clear call', 'error');
     }
     setDispositionPromptCallId(null);
@@ -254,8 +255,9 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       setSelectedCall((prev) => prev?.id === deleteCallTarget.id ? null : prev);
       setDeleteCallTarget(null);
       addToast(`Call ${callNum} removed (archived, admin-recoverable)`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to remove call', 'error');
+    } catch (err) {
+      const apiErr = err as { message?: string; error?: string };
+      addToast(apiErr.message || apiErr.error || 'Failed to remove call', 'error');
     } finally {
       setIsDeletingCall(false);
     }
@@ -304,8 +306,8 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       });
       addToast(`Incident ${incident.incident_number || ''} created`, 'success');
       navigate('/incidents');
-    } catch (err: any) {
-      const msg = err?.message || '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
       if (msg.includes('already exists')) {
         addToast('An incident report already exists for this call', 'info');
         navigate('/incidents');

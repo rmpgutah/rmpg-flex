@@ -144,7 +144,7 @@ export default function DailyActivityReportsPage() {
       setDars(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
+    } catch (err) { setFetchError(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Failed to load data'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterOfficerId, filterDate]);
 
   useEffect(() => { fetchDars(); }, [fetchDars]);
@@ -260,7 +260,7 @@ export default function DailyActivityReportsPage() {
       });
       setAutoPopulateData(res.data);
       addToast('Activity data populated', 'success');
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unknown error', 'error'); }
     finally { setAutoPopLoading(false); }
   };
 
@@ -285,7 +285,7 @@ export default function DailyActivityReportsPage() {
       setCreateFormOpen(false);
       setAutoPopulateData(null);
       fetchDars({ silent: true });
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unknown error', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -298,7 +298,7 @@ export default function DailyActivityReportsPage() {
       const updated = await apiFetch<{ data: DailyActivityReport }>(`/dar/${selected.id}`);
       setSelected(updated.data);
       fetchDars({ silent: true });
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unknown error', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -310,7 +310,7 @@ export default function DailyActivityReportsPage() {
       const updated = await apiFetch<{ data: DailyActivityReport }>(`/dar/${selected.id}`);
       setSelected(updated.data);
       fetchDars({ silent: true });
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unknown error', 'error'); }
   };
 
   const openReturnDialog = () => {
@@ -328,7 +328,7 @@ export default function DailyActivityReportsPage() {
       setSelected(updated.data);
       fetchDars({ silent: true });
       setReturnNotesOpen(false);
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unknown error', 'error'); }
     finally { setReturningDar(false); }
   };
 
@@ -349,7 +349,7 @@ export default function DailyActivityReportsPage() {
       setEditing(false);
       const updated = await apiFetch<{ data: DailyActivityReport }>(`/dar/${selected.id}`);
       setSelected(updated.data);
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Unknown error', 'error'); }
   };
 
   const parseJson = (val: any) => {

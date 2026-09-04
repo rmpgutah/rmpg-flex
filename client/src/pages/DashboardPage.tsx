@@ -3051,9 +3051,9 @@ export default function DashboardPage() {
               addToast(`Call ${result.call_number || ''} created`, 'success');
               setShowNewCallModal(false);
               fetchDashboardData({ silent: true });
-            } catch (err: any) {
+            } catch (err) {
               console.error('Failed to create call from dashboard:', err);
-              addToast(err?.message || 'Failed to create call', 'error');
+              addToast(err instanceof Error ? err.message : 'Failed to create call', 'error');
             }
           }}
         />

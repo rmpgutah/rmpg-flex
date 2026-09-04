@@ -420,7 +420,7 @@ export default function ServeIntakePage() {
     setClientsLoading(true);
     apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
       .then((data) => { setClients(data); setClientLoadError(null); })
-      .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'))
+      .catch((err: any) => setClientLoadError(err instanceof Error ? err.message : 'Failed to load clients — refresh to retry'))
       .finally(() => setClientsLoading(false));
   }, []);
   // Auto-match client from OCR-extracted plaintiff/client_name when no client is
@@ -958,10 +958,11 @@ export default function ServeIntakePage() {
           setError('Intake processing failed');
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       // A user-initiated cancel isn't an error — reset quietly without the
       // red banner. Everything else surfaces its message.
-      if (!err?.aborted) setError(err?.message || 'Failed to process documents');
+      const serveErr = err as { aborted?: boolean };
+      if (!serveErr.aborted) setError(err instanceof Error ? err.message : 'Failed to process documents');
     } finally {
       uploadXhrRef.current = null;
       setProcessing(false);

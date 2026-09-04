@@ -95,7 +95,7 @@ export default function ContractPicker({
           }
         }
       })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load contracts'); })
+      .catch((err: any) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load contracts'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

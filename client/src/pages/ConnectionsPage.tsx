@@ -432,8 +432,8 @@ export default function ConnectionsPage() {
       setSaveDescription('');
       setSaveFlash(true);
       window.setTimeout(() => setSaveFlash(false), 2500);
-    } catch (err: any) {
-      setSaveError(err?.message || 'Save failed');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }

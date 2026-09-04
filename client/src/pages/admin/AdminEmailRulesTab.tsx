@@ -72,8 +72,8 @@ export default function AdminEmailRulesTab() {
       setEditing(null);
       setTestResult(null);
       load();
-    } catch (err: any) {
-      addToast(`Save failed: ${err.message || err}`, 'error');
+    } catch (err) {
+      addToast(`Save failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }
 
@@ -82,8 +82,8 @@ export default function AdminEmailRulesTab() {
     try {
       await apiFetch(`/api/email/rules/${id}`, { method: 'DELETE' });
       load();
-    } catch (err: any) {
-      addToast(`Delete failed: ${err.message || err}`, 'error');
+    } catch (err) {
+      addToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }
 
@@ -105,8 +105,8 @@ export default function AdminEmailRulesTab() {
         }),
       });
       setTestResult(r.matches ? 'Sample email MATCHES these conditions' : 'Sample email does not match');
-    } catch (err: any) {
-      setTestResult(`Test failed: ${err.message || err}`);
+    } catch (err) {
+      setTestResult(`Test failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

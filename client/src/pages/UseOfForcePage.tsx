@@ -261,8 +261,8 @@ export default function UseOfForcePage() {
       if (filterSubjectId) list = list.filter((r) => String(r.subject_person_id) === filterSubjectId);
       setReports(list);
       setTotalPages(res.pagination?.totalPages || 1);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load reports');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load reports');
     } finally {
       setLoading(false);
     }
@@ -358,8 +358,8 @@ export default function UseOfForcePage() {
       addToast('Report submitted', 'success');
       await fetchReports({ silent: true });
       fetchStats();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to submit report');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit report');
     } finally {
       setSubmitting(false);
     }

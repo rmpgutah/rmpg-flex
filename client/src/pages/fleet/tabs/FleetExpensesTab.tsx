@@ -115,8 +115,8 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
       setEditingId(null);
       setForm(emptyForm);
       fetchExpenses();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }

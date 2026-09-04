@@ -623,13 +623,14 @@ export default function MdtPage() {
         });
       }
       fetchData();
-    } catch (err: any) {
-      if (err?.code === 'NEEDS_VEHICLE') {
+    } catch (err) {
+      const apiErr = err as { code?: string };
+      if (apiErr.code === 'NEEDS_VEHICLE') {
         addToast('No take-home vehicle set — pick one on the Shift card to go on duty', 'warning');
-      } else if (err?.code === 'NEEDS_MILEAGE') {
+      } else if (apiErr.code === 'NEEDS_MILEAGE') {
         setClockMileagePrompt({ mode: 'in' });
         addToast('No odometer history for this vehicle — enter starting mileage to begin', 'warning');
-      } else if (err?.code === 'NO_UNIT') {
+      } else if (apiErr.code === 'NO_UNIT') {
         addToast('No unit assigned — ask dispatch to assign you a unit', 'error');
       } else {
         addToast('Failed to change unit status', 'error');
@@ -645,8 +646,9 @@ export default function MdtPage() {
       await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
       addToast('Shift ended — clocked out, vehicle released', 'success');
       fetchData();
-    } catch (err: any) {
-      if (err?.code === 'NEEDS_MILEAGE' || err?.code === 'MILEAGE_LOWER') {
+    } catch (err) {
+      const apiErr2 = err as { code?: string };
+      if (apiErr2.code === 'NEEDS_MILEAGE' || apiErr2.code === 'MILEAGE_LOWER') {
         setClockMileagePrompt({ mode: 'out' });
       } else {
         addToast('Failed to end shift', 'error');

@@ -48,8 +48,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       setQrDataUri(qr || '');
       setManualKey(data.manualKey);
       setStep('scan');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -75,8 +75,8 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       const data = await res.json();
       setBackupCodes(data.backupCodes);
       setStep('backup');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
       setVerifyCode('');
     } finally {
       setLoading(false);

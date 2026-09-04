@@ -83,8 +83,8 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
       setEntityId('');
       setNotes('');
       fetchLinks();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to add link');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add link');
     } finally {
       setSubmitting(false);
     }

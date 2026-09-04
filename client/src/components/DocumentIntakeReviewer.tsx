@@ -142,8 +142,8 @@ export default function DocumentIntakeReviewer({ extraction, filename, onReset }
       const newId = resp?.id ?? resp?.data?.id;
       toast.addToast(`${label} saved${newId ? ` (#${newId})` : ''}`, 'success');
       onReset();
-    } catch (err: any) {
-      toast.addToast(`Save failed: ${err?.message || 'unknown error'}`, 'error');
+    } catch (err) {
+      toast.addToast(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -204,8 +204,8 @@ export default function DocumentIntakeReviewer({ extraction, filename, onReset }
       a.click();
       URL.revokeObjectURL(url);
       toast.addToast('Intake report PDF generated', 'success');
-    } catch (err: any) {
-      toast.addToast(`PDF generation failed: ${err?.message || 'unknown error'}`, 'error');
+    } catch (err) {
+      toast.addToast(`PDF generation failed: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
     } finally {
       setPrintingPdf(false);
     }

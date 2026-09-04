@@ -43,7 +43,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
     const ctrl = new AbortController();
     apiFetch<RadioChannel[]>(`/radio/channels${includeArchived ? '?include_archived=1' : ''}`, { signal: ctrl.signal })
       .then((data) => setChannels(asArray<RadioChannel>(data)))
-      .catch((err) => { if (err?.name !== 'AbortError') console.error('[radio] channels', err); });
+      .catch((err) => { if (((err as { name?: string }).name !== 'AbortError')) console.error('[radio] channels', err); });
     return ctrl;
   }, [includeArchived]);
 

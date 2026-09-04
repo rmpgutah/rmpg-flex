@@ -49,8 +49,8 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
       }
       const dist = typeof sug.distance_miles === 'number' ? sug.distance_miles.toFixed(2) : '?';
       addToast(`Closest: ${sug.call_sign} — ${dist} mi (${sug.officer_name || 'unassigned'})`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to compute closest unit', 'error');
+    } catch (err) {
+      addToast((err as {message?:string;error?:string}).message || (err as {message?:string;error?:string}).error || 'Failed to compute closest unit', 'error');
     }
   }, [addToast]);
 
@@ -66,8 +66,8 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
       }
       await refreshUnits();
       addToast(`Auto-assigned ${result.auto_assigned_unit} (${result.distance_miles} mi)`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'No available units', 'error');
+    } catch (err) {
+      addToast((err as {message?:string;error?:string}).message || (err as {message?:string;error?:string}).error || 'No available units', 'error');
     }
   }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 

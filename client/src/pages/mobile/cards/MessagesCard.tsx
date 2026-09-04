@@ -60,7 +60,7 @@ export default function MessagesCard() {
         ? res.data
         : [];
       setMessages(rows);
-    } catch (err: any) {
+    } catch (err) {
       if (!mountedRef.current) return;
       setError('Failed to load messages');
     } finally {

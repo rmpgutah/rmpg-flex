@@ -101,7 +101,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     setLoading(true); setErr(null);
     apiFetch<MediaResp>(`/api/driving-events/${eventId}/media`)
       .then((m) => { if (alive) setMedia(m); })
-      .catch((e) => { if (alive) setErr(e?.message || 'Failed to load media'); })
+      .catch((e) => { if (alive) setErr(e instanceof Error ? e.message : 'Failed to load media'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [eventId]);

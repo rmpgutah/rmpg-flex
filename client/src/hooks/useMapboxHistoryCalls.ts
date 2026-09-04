@@ -157,9 +157,9 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       whenStyleReady(map, () => {
         renderOnMap(calls, map);
       });
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxHistoryCalls] fetch failed:', err);
-      setError(err?.message || 'Failed to load call history');
+      setError(err instanceof Error ? err.message : 'Failed to load call history');
     } finally {
       setLoading(false);
     }

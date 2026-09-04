@@ -874,7 +874,7 @@ const NcicQueryPanel = forwardRef<NcicQueryPanelHandle, NcicQueryPanelProps>(fun
         response,
         hasHit,
       }]);
-    } catch (err: any) {
+    } catch (err) {
       // External paid-API commands (skip-trace / DL / OFAC / background) being
       // down or unconfigured is an advisory, not a system fault — render an
       // amber SERVICE NOTE instead of a red ERROR. Local-DB commands still
@@ -884,10 +884,10 @@ const NcicQueryPanel = forwardRef<NcicQueryPanelHandle, NcicQueryPanelProps>(fun
         QO: 'OFAC SANCTIONS', QB: 'BACKGROUND CHECK',
       };
       const source = EXTERNAL_SOURCES[verb];
-      const reason = /timeout/i.test(err?.message || '') ? 'REQUEST TIMED OUT' : 'SERVICE UNAVAILABLE';
+      const reason = /timeout/i.test(err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : '') ? 'REQUEST TIMED OUT' : 'SERVICE UNAVAILABLE';
       const response = source
         ? formatServiceUnavailable(source, queryText, reason)
-        : `ERROR: ${err.message || 'Query failed'}`;
+        : `ERROR: ${err instanceof Error ? err.message : 'Query failed'}`;
       setEntries(prev => [...prev, {
         id: ++queryIdCounterRef.current,
         timestamp,

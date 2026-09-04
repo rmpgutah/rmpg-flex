@@ -222,7 +222,7 @@ export default function CodeEnforcementPage() {
       setViolations(res.data || []);
       setVTotalPages(res.pagination?.totalPages || 1);
       setVTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setVLoading(false); }
+    } catch (err) { setFetchError(err instanceof Error ? err.message : 'Failed to load data'); } finally { setVLoading(false); }
   }, [vPage, vSearch, vFilterStatus]);
 
   // Fetch tows

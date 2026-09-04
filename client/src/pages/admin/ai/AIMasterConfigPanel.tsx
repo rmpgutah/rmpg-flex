@@ -44,7 +44,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
       setChainMode(mc.chainMode ?? false);
       setRoutingRules(mc.routingRules || {});
     }).catch(err => {
-      if (!cancelled) setError(err?.message || 'Failed to load master config');
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load master config');
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
@@ -77,8 +77,8 @@ export default function AIMasterConfigPanel({ setError }: Props) {
         body: JSON.stringify({ masterPrompt, chainMode, routingRules }),
       });
       setDirty(false);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save master config');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save master config');
     } finally {
       setSaving(false);
     }

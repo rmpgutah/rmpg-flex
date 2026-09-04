@@ -429,8 +429,8 @@ export default function DispatchPage() {
         redispatchCallNumber: extra?.redispatchCallNumber,
         nextWindow: extra?.nextWindow,
       });
-    } catch (err: any) {
-      addToast(`Notice of Communication failed: ${err?.message || 'Unknown error'}`, 'error');
+    } catch (err) {
+      addToast(`Notice of Communication failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     }
   }, [user, addToast]);
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
@@ -823,9 +823,9 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/persons`);
       setCallPersons(Array.isArray(data) ? data : []);
-    } catch (err: any) {
+    } catch (err) {
       setCallPersons([]);
-      addToast(err?.message || 'Failed to load linked persons', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to load linked persons', 'error');
     }
   }, [addToast]);
 
@@ -833,9 +833,9 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/vehicles`);
       setCallVehicles(Array.isArray(data) ? data : []);
-    } catch (err: any) {
+    } catch (err) {
       setCallVehicles([]);
-      addToast(err?.message || 'Failed to load linked vehicles', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to load linked vehicles', 'error');
     }
   }, [addToast]);
 
@@ -845,9 +845,9 @@ export default function DispatchPage() {
         method: 'POST', body: JSON.stringify({ person_id: personId, role }),
       });
       fetchCallPersons(callId);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Link person error:', err);
-      addToast(err?.message || 'Failed to link person', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to link person', 'error');
     }
   }, [fetchCallPersons, addToast]);
 
@@ -855,9 +855,9 @@ export default function DispatchPage() {
     try {
       await apiFetch(`/dispatch/calls/${callId}/persons/${linkId}`, { method: 'DELETE' });
       setCallPersons(prev => prev.filter(p => p.id !== linkId));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Unlink person error:', err);
-      addToast(err?.message || 'Failed to unlink person', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to unlink person', 'error');
       fetchCallPersons(callId);
     }
   }, [addToast, fetchCallPersons]);
@@ -868,9 +868,9 @@ export default function DispatchPage() {
         method: 'POST', body: JSON.stringify({ vehicle_id: vehicleId, role }),
       });
       fetchCallVehicles(callId);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Link vehicle error:', err);
-      addToast(err?.message || 'Failed to link vehicle', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to link vehicle', 'error');
     }
   }, [fetchCallVehicles, addToast]);
 
@@ -878,9 +878,9 @@ export default function DispatchPage() {
     try {
       await apiFetch(`/dispatch/calls/${callId}/vehicles/${linkId}`, { method: 'DELETE' });
       setCallVehicles(prev => prev.filter(v => v.id !== linkId));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Unlink vehicle error:', err);
-      addToast(err?.message || 'Failed to unlink vehicle', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to unlink vehicle', 'error');
       fetchCallVehicles(callId);
     }
   }, [addToast, fetchCallVehicles]);
@@ -889,9 +889,9 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/businesses`);
       setCallBusinesses(Array.isArray(data) ? data : []);
-    } catch (err: any) {
+    } catch (err) {
       setCallBusinesses([]);
-      addToast(err?.message || 'Failed to load linked businesses', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to load linked businesses', 'error');
     }
   }, [addToast]);
 
@@ -940,9 +940,9 @@ export default function DispatchPage() {
         method: 'POST', body: JSON.stringify({ business_id: businessId, role }),
       });
       fetchCallBusinesses(callId);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Link business error:', err);
-      addToast(err?.message || 'Failed to link business', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to link business', 'error');
     }
   }, [fetchCallBusinesses, addToast]);
 
@@ -953,9 +953,9 @@ export default function DispatchPage() {
       });
       fetchCallBusinesses(callId);
       setBusinessQuery(''); setBusinessSearchResults([]); setShowBusinessDropdown(false);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Quick-add business error:', err);
-      addToast(err?.message || 'Failed to add business', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to add business', 'error');
     }
   }, [fetchCallBusinesses, addToast]);
 
@@ -963,9 +963,9 @@ export default function DispatchPage() {
     try {
       await apiFetch(`/dispatch/calls/${callId}/businesses/${linkId}`, { method: 'DELETE' });
       setCallBusinesses(prev => prev.filter(b => b.id !== linkId));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Unlink business error:', err);
-      addToast(err?.message || 'Failed to unlink business', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to unlink business', 'error');
       fetchCallBusinesses(callId);
     }
   }, [addToast, fetchCallBusinesses]);
@@ -997,11 +997,12 @@ export default function DispatchPage() {
       setPersonDupState(null);
       fetchCallPersons(selectedCall.id);
       addToast(result?.created ? 'Person created and linked' : 'Existing person linked', 'success');
-    } catch (err: any) {
-      if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
-        setPersonDupState({ data, candidates: err.payload.candidates });
+    } catch (err) {
+      const dupErr = err as { code?: string; payload?: { candidates?: DuplicateCandidate[] } };
+      if (dupErr.code === 'DUPLICATE_CANDIDATES' && Array.isArray(dupErr.payload?.candidates)) {
+        setPersonDupState({ data, candidates: dupErr.payload!.candidates! });
       } else {
-        addToast(err?.message || 'Failed to create person', 'error');
+        addToast(err instanceof Error ? err.message : 'Failed to create person', 'error');
       }
     } finally {
       setIsCreatingRecord(false);
@@ -1030,11 +1031,12 @@ export default function DispatchPage() {
       setVehicleDupState(null);
       fetchCallVehicles(selectedCall.id);
       addToast(result?.created ? 'Vehicle created and linked' : 'Existing vehicle linked', 'success');
-    } catch (err: any) {
-      if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
-        setVehicleDupState({ data, candidates: err.payload.candidates });
+    } catch (err) {
+      const dupErr = err as { code?: string; payload?: { candidates?: DuplicateCandidate[] } };
+      if (dupErr.code === 'DUPLICATE_CANDIDATES' && Array.isArray(dupErr.payload?.candidates)) {
+        setVehicleDupState({ data, candidates: dupErr.payload!.candidates! });
       } else {
-        addToast(err?.message || 'Failed to create vehicle', 'error');
+        addToast(err instanceof Error ? err.message : 'Failed to create vehicle', 'error');
       }
     } finally {
       setIsCreatingRecord(false);
@@ -1271,8 +1273,8 @@ export default function DispatchPage() {
         // user's context (especially mid-edit or while viewing an archived call).
         return prev;
       });
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
+    } catch (err) {
+      if (((err as { name?: string }).name === 'AbortError')) {
         if (!options?.silent) addToast('Dispatch data request timed out — retrying may help', 'error');
         return;
       }
@@ -1703,7 +1705,7 @@ export default function DispatchPage() {
           // Audit caught: silent .catch here left serve-queue panel stale
           // after a serve attempt → dispatcher could re-dispatch the same
           // officer to the same call thinking it was still pending.
-          addToast(err?.message || 'Serve link out of sync — refresh the call', 'error');
+          addToast(err instanceof Error ? err.message : 'Serve link out of sync — refresh the call', 'error');
         });
       }
       // Voice alert: announce serve completion
@@ -1914,7 +1916,7 @@ export default function DispatchPage() {
         setLinkedIncidents(Array.isArray(incidents) ? incidents : []);
         const activity = res?.activity ?? [];
         setActivityEntries(Array.isArray(activity) ? activity : []);
-      } catch (err: any) {
+      } catch (err) {
         // Audit caught (2026-06-21): silent failure here showed the operator
         // the LIST-version of selectedCall (no _ext columns), so PSO fields
         // read "No PSO details entered" even when they existed on disk. The
@@ -1924,7 +1926,7 @@ export default function DispatchPage() {
           // Keep existing activityEntries on a failed re-fetch — a stale log is
           // safer for an officer than a blank one (503/offline wipe caused the
           // "NO ACTIVITY RECORDED" bug after transient network failures).
-          addToast(err?.message || 'Could not load full call details — showing partial data', 'error');
+          addToast(err instanceof Error ? err.message : 'Could not load full call details — showing partial data', 'error');
         }
       }
       try {
@@ -2454,9 +2456,9 @@ export default function DispatchPage() {
           method: 'POST', body: JSON.stringify(v),
         }).catch(() => {});
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to create call:', err);
-      addToast(err?.message || 'Failed to create call', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to create call', 'error');
       throw err; // Re-throw so NewCallModal knows submission failed
     } finally {
       setIsSaving(false);
@@ -2613,9 +2615,9 @@ export default function DispatchPage() {
       setSelectedCall(updatedCall);
       setIsEditing(false);
       addToast(`Call ${updatedCall.call_number} saved`, 'success');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to save edits:', err);
-      addToast(err?.message || 'Failed to save changes', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save changes', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -3570,8 +3572,8 @@ export default function DispatchPage() {
                                   setServeLink(result);
                                   addToast('Sent to Serve Queue', 'success');
                                 }
-                              } catch (err: any) {
-                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                              } catch (err) {
+                                addToast(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
                               } finally {
                                 setSendingToServe(false);
                               }
@@ -3689,7 +3691,7 @@ export default function DispatchPage() {
                                   setSelectedCall(mapped);
                                   addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
-                              } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                              } catch (err) { addToast(`Failed to re-dispatch: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
@@ -3730,7 +3732,7 @@ export default function DispatchPage() {
                                   setSelectedCall(mapped);
                                   addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
                                 }
-                              } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                              } catch (err) { addToast(`Failed to undo: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
@@ -4446,12 +4448,12 @@ export default function DispatchPage() {
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
-                            } catch (err: any) {
+                            } catch (err) {
                               // Was deliberately /* silent on blur */ but an
                               // unreported failure on a documented audit-trail
                               // field meant the operator believed the value
                               // persisted when in fact it didn't.
-                              addToast(err?.message || 'Failed to update case number — change not persisted', 'error');
+                              addToast(err instanceof Error ? err.message : 'Failed to update case number — change not persisted', 'error');
                             }
                           }
                           setEditingTimestamp(null);
@@ -4508,12 +4510,12 @@ export default function DispatchPage() {
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch (err: any) {
+                            } catch (err) {
                               // Was deliberately /* silent on blur */ — but a
                               // silent failure on a documented audit-trail
                               // field meant the operator tabbed away thinking
                               // the value persisted. Audit caught this.
-                              addToast(err?.message || 'Failed to update incident link — change not persisted', 'error');
+                              addToast(err instanceof Error ? err.message : 'Failed to update incident link — change not persisted', 'error');
                             }
                           }
                           setEditingTimestamp(null);
@@ -4785,7 +4787,7 @@ export default function DispatchPage() {
                                   setSelectedCall(mapped);
                                   addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
-                              } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
+                              } catch (err) { addToast(`Re-dispatch failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
@@ -4826,7 +4828,7 @@ export default function DispatchPage() {
                                   setSelectedCall(mapped);
                                   addToast(`Return visit undone — restored ${mapped.call_number}`, 'success');
                                 }
-                              } catch (err: any) { addToast(`Failed to undo: ${err?.message || 'Unknown error'}`, 'error'); }
+                              } catch (err) { addToast(`Failed to undo: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
@@ -4852,8 +4854,8 @@ export default function DispatchPage() {
                               setServeLink(result);
                               addToast('Sent to Serve Queue', 'success');
                             }
-                          } catch (err: any) {
-                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } catch (err) {
+                            addToast(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
                           } finally {
                             setSendingToServe(false);
                           }
@@ -4886,8 +4888,8 @@ export default function DispatchPage() {
                                 if (result) {
                                   addToast(`Work order #${result.data?.id ?? ''} created`, 'success');
                                 }
-                              } catch (err: any) {
-                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                              } catch (err) {
+                                addToast(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
                               } finally {
                                 setReportingIssue(false);
                               }
@@ -5655,10 +5657,10 @@ export default function DispatchPage() {
                                     updateEditField('starting_mileage', String(r.suggested_mileage));
                                     addToast?.(`Picked up ${Number(r.suggested_mileage).toLocaleString()} mi from last entry (scope: ${r.source})`, 'success');
                                   } else {
-                                    addToast?.(r?.message || 'No prior mileage for this scope', 'info');
+                                    addToast?.(r instanceof Error ? r.message : 'No prior mileage for this scope', 'info');
                                   }
-                                } catch (err: any) {
-                                  addToast?.(err?.message || 'Mileage suggest failed', 'error');
+                                } catch (err) {
+                                  addToast?.(err instanceof Error ? err.message : 'Mileage suggest failed', 'error');
                                 }
                               }}
                               className="toolbar-btn text-[9px] px-1.5"
@@ -6620,7 +6622,7 @@ export default function DispatchPage() {
                                       : [mapped, ...prev]);
                                     addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                   }
-                                } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                                } catch (err) { addToast(`Failed to re-dispatch: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error'); }
                               },
                             });
                           }}
@@ -7810,7 +7812,7 @@ export default function DispatchPage() {
         onClose={() => setPendingConfirm(null)}
         onConfirm={runPendingConfirm}
         title={pendingConfirm?.title || ''}
-        message={pendingConfirm?.message || ''}
+        message={pendingConfirm instanceof Error ? pendingConfirm.message : ''}
         confirmLabel={pendingConfirm?.confirmLabel || 'Confirm'}
         confirmVariant="warning"
         isLoading={confirmRunning}

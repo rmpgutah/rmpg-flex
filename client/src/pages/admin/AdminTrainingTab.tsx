@@ -156,8 +156,8 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         officers,
         by_category: byCategory,
       });
-    } catch (err: any) {
-      addToast(err.message || 'Failed to load training data', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to load training data', 'error');
     } finally {
       setLoading(false);
     }

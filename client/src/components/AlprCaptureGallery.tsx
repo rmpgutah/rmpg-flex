@@ -151,7 +151,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
     setLoading(true); setErr(null);
     return apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
       .then((r) => setCaps(Array.isArray(r) ? r : []))
-      .catch((e) => setErr(e?.message || 'Failed to load captures'))
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Failed to load captures'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -160,7 +160,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
     setLoading(true); setErr(null);
     apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
       .then((r) => { if (!cancelled) setCaps(Array.isArray(r) ? r : []); })
-      .catch((e) => { if (!cancelled) setErr(e?.message || 'Failed to load captures'); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : 'Failed to load captures'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

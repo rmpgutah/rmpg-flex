@@ -836,8 +836,8 @@ export default function PersonnelPage() {
       setBodyCameraEditData(undefined);
       await refreshBodyCameras();
       addToast('Body camera saved', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save body camera', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save body camera', 'error');
       throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
@@ -989,8 +989,8 @@ export default function PersonnelPage() {
       setOfficerEditData(undefined);
       await fetchCoreData({ silent: true });
       addToast(officerModalMode === 'edit' ? 'Officer updated' : 'Officer created', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save officer', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save officer', 'error');
       throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
@@ -1169,8 +1169,8 @@ export default function PersonnelPage() {
       const raw = await apiFetch<any[]>('/personnel/time');
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Time entry updated', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to update time entry', 'error');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update time entry', 'error');
       throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
@@ -1837,7 +1837,7 @@ export default function PersonnelPage() {
         onClose={() => setDeleteConfirm(null)}
         onConfirm={runDeleteConfirm}
         title={deleteConfirm?.title || 'Confirm'}
-        message={deleteConfirm?.message || ''}
+        message={deleteConfirm instanceof Error ? deleteConfirm.message : ''}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={deleteConfirmLoading}

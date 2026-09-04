@@ -328,8 +328,8 @@ export default function DashCamDetailPage() {
       const res = await apiFetch<any>(`/fleet/dashcam-videos/${id}`);
       // Unwrap .data envelope if present
       setVideo(res?.data ?? res);
-    } catch (err: any) {
-      setError(err?.message || 'Video not found');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Video not found');
     } finally {
       setLoading(false);
     }

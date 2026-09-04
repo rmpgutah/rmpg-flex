@@ -312,10 +312,10 @@ export default function NavMapView({
           const { message, isAuthErr } = classifyMapboxError(e);
           if (isAuthErr) setError(message);
         });
-      } catch (err: any) {
+      } catch (err) {
         if (cancelled) return;
         console.error('[NavMapView] init failed:', err);
-        setError(err?.message || 'Map failed to load');
+        setError(err instanceof Error ? err.message : 'Map failed to load');
       }
     })();
 

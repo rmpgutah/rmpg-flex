@@ -351,8 +351,8 @@ export default function VideoUploadModal({
             await uploadChunk(uploadId, i, blob);
             lastErr = null;
             break;
-          } catch (err: any) {
-            lastErr = err;
+          } catch (err) {
+            lastErr = err instanceof Error ? err : new Error(String(err));
             if (attempt < MAX_RETRIES - 1) {
               setChunkStatus(`Chunk ${i + 1} failed, retrying (${attempt + 2}/${MAX_RETRIES})...`);
               await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // backoff
@@ -404,10 +404,10 @@ export default function VideoUploadModal({
       setChunkStatus('Upload complete!');
       setTimeout(() => { reset(); onUploaded(); onClose(); }, 800);
 
-    } catch (err: any) {
+    } catch (err) {
       if (!abortRef.current) {
         setPhase('error');
-        setError(err?.message || 'Upload failed');
+        setError(err instanceof Error ? err.message : 'Upload failed');
       }
     }
   };

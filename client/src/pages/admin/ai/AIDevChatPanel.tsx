@@ -391,9 +391,9 @@ export default function AIDevChatPanel() {
       }
       setStreamingContent('');
       fetchSessions();
-    } catch (err: any) {
+    } catch (err) {
       clearInterval(thinkInterval);
-      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err?.message || 'Connection failed'}` }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err instanceof Error ? err.message : 'Connection failed'}` }]);
     } finally {
       clearInterval(thinkInterval);
       setIsStreaming(false);

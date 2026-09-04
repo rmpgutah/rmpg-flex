@@ -227,9 +227,9 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
       const clustered = clusterRiskPoints(points);
       setZones(clustered);
       whenStyleReady(map, () => { renderOnMap(clustered, map); });
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[useMapboxSafetyZones] fetch failed:', err);
-      setError(err?.message || 'Failed to load safety zones');
+      setError(err instanceof Error ? err.message : 'Failed to load safety zones');
     } finally {
       setLoading(false);
     }

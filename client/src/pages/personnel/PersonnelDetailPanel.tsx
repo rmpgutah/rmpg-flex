@@ -178,8 +178,9 @@ function DutyToggle({ officerId, currentStatus, onToggled }: { officerId: string
         await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
       }
       onToggled?.();
-    } catch (err: any) {
-      if (err?.code === 'NEEDS_VEHICLE' || err?.code === 'NO_UNIT') {
+    } catch (err) {
+      const apiErr = err as { code?: string };
+      if (apiErr.code === 'NEEDS_VEHICLE' || apiErr.code === 'NO_UNIT') {
         // Use cached units when available; otherwise fetch once and cache.
         let units = cachedUnitsRef.current;
         if (!units) {

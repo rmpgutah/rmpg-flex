@@ -69,8 +69,8 @@ export default function AIModelTuningPanel() {
         setFeatureParams(merged as Record<FeatureName, FeatureOverride>);
       }
       setPresets(asArray<Preset>(presetsData));
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load model parameters');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load model parameters');
     } finally {
       setLoading(false);
     }
@@ -86,8 +86,8 @@ export default function AIModelTuningPanel() {
         method: 'PUT',
         body: JSON.stringify({ defaultParams: defaults, featureParams }),
       });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -111,8 +111,8 @@ export default function AIModelTuningPanel() {
       });
       setNewPresetName('');
       await fetchData();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save preset');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save preset');
     }
   };
 
@@ -121,8 +121,8 @@ export default function AIModelTuningPanel() {
       await apiFetch(`/ai/presets/${id}`, { method: 'DELETE' });
       setDeleteConfirm(null);
       await fetchData();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete preset');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete preset');
     }
   };
 

@@ -117,8 +117,8 @@ export default function PawnTrackingPage() {
       const qs = params.toString();
       const rows = await apiFetch<PawnTransaction[]>(`/pawn${qs ? `?${qs}` : ''}`);
       setTransactions(asArray<PawnTransaction>(rows));
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load pawn transactions');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load pawn transactions');
     } finally {
       setLoading(false);
     }
@@ -186,8 +186,8 @@ export default function PawnTrackingPage() {
       }
       setFormOpen(false);
       fetchTransactions();
-    } catch (err: any) {
-      setError(err?.message || 'Save failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSubmitting(false);
     }
@@ -198,8 +198,8 @@ export default function PawnTrackingPage() {
     try {
       await apiFetch(`/pawn/${id}/flag`, { method: 'POST', body: JSON.stringify({}) });
       fetchTransactions();
-    } catch (err: any) {
-      setError(err?.message || 'Flag failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Flag failed');
     }
   };
 
@@ -208,8 +208,8 @@ export default function PawnTrackingPage() {
     try {
       const matches = await apiFetch<PawnTransaction[]>('/pawn/search/stolen');
       setStolenMatches(asArray<PawnTransaction>(matches));
-    } catch (err: any) {
-      setError(err?.message || 'Cross-reference failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cross-reference failed');
     } finally {
       setStolenLoading(false);
     }

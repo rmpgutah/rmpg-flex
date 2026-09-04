@@ -82,7 +82,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
     setLoading(true); setErr(null); setData(null);
     apiFetch<DossierResponse>(`/alpr/vehicle/${encodeURIComponent(plate)}/dossier`)
       .then((r) => setData(r))
-      .catch((e) => setErr(e?.message || 'Failed to load dossier'))
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Failed to load dossier'))
       .finally(() => setLoading(false));
   }, [plate]);
 

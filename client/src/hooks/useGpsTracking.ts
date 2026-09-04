@@ -1018,7 +1018,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       });
       unsubError = electron.onInternalGpsError((err: any) => {
         console.warn('[useGpsTracking] Internal GPS error:', err?.message);
-        setState((prev) => ({ ...prev, error: `Internal GPS: ${err?.message || 'unknown error'}` }));
+        setState((prev) => ({ ...prev, error: `Internal GPS: ${err instanceof Error ? err.message : 'unknown error'}` }));
       });
     };
 
@@ -1698,9 +1698,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       try {
         wakeLock = await (navigator as any).wakeLock.request('screen');
         wakeLock.addEventListener('release', handleWakeLockRelease);
-      } catch (err: any) {
+      } catch (err) {
         // NotAllowedError = no user gesture yet; will retry on first user click below.
-        if (err?.name !== 'NotAllowedError') {
+        if (((err as { name?: string }).name !== 'NotAllowedError')) {
           console.warn('[useGpsTracking] WakeLock request failed:', err);
         }
       }

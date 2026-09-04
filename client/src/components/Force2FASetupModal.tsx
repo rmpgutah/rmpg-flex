@@ -42,8 +42,8 @@ export default function Force2FASetupModal() {
       setQrDataUrl(qr || '');
       setBackupCodes(data.backupCodes || []);
       setStep('qr');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to start 2FA setup');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start 2FA setup');
     } finally {
       setBusy(false);
     }
@@ -59,8 +59,8 @@ export default function Force2FASetupModal() {
       });
       if (Array.isArray((verifyRes as any)?.backupCodes)) setBackupCodes((verifyRes as any).backupCodes);
       setStep('backups');
-    } catch (err: any) {
-      setError(err?.message || 'Invalid verification code');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid verification code');
       setSetupCode('');
     } finally {
       setBusy(false);

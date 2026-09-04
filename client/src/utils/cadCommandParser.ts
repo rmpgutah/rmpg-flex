@@ -318,12 +318,13 @@ export async function executeCommand(
           message: `${unit.call_sign} mileage ${mileageType}: ${mileageVal.toLocaleString()} mi`,
           action: { type: 'set_mileage', callSign: unit.call_sign, mileageType, value: mileageVal },
         };
-      } catch (err: any) {
-        const body = typeof err.body === 'object' && err.body
-          ? err.body as { error?: string; code?: string; previous?: number; delta?: number; override_available?: boolean }
+      } catch (err) {
+        const anyErr = err as { body?: unknown; message?: string };
+        const body = typeof anyErr.body === 'object' && anyErr.body
+          ? anyErr.body as { error?: string; code?: string; previous?: number; delta?: number; override_available?: boolean }
           : null;
         const code = body?.code || '';
-        const detail = body?.error || err.message || 'Unknown error';
+        const detail = body?.error || (err instanceof Error ? err.message : 'Unknown error');
         if (code === 'MILEAGE_CEILING') {
           return { success: false, message: `Mileage ${mileageVal.toLocaleString()} exceeds max — check your entry`, action: { type: 'none' } };
         }
@@ -362,8 +363,8 @@ export async function executeCommand(
           message: `${unit.call_sign} assigned to ${call.call_number}`,
           action: { type: 'assign_unit', callSign: unit.call_sign, callNumber: call.call_number },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -398,8 +399,8 @@ export async function executeCommand(
           message: `${unit.call_sign} → ${status.toUpperCase()}`,
           action: { type: 'set_status', callSign: unit.call_sign, status },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -425,8 +426,8 @@ export async function executeCommand(
           message: `${call.call_number} CLEARED${disposition ? ` — ${disposition}` : ''}`,
           action: { type: 'clear_call', callNumber: call.call_number },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -451,8 +452,8 @@ export async function executeCommand(
           message: isResume ? `${hdCall.call_number} RESUMED` : `${hdCall.call_number} ON HOLD`,
           action: { type: 'hold_call', callNumber: hdCall.call_number, resume: isResume },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -537,8 +538,8 @@ export async function executeCommand(
             body: JSON.stringify({ unit_id: Number(unit.id) }),
           });
           results.push(`${unit.call_sign}: ASSIGNED`);
-        } catch (err: any) {
-          results.push(`${unit.call_sign}: FAILED (${err.message})`);
+        } catch (err) {
+          results.push(`${unit.call_sign}: FAILED (${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'})`);
           anyFailed = true;
         }
       }
@@ -590,8 +591,8 @@ export async function executeCommand(
           message: `Note added to ${call.call_number}: "${noteText}"`,
           action: { type: 'add_note', callNumber: call.call_number, note: noteText },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -621,8 +622,8 @@ export async function executeCommand(
           message: `${call.call_number} priority → ${priority}`,
           action: { type: 'change_priority', callNumber: call.call_number, priority },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -684,8 +685,8 @@ export async function executeCommand(
           message: `BOLO CREATED: ${description}`,
           action: { type: 'create_bolo', description },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -739,8 +740,8 @@ export async function executeCommand(
           message: `${call.call_number} PROMOTED → Incident report created`,
           action: { type: 'promote_incident', callNumber: call.call_number },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 
@@ -765,8 +766,8 @@ export async function executeCommand(
           message: `${call.call_number} → LE NOTIFIED${agency ? ` (${agency})` : ''}`,
           action: { type: 'le_notify', callNumber: call.call_number, agency },
         };
-      } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      } catch (err) {
+        return { success: false, message: `Failed: ${err instanceof Error ? err instanceof Error ? err.message : 'Unknown error' : 'Unknown error'}`, action: { type: 'none' } };
       }
     }
 

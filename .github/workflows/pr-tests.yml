@@ -218,10 +218,13 @@ jobs:
       # Raised 2026-08-21 from 458,000: CI with real VITE_MAPBOX_ACCESS_TOKEN
       # produces a 459,354 B artifact (~1.3 KB over prior ceiling) due to the
       # token being part of the build environment. No new eager imports added.
+      # Raised 2026-09-04 from 466,000: merge commit on catch-any-cleanup PR
+      # shuffled bundle module IDs by 1 B (466,001 vs 466,000). No new eager
+      # imports; ceiling raised 1 KB to restore headroom.
       # If a change legitimately needs more, raise this deliberately in the
       # same PR and say why; do not silently bump it. `node scripts/measure-entry.mjs`
       # (no flag) prints the top 25 eager modules, which is usually enough to
       # see what got pulled in.
       - name: Assert entry chunk under ceiling
         working-directory: client
-        run: node scripts/measure-entry.mjs --max-raw 466000
+        run: node scripts/measure-entry.mjs --max-raw 467000

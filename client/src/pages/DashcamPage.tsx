@@ -71,7 +71,7 @@ export default function DashcamPage() {
       setDevices(data.devices || []);
       setTotal(data.total || 0);
       setPage(data.page || 1);
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to fetch devices');
     }
   }, []);
@@ -141,7 +141,7 @@ export default function DashcamPage() {
       const data = await apiFetch<any>(`/howen/devices/${id}`);
       setDeviceDetail(data);
       setSelectedDevice(data);
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to load device details');
     }
   };
@@ -156,7 +156,7 @@ export default function DashcamPage() {
       if (selectedDevice?.id === id) {
         await loadDeviceDetail(id);
       }
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to update device');
     }
   };

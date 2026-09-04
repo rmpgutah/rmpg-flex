@@ -159,9 +159,9 @@ export default function TrainingPage() {
           : (() => { try { return JSON.parse(r.required_for_roles as any || '[]'); } catch { return []; } })(),
       })));
       setOfficers((users || []).filter(u => u.status === 'active'));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to load training data:', err);
-      if (mountedRef.current) setFetchError(err?.message || 'Failed to load data');
+      if (mountedRef.current) setFetchError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -213,9 +213,9 @@ export default function TrainingPage() {
       setShowRecordModal(false);
       setEditRecord(null);
       fetchData();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Save record error:', err);
-      addToast(err?.message || 'Failed to save training record', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save training record', 'error');
     }
   };
 
@@ -233,9 +233,9 @@ export default function TrainingPage() {
       await apiFetch(`/personnel/training/${recordToDelete.id}`, { method: 'DELETE' });
       setRecordToDelete(null);
       fetchData();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Delete record error:', err);
-      addToast(err?.message || 'Failed to delete record', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to delete record', 'error');
     } finally {
       setDeleting(false);
     }
@@ -252,9 +252,9 @@ export default function TrainingPage() {
       setShowRequirementModal(false);
       setEditRequirement(null);
       fetchData();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Save requirement error:', err);
-      addToast(err?.message || 'Failed to save requirement', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save requirement', 'error');
     }
   };
 
@@ -268,9 +268,9 @@ export default function TrainingPage() {
       await apiFetch(`/personnel/training-requirements/${requirementToDelete.id}`, { method: 'DELETE' });
       setRequirementToDelete(null);
       fetchData();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Delete requirement error:', err);
-      addToast(err?.message || 'Failed to delete requirement', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to delete requirement', 'error');
     } finally {
       setDeleting(false);
     }

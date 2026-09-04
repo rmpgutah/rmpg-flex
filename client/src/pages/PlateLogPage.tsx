@@ -307,7 +307,7 @@ export default function PlateLogPage() {
             requestAnimationFrame(() => scanTileRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
           })
           .catch((e: any) => {
-            const msg = `Could not open capture #${numericId}: ${e?.message || 'not found'}`;
+            const msg = `Could not open capture #${numericId}: ${e instanceof Error ? e.message : 'not found'}`;
             setScanErr(msg);
             addToast(msg, 'error');
           });

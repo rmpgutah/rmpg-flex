@@ -35,8 +35,8 @@ export function useScreenWakeLock(active: boolean): void {
         if (cancelled) { try { await s.release(); } catch { /* benign */ } return; }
         sentinelRef.current = s;
         s.addEventListener('release', () => { sentinelRef.current = null; });
-      } catch (err: any) {
-        if (err?.name !== 'NotAllowedError') {
+      } catch (err) {
+        if (((err as { name?: string }).name !== 'NotAllowedError')) {
           console.warn('[useScreenWakeLock] request failed:', err);
         }
       }

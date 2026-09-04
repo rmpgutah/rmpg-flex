@@ -25,7 +25,7 @@ export function useIntelQuery() {
     setLoading(true);
     apiFetch<{ results: QueryHit[]; facets: Facets }>(`/intel/query?${new URLSearchParams(qp).toString()}`)
       .then((r) => { setResults(r.results || []); setFacets(r.facets || { byType: {}, byFlag: {} }); setError(null); })
-      .catch((e) => setError(e?.message || 'search failed'))
+      .catch((e) => setError(e instanceof Error ? e.message : 'search failed'))
       .finally(() => setLoading(false));
   }, []);
 
