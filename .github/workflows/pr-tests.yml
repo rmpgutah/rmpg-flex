@@ -150,6 +150,10 @@ jobs:
     runs-on: ubuntu-latest
     # 2026-09-04: suite consistently hits 25 min across PRs #4111/#4112/#4113.
     # No new tests added — runner growth + existing suite depth. Raised to 35.
+    # 2026-09-04: OOM at 8192 MB on two consecutive runs (heap hit ~8080 MB of
+    # active data; 24 jsdom environments in parallel each hold 300–500 MB).
+    # Raised to 12288 to match client-tests; parallelism capped at 2 forks in
+    # vitest.desktop.config.ts to bound peak RSS across concurrent environments.
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
@@ -161,7 +165,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.desktop.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
 
   client-build:
     name: Client build
