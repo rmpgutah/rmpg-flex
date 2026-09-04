@@ -222,7 +222,7 @@ function MetaEditPanel({ att, onSaved, onClose }: MetaEditPanelProps) {
           Edit Evidence Metadata
         </span>
         <button type="button" onClick={onClose} aria-label="Close edit panel"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', padding: 2 }}>
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', padding: 2 }}>
           <X size={16} />
         </button>
       </div>
@@ -254,11 +254,11 @@ function MetaEditPanel({ att, onSaved, onClose }: MetaEditPanelProps) {
         </div>
       </div>
 
-      {err && <p style={{ fontSize: 10, color: '#f87171', marginTop: 8 }}>{err}</p>}
+      {err && <p style={{ fontSize: 10, color: 'var(--sev-critical-soft)', marginTop: 8 }}>{err}</p>}
 
       <div className="flex gap-2 mt-4">
         <button type="button" onClick={onClose} disabled={saving}
-          style={{ flex: 1, fontSize: 11, padding: '6px 0', border: '1px solid rgba(255,255,255,0.2)', background: 'none', color: '#fff', cursor: 'pointer' }}>
+          style={{ flex: 1, fontSize: 11, padding: '6px 0', border: '1px solid rgba(255,255,255,0.2)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
           Cancel
         </button>
         <button type="button" onClick={save} disabled={saving}
@@ -342,7 +342,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
     >
       {/* Close */}
       <button type="button" aria-label="Close" onClick={onClose}
-        style={{ position: 'absolute', top: 12, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: '#fff', zIndex: 1 }}>
+        style={{ position: 'absolute', top: 12, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', zIndex: 1 }}>
         <X size={22} />
       </button>
 
@@ -358,7 +358,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
       {/* Prev */}
       {idx > 0 && !editing && (
         <button type="button" aria-label="Previous" onClick={() => setIdx(i => i - 1)}
-          style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 2, cursor: 'pointer', color: '#fff', padding: 8 }}>
+          style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-primary)', padding: 8 }}>
           <ChevronLeft size={20} />
         </button>
       )}
@@ -366,7 +366,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
       {/* Next */}
       {idx < attachments.length - 1 && !editing && (
         <button type="button" aria-label="Next" onClick={() => setIdx(i => i + 1)}
-          style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 2, cursor: 'pointer', color: '#fff', padding: 8 }}>
+          style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-primary)', padding: 8 }}>
           <ChevronRight size={20} />
         </button>
       )}
@@ -377,7 +377,7 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
         maxWidth: '78vw', maxHeight: '88vh',
         display: 'flex', flexDirection: 'column',
         border: '1px solid rgba(255,255,255,0.08)',
-        background: '#000',
+        background: 'var(--surface-overlay)',
         boxShadow: '0 0 60px rgba(0,0,0,0.9)',
       }}>
         {/* Image */}

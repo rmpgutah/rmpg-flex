@@ -74,11 +74,11 @@ export default function DesktopHardwareTelemetryPanel() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 10, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Shield style={{ width: 16, height: 16, color: '#38bdf8' }} />
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', color: '#f8fafc', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
             SCAN #6 MOBILE — HARDWARE & TELEMETRY MATRIX
           </span>
         </div>
-        <div style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
           <Clock style={{ width: 12, height: 12 }} /> TIME ON PAGE: {timeSeconds}s
         </div>
       </div>
@@ -87,98 +87,98 @@ export default function DesktopHardwareTelemetryPanel() {
         {/* Column 1 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>IP ADDRESS</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>IP ADDRESS</div>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#fbbf24', marginTop: 2 }}>{telemetry.ipAddress}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GEO COORDS</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.geoCoords}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GEO COORDS</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.geoCoords}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LOCAL IPS (WEBRTC)</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LOCAL IPS (WEBRTC)</div>
             <div style={{ fontSize: 11, color: '#38bdf8', fontFamily: 'Arial, sans-serif', marginTop: 2 }}>
               {JSON.stringify(telemetry.localIpsWebRTC)}
             </div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>PLATFORM</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.platform}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>PLATFORM</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.platform}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>TIMEZONE</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.timezone}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>TIMEZONE</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.timezone}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>VIEWPORT</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.viewport}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>VIEWPORT</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.viewport}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>POINTER</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.pointer}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>POINTER</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.pointer}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>COLOR GAMUT</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.colorGamut}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>COLOR GAMUT</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.colorGamut}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GPU</div>
-            <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>{telemetry.gpu}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GPU</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.gpu}</div>
           </div>
         </div>
 
         {/* Column 2 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GEO LOCATION</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#cbd5e1', marginTop: 2 }}>{telemetry.geoLocation}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GEO LOCATION</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.geoLocation}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GEO SOURCE</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.geoSource}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GEO SOURCE</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.geoSource}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LANGUAGE</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.language}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LANGUAGE</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.language}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>SCREEN SPEC</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.screenSpec}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>SCREEN SPEC</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.screenSpec}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>TOUCH POINTS</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.touchPoints}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>TOUCH POINTS</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.touchPoints}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>CPU CORES</div>
-            <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>{telemetry.cpuCores} Cores</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>CPU CORES</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{telemetry.cpuCores} Cores</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>DARK MODE</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>DARK MODE</div>
             <div style={{ fontSize: 12, color: '#10b981', marginTop: 2 }}>{telemetry.darkMode ? 'Yes' : 'No'}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>PDF SUPPORT</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>PDF SUPPORT</div>
             <div style={{ fontSize: 12, color: '#10b981', marginTop: 2 }}>{telemetry.pdfSupport ? 'Yes' : 'No'}</div>
           </div>
 
           <div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>CANVAS FINGERPRINT</div>
-            <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'Arial, sans-serif', wordBreak: 'break-all', marginTop: 2 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>CANVAS FINGERPRINT</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Arial, sans-serif', wordBreak: 'break-all', marginTop: 2 }}>
               {telemetry.canvasFingerprint}
             </div>
           </div>

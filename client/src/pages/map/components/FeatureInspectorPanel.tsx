@@ -153,7 +153,7 @@ function DetailRows({
         <button
           type="button"
           className="w-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
-          style={{ color: '#0a1422', background: '#c3ccd6', borderRadius: 2 }}
+          style={{ color: '#0a1422', background: 'var(--brand-gold)', borderRadius: 2 }}
           onClick={() => onEditOsmFeature?.({
             osmId,
             group: parsed.group,

@@ -358,7 +358,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
             const toastStyle = {
               background: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--surface-raised)',
               borderColor: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--sev-ok)',
-              color: toast.kind === 'duress' ? '#fff' : 'var(--text-primary)',
+              color: 'var(--text-primary)',
             } as const;
             const body = (
               <>

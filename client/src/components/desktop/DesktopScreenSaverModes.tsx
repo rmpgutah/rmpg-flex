@@ -60,7 +60,7 @@ export default function DesktopScreenSaverModes({ mode, time, date, stats, pos }
 
   // NVG theme styling
   const isNVG = mode === 'nvg-nightvision';
-  const textColor = isNVG ? '#ef4444' : mode === 'battery-stealth' ? '#64748b' : '#ffffff';
+  const textColor = isNVG ? '#ef4444' : mode === 'battery-stealth' ? '#64748b' : 'var(--text-primary)';
   const accentColor = isNVG ? '#dc2626' : 'rgba(var(--accent-silver-400-rgb, 195 204 214), 0.5)';
 
   return (
