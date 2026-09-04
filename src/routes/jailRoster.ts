@@ -69,7 +69,7 @@ jailRoster.put('/config/:county', requireRole('admin'), async (c) => {
     if (body.enabled !== undefined) updates.enabled = !!body.enabled;
     if (body.scrape_interval_minutes !== undefined) {
       const n = parseInt(String(body.scrape_interval_minutes), 10);
-      if (isNaN(n) || n < 15 || n > 1440) return c.json({ error: 'Interval must be 15–1440 minutes' }, 400);
+      if (!Number.isFinite(n) || n < 15 || n > 1440) return c.json({ error: 'Interval must be 15–1440 minutes' }, 400);
       updates.scrape_interval_minutes = n;
     }
     const db = getDb(c.env);

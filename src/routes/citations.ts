@@ -56,7 +56,7 @@ async function generateCitationNumber(db: ReturnType<typeof getDb>): Promise<str
   if (row?.citation_number) {
     const parts = row.citation_number.split('-');
     const parsed = parseInt(parts[parts.length - 1], 10);
-    seq = isNaN(parsed) ? 1 : parsed + 1;
+    seq = !Number.isFinite(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -140,7 +140,7 @@ citations.get('/person/:personId', async (c) => {
   try {
     const db = getDb(c.env);
     const personId = parseInt(c.req.param('personId'), 10);
-    if (isNaN(personId)) return c.json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }, 400);
+    if (!Number.isFinite(personId) || personId < 1) return c.json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT * FROM citations WHERE person_id = ? ORDER BY violation_date DESC LIMIT 200`,
@@ -344,7 +344,7 @@ citations.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(
       db,
       `SELECT c.*, p.first_name as person_first_name, p.last_name as person_last_name,
@@ -382,7 +382,7 @@ citations.post('/', async (c) => {
     const status = (typeof b.status === 'string' && VALID_STATUSES.has(b.status)) ? b.status : 'issued';
     if (b.fine_amount !== undefined && b.fine_amount !== null) {
       const n = parseFloat(String(b.fine_amount));
-      if (isNaN(n) || n < 0) return c.json({ error: 'fine_amount must be non-negative', code: 'INVALID_FINE' }, 400);
+      if (!Number.isFinite(n) || n < 0) return c.json({ error: 'fine_amount must be non-negative', code: 'INVALID_FINE' }, 400);
     }
 
     const citationNumber = await generateCitationNumber(db);
@@ -479,7 +479,7 @@ citations.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ id: number; status: string }>(
       db, 'SELECT id, status FROM citations WHERE id = ?', id,
@@ -579,7 +579,7 @@ citations.post('/:id/copies', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     // Verify the citation exists before accepting uploads
     const cit = await queryFirst<{ id: number; citation_number: string }>(
@@ -682,7 +682,7 @@ citations.get('/:id/filing', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     await ensureCitationFilingTables(db);
     const row = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM citation_filing WHERE citation_id = ?', id,
@@ -705,7 +705,7 @@ citations.get('/:id/copies/:kind', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const kind = c.req.param('kind') as CitationCopyKind;
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     if (!CITATION_COPY_KINDS.includes(kind)) {
       return c.json({ error: 'Invalid copy kind', code: 'INVALID_KIND' }, 400);
     }
@@ -751,7 +751,7 @@ citations.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM citations WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
     // Children (violations, payments) CASCADE via FK. Belt-and-suspenders
@@ -774,7 +774,7 @@ citations.get('/:id/payments', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT p.*, u.full_name as recorded_by_name
@@ -814,7 +814,7 @@ citations.post('/:id/payments', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const userId = c.get('userId') as number;
     const b = await c.req.json<{
       amount?: number; payment_date?: string; payment_method?: string;
@@ -864,7 +864,7 @@ citations.get('/:id/violations', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT * FROM citation_violations WHERE citation_id = ? ORDER BY violation_number, id`,
@@ -883,7 +883,7 @@ citations.post('/:id/violations', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const b = await c.req.json<{
       violation_number?: number; statute_id?: number; statute_citation?: string;
       violation_code?: string; violation_description?: string; offense_level?: string;
@@ -937,7 +937,7 @@ citations.put('/:id/violations/:violationId', async (c) => {
     const db = getDb(c.env);
     const citationId = parseInt(c.req.param('id'), 10);
     const violationId = parseInt(c.req.param('violationId'), 10);
-    if (isNaN(citationId) || isNaN(violationId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(citationId) || citationId < 1 || !Number.isFinite(violationId) || violationId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ id: number }>(
       db, 'SELECT id FROM citation_violations WHERE id = ? AND citation_id = ?', violationId, citationId,
@@ -971,7 +971,7 @@ citations.delete('/:id/violations/:violationId', async (c) => {
     const db = getDb(c.env);
     const citationId = parseInt(c.req.param('id'), 10);
     const violationId = parseInt(c.req.param('violationId'), 10);
-    if (isNaN(citationId) || isNaN(violationId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(citationId) || citationId < 1 || !Number.isFinite(violationId) || violationId < 1) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const result = await execute(
       db, 'DELETE FROM citation_violations WHERE id = ? AND citation_id = ?', violationId, citationId,
     );

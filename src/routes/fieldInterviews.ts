@@ -55,7 +55,7 @@ async function generateFiNumber(db: ReturnType<typeof getDb>): Promise<string> {
   if (row?.fi_number) {
     const parts = row.fi_number.split('-');
     const parsed = parseInt(parts[2], 10);
-    seq = isNaN(parsed) ? 1 : parsed + 1;
+    seq = !Number.isFinite(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(5, '0')}`;
 }
@@ -185,7 +185,7 @@ fi.get('/by-person/:personId', async (c) => {
   try {
     const db = getDb(c.env);
     const personId = parseInt(c.req.param('personId'), 10);
-    if (isNaN(personId)) return c.json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }, 400);
+    if (!Number.isFinite(personId) || personId < 1) return c.json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }, 400);
 
     const rows = await query<Record<string, unknown>>(
       db,
@@ -281,7 +281,7 @@ fi.post('/:id/archive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
     await execute(db, "UPDATE field_interviews SET archived_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true });
   } catch (err) {
@@ -294,7 +294,7 @@ fi.post('/:id/unarchive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
     await execute(db, 'UPDATE field_interviews SET archived_at = NULL WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
@@ -310,7 +310,7 @@ fi.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
 
     const row = await queryFirst<Record<string, unknown>>(
       db,
@@ -457,7 +457,7 @@ fi.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
 
     const existing = await queryFirst<{ id: number }>(
       db, 'SELECT id FROM field_interviews WHERE id = ?', id,
@@ -516,7 +516,7 @@ fi.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
 
     const existing = await queryFirst<{ id: number; fi_number: string; person_id: number | null }>(
       db, 'SELECT id, fi_number, person_id FROM field_interviews WHERE id = ?', id,

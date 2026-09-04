@@ -79,7 +79,7 @@ inspections.get('/by-token/:token', async (c) => {
     if (!entry) return c.json({ error: 'Invalid or expired shift token', code: 'TOKEN_INVALID' }, 404);
     return c.json(await shiftContext(db, entry));
   } catch (err) {
-    console.error('GET /inspections/by-token failed:', err);
+    log.error('GET /inspections/by-token failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed to load inspection');
   }
 });
@@ -220,13 +220,13 @@ inspections.post('/by-token/:token', async (c) => {
         // Don't fail the whole save on the cascade — the inspection record
         // is the authoritative one; surfacing the failure to the client only
         // confuses the operator who already finished the walkthrough.
-        console.error('[inspections] auto-escalate failed:', err);
+        log.error('[inspections] auto-escalate failed', {}, err instanceof Error ? err : new Error(String(err)));
       }
     }
 
     return c.json(await shiftContext(db, entry));
   } catch (err) {
-    console.error('POST /inspections/by-token failed:', err);
+    log.error('POST /inspections/by-token failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Failed to save inspection');
   }
 });
@@ -257,7 +257,7 @@ inspections.post('/by-token/:token/photos', async (c) => {
 
     return c.json({ key, slot, phase, size: body.byteLength });
   } catch (err) {
-    console.error('POST /inspections/by-token/photos failed:', err);
+    log.error('POST /inspections/by-token/photos failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Photo upload failed');
   }
 });
@@ -297,7 +297,7 @@ inspections.get('/by-token/:token/photo', async (c) => {
       },
     });
   } catch (err) {
-    console.error('GET /inspections/by-token/photo failed:', err);
+    log.error('GET /inspections/by-token/photo failed', {}, err instanceof Error ? err : new Error(String(err)));
     return dbErrorResponse(c, err, 'Photo fetch failed');
   }
 });

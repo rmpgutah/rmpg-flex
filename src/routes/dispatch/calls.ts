@@ -350,7 +350,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
       const dupLat = body.latitude != null ? Number(body.latitude) : null;
       const dupLng = body.longitude != null ? Number(body.longitude) : null;
       const dupType = String(incident_type || '').trim().toUpperCase();
-      if (dupLat != null && dupLng != null && !isNaN(dupLat) && !isNaN(dupLng) && dupType) {
+      if (dupLat != null && dupLng != null && Number.isFinite(dupLat) && Number.isFinite(dupLng) && dupType) {
         const dupRow = await queryFirst<{
           id: number; call_number: string; latitude: number; longitude: number; created_at: string;
         }>(db, `
@@ -467,14 +467,14 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
             // Forward geocode: address provided but no coordinates — populate lat/lng
             const coords = await geo.geocodeAddress(c.env, addr!.trim());
             if (coords) {
-              await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, callId);
+              await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime(\'now\') WHERE id = ?`, coords.lat, coords.lng, callId);
               await stampAfterCreate(coords.lat, coords.lng, createdAtForWeather);
             }
           } else if (!hasAddr && hasCoords) {
             // Reverse geocode: coordinates provided but no address — populate address
             const label = await geo.reverseGeocodeAddress(c.env, Number(body.latitude), Number(body.longitude));
             if (label) {
-              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime('now') WHERE id = ?`, label, callId);
+              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime(\'now\') WHERE id = ?`, label, callId);
             }
           }
         } catch { /* best-effort */ }
@@ -597,7 +597,7 @@ calls.get('/check-duplicate', requireRole('officer', 'dispatcher', 'supervisor',
     if (latStr && lngStr) {
       const lat = parseFloat(latStr);
       const lng = parseFloat(lngStr);
-      if (!isNaN(lat) && !isNaN(lng)) {
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
         const dLat = 0.001; // ~111m
         const dLng = 0.001 / Math.max(0.01, Math.cos(lat * Math.PI / 180));
         const rows = await query<Record<string, unknown>>(db, `
@@ -725,7 +725,7 @@ calls.post('/archive-bulk', requireRole('dispatcher', 'supervisor', 'manager', '
     }
 
     const result = await execute(db,
-      `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
+      `UPDATE calls_for_service SET status = 'archived', archived_at = datetime(\'now\') WHERE status IN (${placeholders})`,
       ...statuses);
     const archived_count = (result as any)?.meta?.changes ?? 0;
     return c.json({ archived_count });
@@ -1015,7 +1015,7 @@ calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
         try {
           const coords = await geo.geocodeAddress(c.env, newAddr.trim());
           if (coords) {
-            await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, id);
+            await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime(\'now\') WHERE id = ?`, coords.lat, coords.lng, id);
           }
         } catch { /* best-effort */ }
       }).catch(() => {});
@@ -1121,7 +1121,7 @@ calls.post('/:id/merge', requireRole('dispatcher', 'supervisor', 'manager', 'adm
       // Copy notes to master
       await execute(db,
         `INSERT INTO call_notes (call_id, user_id, note, created_at)
-         SELECT ?, user_id, '[Merged from CFS #' || cn.call_id || '] ' || note, datetime('now')
+         SELECT ?, user_id, '[Merged from CFS #' || cn.call_id || '] ' || note, datetime(\'now\')
          FROM (SELECT call_id, user_id, note FROM call_notes WHERE call_id = ? LIMIT 50) cn`,
         id, mergeId);
       // Mark merged call as merged with reference. calls_for_service has no
@@ -1193,7 +1193,7 @@ calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
       { sql: 'UPDATE nav_trip_log SET call_id = NULL WHERE call_id = ?', bindings: [id] },
       {
         sql: `UPDATE units SET status = 'available', current_call_id = NULL,
-              last_status_change = datetime('now') WHERE current_call_id = ?`,
+              last_status_change = datetime(\'now\') WHERE current_call_id = ?`,
         bindings: [id],
       },
       { sql: 'UPDATE units SET emergency_call_id = NULL WHERE emergency_call_id = ?', bindings: [id] },
@@ -1275,7 +1275,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     if (dispSql) params.push(disposition);
     params.push(...extraParams);
     params.push(id);
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql}${mileageSql} WHERE id = ?`, ...params);
+    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime(\'now\')${timeSql}${dispSql}${mileageSql} WHERE id = ?`, ...params);
     if (status === 'cleared' || status === 'closed' || status === 'cancelled') {
       try {
         await execute(db,
@@ -1342,7 +1342,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
         const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
         if (Array.isArray(assignedIds) && assignedIds.length > 0) {
           await executeInChunks(db, assignedIds,
-            (ph) => `UPDATE units SET status = ?, last_status_change = datetime('now') WHERE id IN (${ph}) AND status IN ('dispatched', 'enroute', 'onscene')`,
+            (ph) => `UPDATE units SET status = ?, last_status_change = datetime(\'now\') WHERE id IN (${ph}) AND status IN ('dispatched', 'enroute', 'onscene')`,
             [status]);
         }
       } catch (err) { log.error('[dispatch] failed to cascade unit status on call transition', { callId: id, status }, err as Error); }
@@ -1529,7 +1529,7 @@ calls.post('/bulk-reassign', requireRole('admin', 'manager'), async (c) => {
     for (const batch of callChunks) {
       const ph = batch.map(() => '?').join(',');
       stmts.push({
-        sql: `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime('now') WHERE id IN (${ph})`,
+        sql: `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime(\'now\') WHERE id IN (${ph})`,
         bindings: [JSON.stringify([unitId]), JSON.stringify([unit.call_sign]), ...batch],
       });
     }
@@ -1580,7 +1580,7 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
       const ph = batch.map(() => '?').join(',');
       const params: unknown[] = dispSql ? [disposition, ...batch] : batch;
       stmts.push({
-        sql: `UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now')${dispSql} WHERE id IN (${ph})`,
+        sql: `UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, datetime(\'now\')), updated_at = datetime(\'now\')${dispSql} WHERE id IN (${ph})`,
         bindings: params,
       });
     }
@@ -1613,7 +1613,7 @@ calls.post('/:id/archive', requireRole('dispatcher', 'supervisor', 'manager', 'a
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const result = await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    const result = await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime(\'now\') WHERE id = ?", id);
     if (result.meta.changes === 0) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     return c.json({ message: 'Archived' });
   } catch (err) {
@@ -1665,7 +1665,7 @@ calls.post('/:id/hold', requireRole('dispatcher', 'supervisor', 'manager', 'admi
     const callExists = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
     if (!callExists) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
-    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
+    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime(\'now\') WHERE id = ?", id);
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
     const merged = call ? { ...(call || {}), ...(ext || {}) } : null;
@@ -2043,7 +2043,7 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
       }
     } catch { /* best-effort */ }
 
-    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify(assignedArr), JSON.stringify(dispatchCallSigns), id);
+    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime(\'now\')) WHERE id = ?", JSON.stringify(assignedArr), JSON.stringify(dispatchCallSigns), id);
 
     for (const uid of unit_ids) {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
@@ -2119,7 +2119,7 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, childId);
       created.push(childId);
     }
-    await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
+    await execute(db, "UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), '') || ? WHERE id = ?", 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
     // Release units assigned to the now-split parent — mirrors the unit-release
     // block in POST /:id/status, which this handler bypasses.
     try {
@@ -2489,7 +2489,7 @@ async function ensureCallResponseTimesTable(db: D1Database): Promise<void> {
       dispatched_at TEXT,
       onscene_at TEXT NOT NULL,
       response_seconds INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
       UNIQUE(call_id, unit_id)
     )
   `).run();
@@ -2523,7 +2523,7 @@ calls.post('/:id/escalate', requireRole('dispatcher', 'supervisor', 'manager', '
     const reason = String(body.reason || '').trim();
 
     await execute(db,
-      `UPDATE calls_for_service SET priority = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE calls_for_service SET priority = ?, updated_at = datetime(\'now\') WHERE id = ?`,
       newPriority, id,
     );
 
@@ -2531,7 +2531,7 @@ calls.post('/:id/escalate', requireRole('dispatcher', 'supervisor', 'manager', '
     const noteText = `Priority escalated from ${oldPriority} to ${newPriority}${reason ? ': ' + reason : ''}`;
     try {
       await execute(db,
-        `INSERT INTO call_notes (call_id, user_id, note, created_at) VALUES (?, ?, ?, datetime('now'))`,
+        `INSERT INTO call_notes (call_id, user_id, note, created_at) VALUES (?, ?, ?, datetime(\'now\'))`,
         id, userId ?? null, noteText,
       );
     } catch (noteErr) {
@@ -2589,7 +2589,7 @@ calls.post('/:id/merge-into', requireRole('supervisor', 'manager', 'admin'), asy
     try {
       await execute(db,
         `INSERT OR IGNORE INTO call_units (call_id, unit_id, assigned_at)
-         SELECT ?, unit_id, datetime('now') FROM call_units WHERE call_id = ?`,
+         SELECT ?, unit_id, datetime(\'now\') FROM call_units WHERE call_id = ?`,
         targetId, sourceId,
       );
       await execute(db, 'DELETE FROM call_units WHERE call_id = ?', sourceId);
@@ -2599,14 +2599,14 @@ calls.post('/:id/merge-into', requireRole('supervisor', 'manager', 'admin'), asy
     const mergeNote = `Call ${sourceCall.call_number} merged into this call${userId ? ` by user ${userId}` : ''}.`;
     try {
       await execute(db,
-        `INSERT INTO call_notes (call_id, user_id, note, created_at) VALUES (?, ?, ?, datetime('now'))`,
+        `INSERT INTO call_notes (call_id, user_id, note, created_at) VALUES (?, ?, ?, datetime(\'now\'))`,
         targetId, userId ?? null, mergeNote,
       );
     } catch { /* best-effort */ }
 
     // Mark source as merged
     await execute(db,
-      `UPDATE calls_for_service SET status = 'merged', updated_at = datetime('now'),
+      `UPDATE calls_for_service SET status = 'merged', updated_at = datetime(\'now\'),
         notes = COALESCE(notes || char(10), '') || '[Merged into ' || ? || ']'
        WHERE id = ?`,
       targetCall.call_number, sourceId,

@@ -471,7 +471,7 @@ hr.put('/leave/:id', requireRole(...ALL_ROLES), async (c) => {
     );
     if (!row) return c.json({ error: 'Not found' }, 404);
     if (!isManager(user.role) && row.officer_id !== user.id) {
-      return c.json({ error: 'Cannot edit another officer\'s request' }, 403);
+      return c.json({ error: "Cannot edit another officer's request" }, 403);
     }
     if (row.status !== 'pending') {
       return c.json({ error: 'Only pending requests can be edited' }, 400);

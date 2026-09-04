@@ -84,7 +84,7 @@ pt.get('/checkpoints/map', async (c) => {
 // GET /checkpoints/property/:propertyId
 pt.get('/checkpoints/property/:propertyId', async (c) => {
   const propertyId = parseInt(c.req.param('propertyId'), 10);
-  if (isNaN(propertyId)) return c.json({ error: 'Invalid propertyId' }, 400);
+  if (!Number.isFinite(propertyId) || propertyId < 1) return c.json({ error: 'Invalid propertyId' }, 400);
   const includeArchived = c.req.query('include_archived') === '1';
   const sql = `SELECT * FROM patrol_checkpoints WHERE property_id = ?
                ${includeArchived ? '' : 'AND is_active = 1'}
@@ -95,7 +95,7 @@ pt.get('/checkpoints/property/:propertyId', async (c) => {
 // GET /checkpoints/:id/instructions
 pt.get('/checkpoints/:id/instructions', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst<{ id: number; name: string; special_instructions: string; location_description: string }>(
     getDb(c.env),
     'SELECT id, name, special_instructions, location_description FROM patrol_checkpoints WHERE id = ?',
@@ -151,7 +151,7 @@ pt.put('/checkpoints/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
   const allowed = [
     'property_id', 'assigned_officer_id', 'name', 'description', 'location_description',
@@ -176,7 +176,7 @@ pt.delete('/checkpoints/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   try {
     const db = getDb(c.env);
     // patrol_scans.checkpoint_id is a NOT NULL RESTRICT FK — a checkpoint that
@@ -196,7 +196,7 @@ pt.post('/checkpoints/:id/archive', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(
     getDb(c.env),
     `UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now') WHERE id = ?`,
@@ -210,7 +210,7 @@ pt.post('/checkpoints/:id/unarchive', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(
     getDb(c.env),
     `UPDATE patrol_checkpoints SET is_active = 1, archived_at = NULL WHERE id = ?`,

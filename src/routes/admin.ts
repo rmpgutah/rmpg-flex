@@ -870,7 +870,7 @@ admin.put('/departments/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     // Never let a department become its own parent.
     if (b.parent_id != null && Number(b.parent_id) === id) b.parent_id = null;
@@ -890,7 +890,7 @@ admin.delete('/departments/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const delResult = await execute(db, `DELETE FROM departments WHERE id = ?`, id);
     if (!delResult.meta.changes) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
@@ -947,7 +947,7 @@ admin.put('/announcements/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     const upd = buildPartialUpdate(b, ['title', 'body', 'type', 'priority', 'target_roles', 'is_active', 'starts_at', 'expires_at']);
     if (!upd) return c.json({ error: 'No fields to update' }, 400);
@@ -965,7 +965,7 @@ admin.delete('/announcements/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `DELETE FROM announcements WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
@@ -1029,7 +1029,7 @@ admin.put('/notification-rules/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const b = await c.req.json<Record<string, unknown>>();
     const upd = buildPartialUpdate(b, ['name', 'description', 'trigger_event', 'conditions', 'target_roles', 'target_user_ids', 'notification_type', 'is_active']);
     if (!upd) return c.json({ error: 'No fields to update' }, 400);
@@ -1047,7 +1047,7 @@ admin.delete('/notification-rules/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `DELETE FROM notification_rules WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
@@ -1064,7 +1064,7 @@ admin.post('/notification-rules/:id/test', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const rule = await queryFirst<NotificationRuleRow>(
       db, `SELECT * FROM notification_rules WHERE id = ?`, id,
     );
@@ -1366,7 +1366,7 @@ admin.get('/users/:id/security', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const user = await queryFirst<{ totp_enabled: number | null; must_change_password: number | null; password_changed_at: string | null }>(
       db, 'SELECT totp_enabled, must_change_password, password_changed_at FROM users WHERE id = ?', id);
     if (!user) return c.json({ error: 'User not found' }, 404);
@@ -1410,7 +1410,7 @@ admin.post('/users/:id/reset-2fa', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await resetUserTotp(db, id);
     await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (POST /reset-2fa)' });
     return c.json({ message: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
@@ -1426,7 +1426,7 @@ admin.delete('/users/:id/totp', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await resetUserTotp(db, id);
     await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (DELETE /totp)' });
     return c.json({ success: true });
@@ -1443,7 +1443,7 @@ admin.post('/users/:id/force-password-change', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, `UPDATE users SET must_change_password = 1, updated_at = datetime('now') WHERE id = ?`, id);
     await recordAudit(c, { action: 'USER_FORCE_PASSWORD_CHANGE', entityType: 'user', entityId: id, details: 'Admin forced password change on next login' });
     return c.json({ message: 'User will be required to change their password on next login.' });
@@ -1460,7 +1460,7 @@ admin.post('/users/:id/revoke-sessions', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const result = await execute(db,
       `UPDATE sessions SET is_active = 0 WHERE user_id = ? AND COALESCE(is_active, 1) = 1`, id);
     const count = result.meta.changes ?? 0;
@@ -1481,7 +1481,7 @@ admin.get('/users/:id/security-questions', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
       db, 'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?', id);
     return c.json({ configured: !!sq, questions: sq ? [sq.question_1, sq.question_2, sq.question_3] : [] });
@@ -1501,7 +1501,7 @@ admin.delete('/users/:id/security-questions', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     await execute(db, 'DELETE FROM user_security_questions WHERE user_id = ?', id);
     await recordAudit(c, { action: 'USER_SECURITY_QUESTIONS_CLEARED', entityType: 'user', entityId: id, details: 'Admin cleared security questions' });
     return c.json({ success: true });
@@ -1524,7 +1524,7 @@ admin.get('/users/:id/email-status', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     const token = await getUserGraphToken(db, c.env, id);
     return c.json({ connected: !!token, mailbox: token?.mailbox ?? null });
   } catch (err) {

@@ -194,7 +194,7 @@ dlRecords.post('/', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = (c.get('userId') as number) ?? null;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, any>>();
 
     let recordId: number;
@@ -267,7 +267,7 @@ dlRecords.post('/scan-relay', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = (c.get('userId') as number) ?? null;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     if (!userId) return c.json({ error: 'No user', code: 'NO_USER' }, 401);
     const b = await c.req.json<{ payload?: Record<string, unknown> }>();
     if (!b.payload || typeof b.payload !== 'object') {
@@ -295,7 +295,7 @@ dlRecords.get('/scan-relay/poll', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = (c.get('userId') as number) ?? null;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     if (!userId) return c.json({ error: 'No user', code: 'NO_USER' }, 401);
 
     const row = await queryFirst<{ id: number; payload: string; created_at: string }>(
@@ -328,7 +328,7 @@ dlRecords.post('/scan-log', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = (c.get('userId') as number) ?? null;
+    const userId = (c.get('userId') as number | undefined) ?? null;
     const b = await c.req.json<Record<string, any>>();
     const findings = JSON.stringify(b.findings ?? {}).slice(0, 32_000);
 
@@ -386,7 +386,7 @@ dlRecords.get('/scan-log', async (c) => {
     const search = (c.req.query('search') || '').trim();
     // mine=1 scopes to the current user's own scans.
     const mine = c.req.query('mine') === '1';
-    const userId = (c.get('userId') as number) ?? null;
+    const userId = (c.get('userId') as number | undefined) ?? null;
 
     let where = '1=1';
     const params: unknown[] = [];
@@ -492,7 +492,7 @@ dlRecords.put('/sources-config', async (c) => {
       await writeConfigValue(db, k, v);
       written.push(k);
     }
-    await audit(db, (c.get('userId') as number) ?? null, 'sources_config_update', 0,
+    await audit(db, (c.get('userId') as number | undefined) ?? null, 'sources_config_update', 0,
       `Updated data-source config: ${written.join(', ') || 'none'}`);
     return c.json({ success: true, updated: written });
   } catch (err) {
@@ -534,7 +534,7 @@ dlRecords.post('/sor/import', async (c) => {
       return c.json({ error: 'rows[] required', code: 'NO_ROWS' }, 400);
     }
     const r = await importSorRows(db, b.rows);
-    await audit(db, (c.get('userId') as number) ?? null, 'sor_import', r.imported,
+    await audit(db, (c.get('userId') as number | undefined) ?? null, 'sor_import', r.imported,
       `Imported ${r.imported} Utah SOR record(s)`);
     return c.json({ success: true, imported: r.imported });
   } catch (err) {
@@ -736,7 +736,7 @@ dlRecords.get('/deep-sweep', async (c) => {
     // history, registry alerts, linked vehicles, FIs and citations.
     const personId = parseInt(c.req.query('person_id') || '', 10);
     let profile: Record<string, unknown> | null = null;
-    if (!isNaN(personId) && personId > 0) {
+    if (Number.isFinite(personId) && personId > 0) {
       const [person, crimHistory, regAlerts, vehicles, personFis, personCites, personTrespass, incidents, calls] = await Promise.all([
         (async () => { try {
           return await queryFirst<Record<string, any>>(db, `
@@ -942,7 +942,7 @@ dlRecords.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const record = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM dl_records WHERE id = ?', id);
     if (!record) return c.json({ error: 'DL record not found', code: 'DL_NOT_FOUND' }, 404);
@@ -966,7 +966,7 @@ dlRecords.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dl_records WHERE id = ?', id);
     if (!existing) return c.json({ error: 'DL record not found', code: 'DL_NOT_FOUND' }, 404);
@@ -987,7 +987,7 @@ dlRecords.put('/:id', async (c) => {
     await execute(db, `UPDATE dl_records SET ${sets.join(', ')} WHERE id = ?`, ...vals);
 
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM dl_records WHERE id = ?', id);
-    await audit(db, (c.get('userId') as number) ?? null, 'dl_record_update', id, `Updated DL record #${id}`);
+    await audit(db, (c.get('userId') as number | undefined) ?? null, 'dl_record_update', id, `Updated DL record #${id}`);
 
     return c.json({ success: true, data: updated });
   } catch (err) {
@@ -1003,7 +1003,7 @@ dlRecords.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
 
     const existing = await queryFirst<{ dl_number: string; dl_state: string; last_name: string; first_name: string }>(
       db, 'SELECT dl_number, dl_state, last_name, first_name FROM dl_records WHERE id = ?', id,
@@ -1013,7 +1013,7 @@ dlRecords.delete('/:id', async (c) => {
     // dl_addresses has ON DELETE CASCADE (FK), so children clean up with the parent.
     await execute(db, 'DELETE FROM dl_records WHERE id = ?', id);
     await audit(
-      db, (c.get('userId') as number) ?? null, 'dl_record_delete', id,
+      db, (c.get('userId') as number | undefined) ?? null, 'dl_record_delete', id,
       `Deleted DL record: ${existing.dl_number} (${existing.dl_state}) — ${existing.last_name}, ${existing.first_name}`,
     );
 
@@ -1096,7 +1096,7 @@ dlRecords.post('/sync-from-persons', async (c) => {
       created++;
     }
     await audit(
-      db, (c.get('userId') as number) ?? null, 'dl_sync_from_persons', 0,
+      db, (c.get('userId') as number | undefined) ?? null, 'dl_sync_from_persons', 0,
       `DL sync from persons: ${created} created, ${updated} refreshed (of ${persons.length} persons with DL)`,
     );
     return c.json({ success: true, scanned: persons.length, created, updated });
@@ -1178,7 +1178,7 @@ dlRecords.post('/ocr-scan', async (c) => {
     if (parsed.state) parsed.state = parsed.state.toUpperCase().slice(0, 2);
 
     await audit(
-      getDb(c.env), (c.get('userId') as number) ?? null, 'dl_ocr_scan', parsed.dl_number || 'unknown',
+      getDb(c.env), (c.get('userId') as number | undefined) ?? null, 'dl_ocr_scan', parsed.dl_number || 'unknown',
       `DL OCR scan: ${parsed.last_name || '?'}, ${parsed.first_name || '?'} (${parsed.dl_state || '??'})`,
     );
     return c.json({ success: true, parsed, model: DL_VISION_MODEL });

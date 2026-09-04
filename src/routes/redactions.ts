@@ -4,6 +4,7 @@
 // the finished file to R2 and a video_redactions custody row. Mirrors the
 // best-effort + runtime-reconcile patterns in src/routes/alpr.ts.
 import { Hono } from 'hono';
+import { log } from '../utils/logger';
 import type { Env } from '../types';
 import { getDb, execute, query, queryFirst, columnExists } from '../utils/db';
 import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
@@ -84,7 +85,7 @@ redactions.post('/', async (c): Promise<Response> => {
       try {
         await execute(db, "UPDATE bodycam_videos SET redacted_path = ?, updated_at = datetime('now') WHERE id = ?", r2Key, sourceBodycamVideoId);
       } catch (e) {
-        console.warn('bodycam_videos.redacted_path update failed (non-fatal, custody row already committed):', e);
+        log.warn('bodycam_videos.redacted_path update failed (non-fatal, custody row already committed)', { error: e instanceof Error ? e.message : String(e) });
       }
     }
   } catch (err: any) {

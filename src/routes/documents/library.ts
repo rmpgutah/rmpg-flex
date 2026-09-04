@@ -36,7 +36,7 @@ async function logActivity(c: any, action: string, id: number, details: unknown)
     await execute(getDb(c.env),
       `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
        VALUES (?, ?, 'documents', ?, ?, ?)`,
-      (c.get('userId') as number) ?? null, action, id,
+      (c.get('userId') as number | undefined) ?? null, action, id,
       typeof details === 'string' ? details : JSON.stringify(details ?? ''),
       c.req.header('CF-Connecting-IP') || 'unknown');
   } catch { /* audit best-effort */ }

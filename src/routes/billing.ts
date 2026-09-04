@@ -412,7 +412,7 @@ billing.delete('/invoices/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     await execute(db, 'DELETE FROM invoice_line_items WHERE invoice_id = ?', id);
     await execute(db, 'DELETE FROM payments WHERE invoice_id = ?', id);
     const result = await execute(db, 'DELETE FROM invoices WHERE id = ?', id);

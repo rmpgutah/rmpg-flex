@@ -809,7 +809,7 @@ connections.get('/:type/:id/gps-track', operational, async (c) => {
     const db = getDb(c.env);
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const dateFrom = c.req.query('date_from');
     const dateTo = c.req.query('date_to');
     const conditions: string[] = [];
@@ -846,7 +846,7 @@ connections.get('/:type/:id/geo-points', operational, async (c) => {
     const db = getDb(c.env);
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const dateFrom = c.req.query('date_from');
     const dateTo = c.req.query('date_to');
     const conditions: string[] = [];
@@ -900,7 +900,7 @@ connections.get('/graph', operational, async (c) => {
   if (!VALID_TYPES.includes(type)) {
     return c.json({ error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` }, 400);
   }
-  if (isNaN(Number(id)) || Number(id) < 1) {
+  if (!Number.isFinite(Number(id)) || Number(id) < 1) {
     return c.json({ error: 'id must be a positive integer', code: 'ID_MUST_BE_A' }, 400);
   }
 
@@ -953,55 +953,55 @@ connections.get('/search', operational, async (c) => {
   const results: Array<{ id: number; type: string; label: string }> = [];
 
   try {
-    for (const p of await query<any>(db, `SELECT id, first_name, last_name FROM persons WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const p of await query<any>(db, `SELECT id, first_name, last_name FROM persons WHERE first_name LIKE ? ESCAPE '\' OR last_name LIKE ? ESCAPE '\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT 8`, term, term, term))
       results.push({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` });
   } catch (err: any) { console.error('[Connections] persons search error:', err?.message); }
 
   try {
-    for (const v of await query<any>(db, `SELECT id, make, model, plate_number, color FROM vehicles_records WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term, term))
+    for (const v of await query<any>(db, `SELECT id, make, model, plate_number, color FROM vehicles_records WHERE make LIKE ? ESCAPE '\' OR model LIKE ? ESCAPE '\' OR plate_number LIKE ? ESCAPE '\' OR vin LIKE ? ESCAPE '\' LIMIT 8`, term, term, term, term))
       results.push({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.replace(/\s+/g, ' ').trim() });
   } catch (err: any) { console.error('[Connections] vehicles search error:', err?.message); }
 
   try {
-    for (const p of await query<any>(db, `SELECT id, name FROM properties WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
+    for (const p of await query<any>(db, `SELECT id, name FROM properties WHERE name LIKE ? ESCAPE '\' OR address LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: p.id, type: 'property', label: p.name });
   } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
 
   try {
-    for (const b of await query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\\' OR dba_name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR owner_name LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term, term))
+    for (const b of await query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\' OR dba_name LIKE ? ESCAPE '\' OR address LIKE ? ESCAPE '\' OR owner_name LIKE ? ESCAPE '\' LIMIT 8`, term, term, term, term))
       results.push({ id: b.id, type: 'business', label: b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${b.id}`) });
   } catch (err: any) { console.error('[Connections] businesses search error:', err?.message); }
 
   try {
-    for (const r of await query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
+    for (const r of await query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: r.id, type: 'case', label: `${r.case_number} - ${r.title}` });
   } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
   try {
-    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
+    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
   } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
   // Calls for service — searchable so an analyst can seed a graph on a CFS.
   try {
-    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
+    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
   } catch (err: any) { console.error('[Connections] calls search error:', err?.message); }
 
   try {
-    for (const w of await query<any>(db, `SELECT id, warrant_number, status FROM warrants WHERE warrant_number LIKE ? ESCAPE '\\' OR subject_name LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
+    for (const w of await query<any>(db, `SELECT id, warrant_number, status FROM warrants WHERE warrant_number LIKE ? ESCAPE '\' OR subject_name LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: w.id, type: 'warrant', label: `${w.warrant_number || `W-${w.id}`} (${w.status || '?'})` });
   } catch (err: any) { console.error('[Connections] warrants search error:', err?.message); }
 
   try {
-    for (const e of await query<any>(db, `SELECT id, evidence_number, description FROM evidence WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
+    for (const e of await query<any>(db, `SELECT id, evidence_number, description FROM evidence WHERE evidence_number LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() });
   } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
 
   try {
     for (const r of await query<any>(db,
       `SELECT id, report_number, title FROM intel_reports
-       WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\') LIMIT 8`, term, term))
+       WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\') LIMIT 8`, term, term))
       results.push({ id: r.id, type: 'intel_report', label: `${r.report_number || `INT-${r.id}`} — ${r.title || ''}`.trim() });
   } catch (err: any) { console.error('[Connections] intel search error:', err?.message); }
 
@@ -1130,7 +1130,7 @@ connections.get('/investigations/:id', operational, async (c) => {
   const userId = c.get('userId') as number | undefined;
   if (!userId) return c.json({ error: 'Unauthenticated' }, 401);
   const id = Number(c.req.param('id'));
-  if (isNaN(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   const row = await queryFirst<any>(getDb(c.env), 'SELECT * FROM connection_investigations WHERE id = ?', id);
   if (!row) return c.json({ error: 'Not found', code: 'INV_NOT_FOUND' }, 404);
@@ -1143,7 +1143,7 @@ connections.put('/investigations/:id', operational, async (c) => {
   const userId = c.get('userId') as number | undefined;
   if (!userId) return c.json({ error: 'Unauthenticated' }, 401);
   const id = Number(c.req.param('id'));
-  if (isNaN(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   const db = getDb(c.env);
   const row = await queryFirst<any>(db, 'SELECT * FROM connection_investigations WHERE id = ?', id);
@@ -1177,7 +1177,7 @@ connections.delete('/investigations/:id', operational, async (c) => {
   const userId = c.get('userId') as number | undefined;
   if (!userId) return c.json({ error: 'Unauthenticated' }, 401);
   const id = Number(c.req.param('id'));
-  if (isNaN(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   const db = getDb(c.env);
   const row = await queryFirst<any>(db, 'SELECT user_id FROM connection_investigations WHERE id = ?', id);

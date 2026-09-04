@@ -107,7 +107,7 @@ rt.patch('/channels/:id', async (c) => {
   const err = requireRole(c, 'admin', 'manager', 'supervisor');
   if (err) return c.json({ error: err }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json().catch(() => ({} as any));
   const fields: string[] = [];
   const args: unknown[] = [];
@@ -126,7 +126,7 @@ rt.delete('/channels/:id', async (c) => {
   const err = requireRole(c, 'admin', 'manager', 'supervisor');
   if (err) return c.json({ error: err }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   // Soft-delete — keeps transmission FK pointers valid for audit.
   await execute(
     getDb(c.env),
@@ -209,7 +209,7 @@ rt.delete('/transmissions/:id', async (c) => {
   const err = requireRole(c, 'admin', 'manager');
   if (err) return c.json({ error: err }, 403);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(getDb(c.env), 'DELETE FROM radio_transmissions WHERE id = ?', id);
   return c.json({ success: true });
 });
@@ -220,7 +220,7 @@ rt.delete('/transmissions/:id', async (c) => {
 // Range support lets the <audio> element seek (mirrors bodycam stream).
 rt.get('/transmissions/:id/audio', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   // authMiddleware passes GET media paths through when the request carries
   // sig/exp instead of a token — in that case no `user` is set and WE are
@@ -342,7 +342,7 @@ rt.patch('/recordings/:id', async (c) => {
   const user = c.get('user') as { id: number } | undefined;
   if (!user) return c.json({ error: 'unauthenticated' }, 401);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json().catch(() => ({} as any));
   const fields: string[] = [];
   const args: unknown[] = [];
@@ -359,7 +359,7 @@ rt.delete('/recordings/:id', async (c) => {
   const user = c.get('user') as { id: number } | undefined;
   if (!user) return c.json({ error: 'unauthenticated' }, 401);
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   await execute(getDb(c.env), 'DELETE FROM radio_recordings WHERE id = ? AND user_id = ?', id, user.id);
   return c.json({ success: true });
 });

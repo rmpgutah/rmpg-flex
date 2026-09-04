@@ -98,7 +98,7 @@ stubs.get('/activity-feed', async (c) => {
     // global feed regardless of which user was selected.
     const userIdParam = c.req.query('user_id');
     const userId = userIdParam != null ? parseInt(userIdParam, 10) : null;
-    const userFilter = userId != null && !isNaN(userId) ? 'AND al.user_id = ?' : '';
+    const userFilter = userId != null && Number.isFinite(userId) ? 'AND al.user_id = ?' : '';
     // Machine telemetry actions (page-view instrumentation, API-error pings —
     // see useFleetV2Audit.ts / auditEmit.ts) write raw JSON into `details` and
     // were never meant for the human-facing feed; they're consumed by
@@ -520,8 +520,9 @@ stubs.get('/check', (c) => c.json({ updateAvailable: false, currentVersion: c.re
 // ── Voice persona (mounted at /api/voice-persona) ────
 stubs.get('/', (c) => c.json({ persona: null }));
 stubs.put('/', async (c) => {
-  try { const body = await c.req.json(); return c.json({ success: true, ...body }); }
-  catch { return c.json({ success: true }); }
+  let body: Record<string, unknown> = {};
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+  return c.json({ success: true, ...body });
 });
 
 // ── Additional ClearPathGPS stubs (from main) ────

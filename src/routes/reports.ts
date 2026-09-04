@@ -1428,7 +1428,10 @@ reports.get('/dashboard-weekly-trend', async (c) => {
     const lastWeekN = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr('-7 days')}`))?.n ?? 0;
     return c.json({ dailyTrend: daily, today: todayN, yesterday: yesterdayN, lastWeekSameDay: lastWeekN });
-  } catch { return c.json({ dailyTrend: [], today: 0, yesterday: 0, lastWeekSameDay: 0 }); }
+  } catch (err) {
+    log.error('[reports] daily-trend query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ dailyTrend: [], today: 0, yesterday: 0, lastWeekSameDay: 0 });
+  }
 });
 
 // GET /reports/dashboard-calls-by-type
@@ -1439,7 +1442,10 @@ reports.get('/dashboard-calls-by-type', async (c) => {
       `SELECT incident_type AS type, COUNT(*) AS count FROM calls_for_service
        WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()} GROUP BY incident_type ORDER BY count DESC LIMIT 15`);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('[reports] dashboard-calls-by-type query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // GET /reports/dashboard-unit-status
@@ -1454,14 +1460,18 @@ reports.get('/dashboard-unit-status', async (c) => {
        LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
        WHERE u.status NOT IN ('off_duty','out_of_service') ORDER BY u.call_sign`);
     return c.json({ statusCounts: statusCounts.map(s => ({ status: s.status, count: s.count })), activeUnits });
-  } catch { return c.json({ statusCounts: [], activeUnits: [] }); }
+  } catch (err) {
+    log.error('[reports] dashboard-unit-status query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ statusCounts: [], activeUnits: [] });
+  }
 });
 
 // GET /reports/shift-comparison
 reports.get('/shift-comparison', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '30', 10);
+    const daysRaw = parseInt(c.req.query('days') || '30', 10);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 30;
     // Shift hours (Day=0600-1359, Swing=1400-2159, Night=2200-0559) are Mountain
     // Time, but created_at is stored UTC and strftime('%H', created_at) read the
     // UTC hour directly — a call at 13:00 UTC (06:00 MDT, start of Day shift)
@@ -1477,30 +1487,39 @@ reports.get('/shift-comparison', async (c) => {
               COALESCE(SUM(CASE WHEN incident_type IS NOT NULL THEN 1 ELSE 0 END), 0) AS incidents,
               ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_resp_min,
               COUNT(DISTINCT DATE(created_at)) * 8 AS hours
-       FROM calls_for_service WHERE created_at >= datetime('now','-${days} days') GROUP BY shift`);
+       FROM calls_for_service WHERE created_at >= datetime('now',? || ' days') GROUP BY shift`,
+      `-${days}`);
     return c.json({ shifts: rows, period_days: days });
-  } catch { return c.json({ shifts: [], period_days: 30 }); }
+  } catch (err) {
+    log.error('[reports] shift-comparison query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ shifts: [], period_days: 30 });
+  }
 });
 
 // GET /reports/clearance-rate
 reports.get('/clearance-rate', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '30', 10);
+    const daysRaw = parseInt(c.req.query('days') || '30', 10);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 30;
+    const interval = `-${days} days`;
     const cleared = (await queryFirst<{ n: number }>(db,
-      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'closed' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'closed' AND created_at >= datetime('now',?)`, interval))?.n ?? 0;
     const total = (await queryFirst<{ n: number }>(db,
-      `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now','-${days} days')`))?.n ?? 1;
+      `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, interval))?.n ?? 1;
     // "Pending" (report not yet submitted for review) vs. "Active" (submitted,
     // awaiting disposition) — split out of the incidents.status CHECK enum
     // ('draft','submitted','under_review','approved','returned') so the
     // Dashboard clearance-rate donut (DashboardPage.tsx incidentPieData) can
     // render its 3rd wedge instead of reading a field this endpoint never sent.
     const pending = (await queryFirst<{ n: number }>(db,
-      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'draft' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'draft' AND created_at >= datetime('now',?)`, interval))?.n ?? 0;
     const active = total - cleared - pending;
     return c.json({ rate: Math.round((cleared / Math.max(total, 1)) * 100), cleared, total, active, pending, days });
-  } catch { return c.json({ rate: 0, cleared: 0, total: 0, active: 0, days: 30 }); }
+  } catch (err) {
+    log.error('[reports] clearance-rate query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ rate: 0, cleared: 0, total: 0, active: 0, days: 30 });
+  }
 });
 
 // GET /reports/patrol-coverage
@@ -1514,7 +1533,10 @@ reports.get('/patrol-coverage', async (c) => {
     const coveredBeats = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(DISTINCT u.assigned_beat) AS n FROM units u WHERE u.status = 'available' AND u.assigned_beat IS NOT NULL`))?.n ?? 0;
     return c.json({ coverage: totalBeats ? Math.round((coveredBeats / totalBeats) * 100) : 0, coveredBeats, totalBeats });
-  } catch { return c.json({ coverage: 0, coveredBeats: 0, totalBeats: 0 }); }
+  } catch (err) {
+    log.error('[reports] patrol-coverage query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ coverage: 0, coveredBeats: 0, totalBeats: 0 });
+  }
 });
 
 // GET /reports/evidence-pending
@@ -1538,7 +1560,10 @@ reports.get('/evidence-pending', async (c) => {
     const pendingDisposal = (await queryFirst<{ n: number }>(db,
       "SELECT COUNT(*) AS n FROM evidence WHERE status = 'pending_disposition'"))?.n ?? 0;
     return c.json({ pending, total, reviewed, checked_out: checkedOut, pending_disposal: pendingDisposal });
-  } catch { return c.json({ pending: 0, total: 0, reviewed: 0, checked_out: 0, pending_disposal: 0 }); }
+  } catch (err) {
+    log.error('[reports] evidence-pending query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ pending: 0, total: 0, reviewed: 0, checked_out: 0, pending_disposal: 0 });
+  }
 });
 
 // GET /reports/upcoming-court
@@ -1554,7 +1579,10 @@ reports.get('/upcoming-court', async (c) => {
        WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now','+7 days')
        ORDER BY ce.event_date, ce.event_time LIMIT 30`);
     return c.json({ upcoming: rows });
-  } catch { return c.json({ upcoming: [] }); }
+  } catch (err) {
+    log.error('[reports] upcoming-court query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ upcoming: [] });
+  }
 });
 
 // GET /reports/overdue-reports
@@ -1569,7 +1597,10 @@ reports.get('/overdue-reports', async (c) => {
        WHERE i.status = 'draft' AND i.created_at <= datetime('now','-7 days')
        ORDER BY i.created_at LIMIT 20`);
     return c.json({ count: rows.length, items: rows });
-  } catch { return c.json({ count: 0, items: [] }); }
+  } catch (err) {
+    log.error('[reports] overdue-reports query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ count: 0, items: [] });
+  }
 });
 
 // Mounted here rather than in routesConfig so it inherits /api/reports'

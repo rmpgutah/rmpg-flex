@@ -54,7 +54,7 @@ navFavorites.delete('/:id', async (c) => {
   const db = getDb(c.env);
   const userId = (c.get('userId') as number | undefined) ?? null;
   const id = Number(c.req.param('id'));
-  if (!id || isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!id || !Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
   const row = await queryFirst<{ user_id: number }>(db, 'SELECT user_id FROM nav_favorites WHERE id = ?', id);
   if (!row) return c.json({ error: 'Not found' }, 404);
   if (row.user_id !== userId) return c.json({ error: 'Not authorized' }, 403);

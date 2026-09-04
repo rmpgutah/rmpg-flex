@@ -88,7 +88,7 @@ async function trustDeviceIfRequested(
       db, 'SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ?', userId, deviceFingerprint);
     if (existing) {
       await execute(db,
-        `UPDATE trusted_devices SET trusted_until = datetime('now', ?), last_used_at = datetime('now'), ip_address = ? WHERE id = ?`,
+        `UPDATE trusted_devices SET trusted_until = datetime('now', ?), last_used_at = datetime(\'now\'), ip_address = ? WHERE id = ?`,
         TRUST_DEVICE_DURATION, ip, existing.id);
     } else {
       await execute(db,
@@ -427,12 +427,12 @@ auth.post('/login', async (c) => {
       try {
         const trusted = await queryFirst<{ id: number }>(
           db,
-          `SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > datetime('now')`,
+          `SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > datetime(\'now\')`,
           user.id, deviceFingerprint,
         );
         if (trusted) {
           deviceTrusted = true;
-          await execute(db, `UPDATE trusted_devices SET last_used_at = datetime('now') WHERE id = ?`, trusted.id).catch(() => undefined);
+          await execute(db, `UPDATE trusted_devices SET last_used_at = datetime(\'now\') WHERE id = ?`, trusted.id).catch(() => undefined);
         }
       } catch { /* table absent on an unmigrated local DB — treat as not trusted */ }
     }
@@ -468,7 +468,7 @@ auth.post('/login', async (c) => {
     try {
       await execute(
         db,
-        `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime('now') WHERE id = ?`,
+        `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime(\'now\') WHERE id = ?`,
         user.id,
       );
     } catch { /* non-critical */ }
@@ -547,7 +547,7 @@ export async function mintLoginTokens(c: any, db: any, user: any) {
   try {
     await execute(
       db,
-      `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime(\'now\') WHERE id = ?`,
       user.id,
     );
   } catch { /* non-fatal */ }
@@ -648,7 +648,7 @@ auth.post('/refresh', async (c) => {
     const session = await queryFirst<any>(
       db,
       `SELECT session_id, user_id FROM sessions
-       WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime('now')`,
+       WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime(\'now\')`,
       refreshHash
     );
     if (!session) {
@@ -676,7 +676,7 @@ auth.post('/refresh', async (c) => {
 
     await execute(
       db,
-      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now') WHERE session_id = ?`,
+      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime(\'now\') WHERE session_id = ?`,
       newRefreshHash, session.session_id,
     );
 
@@ -733,7 +733,7 @@ auth.post('/session/device-location', authMiddleware, async (c) => {
     const body = await c.req.json<{ latitude?: number; longitude?: number; accuracyMeters?: number }>();
     const lat = typeof body.latitude === 'number' ? body.latitude : null;
     const lng = typeof body.longitude === 'number' ? body.longitude : null;
-    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       return c.json({ error: 'latitude and longitude are required' }, 400);
     }
     const db = getDb(c.env);
@@ -782,7 +782,7 @@ auth.put('/password', authMiddleware, async (c) => {
     const newHash = hashSync(new_password, 12);
     await execute(
       db,
-      `UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ?`,
       newHash, userId
     );
     return c.json({ message: 'Password updated' });
@@ -1302,7 +1302,7 @@ auth.get('/sessions', authMiddleware, async (c) => {
     db,
     `SELECT session_id, ip_address, user_agent, created_at, last_used_at, expires_at
        FROM sessions
-      WHERE user_id = ? AND COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
+      WHERE user_id = ? AND COALESCE(is_active, 1) = 1 AND expires_at > datetime(\'now\')
       ORDER BY COALESCE(last_used_at, created_at) DESC`,
     c.get('userId'),
   );
@@ -1335,7 +1335,7 @@ auth.get('/security/trusted-devices', authMiddleware, async (c) => {
     db,
     `SELECT id, device_name, ip_address, trusted_until, last_used_at, created_at
        FROM trusted_devices
-      WHERE user_id = ? AND trusted_until > datetime('now')
+      WHERE user_id = ? AND trusted_until > datetime(\'now\')
       ORDER BY COALESCE(last_used_at, created_at) DESC`,
     c.get('userId'),
   );
@@ -1411,7 +1411,7 @@ auth.get('/security/status', async (c) => {
     // to 40-70 "active sessions" and read as a compromise indicator).
     const sess = await queryFirst<{ active: number }>(db,
       `SELECT COUNT(*) AS active FROM sessions
-        WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime('now')
+        WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime(\'now\')
           AND COALESCE(last_used_at, created_at) > datetime('now','-7 days')`,
       userId);
     const last = await queryFirst<{ created_at: string; ip_address: string | null }>(db, 'SELECT created_at, ip_address FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', userId);
@@ -1687,7 +1687,7 @@ auth.put('/profile-image', authMiddleware, async (c) => {
     const userId = c.get('userId');
     await execute(
       db,
-      `UPDATE users SET profile_image = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET profile_image = ?, updated_at = datetime(\'now\') WHERE id = ?`,
       profile_image || null, userId,
     );
     return c.json({ success: true, profile_image: profile_image || null });
@@ -1715,7 +1715,7 @@ auth.put('/signature', authMiddleware, async (c) => {
     }
     const db = getDb(c.env);
     await execute(db,
-      `UPDATE users SET digital_signature = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET digital_signature = ?, updated_at = datetime(\'now\') WHERE id = ?`,
       signature || null, c.get('userId'));
     return c.json({ success: true });
   } catch (err) {
@@ -2138,7 +2138,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
       return c.json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' }, 401);
     }
     await execute(db,
-      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now') WHERE id = ?`,
+      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime(\'now\') WHERE id = ?`,
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
     await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 
@@ -2173,7 +2173,7 @@ auth.get('/security/locked-accounts', async (c) => {
     await ensureAccountLockoutColumns(db);
     const rows = await query<Record<string, unknown>>(db,
       `SELECT id, username, full_name, failed_login_count, locked_until
-       FROM users WHERE locked_until IS NOT NULL AND locked_until > datetime('now')
+       FROM users WHERE locked_until IS NOT NULL AND locked_until > datetime(\'now\')
        ORDER BY locked_until DESC LIMIT 100`);
     return c.json({ data: rows || [] });
   } catch {

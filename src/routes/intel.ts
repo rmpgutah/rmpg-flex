@@ -120,7 +120,7 @@ intel.get('/search', operational, async (c) => {
       try {
         for (const p of await query<any>(db,
           `SELECT id, first_name, last_name FROM persons
-           WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' LIMIT 10`, term))
+           WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT 10`, term))
           hits.set(`person:${p.id}`, { type: 'person', id: p.id, label: `${p.first_name} ${p.last_name}`, snippet: '', flags: [], score: 10 });
       } catch (e: any) { console.error('[intel] LIKE fallback failed:', e?.message); }
     }
@@ -483,7 +483,7 @@ intel.post('/suggestions/:id/confirm', operational, async (c) => {
     }
   }
   await execute(db,
-    `UPDATE intel_link_suggestions SET status = 'confirmed', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
+    `UPDATE intel_link_suggestions SET status = 'confirmed', decided_by = ?, decided_at = datetime(\'now\') WHERE id = ?`,
     userId, id);
   return c.json({ success: true });
 });
@@ -492,7 +492,7 @@ intel.post('/suggestions/:id/reject', operational, async (c) => {
   const db = getDb(c.env);
   const userId = (c.get('userId') as number | undefined) ?? null;
   const r = await execute(db,
-    `UPDATE intel_link_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
+    `UPDATE intel_link_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime(\'now\') WHERE id = ?`,
     userId, Number(c.req.param('id')));
   return r.meta?.changes ? c.json({ success: true }) : c.json({ error: 'Suggestion not found' }, 404);
 });
@@ -711,7 +711,7 @@ intel.post('/recordings/:id/stop', operational, async (c) => {
   const rec = await queryFirst<any>(db, 'SELECT officer_id FROM interaction_recordings WHERE id = ?', id);
   if (!rec || rec.officer_id !== userId) return c.json({ error: 'recording not found' }, 404);
   await execute(db,
-    `UPDATE interaction_recordings SET status = 'complete', ended_at = datetime('now'), duration_sec = ? WHERE id = ?`,
+    `UPDATE interaction_recordings SET status = 'complete', ended_at = datetime(\'now\'), duration_sec = ? WHERE id = ?`,
     Number(b?.duration_sec) || 0, id);
   return c.json({ success: true });
 });
@@ -825,7 +825,7 @@ intel.post('/jail/ingest-bookings', supervisorPlus, async (c) => {
   // Best-effort source health stamp so the registry reflects runner activity.
   try {
     await execute(db,
-      `UPDATE jail_roster_sources SET last_run_at = datetime('now'), last_status = ?, row_count = row_count + ?, updated_at = datetime('now') WHERE source_key = ?`,
+      `UPDATE jail_roster_sources SET last_run_at = datetime(\'now\'), last_status = ?, row_count = row_count + ?, updated_at = datetime(\'now\') WHERE source_key = ?`,
       `runner ok (${result.ingested})`, result.ingested, sourceKey);
   } catch (err: any) { console.error('[jail/ingest-bookings] status update failed:', err?.message); }
   return c.json({ success: true, ...result, received: bookings.length });
@@ -1087,7 +1087,7 @@ intel.post('/resolution/suggestions/:id/confirm', supervisorPlus, async (c) => {
     'INSERT OR REPLACE INTO person_canonical (person_id, canonical_person_id, confirmed_by) VALUES (?, ?, ?)',
     alias, canonical, userId);
   await execute(db,
-    `UPDATE entity_resolution_suggestions SET status = 'confirmed', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
+    `UPDATE entity_resolution_suggestions SET status = 'confirmed', decided_by = ?, decided_at = datetime(\'now\') WHERE id = ?`,
     userId, id);
   return c.json({ success: true, canonical_person_id: canonical, alias_person_id: alias });
 });
@@ -1097,7 +1097,7 @@ intel.post('/resolution/suggestions/:id/reject', supervisorPlus, async (c) => {
   const id = Number(c.req.param('id'));
   const userId = (c.get('userId') as number | undefined) ?? null;
   const r = await execute(db,
-    `UPDATE entity_resolution_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
+    `UPDATE entity_resolution_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime(\'now\') WHERE id = ?`,
     userId, id);
   return r.meta?.changes ? c.json({ success: true }) : c.json({ error: 'Suggestion not found' }, 404);
 });

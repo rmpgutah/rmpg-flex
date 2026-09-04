@@ -117,7 +117,7 @@ qa.delete('/reviews/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     await execute(db, 'DELETE FROM qa_scores WHERE review_id = ?', id);
     const result = await execute(db, 'DELETE FROM qa_reviews WHERE id = ?', id);
     if (result.meta.changes === 0) return c.json({ error: 'Review not found', code: 'NOT_FOUND' }, 404);

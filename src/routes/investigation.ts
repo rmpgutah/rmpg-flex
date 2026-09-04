@@ -42,8 +42,8 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
       ).bind(ftsQuery).first<{ total: number }>(),
     ]);
     casesResult = { results: casesRes.results || [], total: casesTotal?.total || 0 };
-  } catch (err: any) {
-    log.warn('[investigation] FTS cases query failed, trying LIKE fallback', { error: err.message });
+  } catch (err) {
+    log.warn('[investigation] FTS cases query failed, trying LIKE fallback', { error: err instanceof Error ? err.message : String(err) });
     try {
       const likeQuery = `%${sanitized.slice(0, 48)}%`;
       const likeRes = await db.prepare(
@@ -77,8 +77,8 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
       ).bind(ftsQuery).first<{ total: number }>(),
     ]);
     personsResult = { results: personsRes.results || [], total: personsTotal?.total || 0 };
-  } catch (err: any) {
-    log.warn('[investigation] FTS persons query failed, trying LIKE fallback', { error: err.message });
+  } catch (err) {
+    log.warn('[investigation] FTS persons query failed, trying LIKE fallback', { error: err instanceof Error ? err.message : String(err) });
     try {
       const likeQuery = `%${sanitized.slice(0, 48)}%`;
       const likeRes = await db.prepare(
@@ -145,7 +145,7 @@ app.post('/links', zValidator('json', linkCreateSchema), async (c) => {
 app.get('/links/:entityType/:entityId', async (c) => {
   const { entityType, entityId } = c.req.param();
   const id = parseInt(entityId, 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid entity ID' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid entity ID' }, 400);
 
   const rows = await c.env.DB.prepare(
     `SELECT id, source_type, source_id, target_type, target_id, link_category, notes,
@@ -161,7 +161,7 @@ app.get('/links/:entityType/:entityId', async (c) => {
 app.delete('/links/:id', async (c) => {
   const user = c.var.user;
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid link ID' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid link ID' }, 400);
 
   const link = await c.env.DB.prepare(
     'SELECT id, source_type, source_id, target_type, target_id, link_category FROM investigation_links WHERE id = ?'
@@ -187,7 +187,7 @@ app.delete('/links/:id', async (c) => {
 // ── Case Timeline Events ──
 app.get('/cases/:id/timeline', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid case ID' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid case ID' }, 400);
 
   const rows = await c.env.DB.prepare(
     `SELECT id, event_type, summary, metadata, created_by, created_at
@@ -228,14 +228,14 @@ app.post('/mo/patterns', zValidator('json', moCreateSchema), async (c) => {
 
 app.delete('/mo/patterns/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid pattern ID' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid pattern ID' }, 400);
   await c.env.DB.prepare('UPDATE mo_patterns SET active = 0 WHERE id = ?').bind(id).run();
   return c.json({ success: true });
 });
 
 app.get('/mo/match/:caseId', async (c) => {
   const caseId = parseInt(c.req.param('caseId'), 10);
-  if (isNaN(caseId)) return c.json({ error: 'Invalid case ID' }, 400);
+  if (!Number.isFinite(caseId) || caseId < 1) return c.json({ error: 'Invalid case ID' }, 400);
 
   const matches = await c.env.DB.prepare(
     `SELECT cm.*, mp.name as pattern_name, mp.category as pattern_category, mp.description as pattern_description

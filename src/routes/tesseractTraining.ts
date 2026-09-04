@@ -197,7 +197,7 @@ tesseractTraining.get('/documents/runs/:id/download', async (c) => {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const run = await queryFirst<{ r2_key: string }>(
     db,
@@ -243,7 +243,7 @@ tesseractTraining.get('/documents/:id', async (c) => {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const doc = await queryFirst<DocRow>(
     db,
@@ -270,7 +270,7 @@ tesseractTraining.get('/documents/:id/image', async (c) => {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const doc = await queryFirst<{ r2_key: string; file_type: string; file_name: string }>(
     db,
@@ -417,7 +417,7 @@ tesseractTraining.post('/documents/:id/submit', async (c) => {
   }
   const user = c.get('user');
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   let body: { ground_truth_text?: string };
   try {
@@ -490,7 +490,7 @@ tesseractTraining.post('/documents/:id/approve', async (c) => {
   }
   const user = c.get('user');
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   const db = getDb(c.env);
   const existing = await queryFirst<{ id: number; approval_status: string }>(
@@ -548,7 +548,7 @@ tesseractTraining.get('/documents/:id/boxes', async (c) => {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   await ensureBoxPageNumberColumn(db);
   const boxes = await query<BoxRow>(
@@ -569,7 +569,7 @@ tesseractTraining.post('/documents/:id/boxes', async (c) => {
   }
   const user = c.get('user');
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   let body: { x0?: number; y0?: number; x1?: number; y1?: number; corrected_text?: string; page_number?: number };
   try {
@@ -623,7 +623,7 @@ tesseractTraining.delete('/documents/:id/boxes/:boxId', async (c) => {
   }
   const id = parseInt(c.req.param('id'), 10);
   const boxId = parseInt(c.req.param('boxId'), 10);
-  if (isNaN(id) || isNaN(boxId)) return c.json({ error: 'Invalid boxId' }, 400);
+  if (!Number.isFinite(id) || !Number.isFinite(boxId)) return c.json({ error: 'Invalid boxId' }, 400);
   const db = getDb(c.env);
   const result = await execute(
     db,
@@ -640,7 +640,7 @@ tesseractTraining.get('/documents/:id/notes', async (c) => {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const row = await queryFirst<{ strokes_json: string }>(
     db,
@@ -662,7 +662,7 @@ tesseractTraining.put('/documents/:id/notes', async (c) => {
   }
   const user = c.get('user');
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   let body: { strokes?: unknown };
   try {
@@ -714,7 +714,7 @@ tesseractTraining.post('/documents/:id/raster-pages', async (c) => {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
 
   const db = getDb(c.env);
   const inCorpus = await queryFirst<{ id: number }>(

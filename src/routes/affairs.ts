@@ -84,7 +84,7 @@ affairs.get('/complaints/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db,
       'SELECT c.*, so.full_name as subject_officer_name FROM ia_complaints c LEFT JOIN users so ON c.subject_officer_id = so.id WHERE c.id = ?', id);
     if (!row) return c.json({ error: 'Complaint not found' }, 404);
@@ -139,7 +139,7 @@ affairs.put('/complaints/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM ia_complaints WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Complaint not found' }, 404);
     const b = await c.req.json<Record<string, unknown>>();

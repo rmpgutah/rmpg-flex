@@ -104,7 +104,7 @@ async function setCfg(db: D1Database, key: string, value: string): Promise<void>
   );
   await execute(
     db,
-    "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now'), datetime('now'))",
+    "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime(\'now\'), datetime(\'now\'))",
     key,
     value,
   );
@@ -663,7 +663,7 @@ email.get('/messages', async (c) => {
   if (skip > 0) params.set('$skip', String(skip));
   // Escape backslash FIRST, then quotes, before embedding in the OData $search
   // quoted string (otherwise a value with `\` could break out of the literal).
-  if (search) params.set('$search', `"${search.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+  if (search) params.set('$search', `"${search.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);;
   try {
     const res = await graphFetch(
       c.env,
@@ -998,7 +998,7 @@ export async function enqueueAndSend(
       return { outboxId, status: 'queued', error: err };
     }
     await execute(env.DB,
-      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now') WHERE id = ?",
+      "UPDATE email_outbox SET status = 'sent', sent_at = datetime(\'now\') WHERE id = ?",
       outboxId);
     return { outboxId, status: 'sent' };
   } catch (err: unknown) {
@@ -1157,7 +1157,7 @@ email.get('/audit', requireRole('admin', 'manager', 'supervisor'), async (c) => 
 export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; failed: number; deferred: number }> {
   const rows = await query<{ id: number; payload: string; attempts: number; owner_user_id: number }>(
     env.DB,
-    "SELECT id, payload, attempts, owner_user_id FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now') ORDER BY id ASC LIMIT 10",
+    "SELECT id, payload, attempts, owner_user_id FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime(\'now\') ORDER BY id ASC LIMIT 10",
   );
   let sent = 0, failed = 0, deferred = 0;
   const BACKOFFS = ['+1 minute', '+5 minutes', '+30 minutes', '+2 hours', '+6 hours'];
@@ -1189,7 +1189,7 @@ export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; f
     try {
       const res = await graphFetch(env, r.owner_user_id, '/me/sendMail', { method: 'POST', body: r.payload });
       if (res.ok) {
-        await execute(env.DB, "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now') WHERE id = ?", r.id);
+        await execute(env.DB, "UPDATE email_outbox SET status = 'sent', sent_at = datetime(\'now\') WHERE id = ?", r.id);
         await auditResolution(r, 'sent');
         sent++;
         continue;
@@ -1274,7 +1274,7 @@ email.put('/signature', async (c) => {
   if (sig.trim()) {
     await execute(
       c.env.DB,
-      "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'email', 0, 1, datetime('now'), datetime('now'))",
+      "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'email', 0, 1, datetime(\'now\'), datetime(\'now\'))",
       key,
       sig,
     );
@@ -2501,7 +2501,7 @@ email.delete('/snoozed/:id', async (c) => {
 export async function resurfaceSnoozedEmails(env: Bindings): Promise<number> {
   const rows = await query<{ id: number; message_graph_id: string; original_folder: string; owner_user_id: number }>(
     env.DB,
-    "SELECT id, message_graph_id, original_folder, owner_user_id FROM email_snoozes WHERE status = 'snoozed' AND snooze_until <= datetime('now') LIMIT 20",
+    "SELECT id, message_graph_id, original_folder, owner_user_id FROM email_snoozes WHERE status = 'snoozed' AND snooze_until <= datetime(\'now\') LIMIT 20",
   ).catch(() => [] as Array<{ id: number; message_graph_id: string; original_folder: string; owner_user_id: number }>);
   let resurfaced = 0;
   for (const r of rows) {
@@ -2650,7 +2650,7 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
     importance: string; attachments: string | null;
   }>(
     env.DB,
-    "SELECT id, owner_user_id, to_addresses, cc_addresses, bcc_addresses, subject, body, is_html, importance, attachments FROM email_scheduled WHERE status = 'pending' AND scheduled_at <= datetime('now') LIMIT 10",
+    "SELECT id, owner_user_id, to_addresses, cc_addresses, bcc_addresses, subject, body, is_html, importance, attachments FROM email_scheduled WHERE status = 'pending' AND scheduled_at <= datetime(\'now\') LIMIT 10",
   ).catch(() => [] as never[]);
   let queued = 0;
   for (const r of rows) {
@@ -2680,7 +2680,7 @@ export async function drainScheduledEmails(env: Bindings): Promise<number> {
         "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
         r.owner_user_id, JSON.stringify(payload),
       );
-      await execute(env.DB, "UPDATE email_scheduled SET status = 'sent', sent_at = datetime('now') WHERE id = ?", r.id);
+      await execute(env.DB, "UPDATE email_scheduled SET status = 'sent', sent_at = datetime(\'now\') WHERE id = ?", r.id);
       queued++;
     } catch (err: unknown) {
       if (err instanceof EmailFieldEncryptionError) {

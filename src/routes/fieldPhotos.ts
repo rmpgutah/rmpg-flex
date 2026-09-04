@@ -193,7 +193,7 @@ fieldPhotos.delete('/:id', async (c) => {
     return c.json({ error: 'Admin / manager / supervisor only' }, 403);
   }
   const id = parseInt(c.req.param('id'), 10);
-  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const row = await queryFirst<{ r2_key: string; officer_id: number }>(
     db, 'SELECT r2_key, officer_id FROM field_photos WHERE id = ?', id);

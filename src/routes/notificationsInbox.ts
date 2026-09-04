@@ -147,7 +147,7 @@ inbox.put('/:id/read', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     // Scope to the caller's own rows (or broadcasts). Without the WHERE
     // user_id clause every other handler in this file uses, any user could
     // mark ANOTHER officer's directed notification read — silently
@@ -175,7 +175,7 @@ inbox.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
     // Own rows only — a user must not be able to destroy another officer's
     // directed alert. Shared broadcasts (user_id IS NULL) are intentionally
     // excluded from individual delete (use /delete-read / dismiss instead).

@@ -60,7 +60,7 @@ async function topHits(db: ReturnType<typeof getDb>, q: string, limit = 12): Pro
   const rows = await query<any>(
     db,
     `SELECT id, (first_name || ' ' || last_name) AS label FROM persons
-      WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' LIMIT ?`,
+      WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT ?`,
     like, limit,
   ).catch(() => [] as any[]);
   return rows.map((r) => ({ type: 'person', id: Number(r.id), label: r.label }));

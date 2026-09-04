@@ -80,7 +80,7 @@ tasks.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db,
       `SELECT t.*, to_u.full_name as assigned_to_name, by_u.full_name as assigned_by_name
        FROM task_assignments t LEFT JOIN users to_u ON t.assigned_to = to_u.id LEFT JOIN users by_u ON t.assigned_by = by_u.id WHERE t.id = ?`, id);
@@ -97,7 +97,7 @@ tasks.post('/', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.task_title !== 'string' || !b.task_title.trim()) return c.json({ error: 'task_title required' }, 400);
     const result = await execute(db,
@@ -181,7 +181,7 @@ tasks.post('/:id/comments', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
-    const userId = c.get('userId') as number;
+    const userId = c.get('userId') as number | undefined;
     const b = await c.req.json<{ comment_text: string }>();
     if (typeof b.comment_text !== 'string' || !b.comment_text.trim()) return c.json({ error: 'comment_text required' }, 400);
     const result = await execute(db,

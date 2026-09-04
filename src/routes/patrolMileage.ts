@@ -645,7 +645,7 @@ pm.post('/mileage/fix', async (c) => {
     // it inside one round trip and one logical write.
     const batch: { sql: string; bindings?: unknown[] }[] = [];
     batch.push({
-      sql: `UPDATE calls_for_service SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`,
+      sql: `UPDATE calls_for_service SET ${body.field} = ?, updated_at = datetime(\'now\') WHERE id = ?`,
       bindings: [after, body.entry_id],
     });
     for (const r of rewriteStarting) {
@@ -1565,7 +1565,7 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
 
         try {
           await db.prepare(
-            `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+            `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime(\'now\') WHERE id = ?`,
           ).bind(newStart, newEnd, ev.id).run();
           if (startChanged) {
             await auditTripChange(db, {
@@ -1785,7 +1785,7 @@ pm.post('/mileage/auto-fix-gaps', async (c) => {
             const newEnd = Math.round((newStart + Math.max(distanceMi, gap)) * 10) / 10;
             try {
               await db.prepare(
-                `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+                `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime(\'now\') WHERE id = ?`,
               ).bind(newStart, newEnd, cur.id).run();
               await auditTripChange(db, {
                 table: 'unit_trips', entryId: cur.id, field: 'start_mileage',
@@ -1841,7 +1841,7 @@ pm.post('/mileage/auto-fix-gaps', async (c) => {
             const newEnd = Math.round(Number(curStart) * 10) / 10;
             try {
               await db.prepare(
-                `UPDATE unit_trips SET end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+                `UPDATE unit_trips SET end_mileage = ?, updated_at = datetime(\'now\') WHERE id = ?`,
               ).bind(newEnd, prev.id).run();
               await auditTripChange(db, {
                 table: 'unit_trips', entryId: prev.id, field: 'end_mileage',

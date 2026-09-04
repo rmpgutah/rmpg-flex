@@ -871,7 +871,10 @@ aggregates.get('/ambient-stats', async (c) => {
       total_units: unitRow?.total ?? 0,
       available_units: unitRow?.available ?? 0,
     });
-  } catch { return c.json({ active_calls: 0, critical_calls: 0, total_units: 0, available_units: 0 }); }
+  } catch (err) {
+    log.error('[aggregates] ambient-stats query failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Ambient stats unavailable' }, 500);
+  }
 });
 
 export default aggregates;
