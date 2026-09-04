@@ -47,7 +47,7 @@ crm.get('/dashboard', async (c) => {
       total_invoiced_mtd: cl?.invoiced ?? 0,
       total_paid_mtd: cl?.paid ?? 0,
     });
-  } catch { return c.json(empty); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json(empty); }
 });
 
 crm.get('/recent-activity', async (c) => {
@@ -55,7 +55,7 @@ crm.get('/recent-activity', async (c) => {
     const db = getDb(c.env);
     return c.json(await query(db,
       "SELECT a.*, l.business_name AS lead_name FROM crm_lead_activity a LEFT JOIN crm_leads l ON l.id = a.lead_id ORDER BY a.created_at DESC, a.id DESC LIMIT 25"));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 crm.get('/expiring-contracts', async (c) => {
@@ -63,7 +63,7 @@ crm.get('/expiring-contracts', async (c) => {
     const db = getDb(c.env);
     return c.json(await query(db,
       "SELECT cc.*, cl.name AS client_name FROM client_contracts cc LEFT JOIN clients cl ON cl.id = cc.client_id WHERE cc.end_date IS NOT NULL AND date(cc.end_date) BETWEEN date('now') AND date('now','+90 days') ORDER BY cc.end_date"));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 crm.get('/pipeline-summary', async (c) => {
@@ -71,7 +71,7 @@ crm.get('/pipeline-summary', async (c) => {
     const db = getDb(c.env);
     const stages = await query(db, "SELECT pipeline_stage AS stage, COUNT(*) count, COALESCE(SUM(estimated_value),0) total_value FROM crm_leads GROUP BY pipeline_stage");
     return c.json({ stages, conversions: [] });
-  } catch { return c.json({ stages: [], conversions: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ stages: [], conversions: [] }); }
 });
 
 crm.get('/revenue-forecast', async (c) => {
@@ -81,14 +81,14 @@ crm.get('/revenue-forecast', async (c) => {
     const pipeline = await queryFirst<{ v: number; n: number }>(db, "SELECT COALESCE(SUM(total_value),0) v, COUNT(*) n FROM crm_proposals WHERE stage IN ('draft','sent','viewed')");
     const expected = await queryFirst<{ v: number }>(db, "SELECT COALESCE(SUM(estimated_value),0) v FROM crm_leads WHERE pipeline_stage IN ('qualified','proposal','negotiation')");
     return c.json({ won_revenue: won?.v ?? 0, total_expected: expected?.v ?? 0, total_pipeline: pipeline?.v ?? 0, active_deals: pipeline?.n ?? 0 });
-  } catch { return c.json({ won_revenue: 0, total_expected: 0, total_pipeline: 0, active_deals: 0 }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ won_revenue: 0, total_expected: 0, total_pipeline: 0, active_deals: 0 }); }
 });
 
 crm.get('/contacts', async (c) => {
   try {
     const db = getDb(c.env);
     return c.json(await query(db, "SELECT id AS client_id, name, contact_name, contact_email, contact_phone, status FROM clients ORDER BY name"));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Tasks ────────────────────────────────────────────────────────
@@ -156,8 +156,7 @@ crm.post('/activity', async (c) => {
     log.error('POST /activity failed', { src: 'src/routes/crm.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 crm.get('/activity/:clientId', async (c) => {
-  try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_activity WHERE client_id = ? ORDER BY created_at DESC, id DESC', Number(c.req.param('clientId')))); }
-  catch { return c.json([]); }
+  try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_activity WHERE client_id = ? ORDER BY created_at DESC, id DESC', Number(c.req.param('clientId')))); } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json([]); }
 });
 
 // ── Leads ────────────────────────────────────────────────────────
@@ -167,7 +166,7 @@ crm.get('/leads/pipeline-summary', async (c) => {
   try {
     const db = getDb(c.env);
     return c.json(await query(db, "SELECT pipeline_stage AS stage, COUNT(*) count, COALESCE(SUM(estimated_value),0) total_value FROM crm_leads GROUP BY pipeline_stage"));
-  } catch { return c.json([{ stage: 'new', count: 0, total_value: 0 }]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json([{ stage: 'new', count: 0, total_value: 0 }]); }
 });
 crm.get('/leads/follow-ups', async (c) => {
   try {
@@ -176,7 +175,7 @@ crm.get('/leads/follow-ups', async (c) => {
     const today = await query(db, `SELECT * FROM crm_leads WHERE next_follow_up IS NOT NULL AND date(next_follow_up) = ${denverNowDateExpr()} AND pipeline_stage NOT IN ('won','lost','dismissed') ORDER BY next_follow_up`);
     const upcoming = await query(db, "SELECT * FROM crm_leads WHERE next_follow_up IS NOT NULL AND date(next_follow_up) BETWEEN date('now','+1 day') AND date('now','+14 days') AND pipeline_stage NOT IN ('won','lost','dismissed') ORDER BY next_follow_up");
     return c.json({ overdue, today, upcoming });
-  } catch { return c.json({ overdue: [], today: [], upcoming: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ overdue: [], today: [], upcoming: [] }); }
 });
 crm.get('/leads/source-analytics', async (c) => {
   try {
@@ -189,7 +188,7 @@ crm.get('/leads/source-analytics', async (c) => {
        FROM crm_leads WHERE created_at >= datetime('now', '-' || ? || ' days') GROUP BY source ORDER BY lead_count DESC`,
       days);
     return c.json({ period_days: days, data });
-  } catch { return c.json({ period_days: 30, data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ period_days: 30, data: [] }); }
 });
 
 const LEAD_COLS = ['source', 'source_id', 'source_url', 'business_name', 'industry', 'sic_code', 'business_type', 'contact_name', 'contact_email', 'contact_phone', 'contact_title', 'address', 'city', 'state', 'zip', 'latitude', 'longitude', 'estimated_value', 'permit_number', 'registration_date', 'license_number', 'project_type', 'property_size', 'pipeline_stage', 'lead_score', 'assigned_to', 'client_id', 'proposal_id', 'notes', 'service_interest', 'lost_reason', 'next_follow_up'];
@@ -205,7 +204,7 @@ crm.get('/leads', async (c) => {
     const limit = Math.min(500, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 250));
     const sql = `SELECT * FROM crm_leads ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC, id DESC LIMIT ?`;
     return c.json(await query(db, sql, ...p, limit));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 crm.post('/leads', async (c) => {
@@ -288,8 +287,7 @@ crm.put('/leads/:id', async (c) => {
 });
 
 crm.get('/lead-activity/:leadId', async (c) => {
-  try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_lead_activity WHERE lead_id = ? ORDER BY created_at DESC, id DESC', Number(c.req.param('leadId')))); }
-  catch { return c.json([]); }
+  try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_lead_activity WHERE lead_id = ? ORDER BY created_at DESC, id DESC', Number(c.req.param('leadId')))); } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json([]); }
 });
 crm.post('/lead-activity', async (c) => {
   try {
@@ -305,8 +303,7 @@ crm.post('/lead-activity', async (c) => {
 const PROPOSAL_COLS = ['proposal_number', 'lead_id', 'client_id', 'title', 'template_type', 'description', 'scope_of_work', 'terms', 'monthly_value', 'total_value', 'billing_frequency', 'valid_until', 'proposed_start', 'proposed_end', 'contract_length_months', 'stage', 'rejection_reason', 'assigned_to', 'notes', 'pdf_path'];
 
 crm.get('/proposal-templates', async (c) => {
-  try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_proposal_templates WHERE is_active = 1 ORDER BY name')); }
-  catch { return c.json([]); }
+  try { const db = getDb(c.env); return c.json(await query(db, 'SELECT * FROM crm_proposal_templates WHERE is_active = 1 ORDER BY name')); } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json([]); }
 });
 
 crm.get('/proposals', async (c) => {
@@ -314,7 +311,7 @@ crm.get('/proposals', async (c) => {
     const db = getDb(c.env);
     return c.json(await query(db,
       "SELECT p.*, c.name AS client_name, l.business_name AS lead_name FROM crm_proposals p LEFT JOIN clients c ON c.id = p.client_id LEFT JOIN crm_leads l ON l.id = p.lead_id ORDER BY p.created_at DESC, p.id DESC"));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 crm.post('/proposals', async (c) => {
@@ -366,7 +363,7 @@ crm.get('/proposals/:id', async (c) => {
     const db = getDb(c.env);
     return c.json(await queryFirst(db,
       "SELECT p.*, c.name AS client_name, l.business_name AS lead_name FROM crm_proposals p LEFT JOIN clients c ON c.id = p.client_id LEFT JOIN crm_leads l ON l.id = p.lead_id WHERE p.id = ?", Number(c.req.param('id'))) ?? {});
-  } catch { return c.json({}); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Reports ──────────────────────────────────────────────────────
@@ -388,32 +385,31 @@ crm.get('/reports/metrics', async (c) => {
       proposals_sent: props?.sent ?? 0,
       proposals_accepted: props?.accepted ?? 0,
     });
-  } catch { return c.json(empty); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json(empty); }
 });
 crm.get('/reports/revenue', async (c) => {
   try {
     const db = getDb(c.env);
     return c.json(await query(db,
       "SELECT strftime('%Y-%m', accepted_at) AS month, COALESCE(SUM(total_value),0) total FROM crm_proposals WHERE stage='accepted' AND accepted_at IS NOT NULL GROUP BY month ORDER BY month"));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 crm.get('/reports/pipeline', async (c) => {
   try {
     const db = getDb(c.env);
     const stages = await query(db, "SELECT pipeline_stage AS stage, COUNT(*) count, COALESCE(SUM(estimated_value),0) total_value FROM crm_leads GROUP BY pipeline_stage");
     return c.json({ stages });
-  } catch { return c.json({ stages: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ stages: [] }); }
 });
 crm.get('/reports/retention', async (c) => {
-  try { const db = getDb(c.env); return c.json(await query(db, "SELECT status, COUNT(*) count FROM clients GROUP BY status")); }
-  catch { return c.json([]); }
+  try { const db = getDb(c.env); return c.json(await query(db, "SELECT status, COUNT(*) count FROM clients GROUP BY status")); } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json([]); }
 });
 crm.get('/reports/lead-source-roi', async (c) => {
   try {
     const db = getDb(c.env);
     return c.json(await query(db,
       "SELECT source, COUNT(*) leads, SUM(CASE WHEN pipeline_stage='won' THEN 1 ELSE 0 END) won, COALESCE(SUM(estimated_value),0) pipeline_value FROM crm_leads GROUP BY source ORDER BY leads DESC"));
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Firecrawl + scraper sources — external integration, still stubbed ──

@@ -196,7 +196,7 @@ offline.post('/sync/pull', async (c) => {
     return c.json({ rows, fullReplace: since === null });
   } catch (err) {
     log.error('POST /sync/pull failed', { src: 'src/routes/offline.ts' }, err);
-    const msg = err instanceof Error ? err.message : 'Query failed';
+    const msg = err instanceof Error ? err instanceof Error ? err.message : String(err) : 'Query failed';
     return c.json({ error: msg }, 500);
   }
 });
@@ -349,11 +349,11 @@ offline.post('/sync/push', async (c) => {
         }
         results.push({ local_id: item.local_id, success: false, error: errMsg });
       }
-    } catch (err: any) {
+    } catch (err) {
       results.push({
         local_id: item.local_id,
         success: false,
-        error: err?.message || 'Subrequest dispatch failed',
+        error: err instanceof Error ? err instanceof Error ? err.message : String(err) : String(err) || 'Subrequest dispatch failed',
       });
     }
   }

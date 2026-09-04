@@ -1117,8 +1117,7 @@ admin.get('/maintenance-mode', async (c) => {
       db, `SELECT config_value FROM system_config WHERE config_key = ? ORDER BY id DESC LIMIT 1`, MAINT_KEY,
     );
     if (!row) return c.json(MAINT_DEFAULT);
-    try { return c.json({ ...MAINT_DEFAULT, ...JSON.parse(row.config_value) }); }
-    catch { return c.json(MAINT_DEFAULT); }
+    try { return c.json({ ...MAINT_DEFAULT, ...JSON.parse(row.config_value) }); } catch (err) { log.error('GET failed', { src: 'src/routes/admin.ts' }, err); return c.json(MAINT_DEFAULT); }
   } catch (err) {
     return c.json({ ...MAINT_DEFAULT, error: String(err) });
   }
@@ -1225,9 +1224,7 @@ admin.get('/third-party-keys/:key', async (c) => {
       db, `SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1`, key,
     );
     return c.json({ configured: !!row?.config_value });
-  } catch {
-    return c.json({ configured: false });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/admin.ts' }, err); return c.json({ configured: false }); }
 });
 
 // PUT /api/admin/third-party-keys — save a single key. Body: { key, value }.

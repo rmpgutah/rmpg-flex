@@ -46,6 +46,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { log } from '../utils/logger';
 
 const ct = new Hono<Env>();
 
@@ -710,7 +711,7 @@ ct.get('/appearances', async (c) => {
        FROM court_events ${where}
        ORDER BY event_date ASC, event_time ASC LIMIT 500`, ...params);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/court.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── GET /discovery — discovery tracking (stub, no table yet) ─
@@ -720,7 +721,7 @@ ct.get('/discovery', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM court_discovery ORDER BY due_date ASC LIMIT 200`);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/court.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Court Lookups — editable dropdown values (2026-07-04) ─────
@@ -736,7 +737,7 @@ ct.get('/lookups/categories', async (c) => {
       `SELECT category, COUNT(*) as count FROM court_lookups GROUP BY category ORDER BY category`,
     );
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/court.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 ct.get('/lookups', async (c) => {

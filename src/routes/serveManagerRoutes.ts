@@ -59,9 +59,7 @@ sm.get('/status', async (c) => {
       cached_jobs: jobsCount?.n ?? 0,
       cached_attempts: attemptsCount?.n ?? 0,
     });
-  } catch {
-    return c.json({ configured: false, last_sync: null, cached_jobs: 0, cached_attempts: 0 });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ configured: false, last_sync: null, cached_jobs: 0, cached_attempts: 0 }); }
 });
 
 // POST /servemanager/sync {type: 'full'|'incremental'} — manual sync
@@ -151,7 +149,7 @@ sm.get('/poller/status', async (c) => {
       auto_create_calls: (await get('servemanager_auto_create_calls')) === 'true',
       last_poll_at: (await get('servemanager_last_poll_at')) || null,
     });
-  } catch { return c.json({ enabled: false, poll_interval: 300, target_client: '', auto_create_calls: false, last_poll_at: null }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ enabled: false, poll_interval: 300, target_client: '', auto_create_calls: false, last_poll_at: null }); }
 });
 
 // GET /servemanager/jobs — paginated job list backing AdminServeManagerTab's
@@ -208,7 +206,7 @@ sm.get('/jobs/:jobId', async (c) => {
     // affinity coercion automatically; the Workers D1 binding API does not).
     const attempts = await query<Record<string, unknown>>(db, 'SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY id DESC', String(jobId));
     return c.json({ data: { ...job, attempts } });
-  } catch { return c.json({ error: 'Not found' }, 404); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Not found' }, 404); }
 });
 
 // GET /documents/:documentId/download — proxies a cached job's document PDF
@@ -382,9 +380,7 @@ async function receiveServeManagerWebhook(c: Context<Env>) {
   }
 
   let payload: unknown;
-  try { payload = JSON.parse(rawBody); } catch {
-    return c.json({ error: 'Invalid JSON' }, 400);
-  }
+  try { payload = JSON.parse(rawBody); } catch (err) { log.error('GET failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Invalid JSON' }, 400); }
 
   const jobIds = extractServeManagerJobIds(payload);
   log.info('SM webhook received', {

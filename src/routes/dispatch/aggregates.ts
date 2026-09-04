@@ -530,7 +530,7 @@ aggregates.get('/stats/dashboard', async (c) => {
          WHERE priority = 'P1' AND status IN ('pending','dispatched','enroute','onscene')`),
     ]);
     return c.json({ calls: calls || {}, units: units || {}, priority: priority || {} });
-  } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/dispatch/aggregates.ts' }, err); return c.json({ calls: {}, units: {}, priority: {} }); }
 });
 
 // ── GET /dispatch/aggregates/integration-dashboard — cross-system operational picture

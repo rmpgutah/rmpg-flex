@@ -1326,7 +1326,7 @@ gps.get('/history-map', requireRole(...READ_ROLES), async (c) => {
        WHERE unit_id = ? AND recorded_at >= datetime('now', '-' || ? || ' hours')
        ORDER BY recorded_at ASC LIMIT 5000`, unitId, hours);
     return c.json({ unit_id: unitId, hours, points: rows });
-  } catch { return c.json({ unit_id: unitId, hours, points: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/dispatch/gps.ts' }, err); return c.json({ unit_id: unitId, hours, points: [] }); }
 });
 
 export default gps;

@@ -258,10 +258,10 @@ gosearch.post('/search', requireRole('admin', 'manager', 'supervisor', 'officer'
     ).run().catch((err) => log.error('[gosearch] cache write failed', {}, err));
 
     return c.json(payload);
-  } catch (err: any) {
-    if (err?.name === 'AbortError') return c.json({ ok: false, error: 'Search timed out' }, 504);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return c.json({ ok: false, error: 'Search timed out' }, 504);
     log.error('[gosearch] search failed', { username }, err);
-    return c.json({ ok: false, error: 'Search failed', detail: err?.message }, 500);
+    return c.json({ ok: false, error: 'Search failed', detail: err instanceof Error ? err.message : String(err) }, 500);
   } finally {
     clearTimeout(timer);
   }

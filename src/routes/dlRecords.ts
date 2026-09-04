@@ -521,7 +521,7 @@ dlRecords.get('/sor/status', async (c) => {
       feed_configured: !!(cfg?.config_value && /^https:\/\//i.test(cfg.config_value)),
       last_run: lastRun ?? null,
     });
-  } catch { return c.json({ records: 0, feed_configured: false, last_run: null }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/dlRecords.ts' }, err); return c.json({ records: 0, feed_configured: false, last_run: null }); }
 });
 
 dlRecords.post('/sor/import', async (c) => {
@@ -565,9 +565,7 @@ dlRecords.get('/court-lookup', async (c) => {
   try {
     const r = await lookupCourtRecords(getDb(c.env), c.req.query('last') || '', c.req.query('first') || '');
     return c.json(r);
-  } catch {
-    return c.json({ source: 'COURTLISTENER', records: [], cached: false });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/dlRecords.ts' }, err); return c.json({ source: 'COURTLISTENER', records: [], cached: false }); }
 });
 
 // GET /fbi-lookup — FBI Wanted bulletins by name (official public API).
@@ -577,9 +575,7 @@ dlRecords.get('/fbi-lookup', async (c) => {
   try {
     const r = await lookupFbiWanted(getDb(c.env), c.req.query('last') || '', c.req.query('first') || '');
     return c.json(r);
-  } catch {
-    return c.json({ source: 'FBI_WANTED', records: [], cached: false });
-  }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/dlRecords.ts' }, err); return c.json({ source: 'FBI_WANTED', records: [], cached: false }); }
 });
 
 // ============================================================
@@ -1145,9 +1141,7 @@ dlRecords.post('/ocr-scan', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
 
   let form: FormData;
-  try { form = await c.req.formData(); } catch {
-    return c.json({ error: 'Expected multipart/form-data (field: image)' }, 400);
-  }
+  try { form = await c.req.formData(); } catch (err) { log.error('GET failed', { src: 'src/routes/dlRecords.ts' }, err); return c.json({ error: 'Expected multipart/form-data (field: image)' }, 400); }
   const file = (form.get('image') ?? form.get('file')) as File | null;
   if (!file || typeof (file as any).arrayBuffer !== 'function') {
     return c.json({ error: 'Missing image file' }, 400);

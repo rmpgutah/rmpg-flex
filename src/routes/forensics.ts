@@ -225,7 +225,7 @@ forensics.get('/turnaround-times', async (c) => {
        FROM forensic_cases WHERE archived_at IS NULL
        GROUP BY case_type ORDER BY avg_days DESC`);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: [] }); }
 });
 
 forensics.get('/analysis-templates', async (c) => {
@@ -234,7 +234,7 @@ forensics.get('/analysis-templates', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       'SELECT * FROM forensic_analysis_templates WHERE active = 1 ORDER BY case_type, name');
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: [] }); }
 });
 
 // GET /:id — single case. MUST come AFTER every single-segment static literal
@@ -1212,7 +1212,7 @@ forensics.get('/metrics/backlog', async (c) => {
        FROM forensic_cases WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL
        GROUP BY case_type, priority ORDER BY priority, case_type`);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: [] }); }
 });
 
 // GET /:id/qc-history — reads the dedicated forensic_qc_checks table.
@@ -1232,7 +1232,7 @@ forensics.get('/:id/qc-history', async (c) => {
       id,
     );
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: [] }); }
 });
 
 // /analysis-templates relocated to before /:id (see comment block near line 188).
@@ -1285,7 +1285,7 @@ forensics.get('/queue/priority', async (c) => {
        ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, created_at
        LIMIT 50`);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: [] }); }
 });
 
 forensics.get('/templates/report', async (c) => {
@@ -1294,7 +1294,7 @@ forensics.get('/templates/report', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       'SELECT * FROM forensic_report_templates WHERE active = 1 ORDER BY name');
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: [] }); }
 });
 
 forensics.get('/capacity/planning', async (c) => {
@@ -1311,7 +1311,7 @@ forensics.get('/capacity/planning', async (c) => {
         avg_new_per_week: avgPerWeek?.avg ?? 0,
       },
     });
-  } catch { return c.json({ data: { active_cases: 0, avg_new_per_week: 0 } }); }
+  } catch (err) { log.error('GET failed', { src: 'src/routes/forensics.ts' }, err); return c.json({ data: { active_cases: 0, avg_new_per_week: 0 } }); }
 });
 
 // POST /:caseId/apply-template — copies a report template's `sections`
