@@ -58,9 +58,9 @@ function statusBadgeClass(status: FeatureItem['status']): string {
   switch (status) {
     case 'active':   return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
     case 'warning':  return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-    case 'standby':  return 'bg-surface-overlay text-rmpg-400 border-border-subtle';
+    case 'standby':  return 'bg-surface-overlay text-fg-muted border-border-subtle';
     case 'disabled': return 'bg-red-500/10 text-red-400 border-red-500/30';
-    default:         return 'bg-surface-overlay text-rmpg-400 border-border-subtle';
+    default:         return 'bg-surface-overlay text-fg-muted border-border-subtle';
   }
 }
 
@@ -837,7 +837,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                   <div className={`font-bold uppercase flex items-center gap-1.5 ${
                     selectedFeature.status === 'active'   ? 'text-emerald-400' :
                     selectedFeature.status === 'warning'  ? 'text-amber-400'   :
-                    selectedFeature.status === 'disabled' ? 'text-red-400'     : 'text-rmpg-400'
+                    selectedFeature.status === 'disabled' ? 'text-red-400'     : 'text-fg-muted'
                   }`}>
                     <span className={`w-2 h-2 rounded-full ${statusDotClass(selectedFeature.status)} ${selectedFeature.status === 'active' ? 'animate-pulse' : ''}`} />
                     {selectedFeature.status.charAt(0).toUpperCase() + selectedFeature.status.slice(1)}
