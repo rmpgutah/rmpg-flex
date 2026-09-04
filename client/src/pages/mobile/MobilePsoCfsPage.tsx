@@ -206,7 +206,8 @@ export default function MobilePsoCfsPage() {
     setBusy(true);
     try {
       const body: Record<string, any> = {};
-      if (psoAttempt) body.pso_attempt_number = parseInt(psoAttempt, 10);
+      const attemptNum = parseInt(psoAttempt, 10);
+      if (psoAttempt && !isNaN(attemptNum) && attemptNum >= 1) body.pso_attempt_number = attemptNum;
       if (psoResult) body.pso_result = psoResult;
       if (psoServedTo) body.process_served_to = psoServedTo;
       if (Object.keys(body).length > 0) {
@@ -369,7 +370,7 @@ export default function MobilePsoCfsPage() {
         <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">PSO Service</div>
           <div className="grid grid-cols-2 gap-2 mb-2">
-            <LabeledInput label="Attempt #" type="number" value={psoAttempt} onChange={setPsoAttempt} />
+            <LabeledInput label="Attempt #" type="number" value={psoAttempt} onChange={setPsoAttempt} min={1} max={99} />
             <LabeledSelect label="Result" value={psoResult} onChange={setPsoResult} options={[
               { value: '', label: '—' },
               { value: 'served', label: 'Served' },
@@ -412,11 +413,11 @@ function statusLabel(s: string): string {
   }
 }
 
-function LabeledInput({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+function LabeledInput({ label, value, onChange, type = 'text', min, max }: { label: string; value: string; onChange: (v: string) => void; type?: string; min?: number; max?: number }) {
   return (
     <div>
       <label htmlFor="ff-mobilepsocfspage-1" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
-      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-accent-silver-400 outline-none mt-1" />
+      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} min={min} max={max} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-accent-silver-400 outline-none mt-1" />
     </div>
   );
 }

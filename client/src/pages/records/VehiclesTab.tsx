@@ -340,11 +340,13 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
 
   useEffect(() => {
     if (selectedVehicle) {
+      const controller = new AbortController();
       setLoadingVehicleIncidents(true);
       apiFetch<any[]>(`/records/vehicles/${selectedVehicle.id}/incidents`)
-        .then((data) => setVehicleIncidents(asArray(data)))
-        .catch(() => setVehicleIncidents([]))
-        .finally(() => setLoadingVehicleIncidents(false));
+        .then((data) => { if (!controller.signal.aborted) setVehicleIncidents(asArray(data)); })
+        .catch(() => { if (!controller.signal.aborted) setVehicleIncidents([]); })
+        .finally(() => { if (!controller.signal.aborted) setLoadingVehicleIncidents(false); });
+      return () => { controller.abort(); };
     } else {
       setVehicleIncidents([]);
     }

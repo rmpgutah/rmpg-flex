@@ -36,7 +36,7 @@ app.post('/', async (c) => {
     body.zone_name,
     body.zone_type ?? 'alert',
     body.geojson_data,
-    body.color ?? '#d4a017',
+    body.color ?? '#d9bd72',
     body.description ?? null,
     user.id
   ).run();

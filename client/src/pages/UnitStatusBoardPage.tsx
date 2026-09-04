@@ -289,7 +289,8 @@ export default function UnitStatusBoardPage() {
   const [toast, setToast] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => { return () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }; }, []);
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = isAdmin || user?.role === 'supervisor' || user?.role === 'manager';
@@ -340,11 +341,13 @@ export default function UnitStatusBoardPage() {
         body: JSON.stringify({ status }),
       });
       setToast('Status updated');
-      setTimeout(() => setToast(null), 2500);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 2500);
       await fetchUnits();
     } catch (e: unknown) {
       setToast(e instanceof Error ? e.message : 'Status change failed');
-      setTimeout(() => setToast(null), 3500);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 3500);
       throw e;
     }
   }, [fetchUnits]);
@@ -479,7 +482,7 @@ export default function UnitStatusBoardPage() {
           <button
             type="button"
             disabled={visible.length === 0}
-            onClick={() => navigator.clipboard.writeText(unitsBoardToTsv(visible)).then(() => { setToast('Copied TSV'); setTimeout(() => setToast(null), 2000); }).catch(() => undefined)}
+            onClick={() => navigator.clipboard.writeText(unitsBoardToTsv(visible)).then(() => { setToast('Copied TSV'); if (toastTimerRef.current) clearTimeout(toastTimerRef.current); toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 2000); }).catch(() => undefined)}
             className="px-1.5 py-0.5 text-[10px] rounded-[2px]"
             style={{ background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
           >
