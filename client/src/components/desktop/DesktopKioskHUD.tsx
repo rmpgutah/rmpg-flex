@@ -1,5 +1,6 @@
 // client/src/components/desktop/DesktopKioskHUD.tsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Monitor, ShieldCheck, ShieldAlert, Cpu, Activity, Radio, Signal, Wifi,
   HardDrive, Zap, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Search,
@@ -43,23 +44,46 @@ interface FeatureItem {
   description: string;
 }
 
+function statusDotClass(status: FeatureItem['status']): string {
+  switch (status) {
+    case 'active':   return 'bg-emerald-400';
+    case 'warning':  return 'bg-amber-400';
+    case 'standby':  return 'bg-rmpg-500';
+    case 'disabled': return 'bg-red-500';
+    default:         return 'bg-rmpg-500';
+  }
+}
+
+function statusBadgeClass(status: FeatureItem['status']): string {
+  switch (status) {
+    case 'active':   return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+    case 'warning':  return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+    case 'standby':  return 'bg-surface-overlay text-fg-muted border-border-subtle';
+    case 'disabled': return 'bg-red-500/10 text-red-400 border-red-500/30';
+    default:         return 'bg-surface-overlay text-fg-muted border-border-subtle';
+  }
+}
+
 export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: DesktopKioskHUDProps) {
-  const windowCtx = useOptionalDesktopWindows();
-  const openWindow = onOpenWindow || windowCtx?.openWindow;
+  const navigate = useNavigate();
+  useOptionalDesktopWindows(); // keep context subscription alive for sibling components
   const authCtx = useOptionalAuth();
   const user = authCtx?.user;
   const [activeTab, setActiveTab] = useState<TabCategory>('hardware');
   const [searchQuery, setSearchQuery] = useState('');
   const [kioskEnabled, setKioskEnabled] = useState(false);
 
-  // Fetch actual kiosk shell state from main process on mount
+  // Fetch actual kiosk shell state from main process on open
   useEffect(() => {
-    (window as any).electron?.getKioskShellState?.().then((state: { supported: boolean; enabled: boolean } | null) => {
-      if (state && typeof state.enabled === 'boolean') {
-        setKioskEnabled(state.enabled);
-      }
-    }).catch(() => {});
-  }, []);
+    if (!isOpen) return;
+    (window as any).electron?.getKioskShellState?.()
+      .then((state: { supported: boolean; enabled: boolean } | null) => {
+        if (state && typeof state.enabled === 'boolean') {
+          setKioskEnabled(state.enabled);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
   const [radarScanning, setRadarScanning] = useState(false);
   const [simulatedDeviceCount, setSimulatedDeviceCount] = useState(24);
   const [selectedFeature, setSelectedFeature] = useState<FeatureItem | null>(null);
@@ -499,27 +523,23 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
   const handleExecuteFeature = useCallback((item: FeatureItem) => {
     if (item.route) {
       onClose();
-      // Route items always navigate away from the desktop — never open as an
-      // iframe floating window, even when openWindow is available. Iframes are
-      // for appKey-based desktop apps; route items ARE full pages.
-      window.location.href = item.route;
+      // Use React Router navigation so the SPA doesn't hard-reload and the
+      // Electron desktop state (open windows, widget positions) is preserved.
+      navigate(item.route);
       return;
     }
 
     if (item.appKey) {
       onClose();
-      if (item.appKey === 'calc') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'calc' }));
-      else if (item.appKey === 'notepad') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'notepad' }));
-      else if (item.appKey === 'task-manager') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'task-manager' }));
-      else if (item.appKey === 'timer') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'timer' }));
-      else if (item.appKey === 'converter') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'converter' }));
-      else if (item.appKey === 'event-viewer') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'event-viewer' }));
-      else if (item.appKey === 'file-manager') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'file-manager' }));
-      else if (item.appKey === 'color-picker') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'color-picker' }));
-      else if (item.appKey === 'perfmon') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'perfmon' }));
-      else if (item.appKey === 'netdiag') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'netdiag' }));
-      else if (item.appKey === 'run') window.dispatchEvent(new CustomEvent('open-run-dialog'));
-      else {
+      const dispatchedKeys = [
+        'calc', 'notepad', 'task-manager', 'timer', 'converter',
+        'event-viewer', 'file-manager', 'color-picker', 'perfmon', 'netdiag',
+      ] as const;
+      if ((dispatchedKeys as readonly string[]).includes(item.appKey)) {
+        window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: item.appKey }));
+      } else if (item.appKey === 'run') {
+        window.dispatchEvent(new CustomEvent('open-run-dialog'));
+      } else {
         setSelectedFeature(item);
       }
       return;
@@ -527,7 +547,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
 
     // Default: Open detail inspect control panel for interactive diagnostic/control
     setSelectedFeature(item);
-  }, [onClose, openWindow]);
+  }, [onClose, navigate]);
 
   // Filtering by category and search
   const filteredCatalog = useMemo(() => {
@@ -629,9 +649,24 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
+              onClick={async () => {
                 const next = !kioskEnabled;
-                setKioskEnabled(next);
+                const electron = (window as any).electron;
+                if (electron?.setKioskShell) {
+                  try {
+                    const result = await electron.setKioskShell(next);
+                    if (result?.ok === false) {
+                      showToast(`Kiosk Shell Error: ${result.error ?? 'Unknown error'}`);
+                      return;
+                    }
+                  } catch {
+                    showToast('Kiosk Shell: IPC call failed');
+                    return;
+                  }
+                }
+                // Re-read real state from main process to stay in sync
+                const state = await electron?.getKioskShellState?.().catch(() => null);
+                setKioskEnabled(state?.enabled ?? next);
                 showToast(`Kiosk Shell ${next ? 'Enforced & Locked' : 'Unlocked'}`);
               }}
               className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all border rounded-sm ${
@@ -732,7 +767,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2 mb-1.5">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDotClass(item.status)} ${item.status === 'active' ? 'animate-pulse' : ''}`} />
                       <h4 className="text-xs font-bold text-rmpg-100 tracking-wide">{item.name}</h4>
                     </div>
                     <div className="flex items-center gap-2">
@@ -741,7 +776,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                           {item.metrics}
                         </span>
                       )}
-                      <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-sm">
+                      <span className={`px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider border rounded-sm ${statusBadgeClass(item.status)}`}>
                         {item.status}
                       </span>
                     </div>
@@ -799,9 +834,13 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
               <div className="grid grid-cols-2 gap-3 text-[11px] font-mono">
                 <div className="p-2.5 bg-surface-raised border border-border-subtle rounded-sm">
                   <div className="text-[9px] uppercase text-fg-muted mb-1">Operational State</div>
-                  <div className="text-emerald-400 font-bold uppercase flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Active & Operational
+                  <div className={`font-bold uppercase flex items-center gap-1.5 ${
+                    selectedFeature.status === 'active'   ? 'text-emerald-400' :
+                    selectedFeature.status === 'warning'  ? 'text-amber-400'   :
+                    selectedFeature.status === 'disabled' ? 'text-red-400'     : 'text-fg-muted'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${statusDotClass(selectedFeature.status)} ${selectedFeature.status === 'active' ? 'animate-pulse' : ''}`} />
+                    {selectedFeature.status.charAt(0).toUpperCase() + selectedFeature.status.slice(1)}
                   </div>
                 </div>
                 <div className="p-2.5 bg-surface-raised border border-border-subtle rounded-sm">

@@ -124,6 +124,7 @@ import alpr from './routes/alpr';
 import analytics from './routes/analytics';
 import automationRules from './routes/automationRules';
 import carxe from './routes/carxe';
+import plateLookup from './routes/plate-lookup';
 import vehicleEnrichment from './routes/vehicleEnrichment';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
@@ -516,6 +517,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Supervisor-only driver performance: ranked roster, officer detail, PDF export, admin recompute. Scores from driver_performance_daily snapshots. Distinct from /api/fleet/scorecard, which is vehicle-fleet health.' },
   { prefix: '/api/fleetio', router: fleetio, auth: 'required',
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
+  { prefix: '/api/plate-lookup', router: plateLookup, auth: 'required',
+    note: 'Auto.dev Plate-to-VIN lookup. GET /:state/:plate → flat PlateToVinResponse. Cached 24h. 503 when AUTO_DEV_API_KEY is unset.' },
   { prefix: '/api/carxe', router: carxe, auth: 'required',
     note: 'CarsXE vehicle-data lookups: plate decode, VIN specs, lien/theft, history. Manual/officer-triggered only, cached in carxe_lookups (24h TTL). 200 {ok:false,code:\'not_configured\'} when CARXE_API_KEY is unset.' },
   { prefix: '/api/vehicle-enrichment', router: vehicleEnrichment, auth: 'required',

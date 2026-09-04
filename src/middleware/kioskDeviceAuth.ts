@@ -30,6 +30,9 @@ export async function authenticateDeviceToken(
   return { id: row.id, label: row.label };
 }
 
+// UUID v4 format: 8-4-4-4-12 hex groups
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Hono middleware for device-authenticated Kiosk Linux endpoints
  * (check-in, upload). Distinct from the JWT authMiddleware — devices have
@@ -44,10 +47,15 @@ export async function deviceAuthMiddleware(c: Context, next: Next) {
   if (!authHeader?.startsWith('Bearer ')) {
     return c.json({ error: 'Authentication required' }, 401);
   }
-  const token = authHeader.slice(7);
+  // Trim whitespace so a token with trailing newline/space doesn't fail bcrypt.
+  const token = authHeader.slice(7).trim();
   const deviceId = c.req.param('id');
   if (!deviceId) {
     return c.json({ error: 'Device id is required' }, 400);
+  }
+  // Reject non-UUID ids before hitting D1 — our ids are always crypto.randomUUID().
+  if (!UUID_RE.test(deviceId)) {
+    return c.json({ error: 'Unauthorized' }, 401);
   }
   const device = await authenticateDeviceToken(kioskDb, deviceId, token);
   if (!device) {
