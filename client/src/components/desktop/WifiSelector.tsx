@@ -176,12 +176,15 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
   const [expanded,   setExpanded]   = useState<Set<number>>(new Set());
 
   const ref = useRef<HTMLDivElement>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
+
+  useEffect(() => () => { if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current); }, []);
 
   const loadDetail = useCallback(async () => {
     if (!el?.wifiGetDetail) return;
@@ -217,7 +220,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
       const res = await el.wifiConnect(profileName) as { ok: boolean; reason?: string };
       if (res.ok) {
         setStatusMsg(`Connecting to "${profileName}"…`);
-        setTimeout(() => { loadDetail(); setStatusMsg(null); }, 3000);
+        if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+        statusTimerRef.current = setTimeout(() => { loadDetail(); setStatusMsg(null); }, 3000);
       } else {
         setStatusMsg(`Failed: ${res.reason ?? 'unknown'}`);
       }
@@ -235,7 +239,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
     try {
       await el.wifiDisconnect();
       setStatusMsg('Disconnected.');
-      setTimeout(() => { loadDetail(); setStatusMsg(null); }, 1500);
+      if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = setTimeout(() => { loadDetail(); setStatusMsg(null); }, 1500);
     } catch (err) {
       setStatusMsg('Error: ' + (err instanceof Error ? err.message : 'unknown'));
     } finally {

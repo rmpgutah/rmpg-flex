@@ -1,5 +1,5 @@
 // client/src/components/desktop/DesktopKioskHUD.tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Monitor, ShieldCheck, ShieldAlert, Cpu, Activity, Radio, Signal, Wifi,
@@ -97,10 +97,13 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
   const [simulatedDeviceCount, setSimulatedDeviceCount] = useState(24);
   const [selectedFeature, setSelectedFeature] = useState<FeatureItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current); }, []);
 
   const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
   // System Telemetry State
