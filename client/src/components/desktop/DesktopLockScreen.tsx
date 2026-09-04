@@ -85,6 +85,10 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
   const [lockoutSecsLeft, setLockoutSecsLeft] = useState(0);
   const [lockoutTotalSecs, setLockoutTotalSecs] = useState(30);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [windowsSwitchOpen, setWindowsSwitchOpen] = useState(false);
+  const [switchAdminPin, setSwitchAdminPin] = useState('');
+  const [switchBusy, setSwitchBusy] = useState(false);
+  const [switchError, setSwitchError] = useState('');
 
   // Live status
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -111,12 +115,12 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
     return () => { dead = true; clearInterval(id); };
   }, [isLocked]);
 
-  // Emergency shortcut
+  // Windows OS switch shortcut (Ctrl+Alt+Shift+F12)
   useEffect(() => {
     if (!isLocked) return;
     const h = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'F12' || e.code === 'F12')) {
-        e.preventDefault(); setEmergencyOpen(true);
+        e.preventDefault(); setWindowsSwitchOpen(true);
       }
     };
     window.addEventListener('keydown', h);
@@ -247,6 +251,40 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       else { setNetworkError('Unable to reach server — offline auth attempted'); handleFailedAttempt(); }
     } finally { setBusy(false); }
   }, [isLockedOut, selectedUser, onUnlock, handleFailedAttempt, busy]);
+
+  const handleWindowsSwitch = useCallback(async (pinVal: string) => {
+    if (pinVal.length < PIN_MIN_LEN || switchBusy) return;
+    setSwitchBusy(true); setSwitchError('');
+    try {
+      const r = await apiFetch<{ ok: boolean; role?: string }>('/auth/verify-pin', {
+        method: 'POST',
+        body: JSON.stringify({ pin: pinVal, require_role: 'admin' }),
+      });
+      if (r?.ok) {
+        setSwitchAdminPin(''); setWindowsSwitchOpen(false);
+        // Signal Electron to exit kiosk and surface the Windows desktop
+        (window as unknown as { electron?: { ipcRenderer?: { send: (ch: string) => void } } })
+          .electron?.ipcRenderer?.send('exit-kiosk');
+      } else {
+        setSwitchError('Invalid admin code. Administrator authorization required.');
+        setSwitchAdminPin('');
+      }
+    } catch {
+      setSwitchError('Authorization failed — check network connection.');
+      setSwitchAdminPin('');
+    } finally { setSwitchBusy(false); }
+  }, [switchBusy]);
+
+  const handleSwitchAdminNumpad = useCallback((val: string) => {
+    if (switchBusy) return;
+    if (val === 'backspace') { setSwitchAdminPin(p => p.slice(0, -1)); setSwitchError(''); }
+    else if (val === 'enter') { if (switchAdminPin.length >= PIN_MIN_LEN) handleWindowsSwitch(switchAdminPin); }
+    else if (/^\d$/.test(val) && switchAdminPin.length < PIN_MAX_LEN) {
+      const next = switchAdminPin + val;
+      setSwitchAdminPin(next); setSwitchError('');
+      if (next.length === PIN_MAX_LEN) handleWindowsSwitch(next);
+    }
+  }, [switchBusy, switchAdminPin, handleWindowsSwitch]);
 
   const handleNumpadPress = useCallback((val: string) => {
     if (isLockedOut || busy) return;
@@ -433,13 +471,22 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => setEmergencyOpen(true)}
-              style={{ marginTop: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 10, cursor: 'pointer', letterSpacing: '0.05em', textDecoration: 'underline', textAlign: 'center', padding: '8px 0' }}
-            >
-              Emergency access (Ctrl+Alt+Shift+F12)
-            </button>
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 0' }}>
+              <button
+                type="button"
+                onClick={() => setWindowsSwitchOpen(true)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 10, cursor: 'pointer', letterSpacing: '0.05em', textDecoration: 'underline' }}
+              >
+                Switch to Windows OS (Ctrl+Alt+Shift+F12)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmergencyOpen(true)}
+                style={{ background: 'none', border: 'none', color: 'rgba(var(--accent-silver-400-rgb),0.35)', fontSize: 9, cursor: 'pointer', letterSpacing: '0.04em', textDecoration: 'underline' }}
+              >
+                Emergency access
+              </button>
+            </div>
           </div>
         ) : (
           /* ── AUTH CARD ── */
@@ -667,8 +714,88 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
         position: 'absolute', bottom: 12, left: 0, right: 0, textAlign: 'center',
         fontSize: 10, color: 'rgba(var(--accent-silver-400-rgb),0.22)', letterSpacing: '0.07em', zIndex: 1,
       }}>
-        Ctrl+Alt+Shift+F12 — Emergency Access · RMPG FlexOS Secured Platform
+        Ctrl+Alt+Shift+F12 — Switch to Windows OS · RMPG FlexOS Secured Platform
       </div>
+
+      {/* Windows OS Switch overlay */}
+      {windowsSwitchOpen && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 10000,
+          background: 'rgba(26,50,80,0.92)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'var(--surface-raised)',
+            border: '1px solid rgba(var(--accent-silver-400-rgb),0.2)',
+            borderRadius: 2, padding: '32px 28px', width: 320,
+            display: 'flex', flexDirection: 'column', gap: 18,
+          }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--field-label-color)', marginBottom: 6, fontWeight: 700 }}>
+                System Switch
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)' }}>Switch to Windows OS</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Admin PIN authorization required</div>
+            </div>
+
+            {/* Admin PIN dots */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              {Array.from({ length: PIN_MAX_LEN }).map((_, i) => (
+                <div key={i} style={{
+                  width: 13, height: 13, borderRadius: '50%',
+                  background: i < switchAdminPin.length ? 'var(--accent-silver-400)' : 'transparent',
+                  border: `2px solid ${switchError ? 'var(--sev-critical)' : i < switchAdminPin.length ? 'var(--accent-silver-400)' : 'rgba(var(--accent-silver-400-rgb),0.35)'}`,
+                  transition: 'background 100ms, border-color 100ms',
+                }} />
+              ))}
+            </div>
+
+            {/* Admin numpad */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+              {NUMPAD_KEYS.map(k => {
+                const isAction = k.value === 'backspace' || k.value === 'enter';
+                const isDisabled = switchBusy
+                  || (k.value === 'enter' && switchAdminPin.length < PIN_MIN_LEN)
+                  || (!isAction && /^\d$/.test(k.value) && switchAdminPin.length >= PIN_MAX_LEN);
+                return (
+                  <button
+                    key={k.value}
+                    type="button"
+                    aria-label={k.value === 'backspace' ? 'Delete digit' : k.value === 'enter' ? 'Authorize' : `Digit ${k.label}`}
+                    onClick={() => handleSwitchAdminNumpad(k.value)}
+                    disabled={isDisabled}
+                    style={{
+                      height: 48, fontSize: isAction ? 16 : 20, fontWeight: isAction ? 400 : 500,
+                      background: 'rgba(var(--rmpg-800-rgb),0.5)',
+                      border: '1px solid rgba(var(--accent-silver-400-rgb),0.14)',
+                      borderRadius: 2, cursor: isDisabled ? 'default' : 'pointer',
+                      color: 'var(--text-primary)', opacity: isDisabled ? 0.35 : 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'background 80ms', fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {k.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {switchError && (
+              <div style={{ fontSize: 11, color: 'var(--sev-critical)', textAlign: 'center', lineHeight: 1.4 }}>
+                {switchError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => { setWindowsSwitchOpen(false); setSwitchAdminPin(''); setSwitchError(''); }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11, letterSpacing: '0.04em', fontFamily: 'inherit' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <DesktopEmergencyAccessModal
         isOpen={emergencyOpen}
