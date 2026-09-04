@@ -754,7 +754,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                       <span className="truncate">{cat.label}</span>
                     </div>
                     <span className="px-1.5 py-0.5 text-[9px] font-bold bg-surface-raised border border-border-subtle rounded-full text-rmpg-400">
-                      {cat.count}
+                      {catalog.filter(i => i.category === cat.id).length}
                     </span>
                   </button>
                 );
