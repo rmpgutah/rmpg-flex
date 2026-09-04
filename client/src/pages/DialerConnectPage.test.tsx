@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import DialerConnectPage from './DialerConnectPage';
@@ -28,16 +28,16 @@ function renderPage() {
 }
 
 describe('DialerConnectPage', () => {
-  test('renders the live Dial Connect dock plus history and voicemail tabs', () => {
-    renderPage();
+  test('renders the live Dial Connect dock plus history and voicemail tabs', async () => {
+    await act(async () => { renderPage(); });
     const host = screen.getByTestId('dialer-connect-host');
     expect(host).toHaveAttribute('id', DIALER_HOST_ID);
     expect(screen.getByRole('button', { name: /voicemail/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /call history/i })).toBeInTheDocument();
   });
 
-  test('exposes hang-up and mute on the keypad', () => {
-    renderPage();
+  test('exposes hang-up and mute on the keypad', async () => {
+    await act(async () => { renderPage(); });
     expect(screen.getByRole('button', { name: /^hang up$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^mute$/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Dial number')).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe('DialerConnectPage', () => {
 
   test('call history has a date range and starred filter', async () => {
     const user = userEvent.setup();
-    renderPage();
+    await act(async () => { renderPage(); });
     await user.click(screen.getByRole('button', { name: /call history/i }));
     expect(screen.getByLabelText('From date')).toBeInTheDocument();
     expect(screen.getByLabelText('To date')).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe('DialerConnectPage', () => {
 
   test('voicemail tab exports CSV', async () => {
     const user = userEvent.setup();
-    renderPage();
+    await act(async () => { renderPage(); });
     await user.click(screen.getByRole('button', { name: /voicemail/i }));
     expect(screen.getByRole('button', { name: /^csv$/i })).toBeInTheDocument();
   });

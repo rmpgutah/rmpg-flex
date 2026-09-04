@@ -26,7 +26,7 @@ describe('useCitationPreview', () => {
     });
     await waitFor(() => expect(multiCopyPdfV2BlobUrl).toHaveBeenCalledTimes(1), { timeout: 1000 });
     rerender({ f: { citation_number: 'B' } });
-    await new Promise((r) => setTimeout(r, 700));
+    await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
     await waitFor(() => expect(multiCopyPdfV2BlobUrl).toHaveBeenCalledTimes(2), { timeout: 1000 });
   });
 });
