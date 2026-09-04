@@ -632,7 +632,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                 <span>{gpsPrecision.split(' ')[0]}</span>
               </div>
               <div className="w-px h-3 bg-border-subtle" />
-              <span className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest">SIM</span>
+              <span className="text-[9px] font-bold text-fg-muted uppercase tracking-widest">SIM</span>
             </div>
 
             <button
