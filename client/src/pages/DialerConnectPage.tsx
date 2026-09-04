@@ -90,8 +90,15 @@ function hasAudio(row: { recording_r2_key?: string | null; recording_source_url?
   return Boolean(row.recording_r2_key || row.recording_source_url);
 }
 
-async function downloadAudio(kind: 'call' | 'voicemail', id: number) {
-  const blob = await apiFetchBlob(`/dialer-connect/${kind === 'call' ? 'calls' : 'voicemails'}/${id}/audio`);
+async function downloadAudio(kind: 'call' | 'voicemail', id: number): Promise<void> {
+  let blob: Blob;
+  try {
+    blob = await apiFetchBlob(`/dialer-connect/${kind === 'call' ? 'calls' : 'voicemails'}/${id}/audio`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to download audio.';
+    console.error('downloadAudio failed:', err);
+    throw new Error(msg);
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

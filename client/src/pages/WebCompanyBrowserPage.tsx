@@ -189,12 +189,19 @@ export default function WebCompanyBrowserPage() {
           // navigate is sent after `ready` — not here — to avoid racing puppeteer.launch()
         };
 
-        ws.onerror = () => updateTab(tabId, { error: 'Unable to start browser session, try again.', loading: false });
+        ws.onerror = (ev: Event) => {
+          const msg = (ev instanceof ErrorEvent && ev.message) ? `: ${ev.message}` : '';
+          updateTab(tabId, { error: `Unable to start browser session${msg}, try again.`, loading: false });
+        };
 
         ws.onmessage = ev => {
           receivedAny = true;
-          let msg: any;
-          try { msg = JSON.parse(ev.data); } catch { return; }
+          let msg: Record<string, unknown>;
+          try {
+            const parsed: unknown = JSON.parse(ev.data);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+            msg = parsed as Record<string, unknown>;
+          } catch { return; }
 
           if (msg.type === 'ready') {
             // Browser session is live — safe to navigate now
@@ -203,7 +210,7 @@ export default function WebCompanyBrowserPage() {
               ws.send(JSON.stringify({ type: 'navigate', url: initialUrl }));
             }
           } else if (msg.type === 'frame') {
-            const data: string = msg.data;
+            const data = typeof msg.data === 'string' ? msg.data : '';
             lastFrameRef.current.set(tabId, data);
             if (activeTabIdRef.current === tabId) {
               const img = new Image();
@@ -223,7 +230,7 @@ export default function WebCompanyBrowserPage() {
             if (msg.loading && activeTabIdRef.current === tabId) startProgress();
             else if (!msg.loading && activeTabIdRef.current === tabId) finishProgress();
           } else if (msg.type === 'url_changed') {
-            const url: string = msg.url || '';
+            const url = typeof msg.url === 'string' ? msg.url : '';
             updateTab(tabId, { url, error: null });
             if (activeTabIdRef.current === tabId) setAddressInput(url);
             // Feature 19: history tracking
@@ -235,7 +242,7 @@ export default function WebCompanyBrowserPage() {
               });
             }
           } else if (msg.type === 'title_changed') {
-            const title: string = msg.title || '';
+            const title = typeof msg.title === 'string' ? msg.title : '';
             updateTab(tabId, { title });
             // Update history title
             if (title) {
@@ -246,9 +253,9 @@ export default function WebCompanyBrowserPage() {
               });
             }
           } else if (msg.type === 'error') {
-            updateTab(tabId, { error: msg.message, loading: false });
+            updateTab(tabId, { error: typeof msg.message === 'string' ? msg.message : 'Unknown error', loading: false });
           } else if (msg.type === 'session_ended') {
-            updateTab(tabId, { error: `Session ended: ${msg.reason}`, loading: false });
+            updateTab(tabId, { error: `Session ended: ${typeof msg.reason === 'string' ? msg.reason : 'unknown'}`, loading: false });
             ws.close();
           }
         };
@@ -374,6 +381,7 @@ export default function WebCompanyBrowserPage() {
     const container = containerRef.current;
     if (!container) return;
     const ro = new ResizeObserver(entries => {
+      if (!entries.length) return;
       const { width, height } = entries[0].contentRect;
       if (width > 0 && height > 0) {
         sendToTab(activeTabIdRef.current, { type: 'resize', width: Math.round(width), height: Math.round(height) });
@@ -536,9 +544,13 @@ export default function WebCompanyBrowserPage() {
   // Feature 37: fullscreen
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen?.().catch(() => {});
+      containerRef.current?.requestFullscreen?.().catch((err: unknown) => {
+        console.error('Failed to enter fullscreen:', err);
+      });
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      document.exitFullscreen?.().catch((err: unknown) => {
+        console.error('Failed to exit fullscreen:', err);
+      });
     }
   }, []);
 
@@ -596,8 +608,8 @@ export default function WebCompanyBrowserPage() {
           <button onClick={() => setShowRecentlyClosed(v => !v)} style={S.iconBtn} aria-label="Recently closed">▾</button>
           {showRecentlyClosed && recentlyClosed.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', zIndex: 20, minWidth: 200 }}>
-              {recentlyClosed.map((rc, i) => (
-                <div key={i} onClick={() => { newTab(rc.url || 'about:blank'); setShowRecentlyClosed(false); }}
+              {recentlyClosed.map((rc) => (
+                <div key={`${rc.closedAt}-${rc.url}`} onClick={() => { newTab(rc.url || 'about:blank'); setShowRecentlyClosed(false); }}
                   style={{ padding: '4px 8px', fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                   title={rc.url}
                 >
@@ -786,8 +798,8 @@ export default function WebCompanyBrowserPage() {
             </div>
           </div>
           {history.length === 0 && <div style={{ padding: 12, color: 'var(--text-secondary)', fontSize: 10 }}>No history yet.</div>}
-          {history.slice(0, 50).map((h, i) => (
-            <div key={i} style={S.panelRow} onClick={() => { sendToActive({ type: 'navigate', url: h.url }); setShowHistoryPanel(false); }} title={h.url}>
+          {history.slice(0, 50).map((h) => (
+            <div key={`${h.visitedAt}-${h.url}`} style={S.panelRow} onClick={() => { sendToActive({ type: 'navigate', url: h.url }); setShowHistoryPanel(false); }} title={h.url}>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                 {h.title || h.url}
               </span>

@@ -758,7 +758,10 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
               {filteredCatalog.map(item => (
                 <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleExecuteFeature(item)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleExecuteFeature(item); } }}
                   className={`p-4 bg-surface-sunken border transition-all cursor-pointer rounded-sm hover:border-brand-gold/50 ${
                     selectedFeature?.id === item.id
                       ? 'border-brand-gold bg-brand-gold/5'

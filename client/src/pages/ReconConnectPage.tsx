@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -16,7 +16,7 @@ type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 
 // `query` is typed into hackingtool's `/` search to filter to that category's
 // tools. The upstream tool's tag keywords are the most reliable handle — see
 // https://github.com/Z4nzu/hackingtool#tags
-const CATEGORIES: Array<{ icon: any; name: string; count: number; desc: string; query: string; route?: string }> = [
+const CATEGORIES: Array<{ icon: React.ElementType; name: string; count: number; desc: string; query: string; route?: string }> = [
   { icon: Search,     name: 'OSINT',                count: 5, desc: 'WHOIS, DNS, sherlock, theHarvester, holehe',                query: 'osint',     route: '/recon-connect/c/osint' },
   { icon: Globe,      name: 'Web Recon',            count: 5, desc: 'Subfinder, HTTPX, nuclei, WAF detect, ffuf',                 query: 'web',       route: '/recon-connect/c/web-recon' },
   { icon: Wifi,       name: 'Network Scanning',     count: 5, desc: 'nmap quick/full, masscan, naabu, ARP',                       query: 'network',   route: '/recon-connect/c/network-scanning' },
@@ -127,13 +127,14 @@ export default function ReconConnectPage() {
     const unsubData = api.onReconData((id: string, chunk: string) => {
       if (id === sessionId) termRef.current?.write(chunk);
     });
-    const unsubExit = api.onReconExit?.((id: string, code: number) => {
+    const exitHandler = (id: string, code: number) => {
       if (id !== sessionId) return;
       termRef.current?.writeln(`\r\n\x1b[33m[process exited with code ${code}]\x1b[0m`);
       sessionIdRef.current = null;
       setTermState('idle');
       setSessionId(null);
-    });
+    };
+    const unsubExit = api.onReconExit ? api.onReconExit(exitHandler) : undefined;
     return () => { try { unsubData?.(); unsubExit?.(); } catch { /* ignore */ } };
   }, [sessionId]);
 
@@ -156,7 +157,11 @@ export default function ReconConnectPage() {
       await navigator.clipboard.writeText(text);
       setCopied(key);
       setTimeout(() => setCopied(null), 1800);
-    } catch { /* clipboard denied */ }
+    } catch (err: unknown) {
+      console.error('Clipboard write denied:', err);
+      setLaunchMsg({ kind: 'info', text: 'Could not copy to clipboard — browser denied access.' });
+      setTimeout(() => setLaunchMsg(null), 4000);
+    }
   };
 
   const ensureTerminal = () => {
@@ -198,7 +203,14 @@ export default function ReconConnectPage() {
     const term = ensureTerminal();
     if (!term) return;
     term.clear();
-    const res = await api.reconSpawn({ mode });
+    let res: { ok: boolean; sessionId: string; error?: string } | null = null;
+    try {
+      res = await api.reconSpawn({ mode });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'IPC error starting process.';
+      term.writeln(`\x1b[31m${msg}\x1b[0m`);
+      return;
+    }
     if (!res?.ok) {
       term.writeln(`\x1b[31m${res?.error || 'Failed to start process.'}\x1b[0m`);
       return;
@@ -207,7 +219,7 @@ export default function ReconConnectPage() {
     setSessionId(res.sessionId);
     setTermState('running');
     term.focus();
-    setTimeout(() => { try { fitRef.current?.fit(); if (api?.reconResize) api.reconResize(res.sessionId, term.cols, term.rows); } catch { /* ignore */ } }, 50);
+    setTimeout(() => { try { fitRef.current?.fit(); if (api?.reconResize) api.reconResize(res!.sessionId, term.cols, term.rows); } catch { /* ignore */ } }, 50);
   };
 
   const openCategory = async (query: string, label: string) => {
@@ -232,7 +244,11 @@ export default function ReconConnectPage() {
 
   const stopRecon = async () => {
     if (sessionId && api?.reconKill) {
-      await api.reconKill(sessionId);
+      try {
+        await api.reconKill(sessionId);
+      } catch (err: unknown) {
+        console.error('Failed to kill recon session:', err);
+      }
     }
     sessionIdRef.current = null;
     setTermState('idle');
