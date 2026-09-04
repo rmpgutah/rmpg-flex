@@ -5,7 +5,7 @@
 // (minimize/maximize/close), inline action slots.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 
 interface PanelTitleBarProps {
   title: string;
@@ -43,8 +43,6 @@ function PanelTitleBar({
   onMaximize,
   iconOnly = false,
 }: PanelTitleBarProps) {
-  const [hovered, setHovered] = useState<string | null>(null);
-
   const handleChromeAction = useCallback((action?: () => void) => {
     if (action) action();
   }, []);
@@ -55,8 +53,6 @@ function PanelTitleBar({
       role="heading"
       aria-level={3}
       data-panel-header="true"
-      onMouseEnter={() => setHovered('chrome')}
-      onMouseLeave={() => setHovered(null)}
     >
       {/* Window chrome buttons (left side, Spillman Flex style) */}
       {windowChrome && (

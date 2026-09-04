@@ -99,7 +99,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Communications',
     items: [
       { path: '/communications', icon: MessageSquare, label: 'Communications' },
-      { path: '/dialer-connect', icon: Phone, label: 'Dial Connect' },
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     ],
@@ -205,7 +204,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
 
   const isActive = (path: string) =>
-    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+    path === '/' ? location.pathname === '/' : location.pathname === path || location.pathname.startsWith(path + '/');
 
   const isVisible = (item: SidebarItem) => {
     if (item.adminOnly && !isAdmin) return false;

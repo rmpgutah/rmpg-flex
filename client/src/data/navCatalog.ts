@@ -90,7 +90,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
     icon: AlertTriangle,
     functions: [
       { path: '/warrants', label: 'Warrants', icon: AlertTriangle, badgeKey: 'activeWarrants', description: 'Active warrant tracking with person associations, status management, and national search', windowSize: { width: 1140, height: 840 } },
-      { path: '/national-warrant-search', label: 'National Warrant Search', icon: Globe, description: 'Federated warrant search across multiple state and national databases', windowSize: { width: 1180, height: 860 } },
+      { path: '/national-warrants', label: 'National Warrant Search', icon: Globe, description: 'Federated warrant search across multiple state and national databases', windowSize: { width: 1180, height: 860 } },
       { path: '/citations', label: 'Citations', icon: FileWarning, description: 'Traffic and non-traffic citation management with violation tracking', windowSize: { width: 1000, height: 800 } },
       { path: '/law-book', label: 'Law Book', icon: BookOpen, description: 'Statute and code reference library for charge lookup and legal research', windowSize: { width: 1100, height: 820 } },
       { path: '/trespass-orders', label: 'Trespass Orders', icon: ShieldBan, description: 'Trespass order management and enforcement tracking' },

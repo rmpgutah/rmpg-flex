@@ -440,19 +440,18 @@ export default function IncidentsPage() {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      try {
-        const token = localStorage.getItem('rmpg_token');
-        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ narrative }),
-          keepalive: true,
-        });
-      } catch { /* best-effort save */ }
+      // keepalive ensures delivery after navigation; network errors are intentionally unhandled
+      const token = localStorage.getItem('rmpg_token');
+      fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ narrative }),
+        keepalive: true,
+      });
     };
   }, []);
 

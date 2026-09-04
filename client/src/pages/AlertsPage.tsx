@@ -172,6 +172,10 @@ export default function AlertsPage() {
 
   const handleSave = useCallback(async () => {
     if (submitting) return;
+    if (!formData.template_name?.trim()) {
+      addToast('Template name is required', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       if (editingRecord && editingRecord.id > 0) {

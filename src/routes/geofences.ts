@@ -5,7 +5,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.get('/', async (c) => {
   const rows = await c.env.DB.prepare(
-    'SELECT * FROM geofence_zones WHERE is_active = 1 ORDER BY created_at DESC'
+    'SELECT * FROM geofence_zones WHERE is_active = 1 ORDER BY created_at DESC LIMIT 500'
   ).all();
   return c.json(rows.results);
 });

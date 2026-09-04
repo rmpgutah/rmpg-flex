@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Link2, Key, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
   Loader2, Clock, Search, Eye, EyeOff, Trash2, Zap, Play, Save,
@@ -137,6 +138,7 @@ function WebhookConfigPanel() {
 }
 
 export default function AdminServeManagerTab({ LoadingSpinner, error, setError, isAdmin }: Props) {
+  const navigate = useNavigate();
   // ── Status ──
   const [status, setStatus] = useState<SMIntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -452,7 +454,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       const res = await apiFetch<{ success?: boolean; call_id?: number; code?: string }>(`/servemanager/jobs/${jobId}/create-dispatch`, { method: 'POST' });
       if ((res as any)?.code === 'ALREADY_LINKED' && (res as any)?.call_id) {
         // Job already has a dispatch call — navigate directly to it instead of showing a generic error.
-        window.location.hash = `#/dispatch/calls/${(res as any).call_id}`;
+        navigate(`/dispatch?call_id=${(res as any).call_id}`);
         return;
       }
       await fetchJobs();

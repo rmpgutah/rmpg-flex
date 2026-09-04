@@ -683,7 +683,7 @@ function AppRoutes() {
             <Route path="/device-health" element={<ProtectedRoute><RouteErrorBoundary><DeviceHealthPage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/print-queue" element={<ProtectedRoute><RouteErrorBoundary><PrintQueuePage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/scheduled-updates" element={<ProtectedRoute><RouteErrorBoundary><ScheduledUpdatesPage /></RouteErrorBoundary></ProtectedRoute>} />
-            <Route path="/remote-lock" element={<ProtectedRoute><RouteErrorBoundary><RemoteLockPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/remote-lock" element={<AdminRoute><RouteErrorBoundary><RemoteLockPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/tesseract-training" element={<AdminRoute><RouteErrorBoundary><TesseractTrainingPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
@@ -766,8 +766,8 @@ function AppRoutes() {
             </Route>
           </Route>
 
-          {/* Catch-all outside layout */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Catch-all outside layout — preserve the original URL so login can redirect back */}
+          <Route path="*" element={<Navigate to={`/login?return=${encodeURIComponent(window.location.pathname + window.location.search)}`} replace />} />
         </Routes>
       </Suspense>
     </>

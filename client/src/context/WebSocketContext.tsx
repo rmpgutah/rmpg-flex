@@ -164,7 +164,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   // identically. Stable (reads refs/module-level helpers only).
   const fanInMessage = useCallback((message: WSMessage) => {
     if ((message.type as string) === 'dispatch_update') {
-      const data = (message as any).data || (message as any);
+      const data = (message.data as Record<string, unknown>) || message;
       if (data && typeof data.action === 'string') {
         if (data.action === 'call_created') playPriorityChime(data.call?.priority);
         try { handleDispatchEvent(data.action, data); }
