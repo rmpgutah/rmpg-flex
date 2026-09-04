@@ -62,14 +62,14 @@ async function personFlags(db: D1Database, ids: number[]): Promise<Map<number, s
       (ph) => `SELECT subject_person_id AS pid FROM warrants
        WHERE status IN ('active','outstanding') AND subject_person_id IN (${ph})`))
       out.set(w.pid, [...(out.get(w.pid) || []), 'ACTIVE WARRANT']);
-  } catch (err: any) { console.error('[intel] warrant flags failed:', err?.message); }
+  } catch (err) { log.warn('intel warrant flags failed', { error: err instanceof Error ? err.message : String(err) }); }
   try {
     for (const p of await queryInChunks<any>(db, ids, (ph) => `SELECT id, flags FROM persons WHERE id IN (${ph})`)) {
       const f = isRealValue(p.flags) ? String(p.flags).toLowerCase() : '';
       if (f.includes('officer safety') || f.includes('violent')) out.set(p.id, [...(out.get(p.id) || []), 'OFFICER SAFETY']);
       if (f.includes('gang')) out.set(p.id, [...(out.get(p.id) || []), 'GANG']);
     }
-  } catch (err: any) { console.error('[intel] person flags failed:', err?.message); }
+  } catch (err) { log.warn('intel person flags failed', { error: err instanceof Error ? err.message : String(err) }); }
   return out;
 }
 
@@ -93,7 +93,7 @@ intel.get('/search', operational, async (c) => {
           snippet: r.identifiers, flags: [], score: 100,
         });
       }
-    } catch (err: any) { console.error('[intel] identifier search failed:', err?.message); }
+    } catch (err) { log.warn('intel identifier search failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   // 2) FTS bm25 ranking
@@ -111,8 +111,8 @@ intel.get('/search', operational, async (c) => {
           snippet: r.snip || '', flags: [], score: 50 - Number(r.rank),
         });
       }
-    } catch (err: any) {
-      console.error('[intel] FTS failed, falling back to LIKE:', err?.message);
+    } catch (err) {
+      log.warn('intel FTS failed, falling back to LIKE', { error: err instanceof Error ? err.message : String(err) });
       // 3) LIKE fallback — degraded but alive if intel_index is missing on live.
       // D1 LIKE cap: pattern >50 chars fails — cappedLikePattern escapes and
       // truncates so '%' + escaped + '%' stays <=50.
@@ -122,7 +122,7 @@ intel.get('/search', operational, async (c) => {
           `SELECT id, first_name, last_name FROM persons
            WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT 10`, term))
           hits.set(`person:${p.id}`, { type: 'person', id: p.id, label: `${p.first_name} ${p.last_name}`, snippet: '', flags: [], score: 10 });
-      } catch (e: any) { console.error('[intel] LIKE fallback failed:', e?.message); }
+      } catch (e) { log.warn('intel LIKE fallback failed', { error: e instanceof Error ? e.message : String(e) }); }
     }
   }
 
@@ -149,7 +149,7 @@ intel.get('/search', operational, async (c) => {
         (ph) => `SELECT person_b AS pid, COUNT(*) AS n FROM entity_resolution_suggestions
                  WHERE status = 'pending' AND person_b IN (${ph}) GROUP BY person_b`))
         pending.set(r.pid, (pending.get(r.pid) || 0) + r.n);
-    } catch (err: any) { console.error('[intel] cluster enrich failed:', err?.message); }
+    } catch (err) { log.warn('intel cluster enrich failed', { error: err instanceof Error ? err.message : String(err) }); }
     for (const r of results) {
       if (r.type !== 'person') continue;
       r.flags = flags.get(r.id) || [];
@@ -186,7 +186,10 @@ intel.get('/saved-searches', operational, async (c) => {
   try {
     return c.json(await query(getDb(c.env),
       'SELECT id, name, query_text, created_at FROM intel_saved_searches WHERE user_id = ? ORDER BY created_at DESC', uid));
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('intel GET /saved-searches failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 intel.post('/saved-searches', operational, async (c) => {
   const uid = (c.get('userId') as number | undefined) ?? null;
@@ -210,7 +213,10 @@ intel.get('/search-history', operational, async (c) => {
     return c.json(await query(getDb(c.env),
       `SELECT query_text, MAX(executed_at) AS executed_at FROM intel_search_history
         WHERE user_id = ? GROUP BY query_text ORDER BY executed_at DESC LIMIT 10`, uid));
-  } catch { return c.json([]); }
+  } catch (err) {
+    log.error('intel GET /search-history failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json([]);
+  }
 });
 
 // GET /health — index freshness for diagnosis (migration-drift detector)
@@ -218,8 +224,8 @@ intel.get('/health', operational, async (c) => {
   const db = getDb(c.env);
   try {
     return c.json({ index: await query<any>(db, 'SELECT * FROM intel_index_state ORDER BY entity_type') });
-  } catch (err: any) {
-    return c.json({ index: [], error: err?.message, hint: 'migration 0098 may not have reached live D1' });
+  } catch (err) {
+    return c.json({ index: [], error: err instanceof Error ? err.message : String(err), hint: 'migration 0098 may not have reached live D1' });
   }
 });
 
@@ -249,7 +255,7 @@ intel.get('/geo', operational, async (c) => {
         const f = map(r);
         if (f && finiteCoord(f.lat, f.lng)) layers[key].push(f);
       }
-    } catch (e: any) { console.error(`[geo] ${key}:`, e?.message); }
+    } catch (e) { log.warn(`geo ${key}`, { error: e instanceof Error ? e.message : String(e) }); }
   };
 
   await coordQuery('sightings',
@@ -294,7 +300,7 @@ intel.get('/geo', operational, async (c) => {
         const coords = await geo(addrOf(r));
         if (coords && finiteCoord(coords.lat, coords.lng)) layers[key].push(mk(r, coords.lat, coords.lng));
       }
-    } catch (e: any) { console.error(`[geo] ${key}:`, e?.message); }
+    } catch (e) { log.warn(`geo ${key}`, { error: e instanceof Error ? e.message : String(e) }); }
   };
 
   await addrLayer('warrants',
@@ -334,9 +340,9 @@ intel.get('/watchlist', operational, async (c) => {
   try {
     return c.json(await query<any>(db,
       `SELECT * FROM intel_watchlist WHERE active = 1 AND added_by = ? ORDER BY created_at DESC LIMIT 200`, userId));
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /watchlist failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message, hint: 'migration 0099 may not have reached live D1' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err), hint: 'migration 0099 may not have reached live D1' }, 500);
   }
 });
 
@@ -413,7 +419,7 @@ intel.post('/screen', operational, async (c) => {
          VALUES ('intel_screen', 'high', ?, ?, ?, ?, ?, 0, datetime('now'))`,
         `RECORDS HIT (${entityType})`, critical.map((h) => h.detail).join('; '),
         entityType, resolvedId, userId);
-    } catch (err: any) { console.error('[screen] notify failed:', err?.message); }
+    } catch (err) { log.warn('screen notify failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
   return c.json({ entity_type: entityType, entity_id: resolvedId, hits });
 });
@@ -428,8 +434,8 @@ intel.get('/screen-plate', operational, async (c) => {
   try {
     const { vehicleId, hits } = await screenVehicle(db, { plate });
     return c.json({ plate, vehicle_id: vehicleId, hits });
-  } catch (err: any) {
-    return c.json({ plate, hits: [], error: err?.message }, 200);
+  } catch (err) {
+    return c.json({ plate, hits: [], error: err instanceof Error ? err.message : String(err) }, 200);
   }
 });
 
@@ -451,9 +457,9 @@ intel.get('/suggestions', operational, async (c) => {
         END AS source_label
        FROM intel_link_suggestions s WHERE s.status = ? ORDER BY s.created_at DESC LIMIT 100`, status);
     return c.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /suggestions failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err), hint: 'migration 0100 may not have reached live D1' }, 500);
   }
 });
 
@@ -472,7 +478,7 @@ intel.post('/suggestions/:id/confirm', operational, async (c) => {
     await execute(db,
       `INSERT OR IGNORE INTO ${table} (${fk}, ${col}, role) VALUES (?, ?, 'mentioned')`,
       s.source_id, s.entity_id);
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST /suggestions/:id/confirm failed', { src: 'src/routes/intel.ts' }, err);
     // Some junction tables lack a role column — retry without it.
     try {
@@ -531,7 +537,7 @@ intel.post('/sightings', operational, async (c) => {
         `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
          VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
         `PLATE HIT: ${plate}`, critical.map((h) => h.detail).join('; '), vehicleId, userId);
-    } catch (err: any) { console.error('[sightings] notify failed:', err?.message); }
+    } catch (err) { log.warn('sightings notify failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
   return c.json({ success: true, id: r.meta.last_row_id, plate, vehicle, hits });
 });
@@ -545,9 +551,9 @@ intel.get('/sightings', operational, async (c) => {
       ? await query<any>(db, `SELECT * FROM vehicle_sightings WHERE ${containsClause('plate').sql} ORDER BY created_at DESC LIMIT ?`, containsClause('plate').bind(plate), limit)
       : await query<any>(db, `SELECT * FROM vehicle_sightings ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /sightings failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err), hint: 'migration 0100 may not have reached live D1' }, 500);
   }
 });
 
@@ -578,7 +584,7 @@ intel.post('/quick-capture', operational, async (c) => {
           first || null, last, b?.dob || null, 'Created via intel quick-capture');
         personId = r.meta.last_row_id as number;
       }
-    } catch (err: any) { console.error('[quick-capture] person failed:', err?.message); }
+    } catch (err) { log.warn('quick-capture person failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   let vehicleId: number | null = null;
@@ -592,7 +598,7 @@ intel.post('/quick-capture', operational, async (c) => {
           plate, null, 'Created via intel quick-capture');
         vehicleId = r.meta.last_row_id as number;
       }
-    } catch (err: any) { console.error('[quick-capture] vehicle failed:', err?.message); }
+    } catch (err) { log.warn('quick-capture vehicle failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   // Linked dispatch call / incident — when the client launches the page
@@ -625,9 +631,9 @@ intel.post('/quick-capture', operational, async (c) => {
     await execute(db,
       `UPDATE field_interviews SET fi_number = 'FI-' || strftime('%Y%m%d', 'now') || '-' || id WHERE id = ? AND (fi_number IS NULL OR fi_number = '')`,
       fiId);
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST /quick-capture failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: `FI insert failed: ${err?.message}` }, 500);
+    return c.json({ error: `FI insert failed: ${err instanceof Error ? err.message : String(err)}` }, 500);
   }
 
   const hits: any[] = [];
@@ -640,7 +646,7 @@ intel.post('/quick-capture', operational, async (c) => {
         `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
          VALUES ('intel_screen', 'high', ?, ?, 'person', ?, ?, 0, datetime('now'))`,
         'RECORDS HIT: field contact', critical.map((h) => h.detail).join('; '), personId, userId);
-    } catch (err: any) { console.error('[quick-capture] notify failed:', err?.message); }
+    } catch (err) { log.warn('quick-capture notify failed', { error: err instanceof Error ? err.message : String(err) }); }
   }
 
   return c.json({
@@ -675,9 +681,9 @@ intel.post('/recordings/start', operational, async (c) => {
       Number.isFinite(Number(b?.lng)) ? Number(b.lng) : null,
       Number(b?.linked_fi_id) || null, Number(b?.linked_call_id) || null, b?.notes || null, mime);
     return c.json({ id: r.meta.last_row_id, mime });
-  } catch (err: any) {
+  } catch (err) {
     log.error('POST /recordings/start failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message, hint: 'migration 0102 may not have reached live D1' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err), hint: 'migration 0102 may not have reached live D1' }, 500);
   }
 });
 
@@ -697,9 +703,9 @@ intel.put('/recordings/:id/chunk', operational, async (c) => {
     await execute(db,
       'UPDATE interaction_recordings SET chunk_count = MAX(chunk_count, ?) WHERE id = ?', seq + 1, id);
     return c.json({ success: true, seq });
-  } catch (err: any) {
+  } catch (err) {
     log.error('PUT /recordings/:id/chunk failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: `chunk store failed: ${err?.message}` }, 500);
+    return c.json({ error: `chunk store failed: ${err instanceof Error ? err.message : String(err)}` }, 500);
   }
 });
 
@@ -726,9 +732,9 @@ intel.get('/recordings', operational, async (c) => {
       ? await query<any>(db, 'SELECT * FROM interaction_recordings ORDER BY created_at DESC LIMIT ?', limit)
       : await query<any>(db, 'SELECT * FROM interaction_recordings WHERE officer_id = ? ORDER BY created_at DESC LIMIT ?', userId, limit);
     return c.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /recordings failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
@@ -760,9 +766,9 @@ intel.get('/recordings/:id/chunk/:seq', operational, async (c) => {
     if (!legacy) return c.json({ error: 'chunk not found' }, 404);
     const mime = legacy.httpMetadata?.contentType || rec?.mime || 'audio/webm';
     return new Response(legacy.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /recordings/:id/chunk/:seq failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
@@ -772,9 +778,9 @@ intel.get('/jail/sources', operational, async (c) => {
   const db = getDb(c.env);
   try {
     return c.json(await query<any>(db, 'SELECT * FROM jail_roster_sources ORDER BY status DESC, display_name'));
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /jail/sources failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message, hint: 'migration 0101 may not have reached live D1' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err), hint: 'migration 0101 may not have reached live D1' }, 500);
   }
 });
 
@@ -827,7 +833,7 @@ intel.post('/jail/ingest-bookings', supervisorPlus, async (c) => {
     await execute(db,
       `UPDATE jail_roster_sources SET last_run_at = datetime(\'now\'), last_status = ?, row_count = row_count + ?, updated_at = datetime(\'now\') WHERE source_key = ?`,
       `runner ok (${result.ingested})`, result.ingested, sourceKey);
-  } catch (err: any) { console.error('[jail/ingest-bookings] status update failed:', err?.message); }
+  } catch (err) { log.warn('jail/ingest-bookings status update failed', { error: err instanceof Error ? err.message : String(err) }); }
   return c.json({ success: true, ...result, received: bookings.length });
 });
 
@@ -847,9 +853,9 @@ intel.get('/jail/bookings', operational, async (c) => {
        FROM arrest_records ar WHERE ${where.join(' AND ')} ORDER BY ar.fetched_at DESC LIMIT ?`,
       ...binds, limit);
     return c.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     log.error('GET /jail/bookings failed', { src: 'src/routes/intel.ts' }, err);
-    return c.json({ error: err?.message }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
@@ -885,7 +891,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
         (ph) => `SELECT id, first_name, last_name FROM persons WHERE id IN (${ph})`))
         cluster.push({ person_id: p.id, name: `${p.first_name} ${p.last_name}` });
     }
-  } catch (err: any) { console.error('[dossier] cluster failed:', err?.message); }
+  } catch (err) { log.warn('dossier cluster failed', { error: err instanceof Error ? err.message : String(err) }); }
   const ids = [...clusterIds];
 
   // Flags: Phase-1 enrichment + persons columns.
@@ -893,7 +899,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   try {
     const fm = await personFlags(db, ids);
     for (const fs of fm.values()) for (const f of fs) if (!flags.includes(f)) flags.push(f);
-  } catch (err: any) { console.error('[dossier] flags failed:', err?.message); }
+  } catch (err) { log.warn('dossier flags failed', { error: err instanceof Error ? err.message : String(err) }); }
   if (isRealValue(person.gang_affiliation) && !flags.includes('GANG')) flags.push('GANG');
   if (isRealValue(person.probation_parole)) flags.push('PROBATION/PAROLE');
   if (isRealValue(person.caution_flags)) flags.push('CAUTION');
@@ -901,13 +907,13 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     const trespassCounts = await queryInChunks<{ n: number }>(db, ids,
       (ph) => `SELECT COUNT(*) AS n FROM trespass_orders WHERE person_id IN (${ph}) AND status = 'active'`);
     if (trespassCounts.some((r) => r.n > 0)) flags.push('ACTIVE TRESPASS');
-  } catch (err: any) { console.error('[dossier] trespass flag failed:', err?.message); }
+  } catch (err) { log.warn('dossier trespass flag failed', { error: err instanceof Error ? err.message : String(err) }); }
 
   // Timeline sections — each guarded.
   const sources: TimelineEvent[][] = [];
   const section = async (label: string, fn: () => Promise<TimelineEvent[]>) => {
     try { sources.push(await fn()); }
-    catch (err: any) { console.error(`[dossier] ${label} failed:`, err?.message); }
+    catch (err) { log.warn(`dossier ${label} failed`, { error: err instanceof Error ? err.message : String(err) }); }
   };
   await section('calls', async () =>
     (await queryInChunks<any>(db, ids,
@@ -992,7 +998,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
                JOIN persons p ON p.id = ip2.person_id WHERE ip1.person_id IN (${ph})`)).slice(0, 500))
       co.push({ person_id: r.person_id, name: r.name, kind: 'incident' });
     associates = rankAssociates(co, clusterIds, 15);
-  } catch (err: any) { console.error('[dossier] associates failed:', err?.message); }
+  } catch (err) { log.warn('dossier associates failed', { error: err instanceof Error ? err.message : String(err) }); }
 
   // Vehicles owned by any cluster member.
   let vehicles: any[] = [];
@@ -1000,7 +1006,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     vehicles = (await queryInChunks<any>(db, ids,
       (ph) => `SELECT id, plate_number, vin, make, model, year, color FROM vehicles_records
                WHERE owner_person_id IN (${ph})`)).slice(0, 25);
-  } catch (err: any) { console.error('[dossier] vehicles failed:', err?.message); }
+  } catch (err) { log.warn('dossier vehicles failed', { error: err instanceof Error ? err.message : String(err) }); }
 
   // Addresses: person rows + recent event locations, deduped.
   const addresses: Array<{ address: string; source: string }> = [];
@@ -1017,7 +1023,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     for (const p of await queryInChunks<any>(db, ids,
       (ph) => `SELECT address, city FROM persons WHERE id IN (${ph})`))
       pushAddr([p.address, p.city].filter(isRealValue).join(', '), 'linked identity');
-  } catch (err: any) { console.error('[dossier] cluster addresses failed:', err?.message); }
+  } catch (err) { log.warn('dossier cluster addresses failed', { error: err instanceof Error ? err.message : String(err) }); }
   for (const e of timeline) {
     if (addresses.length >= 10) break;
     if ((e.kind === 'call' || e.kind === 'incident') && e.subtitle.includes(' — '))
@@ -1028,7 +1034,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   let escalation = null as ReturnType<typeof computeEscalation> | null;
   try {
     escalation = computeEscalation(await personActivityEvents(db, id));
-  } catch (err: any) { console.error('[dossier] escalation failed:', err?.message); }
+  } catch (err) { log.warn('dossier escalation failed', { error: err instanceof Error ? err.message : String(err) }); }
 
   // Watch state for the requesting user (Phase 4).
   let watched = false;
@@ -1037,7 +1043,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
       `SELECT 1 AS x FROM intel_watchlist WHERE entity_type = 'person' AND entity_id = ? AND added_by = ? AND active = 1`,
       id, (c.get('userId') as number | undefined) ?? null);
     watched = !!w;
-  } catch (err: any) { console.error('[dossier] watch state failed:', err?.message); }
+  } catch (err) { log.warn('dossier watch state failed', { error: err instanceof Error ? err.message : String(err) }); }
 
   // Linked Intelligence — disseminated products that name this person.
   let linkedIntel: any[] = [];
@@ -1048,7 +1054,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
        FROM intel_report_links l JOIN intel_reports r ON r.id = l.report_id
        WHERE l.entity_type = 'person' AND l.entity_id = ? AND r.status = 'disseminated'
        ORDER BY r.disseminated_at DESC`, id);
-  } catch (err: any) { console.error('[intel] linked intel failed:', err?.message); }
+  } catch (err) { log.warn('intel linked intel failed', { error: err instanceof Error ? err.message : String(err) }); }
 
   return c.json({
     person, cluster, flags, timeline, associates, vehicles,

@@ -32,6 +32,7 @@ import { cappedLikePattern, codedLike } from '../utils/searchText';
 import { mergeTimeline } from '../utils/intelDossier';
 import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
 import { recordAudit } from '../utils/auditLog';
+import { log } from '../utils/logger';
 
 const connections = new Hono<Env>();
 
@@ -220,8 +221,8 @@ async function loadNode(
       default:
         return { label: `${type} #${id}`, metadata: {} };
     }
-  } catch (err: any) {
-    console.error(`[Connections] loadNode ${type}#${id} error:`, err?.message);
+  } catch (err) {
+    log.warn('Connections loadNode ${type}#${id} error', { error: err instanceof Error ? err.message : String(err) });
     return { label: `${type} #${id}`, metadata: {} };
   }
 }
@@ -258,8 +259,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         'record_links',
       );
     }
-  } catch (err: any) {
-    console.error('[Connections] record_links query error:', err?.message);
+  } catch (err) {
+    log.warn('Connections record_links query error', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // forensic_case_entity_links — same bidirectional pattern as record_links
@@ -276,8 +277,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         `SELECT entity_type, entity_id, relationship FROM forensic_case_entity_links WHERE forensic_case_id = ?`, id,
       )) add(r.entity_type, r.entity_id, r.relationship || 'linked', 'forensic_case_entity_links');
     }
-  } catch (err: any) {
-    console.error('[Connections] forensic_case_entity_links error:', (err as Error)?.message);
+  } catch (err) {
+    log.warn('Connections forensic_case_entity_links error', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // 2. Type-specific junction / FK traversal — parallelized for performance.
@@ -325,7 +326,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
             const other = r.person_id === id ? r.canonical_person_id : r.person_id;
             if (other !== id) add('person', other, 'linked_identity', 'person_canonical');
           }
-        } catch (err: any) { console.error('[Connections] linked_identity edges error:', err?.message); }
+        } catch (err) { log.warn('Connections linked_identity edges error', { error: err instanceof Error ? err.message : String(err) }); }
         // 2b. Shared address (exact, sentinel-guarded).
         try {
           for (const r of await query<any>(db,
@@ -335,7 +336,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
                AND LOWER(TRIM(p1.address)) NOT IN ('none','n/a','na','null','0','unknown')
              LIMIT 8`, id))
             add('person', r.id, 'shares_address', 'persons');
-        } catch (err: any) { console.error('[Connections] shares_address edges error:', err?.message); }
+        } catch (err) { log.warn('Connections shares_address edges error', { error: err instanceof Error ? err.message : String(err) }); }
         // 2c. Shared phone (exact, sentinel-guarded).
         try {
           for (const r of await query<any>(db,
@@ -345,7 +346,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
                AND LOWER(TRIM(p1.phone)) NOT IN ('none','n/a','na','null','0','unknown')
              LIMIT 8`, id))
             add('person', r.id, 'shares_phone', 'persons');
-        } catch (err: any) { console.error('[Connections] shares_phone edges error:', err?.message); }
+        } catch (err) { log.warn('Connections shares_phone edges error', { error: err instanceof Error ? err.message : String(err) }); }
         break;
       }
 
@@ -553,8 +554,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         break;
       }
     }
-  } catch (err: any) {
-    console.error(`[Connections] junction query error (${type}#${id}):`, err?.message);
+  } catch (err) {
+    log.warn('Connections junction query error (${type}#${id})', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // 3. Disseminated intel products that name this entity (any node type).
@@ -565,7 +566,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
        WHERE l.entity_type = ? AND l.entity_id = ? AND rp.status = 'disseminated'
        LIMIT 200`, type, id))
       add('intel_report', r.report_id, r.role || 'intel_subject', 'intel_report_links');
-  } catch (err: any) { console.error('[Connections] intel link edges error:', err?.message); }
+  } catch (err) { log.warn('Connections intel link edges error', { error: err instanceof Error ? err.message : String(err) }); }
 
   return results;
 }
@@ -690,7 +691,7 @@ async function filterNodesByDateRange(
       );
       for (const r of rows) inRange.add(`${type}-${r.id}`);
     } catch (err) {
-      console.error(`[Connections] date-filter ${type} error:`, (err as Error)?.message);
+      log.warn('Connections date-filter ${type} error', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -715,7 +716,7 @@ async function filterNodesByDateRange(
       );
       for (const r of rows) inRange.add(`alpr_sighting-${-r.id}`);
     } catch (err) {
-      console.error(`[Connections] date-filter alpr_sighting(vehicle_sightings) error:`, (err as Error)?.message);
+      log.warn('Connections date-filter alpr_sighting(vehicle_sightings) error', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -834,7 +835,7 @@ connections.get('/:type/:id/gps-track', operational, async (c) => {
     );
     return c.json({ data: rows.map((r) => ({ lat: r.latitude, lng: r.longitude, recorded_at: r.recorded_at })) });
   } catch (err) {
-    console.error('[Connections] gps-track error:', (err as Error)?.message);
+    log.warn('Connections gps-track error', { error: err instanceof Error ? err.message : String(err) });
     return c.json({ data: [] });
   }
 });
@@ -883,7 +884,7 @@ connections.get('/:type/:id/geo-points', operational, async (c) => {
     );
     return c.json({ data: rows.map((r) => ({ lat: r.lat, lng: r.lng, source: 'alpr', label: r.plate, recorded_at: r.created_at })) });
   } catch (err) {
-    console.error('[Connections] geo-points error:', (err as Error)?.message);
+    log.warn('Connections geo-points error', { error: err instanceof Error ? err.message : String(err) });
     return c.json({ data: [] });
   }
 });
@@ -955,55 +956,55 @@ connections.get('/search', operational, async (c) => {
   try {
     for (const p of await query<any>(db, `SELECT id, first_name, last_name FROM persons WHERE first_name LIKE ? ESCAPE '\' OR last_name LIKE ? ESCAPE '\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT 8`, term, term, term))
       results.push({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` });
-  } catch (err: any) { console.error('[Connections] persons search error:', err?.message); }
+  } catch (err) { log.warn('Connections persons search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const v of await query<any>(db, `SELECT id, make, model, plate_number, color FROM vehicles_records WHERE make LIKE ? ESCAPE '\' OR model LIKE ? ESCAPE '\' OR plate_number LIKE ? ESCAPE '\' OR vin LIKE ? ESCAPE '\' LIMIT 8`, term, term, term, term))
       results.push({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.replace(/\s+/g, ' ').trim() });
-  } catch (err: any) { console.error('[Connections] vehicles search error:', err?.message); }
+  } catch (err) { log.warn('Connections vehicles search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const p of await query<any>(db, `SELECT id, name FROM properties WHERE name LIKE ? ESCAPE '\' OR address LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: p.id, type: 'property', label: p.name });
-  } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
+  } catch (err) { log.warn('Connections properties search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const b of await query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\' OR dba_name LIKE ? ESCAPE '\' OR address LIKE ? ESCAPE '\' OR owner_name LIKE ? ESCAPE '\' LIMIT 8`, term, term, term, term))
       results.push({ id: b.id, type: 'business', label: b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${b.id}`) });
-  } catch (err: any) { console.error('[Connections] businesses search error:', err?.message); }
+  } catch (err) { log.warn('Connections businesses search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const r of await query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: r.id, type: 'case', label: `${r.case_number} - ${r.title}` });
-  } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
+  } catch (err) { log.warn('Connections cases search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
-  } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
+  } catch (err) { log.warn('Connections incidents search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   // Calls for service — searchable so an analyst can seed a graph on a CFS.
   try {
     for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
-  } catch (err: any) { console.error('[Connections] calls search error:', err?.message); }
+  } catch (err) { log.warn('Connections calls search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const w of await query<any>(db, `SELECT id, warrant_number, status FROM warrants WHERE warrant_number LIKE ? ESCAPE '\' OR subject_name LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: w.id, type: 'warrant', label: `${w.warrant_number || `W-${w.id}`} (${w.status || '?'})` });
-  } catch (err: any) { console.error('[Connections] warrants search error:', err?.message); }
+  } catch (err) { log.warn('Connections warrants search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const e of await query<any>(db, `SELECT id, evidence_number, description FROM evidence WHERE evidence_number LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\' LIMIT 8`, term, term))
       results.push({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() });
-  } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
+  } catch (err) { log.warn('Connections evidence search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   try {
     for (const r of await query<any>(db,
       `SELECT id, report_number, title FROM intel_reports
        WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\') LIMIT 8`, term, term))
       results.push({ id: r.id, type: 'intel_report', label: `${r.report_number || `INT-${r.id}`} — ${r.title || ''}`.trim() });
-  } catch (err: any) { console.error('[Connections] intel search error:', err?.message); }
+  } catch (err) { log.warn('Connections intel search error', { error: err instanceof Error ? err.message : String(err) }); }
 
   return c.json(results);
 });
@@ -1058,7 +1059,7 @@ connections.get('/timeline', operational, async (c) => {
         (ph) => `SELECT ${TIMELINE_QUERY[type]} FROM ${TIMELINE_TABLE[type]} WHERE id IN (${ph}) ${extra}`,
       );
       sources.push(rows.map((row) => buildTimelineEvent(type, row)).filter(Boolean));
-    } catch (err: any) { console.error(`[Connections] timeline ${type} error:`, err?.message); }
+    } catch (err) { log.warn('Connections timeline ${type} error', { error: err instanceof Error ? err.message : String(err) }); }
   }
   return c.json(mergeTimeline(sources as any));
 });
