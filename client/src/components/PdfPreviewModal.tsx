@@ -172,7 +172,7 @@ export default function PdfPreviewModal({
               disabled={!blobUrl}
               aria-label="Print PDF"
               title="Print PDF"
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider [background-color:var(--accent-gold-300)] hover:[background-color:var(--accent-gold-400)] border [border-color:var(--field-label-color)] text-black transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider [background-color:var(--accent-gold-300)] hover:opacity-80 border [border-color:var(--field-label-color)] text-black transition-opacity disabled:opacity-50"
             >
               <Printer className="w-3.5 h-3.5" aria-hidden="true" />
               Print

@@ -5,7 +5,6 @@ import { toDisplayLabel } from '../../utils/formatters';
 import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import { useAuth } from '../../context/AuthContext';
 import {
   Shield, Database, Users, Bell, Trash2, RefreshCw, Download, HardDrive,
   Activity, UserCheck, AlertTriangle, CheckCircle, Play, Archive, BarChart3,
@@ -44,9 +43,6 @@ interface Backup {
 }
 
 export default function AdminGodModeTab() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-
   const [loading, setLoading] = useState(false);
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(null);
