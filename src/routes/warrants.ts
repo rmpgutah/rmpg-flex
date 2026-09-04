@@ -552,8 +552,11 @@ warrants.post('/search-all', async (c) => {
     if (body.status) { localConditions.push('status = ?'); localParams.push(body.status); }
     if (body.type) { localConditions.push('type = ?'); localParams.push(body.type); }
     if (body.offenseLevel) { localConditions.push('offense_level = ?'); localParams.push(body.offenseLevel); }
-    if (body.dateFrom) { localConditions.push('issued_date >= ?'); localParams.push(body.dateFrom); }
-    if (body.dateTo) { localConditions.push('issued_date <= ?'); localParams.push(body.dateTo); }
+    // date() wrapper converts both sides to YYYY-MM-DD canonical form before
+    // comparing, so lexically-inconsistent dates in scraped data (e.g. "9/9/2015")
+    // don't silently pass or fail the filter based on character order alone.
+    if (body.dateFrom) { localConditions.push('date(issued_date) >= date(?)'); localParams.push(body.dateFrom); }
+    if (body.dateTo) { localConditions.push('date(issued_date) <= date(?)'); localParams.push(body.dateTo); }
     const localWhere = localConditions.length ? `WHERE ${localConditions.join(' AND ')}` : '';
 
     const utahConditions: string[] = [];
@@ -561,8 +564,8 @@ warrants.post('/search-all', async (c) => {
     if (body.lastName) { const c = containsClause('last_name'); utahConditions.push(c.sql); utahParams.push(c.bind(body.lastName)); }
     if (body.firstName) { const c = containsClause('first_name'); utahConditions.push(c.sql); utahParams.push(c.bind(body.firstName)); }
     if (body.courtName) { const c = containsClause('court_name'); utahConditions.push(c.sql); utahParams.push(c.bind(body.courtName)); }
-    if (body.dateFrom) { utahConditions.push('issue_date >= ?'); utahParams.push(body.dateFrom); }
-    if (body.dateTo) { utahConditions.push('issue_date <= ?'); utahParams.push(body.dateTo); }
+    if (body.dateFrom) { utahConditions.push('date(issue_date) >= date(?)'); utahParams.push(body.dateFrom); }
+    if (body.dateTo) { utahConditions.push('date(issue_date) <= date(?)'); utahParams.push(body.dateTo); }
     const utahWhere = utahConditions.length ? `WHERE ${utahConditions.join(' AND ')}` : '';
 
     const scrapedConditions: string[] = [];
@@ -576,8 +579,8 @@ warrants.post('/search-all', async (c) => {
     if (body.status) { scrapedConditions.push('status = ?'); scrapedParams.push(body.status); }
     if (body.type) { scrapedConditions.push('warrant_type = ?'); scrapedParams.push(body.type); }
     if (body.offenseLevel) { scrapedConditions.push('offense_level = ?'); scrapedParams.push(body.offenseLevel); }
-    if (body.dateFrom) { scrapedConditions.push('issue_date >= ?'); scrapedParams.push(body.dateFrom); }
-    if (body.dateTo) { scrapedConditions.push('issue_date <= ?'); scrapedParams.push(body.dateTo); }
+    if (body.dateFrom) { scrapedConditions.push('date(issue_date) >= date(?)'); scrapedParams.push(body.dateFrom); }
+    if (body.dateTo) { scrapedConditions.push('date(issue_date) <= date(?)'); scrapedParams.push(body.dateTo); }
     const scrapedWhere = scrapedConditions.length ? `WHERE ${scrapedConditions.join(' AND ')}` : '';
 
     // `source` restricts the search to a single bucket rather than filtering

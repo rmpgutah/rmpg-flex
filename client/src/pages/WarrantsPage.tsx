@@ -754,8 +754,9 @@ export default function WarrantsPage() {
       // Re-fetch profile
       const res = await apiFetch<PersonProfile>(`/warrants/person/${personId}/profile`);
       setPersonProfile(res);
-    } catch { /* silent */ }
-    finally { setCheckingPerson(false); }
+    } catch (err) {
+      addToast(err instanceof Error ? `Warrant check failed: ${err.message}` : 'Warrant check failed — please retry', 'error');
+    } finally { setCheckingPerson(false); }
   }, []);
 
   // ============================================================
@@ -860,6 +861,7 @@ export default function WarrantsPage() {
       await downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);
     } catch (err) {
       console.error('Warrant PDF failed:', err);
+      addToast(err instanceof Error ? `Warrant PDF failed: ${err.message}` : 'Warrant PDF generation failed', 'error');
     }
   }, [utahDetailWarrant]);
 
@@ -1343,6 +1345,7 @@ export default function WarrantsPage() {
                         setSummaryReportOpen(false);
                       } catch (err) {
                         console.error('Summary report failed:', err);
+                        addToast(err instanceof Error ? `Report failed: ${err.message}` : 'Summary report generation failed', 'error');
                       } finally {
                         setSummaryLoading(false);
                       }

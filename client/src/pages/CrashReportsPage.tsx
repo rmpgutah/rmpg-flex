@@ -74,6 +74,9 @@ export default function CrashReportsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [selected, setSelected] = useState<CrashReport | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   // ── Wizard state ──
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -127,11 +130,13 @@ export default function CrashReportsPage() {
       });
       setWizardOpen(false);
       setToast('Crash report filed');
-      setTimeout(() => setToast(null), 3000);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 3000);
       fetchReports();
     } catch (e: unknown) {
       setToast(e instanceof Error ? e.message : 'Failed to file report');
-      setTimeout(() => setToast(null), 4000);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 4000);
     }
     finally { setSubmitting(false); }
   };
