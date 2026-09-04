@@ -290,7 +290,6 @@ export default function CrmPage() {
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
     } catch (err: any) {
       if (!mountedRef.current) return;
-      console.error('CRM dashboard fetch error:', err);
       setFetchError(err?.message || 'Failed to load data');
     }
   }, []);
