@@ -81,6 +81,8 @@ export default function AlertsPage() {
   const [filterCategory, setFilterCategory] = useState<string>(initialCategoryParam);
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
@@ -172,6 +174,10 @@ export default function AlertsPage() {
 
   const handleSave = useCallback(async () => {
     if (submitting) return;
+    if (!String(formData.template_name ?? '').trim()) {
+      addToast('Template name is required', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       if (editingRecord && editingRecord.id > 0) {
@@ -180,12 +186,13 @@ export default function AlertsPage() {
         await apiFetch('/alerts/templates', { method: 'POST', body: JSON.stringify(formData) });
       }
       const wasEdit = !!(editingRecord && editingRecord.id > 0);
+      if (!mountedRef.current) return;
       setEditingRecord(null);
       await fetchData();
       addToast(wasEdit ? 'Template updated' : 'Template created', 'success');
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
-    } finally { setSubmitting(false); }
+      if (mountedRef.current) addToast(err instanceof Error ? err.message : 'Save failed', 'error');
+    } finally { if (mountedRef.current) setSubmitting(false); }
   }, [submitting, editingRecord, formData, fetchData, addToast]);
 
   const handleDelete = useCallback(async () => {
@@ -193,12 +200,13 @@ export default function AlertsPage() {
     setDeleteBusy(true);
     try {
       await apiFetch(`/alerts/templates/${deleteTarget.id}`, { method: 'DELETE' });
+      if (!mountedRef.current) return;
       setDeleteTarget(null);
       await fetchData();
       addToast('Template deleted', 'success');
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Delete failed', 'error');
-    } finally { setDeleteBusy(false); }
+      if (mountedRef.current) addToast(err instanceof Error ? err.message : 'Delete failed', 'error');
+    } finally { if (mountedRef.current) setDeleteBusy(false); }
   }, [deleteTarget, fetchData, addToast]);
 
   const showForm = editingRecord !== null;

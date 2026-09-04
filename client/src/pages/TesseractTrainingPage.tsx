@@ -158,15 +158,15 @@ export default function TesseractTrainingPage() {
     setStatsLoading(true);
     apiFetch<Stats>('/tesseract-training/stats')
       .then(setStats)
-      .catch(console.error)
+      .catch((err) => { console.error(err); addToast(err instanceof Error ? err.message : 'Failed to load training stats', 'error'); })
       .finally(() => setStatsLoading(false));
-  }, []);
+  }, [addToast]);
 
   const loadRuns = useCallback(() => {
     apiFetch<{ rows: TrainingRun[] }>('/tesseract-training/documents/runs?page=1')
       .then((res) => setRuns(res.rows))
-      .catch(console.error);
-  }, []);
+      .catch((err) => { console.error(err); addToast(err instanceof Error ? err.message : 'Failed to load training runs', 'error'); });
+  }, [addToast]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { loadRuns(); }, [loadRuns]);
@@ -190,8 +190,8 @@ export default function TesseractTrainingPage() {
       page, docType: filterDocType, labeled: filterLabeled, from: filterFrom, to: filterTo,
     })}`)
       .then((res) => setRows(res.rows))
-      .catch(console.error);
-  }, [page, filterDocType, filterLabeled, filterFrom, filterTo]);
+      .catch((err) => { console.error(err); addToast(err instanceof Error ? err.message : 'Failed to load document list', 'error'); });
+  }, [page, filterDocType, filterLabeled, filterFrom, filterTo, addToast]);
 
   useEffect(() => { loadList(); }, [loadList]);
 
@@ -233,7 +233,7 @@ export default function TesseractTrainingPage() {
     let cancelled = false;
     apiFetch<DocDetail>(`/tesseract-training/documents/${selectedId}`)
       .then((d) => { if (!cancelled) { setDetail(d); setGroundTruth(d.raw_text ?? ''); } })
-      .catch(console.error);
+      .catch((err) => { if (!cancelled) { console.error(err); addToast(err instanceof Error ? err.message : 'Failed to load document detail', 'error'); } });
     return () => { cancelled = true; };
   }, [selectedId]);
 
@@ -241,8 +241,8 @@ export default function TesseractTrainingPage() {
     if (selectedId == null || Number.isNaN(selectedId)) return;
     apiFetch<{ boxes: BoxAnnotation[] }>(`/tesseract-training/documents/${selectedId}/boxes`)
       .then((res) => setBoxes(res.boxes))
-      .catch(console.error);
-  }, [selectedId]);
+      .catch((err) => { console.error(err); addToast(err instanceof Error ? err.message : 'Failed to load bounding boxes', 'error'); });
+  }, [selectedId, addToast]);
 
   useEffect(() => { if (mode === 'boxes') loadBoxes(); }, [mode, loadBoxes]);
 
@@ -250,8 +250,8 @@ export default function TesseractTrainingPage() {
     if (selectedId == null || Number.isNaN(selectedId)) return;
     apiFetch<{ strokes: NoteStroke[] | null }>(`/tesseract-training/documents/${selectedId}/notes`)
       .then((res) => { setStrokes(res.strokes ?? []); setNotesDirty(false); })
-      .catch(console.error);
-  }, [selectedId]);
+      .catch((err) => { console.error(err); addToast(err instanceof Error ? err.message : 'Failed to load annotation notes', 'error'); });
+  }, [selectedId, addToast]);
 
   useEffect(() => { if (mode === 'notes') loadNotes(); }, [mode, loadNotes]);
 

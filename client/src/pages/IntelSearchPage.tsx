@@ -23,6 +23,7 @@ export default function IntelSearchPage() {
   const [q, setQ] = useState(searchParams.get('q') || '');
   const [results, setResults] = useState<IntelHit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [flagsOnly, setFlagsOnly] = useState(false);
   const [sort, setSort] = useState<'score' | 'label'>('score');
@@ -35,10 +36,11 @@ export default function IntelSearchPage() {
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    if (q.trim().length < 2) { setResults([]); return; }
+    if (q.trim().length < 2) { setResults([]); setSearchError(null); return; }
     let cancelled = false;
     debounceRef.current = setTimeout(() => {
       setLoading(true);
+      setSearchError(null);
       apiFetch<{ results: IntelHit[] }>(`/intel/search?q=${encodeURIComponent(q)}`)
         .then((r) => {
           if (cancelled) return;
@@ -49,7 +51,7 @@ export default function IntelSearchPage() {
             return next;
           });
         })
-        .catch(console.error)
+        .catch((err) => { if (!cancelled) setSearchError(err instanceof Error ? err.message : 'Search failed'); })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(debounceRef.current); };
@@ -95,6 +97,11 @@ export default function IntelSearchPage() {
         <button type="button" className="text-[9px] px-2 py-[3px] border border-border-default text-fg-muted" disabled={results.length === 0} onClick={() => downloadTextFile('intel-search.csv', intelHitsToCsv(results))}>EXPORT CSV</button>
         <span className="text-[9px] text-fg-muted ml-auto font-mono">{results.length} hits</span>
       </div>
+      {searchError && (
+        <div className="text-[11px] px-3 py-2 bg-[rgba(var(--sev-critical-rgb),0.12)] border border-[rgba(var(--sev-critical-rgb),0.4)] text-[color:var(--sev-critical)]">
+          Search failed: {searchError}
+        </div>
+      )}
       {recent.length > 0 && q.trim().length < 2 && (
         <div className="flex gap-1 flex-wrap">
           {recent.map((r) => (

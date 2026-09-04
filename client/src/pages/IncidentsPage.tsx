@@ -440,19 +440,18 @@ export default function IncidentsPage() {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      try {
-        const token = localStorage.getItem('rmpg_token');
-        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ narrative }),
-          keepalive: true,
-        });
-      } catch { /* best-effort save */ }
+      // keepalive ensures delivery after navigation; network errors are intentionally unhandled
+      const token = localStorage.getItem('rmpg_token');
+      fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ narrative }),
+        keepalive: true,
+      });
     };
   }, []);
 
@@ -492,9 +491,11 @@ export default function IncidentsPage() {
   }, [showArchived]);
 
   useEffect(() => {
+    let cancelled = false;
     fetchIncidents();
     // Fetch disposition codes from admin config
     apiFetch('/admin/config').then((cfg: any) => {
+      if (cancelled) return;
       const disps = (cfg.dispositions || [])
         .filter((d: any) => d.is_active)
         .map((d: any) => {
@@ -505,8 +506,12 @@ export default function IncidentsPage() {
     }).catch((err) => { console.warn('[IncidentsPage] fetch disposition codes failed:', err); });
     // Fetch clients list for client selector
     apiFetch<any[]>('/admin/clients')
-      .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name }))))
+      .then((data) => {
+        if (cancelled) return;
+        setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name })));
+      })
       .catch((err) => { console.warn('[IncidentsPage] fetch clients list failed:', err); });
+    return () => { cancelled = true; };
   }, [fetchIncidents]);
 
   // Live sync — auto-refresh when any device modifies incidents (silent to avoid unmounting UI)
@@ -1508,7 +1513,7 @@ export default function IncidentsPage() {
           type="button"
           onClick={() => {
             const subj = `Incident #${selectedIncident.incident_number}`;
-            window.location.href = `/email?compose=1&subject=${encodeURIComponent(subj)}`;
+            navigate(`/email?compose=1&subject=${encodeURIComponent(subj)}`);
           }}
           className="px-2 py-0.5 text-[10px] border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500"
           title="Compose email referencing this incident (auto-linked on send)"

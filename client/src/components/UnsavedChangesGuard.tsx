@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import ConfirmDialog from './ConfirmDialog';
 
 interface UnsavedChangesGuardProps {
@@ -23,6 +24,7 @@ export default function UnsavedChangesGuard({
   title = 'Unsaved Changes',
   message = 'You have unsaved changes. Are you sure you want to leave? Your changes will be lost.',
 }: UnsavedChangesGuardProps) {
+  const navigate = useNavigate();
   const [showDialog, setShowDialog] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
@@ -65,7 +67,8 @@ export default function UnsavedChangesGuard({
       if (link.href === window.location.href) return;
 
       e.preventDefault();
-      setPendingNav(() => () => { window.location.href = link.href; });
+      const url = new URL(link.href);
+      setPendingNav(() => () => { navigate(url.pathname + url.search + url.hash); });
       setShowDialog(true);
     };
 

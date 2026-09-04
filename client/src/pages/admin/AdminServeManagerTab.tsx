@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Link2, Key, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
   Loader2, Clock, Search, Eye, EyeOff, Trash2, Zap, Play, Save,
@@ -137,6 +138,7 @@ function WebhookConfigPanel() {
 }
 
 export default function AdminServeManagerTab({ LoadingSpinner, error, setError, isAdmin }: Props) {
+  const navigate = useNavigate();
   // ── Status ──
   const [status, setStatus] = useState<SMIntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,17 +186,18 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       setStatus(data);
     } catch (err) {
       console.error('Failed to fetch SM status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch ServeManager status');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setError]);
 
   const fetchSyncLog = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: SMSyncLogEntry[] }>('/servemanager/sync/log');
       setSyncLog(asArray<SMSyncLogEntry>(res?.data));
-    } catch (e) { console.error('Failed to fetch sync log:', e); }
-  }, []);
+    } catch (e) { console.error('Failed to fetch sync log:', e); setError(e instanceof Error ? e.message : 'Failed to fetch sync log'); }
+  }, [setError]);
 
   // ── Route & Mileage settings ──
   const [mileageRate, setMileageRate] = useState<string>('0.67');
@@ -339,10 +342,11 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       setJobTotalPages(res.pagination?.totalPages || 0);
     } catch (err) {
       console.error('Failed to fetch SM jobs:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch jobs');
     } finally {
       setLoadingJobs(false);
     }
-  }, [jobSearch, jobPage]);
+  }, [jobSearch, jobPage, setError]);
 
   const fetchPollerStatus = useCallback(async () => {
     try {
@@ -353,8 +357,8 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       setPollerTargetClient(data.target_client);
       setPollerAutoCreate(data.auto_create_calls);
       setPollerDirty(false);
-    } catch (e) { console.error('Failed to fetch poller status:', e); }
-  }, []);
+    } catch (e) { console.error('Failed to fetch poller status:', e); setError(e instanceof Error ? e.message : 'Failed to fetch poller status'); }
+  }, [setError]);
 
   useEffect(() => { fetchStatus(); fetchSyncLog(); }, [fetchStatus, fetchSyncLog]);
   useEffect(() => { if (status?.configured) { fetchJobs(); fetchPollerStatus(); } }, [status?.configured, fetchJobs, fetchPollerStatus]);
@@ -452,7 +456,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       const res = await apiFetch<{ success?: boolean; call_id?: number; code?: string }>(`/servemanager/jobs/${jobId}/create-dispatch`, { method: 'POST' });
       if ((res as any)?.code === 'ALREADY_LINKED' && (res as any)?.call_id) {
         // Job already has a dispatch call — navigate directly to it instead of showing a generic error.
-        window.location.hash = `#/dispatch/calls/${(res as any).call_id}`;
+        navigate(`/dispatch?call_id=${(res as any).call_id}`);
         return;
       }
       await fetchJobs();

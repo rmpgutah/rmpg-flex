@@ -74,6 +74,9 @@ export default function CrashReportsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [selected, setSelected] = useState<CrashReport | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   // ── Wizard state ──
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -127,11 +130,13 @@ export default function CrashReportsPage() {
       });
       setWizardOpen(false);
       setToast('Crash report filed');
-      setTimeout(() => setToast(null), 3000);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 3000);
       fetchReports();
     } catch (e: unknown) {
       setToast(e instanceof Error ? e.message : 'Failed to file report');
-      setTimeout(() => setToast(null), 4000);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 4000);
     }
     finally { setSubmitting(false); }
   };
@@ -264,7 +269,7 @@ export default function CrashReportsPage() {
                   {reports.length === 0 ? 'No crash reports found' : 'Filters hid every report'}
                 </td></tr>
               ) : visible.map(report => (
-                <tr key={report.id} onClick={() => setSelected(report)} className={`border-b border-border-subtle hover:bg-surface-hover cursor-pointer ${selected?.id === report.id ? 'bg-surface-hover' : ''}`}>
+                <tr key={report.id} onClick={() => setSelected(report)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(report); } }} tabIndex={0} role="row" aria-selected={selected?.id === report.id} className={`border-b border-border-subtle hover:bg-surface-hover cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent-silver-500 ${selected?.id === report.id ? 'bg-surface-hover' : ''}`}>
                   <td className="px-3 py-[2px] text-rmpg-100 font-mono">{report.report_number}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.crash_date}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.location}</td>

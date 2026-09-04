@@ -34,13 +34,13 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { log, logErrorToDb } from '../utils/logger';
 import { clampIntParam } from '../utils/paginationParams';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { dbErrorResponse } from '../utils/dbErrors';
-import { log, logErrorToDb } from '../utils/logger';
 import {
   getSuggestedMileage,
   deriveEndMileage,

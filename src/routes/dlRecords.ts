@@ -81,7 +81,7 @@ async function audit(
       userId, action, entityId, details,
     );
   } catch (err) {
-    console.error('[DL Records] audit log failed (non-fatal):', err);
+    log.error('[DL Records] audit log failed (non-fatal)', { src: 'routes/dlRecords.ts' }, err instanceof Error ? err.message : String(err));
   }
 }
 

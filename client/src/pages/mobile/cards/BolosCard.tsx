@@ -55,6 +55,8 @@ export default function BolosCard() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const fetchAll = useCallback(async () => {
     setError(null);
@@ -62,6 +64,7 @@ export default function BolosCard() {
       apiFetch<any>('/api/comms/bolos/active').catch(() => null),
       apiFetch<any>('/api/dispatch/geography/premise-alerts').catch(() => null),
     ]);
+    if (!mountedRef.current) return;
     const [bRes, aRes] = results;
     let anyFailed = false;
     if (bRes == null) anyFailed = true;

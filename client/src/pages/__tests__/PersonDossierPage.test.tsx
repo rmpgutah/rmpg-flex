@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import PersonDossierPage from '../PersonDossierPage';
+import { ToastProvider } from '../../components/ToastProvider';
 
 const fullDossier = {
   person: { id: 1, first_name: 'John', last_name: 'Smith', dob: '1990-01-01', gender: 'M', race: 'W' },
@@ -35,9 +36,9 @@ describe('PersonDossierPage', () => {
 
   it('renders identity, flags, timeline, associates, vehicles', async () => {
     render(
-      <MemoryRouter initialEntries={['/intel/person/1']}>
+      <ToastProvider><MemoryRouter initialEntries={['/intel/person/1']}>
         <Routes><Route path="/intel/person/:id" element={<PersonDossierPage />} /></Routes>
-      </MemoryRouter>,
+      </MemoryRouter></ToastProvider>,
     );
     await waitFor(() => expect(screen.getByText('John Smith')).toBeInTheDocument());
     expect(screen.getByText('ACTIVE WARRANT')).toBeInTheDocument();
@@ -49,9 +50,9 @@ describe('PersonDossierPage', () => {
 
   it('renders Linked Intelligence section when server returns linked_intel', async () => {
     render(
-      <MemoryRouter initialEntries={['/intel/person/1']}>
+      <ToastProvider><MemoryRouter initialEntries={['/intel/person/1']}>
         <Routes><Route path="/intel/person/:id" element={<PersonDossierPage />} /></Routes>
-      </MemoryRouter>,
+      </MemoryRouter></ToastProvider>,
     );
     await waitFor(() => expect(screen.getByText('John Smith')).toBeInTheDocument());
     expect(screen.getByText(/LINKED INTELLIGENCE \(1\)/)).toBeInTheDocument();
@@ -62,9 +63,9 @@ describe('PersonDossierPage', () => {
 
   it('renders escalation chip with hover detail', async () => {
     render(
-      <MemoryRouter initialEntries={['/intel/person/1']}>
+      <ToastProvider><MemoryRouter initialEntries={['/intel/person/1']}>
         <Routes><Route path="/intel/person/:id" element={<PersonDossierPage />} /></Routes>
-      </MemoryRouter>,
+      </MemoryRouter></ToastProvider>,
     );
     await waitFor(() => expect(screen.getByText('John Smith')).toBeInTheDocument());
     const chip = screen.getByText(/ESCALATING 5\.8×/);
@@ -76,9 +77,9 @@ describe('PersonDossierPage', () => {
     const { apiFetch } = await import('../../hooks/useApi');
     (apiFetch as any).mockRejectedValueOnce(Object.assign(new Error('Person not found'), { status: 404 }));
     render(
-      <MemoryRouter initialEntries={['/intel/person/9999']}>
+      <ToastProvider><MemoryRouter initialEntries={['/intel/person/9999']}>
         <Routes><Route path="/intel/person/:id" element={<PersonDossierPage />} /></Routes>
-      </MemoryRouter>,
+      </MemoryRouter></ToastProvider>,
     );
     await waitFor(() => expect(screen.getByText(/No person on file/)).toBeInTheDocument());
     // "← Back" button uses a navigate(-1) — just confirm it rendered.
@@ -87,9 +88,9 @@ describe('PersonDossierPage', () => {
 
   it('Esc key fires a navigation handler (no error / no crash)', async () => {
     render(
-      <MemoryRouter initialEntries={['/intel/person/1']}>
+      <ToastProvider><MemoryRouter initialEntries={['/intel/person/1']}>
         <Routes><Route path="/intel/person/:id" element={<PersonDossierPage />} /></Routes>
-      </MemoryRouter>,
+      </MemoryRouter></ToastProvider>,
     );
     await waitFor(() => expect(screen.getByText('John Smith')).toBeInTheDocument());
     // Just confirm the handler is wired and doesn't throw — actual navigate(-1)

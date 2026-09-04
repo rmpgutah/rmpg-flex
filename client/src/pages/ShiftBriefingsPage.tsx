@@ -42,7 +42,7 @@ interface SafetyAlert {
 }
 
 function getCurrentShift(): { type: 'day' | 'swing' | 'night'; start: string; end: string } {
-  const hour = new Date().getHours();
+  const hour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hour12: false }).format(new Date()), 10);
   if (hour >= 6 && hour < 14) return { type: 'day', start: '06:00', end: '14:00' };
   if (hour >= 14 && hour < 22) return { type: 'swing', start: '14:00', end: '22:00' };
   return { type: 'night', start: '22:00', end: '06:00' };
@@ -95,7 +95,7 @@ export default function ShiftBriefingsPage() {
       const data = await apiFetch<SafetyAlert[]>('/api/shift-briefings/officer-safety/alerts');
       setSafetyAlerts(asArray<SafetyAlert>(data));
     } catch (err) {
-      console.error('Failed to load safety alerts', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load safety alerts');
     }
   }
 
@@ -127,7 +127,7 @@ export default function ShiftBriefingsPage() {
       setGenerated(null);
       loadBriefings();
     } catch (err) {
-      console.error('Failed to save briefing', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to save briefing');
     } finally {
       setSaving(false);
     }
@@ -151,7 +151,7 @@ export default function ShiftBriefingsPage() {
       setShowManualForm(false);
       loadBriefings();
     } catch (err) {
-      console.error('Failed to save manual briefing', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to save briefing');
     } finally {
       setSaving(false);
     }

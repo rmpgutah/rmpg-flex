@@ -30,6 +30,7 @@ function TabBar({
   spillman = false,
 }: TabBarProps) {
   const tabListRef = useRef<HTMLDivElement>(null);
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent, tabId: string) => {
     const idx = tabs.findIndex(t => t.id === tabId);
@@ -53,6 +54,7 @@ function TabBar({
     if (nextIdx >= 0 && nextIdx !== idx) {
       e.preventDefault();
       onTabChange(tabs[nextIdx].id);
+      buttonRefs.current[nextIdx]?.focus();
     }
   }, [tabs, onTabChange]);
 
@@ -75,6 +77,7 @@ function TabBar({
             aria-selected={isActive}
             aria-controls={`tabpanel-${tab.id}`}
             tabIndex={isActive ? 0 : -1}
+            ref={(el) => { buttonRefs.current[tabs.indexOf(tab)] = el; }}
             onClick={() => onTabChange(tab.id)}
             onKeyDown={(e) => handleKeyDown(e, tab.id)}
             className={`${spillman ? 'spillman-tab' : 'tab-bar-item'} ${isActive ? 'active' : ''}`}

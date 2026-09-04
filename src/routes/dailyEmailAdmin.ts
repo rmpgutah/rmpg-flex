@@ -109,8 +109,7 @@ dailyEmailAdmin.put('/recipients', requireAdmin, async (c) => {
 // GET /test-send — send a test email (browser-friendly, bypasses WAF POST challenge)
 // Query params: ?date=YYYY-MM-DD (send real report for that date)
 //               ?to=email (override recipient)
-//               ?dev=true (bypass auth — TEMPORARY)
-dailyEmailAdmin.get('/test-send', async (c) => {
+dailyEmailAdmin.get('/test-send', requireAdmin, async (c) => {
   const resendApiKey = c.env.RESEND_API_KEY;
   if (!resendApiKey) {
     return c.json({ ok: false, error: 'RESEND_API_KEY not configured' }, 503);

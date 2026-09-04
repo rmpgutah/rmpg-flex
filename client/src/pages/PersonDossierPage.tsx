@@ -13,6 +13,7 @@ import IconButton from '../components/IconButton';
 import { downloadPdfV2 } from '../utils/pdf/v2';
 import { dossierSchema, type DossierData, type LinkedIntelEntry } from '../utils/pdf/v2/forms/dossier';
 import { toDisplayLabel, formatLabel } from '../utils/formatters';
+import { useToast } from '../components/ToastProvider';
 import { formatDate } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 
@@ -60,6 +61,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function PersonDossierPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { addToast } = useToast();
   const [data, setData] = useState<DossierResponse | null>(null);
   const [watched, setWatched] = useState(false);
   const [error, setError] = useState<{ message: string; notFound: boolean } | null>(null);
@@ -221,7 +223,7 @@ export default function PersonDossierPage() {
                   if (watched) await apiFetch(`/intel/watchlist/person/${p.id}`, { method: 'DELETE' });
                   else await apiFetch('/intel/watchlist', { method: 'POST', body: JSON.stringify({ entity_type: 'person', entity_id: p.id }) });
                   setWatched(!watched);
-                } catch (e) { console.error(e); }
+                } catch (e) { console.error(e); addToast(e instanceof Error ? e.message : 'Failed to update watchlist', 'error'); }
               }}>
               {watched ? <Eye className="w-4 h-4 [color:var(--panel-header-color)]" /> : <EyeOff className="w-4 h-4" />}
             </IconButton>

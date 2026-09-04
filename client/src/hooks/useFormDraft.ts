@@ -159,7 +159,8 @@ export function useFormDraft<T>({
   // Notify parent when draft is restored
   useEffect(() => {
     if (wasRestored && onRestore) {
-      const raw = localStorage.getItem(storageKey);
+      let raw: string | null = null;
+      try { raw = localStorage.getItem(storageKey); } catch { /* Safari private mode */ }
       if (raw != null) {
         try {
           const parsed = JSON.parse(raw);
@@ -219,7 +220,7 @@ export function useFormDraft<T>({
   // Clear draft and reset
   const clearDraft = useCallback(() => {
     clearedRef.current = true; // prevent unmount from re-saving after a successful save
-    localStorage.removeItem(storageKey);
+    try { localStorage.removeItem(storageKey); } catch { /* Safari private mode */ }
     deleteDraftFromD1(storageKey);
     setFormRaw(defaultValue);
     initialRef.current = '';
@@ -231,7 +232,7 @@ export function useFormDraft<T>({
   // before the parent closes the modal on success).
   const signalSaved = useCallback(() => {
     clearedRef.current = true;
-    localStorage.removeItem(storageKey);
+    try { localStorage.removeItem(storageKey); } catch { /* Safari private mode */ }
     deleteDraftFromD1(storageKey);
   }, [storageKey]);
 

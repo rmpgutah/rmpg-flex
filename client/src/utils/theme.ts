@@ -202,7 +202,10 @@ export function writeThemeOverride(override: ThemeOverride | null): void {
 /** Effective theme right now: legacy → active override → time schedule. Mirrors the index.html boot script. */
 export function resolveCurrentTheme(): ThemePreference {
   if (isLegacyBlackForced() || isBlueSilverForced()) return 'dark';
-  const hour = new Date().getHours();
+  const hour = parseInt(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hour12: false }).format(new Date()),
+    10,
+  );
   return resolveEffectiveTheme(hour, DEFAULT_SCHEDULE, readThemeOverride());
 }
 

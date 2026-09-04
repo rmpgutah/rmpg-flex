@@ -150,18 +150,18 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch (e) { console.error('Failed to fetch arrest records:', e); }
+    } catch (e) { console.error('Failed to fetch arrest records:', e); setError(e instanceof Error ? e.message : 'Failed to fetch arrest records'); }
     finally { setRecordsLoading(false); }
-  }, []);
+  }, [setError]);
 
   const fetchScraperStatus = useCallback(async () => {
     setScraperLoading(true);
     try {
       const data = await apiFetch<any>('/jail-roster/status');
       setScraperStatus(data);
-    } catch (e) { console.error('Failed to fetch scraper status:', e); }
+    } catch (e) { console.error('Failed to fetch scraper status:', e); setError(e instanceof Error ? e.message : 'Failed to fetch scraper status'); }
     finally { setScraperLoading(false); }
-  }, []);
+  }, [setError]);
 
   const handleScraperSync = async (county: string) => {
     setSyncingCounty(county);

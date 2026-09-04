@@ -93,6 +93,8 @@ export default function NotificationsPage() {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // ConfirmDialog targets for destructive operator-wide sweeps.
   // These were unconfirmed buttons in the toolbar — "Clear Read" silently
@@ -119,13 +121,15 @@ export default function NotificationsPage() {
       if (filterRead) params.set('is_read', filterRead);
 
       const res = await apiFetch<{ data: Notification[]; pagination: { page: number; totalPages: number; total: number } }>(`/notifications?${params}`);
+      if (!mountedRef.current) return;
       setNotifications(res?.data || []);
       setPagination(res?.pagination || { page: 1, total: 0, totalPages: 0 });
     } catch {
+      if (!mountedRef.current) return;
       setLoadError(true);
       addToast('Failed to load notifications', 'error');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [filterType, filterRead, addToast]);
 
@@ -353,7 +357,7 @@ export default function NotificationsPage() {
       fetchNotifications(1);
       fetchStats();
     } catch { addToast('Failed', 'error'); }
-    finally { setSweepBusy(false); setConfirmClearRead(false); }
+    finally { if (mountedRef.current) { setSweepBusy(false); setConfirmClearRead(false); } }
   }, [addToast, fetchNotifications, fetchStats]);
 
   const cleanupOld = useCallback(async () => {
@@ -366,7 +370,7 @@ export default function NotificationsPage() {
       fetchNotifications(1);
       fetchStats();
     } catch { addToast('Cleanup failed', 'error'); }
-    finally { setSweepBusy(false); setConfirmCleanupOld(false); }
+    finally { if (mountedRef.current) { setSweepBusy(false); setConfirmCleanupOld(false); } }
   }, [addToast, fetchNotifications, fetchStats]);
 
   // ── Notification → deep-link navigation ──
@@ -392,9 +396,9 @@ export default function NotificationsPage() {
     setSavingPrefs(true);
     try {
       await apiFetch('/notifications/preferences', { method: 'PUT', body: JSON.stringify(prefs) });
-      addToast('Preferences saved', 'success');
-    } catch { addToast('Failed to save preferences', 'error'); }
-    finally { setSavingPrefs(false); }
+      if (mountedRef.current) addToast('Preferences saved', 'success');
+    } catch { if (mountedRef.current) addToast('Failed to save preferences', 'error'); }
+    finally { if (mountedRef.current) setSavingPrefs(false); }
   };
 
   const priorityColor = (p: string) => {

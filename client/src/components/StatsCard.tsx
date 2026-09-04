@@ -118,7 +118,7 @@ function StatsCard({
         {(trend != null || (trendValue != null && trendValue !== '')) && (
           <div className={`flex items-center gap-1.5 mt-2.5 pt-1.5 ${TREND_COLOR_MAP[trendColor]}`}
             style={{ borderTop: '1px solid rgba(74,74,74,0.35)' }}>
-            <span className="text-[9px]">&mdash;</span>
+            <TrendIcon className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
             {trendValue && <span className="text-[10px] font-medium tabular-nums">{trendValue}</span>}
           </div>
         )}

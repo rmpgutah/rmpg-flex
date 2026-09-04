@@ -1129,6 +1129,11 @@ export default function ReportsPage() {
         if (dateRange === 'custom' && customStartDate) {
           startDate = customStartDate;
           endDate = customEndDate || undefined;
+          // Guard: if the user set end before start, swap silently so the
+          // query always covers a forward range rather than clamping to 1 day.
+          if (endDate && endDate < startDate) {
+            [startDate, endDate] = [endDate, startDate];
+          }
         } else {
           const range = getDateRange(dateRange);
           startDate = range.startDate;

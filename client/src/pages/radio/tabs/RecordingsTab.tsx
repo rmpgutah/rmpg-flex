@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Bookmark, Trash2, Play, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useToast } from '../../../components/ToastProvider';
 import { asArray } from '../../../utils/asArray';
 import { SectionHeader } from '../components';
 import { AudioPlayButton, transmissionAudioUrl, transmissionAudioUrlSigned } from './LiveTab';
@@ -29,6 +30,7 @@ function playTransmissionAudio(transmissionId: number) {
 export default function RecordingsTab() {
   const [recordings, setRecordings] = useState<RadioRecording[]>([]);
   const [loading, setLoading] = useState(true);
+  const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
@@ -47,7 +49,7 @@ export default function RecordingsTab() {
     try {
       await apiFetch(`/radio/recordings/${id}`, { method: 'DELETE' });
       setRecordings((r) => r.filter((x) => x.id !== id));
-    } catch (err) { console.error('[radio] delete recording', err); }
+    } catch (err) { console.error('[radio] delete recording', err); addToast(err instanceof Error ? err.message : 'Failed to delete recording', 'error'); }
   };
 
   const buildRecordingMenu = (r: RadioRecording): ContextMenuItem[] => [

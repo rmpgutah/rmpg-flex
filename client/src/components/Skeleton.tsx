@@ -3,6 +3,8 @@
 // Pulse-animated placeholders for content loading states
 // ============================================================
 
+import { useMemo } from 'react';
+
 interface SkeletonProps {
   className?: string;
   variant?: 'text' | 'rect' | 'circle';
@@ -77,6 +79,10 @@ export function StatsCardSkeleton() {
 
 /** Detail panel skeleton with header + rows */
 export function DetailPanelSkeleton({ rows = 6 }: { rows?: number }) {
+  const rowWidths = useMemo(
+    () => Array.from({ length: rows }, () => `${40 + Math.random() * 30}%`),
+    [rows],
+  );
   return (
     <div className="panel-beveled bg-surface-base p-4 space-y-3">
       <div className="flex items-center gap-3 mb-4">
@@ -86,10 +92,10 @@ export function DetailPanelSkeleton({ rows = 6 }: { rows?: number }) {
           <Skeleton variant="text" width="30%" />
         </div>
       </div>
-      {Array.from({ length: rows }).map((_, i) => (
+      {rowWidths.map((w, i) => (
         <div key={i} className="flex items-center gap-3">
           <Skeleton variant="text" width="25%" />
-          <Skeleton variant="text" width={`${40 + Math.random() * 30}%`} />
+          <Skeleton variant="text" width={w} />
         </div>
       ))}
     </div>
@@ -98,19 +104,30 @@ export function DetailPanelSkeleton({ rows = 6 }: { rows?: number }) {
 
 /** Full table skeleton with header + rows */
 export function TableSkeleton({ rows = 8, cols = 6 }: { rows?: number; cols?: number }) {
+  const headerWidths = useMemo(
+    () => Array.from({ length: cols }, (_, i) => (i === 0 ? '100px' : `${60 + Math.random() * 40}px`)),
+    [cols],
+  );
+  const cellWidths = useMemo(
+    () =>
+      Array.from({ length: rows }, () =>
+        Array.from({ length: cols }, (_, colIdx) => (colIdx === 0 ? '80px' : `${50 + Math.random() * 50}px`)),
+      ),
+    [rows, cols],
+  );
   return (
     <div className="panel-beveled bg-surface-base overflow-hidden">
       {/* Header row */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700">
-        {Array.from({ length: cols }).map((_, i) => (
-          <Skeleton key={i} variant="text" width={i === 0 ? '100px' : `${60 + Math.random() * 40}px`} className="flex-shrink-0" />
+        {headerWidths.map((w, i) => (
+          <Skeleton key={i} variant="text" width={w} className="flex-shrink-0" />
         ))}
       </div>
       {/* Data rows */}
-      {Array.from({ length: rows }).map((_, rowIdx) => (
+      {cellWidths.map((rowCells, rowIdx) => (
         <div key={rowIdx} className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-700/50">
-          {Array.from({ length: cols }).map((_, colIdx) => (
-            <Skeleton key={colIdx} variant="text" width={colIdx === 0 ? '80px' : `${50 + Math.random() * 50}px`} className="flex-shrink-0" />
+          {rowCells.map((w, colIdx) => (
+            <Skeleton key={colIdx} variant="text" width={w} className="flex-shrink-0" />
           ))}
         </div>
       ))}
@@ -120,14 +137,18 @@ export function TableSkeleton({ rows = 8, cols = 6 }: { rows?: number; cols?: nu
 
 /** Chart placeholder skeleton */
 export function ChartSkeleton({ height = 220 }: { height?: number }) {
+  const barHeights = useMemo(
+    () => Array.from({ length: 12 }, () => `${20 + Math.random() * 70}%`),
+    [],
+  );
   return (
     <div className="panel-beveled bg-surface-base">
       <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
         <Skeleton variant="text" width="120px" />
       </div>
       <div className="p-4 flex items-end gap-1" style={{ height }}>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <Skeleton key={i} width="100%" height={`${20 + Math.random() * 70}%`} className="flex-1" />
+        {barHeights.map((h, i) => (
+          <Skeleton key={i} width="100%" height={h} className="flex-1" />
         ))}
       </div>
     </div>

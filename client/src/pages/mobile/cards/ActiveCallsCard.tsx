@@ -69,6 +69,8 @@ export default function ActiveCallsCard() {
   const [showDistance, setShowDistance] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const { status: geoStatus, position } = useGeolocation({ enabled: showDistance });
 
@@ -78,6 +80,7 @@ export default function ActiveCallsCard() {
       const res = await apiFetch<any>(
         `/api/dispatch/calls?status=${ACTIVE_STATUSES}&limit=20`,
       );
+      if (!mountedRef.current) return;
       const rows: CallRow[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
@@ -89,9 +92,10 @@ export default function ActiveCallsCard() {
         : [];
       setCalls(rows);
     } catch (e: any) {
+      if (!mountedRef.current) return;
       setError(e?.message || 'Failed to load calls');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 

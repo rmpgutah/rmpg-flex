@@ -733,6 +733,7 @@ export default function AdminPage() {
         { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
         { id: 'sync_status' as TabId, label: 'Sync Status', icon: Server },
         { id: 'offline-queue' as TabId, label: 'Offline Queue', icon: WifiOff },
+        { id: 'gps_health', label: 'GPS Health', icon: Navigation },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
       ],
@@ -748,7 +749,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-        { id: 'alert_sounds', label: 'Alert Sounds', icon: Radio },
+        { id: 'alert_sounds', label: 'Alert Sounds', icon: Activity },
         { id: 'automations', label: 'Smart Automations', icon: Zap },
         { id: 'radio', label: 'Radio Channels', icon: Radio },
       ],
@@ -781,6 +782,7 @@ export default function AdminPage() {
       category: 'Compliance',
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
+        { id: 'court_lookups', label: 'Court Lookups', icon: Search },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
         { id: 'fleetio_health', label: 'Fleet.io Health', icon: Activity },
         { id: 'fleetio_directory', label: 'Fleet.io Vendors/Parts', icon: Package },

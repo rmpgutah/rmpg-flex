@@ -213,7 +213,7 @@ export function getTimerState(call: CallForService): TimerState {
 
   // For terminal statuses, show a static timestamp instead of running timer
   if (['archived', 'closed', 'cancelled'].includes(status)) {
-    const terminalTime = (call as any).archived_at || call.cleared_at || call.closed_at || call.created_at;
+    const terminalTime = call.archived_at || call.cleared_at || call.closed_at || call.created_at;
     const d = parseTimestamp(terminalTime);
     const formatted = !isNaN(d.getTime())
       ? d.toLocaleString('en-US', {

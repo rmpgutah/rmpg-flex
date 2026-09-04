@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Megaphone, Send, Clock, AlertTriangle, CheckCircle, Copy, Download } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
@@ -77,10 +77,14 @@ export default function BroadcastMessagePage() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [histSearch, setHistSearch] = useState('');
   const [histPriority, setHistPriority] = useState<Priority | ''>('');
+  const mountedRef = useRef(true);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   const showToast = useCallback((text: string, ok: boolean) => {
     setToast({ text, ok });
-    setTimeout(() => setToast(null), 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 3500);
   }, []);
 
   const loadHistory = useCallback(async () => {
