@@ -269,7 +269,7 @@ export default function CrashReportsPage() {
                   {reports.length === 0 ? 'No crash reports found' : 'Filters hid every report'}
                 </td></tr>
               ) : visible.map(report => (
-                <tr key={report.id} onClick={() => setSelected(report)} className={`border-b border-border-subtle hover:bg-surface-hover cursor-pointer ${selected?.id === report.id ? 'bg-surface-hover' : ''}`}>
+                <tr key={report.id} onClick={() => setSelected(report)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(report); } }} tabIndex={0} role="row" aria-selected={selected?.id === report.id} className={`border-b border-border-subtle hover:bg-surface-hover cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent-silver-500 ${selected?.id === report.id ? 'bg-surface-hover' : ''}`}>
                   <td className="px-3 py-[2px] text-rmpg-100 font-mono">{report.report_number}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.crash_date}</td>
                   <td className="px-3 py-[2px] text-rmpg-400">{report.location}</td>

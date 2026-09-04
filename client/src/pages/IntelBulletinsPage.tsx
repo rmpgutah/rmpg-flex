@@ -79,6 +79,7 @@ export default function IntelBulletinsPage() {
   const [form, setForm] = useState<BulletinForm>(emptyForm);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,6 +137,8 @@ export default function IntelBulletinsPage() {
   }
 
   async function handleSubmit() {
+    if (saving) return;
+    setSaving(true);
     try {
       const payload = { ...form, expires_at: form.expires_at ? mtDatetimeLocalToUtc(form.expires_at) : form.expires_at };
       if (editingBulletin) {
@@ -151,6 +154,8 @@ export default function IntelBulletinsPage() {
     } catch (err) {
       console.error('Failed to save bulletin', err);
       addToast(err instanceof Error ? err.message : 'Failed to save bulletin', 'error');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -489,7 +494,7 @@ export default function IntelBulletinsPage() {
                 </button>
                 <button type="button"
                   onClick={handleSubmit}
-                  disabled={!form.title || !form.description}
+                  disabled={saving || !form.title || !form.description}
                   className="px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-sm hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {editingBulletin ? 'Update Bulletin' : 'Create Bulletin'}

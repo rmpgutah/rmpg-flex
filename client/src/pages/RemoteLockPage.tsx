@@ -59,6 +59,7 @@ export default function RemoteLockPage() {
   const { user } = useAuth();
   const [units, setUnits] = useState<LockUnit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'locked' | 'unlocked'>('all');
@@ -83,9 +84,10 @@ export default function RemoteLockPage() {
     apiFetch<{ units: LockUnit[] }>('/system/lock-status')
       .then(r => {
         if (r?.units) setUnits(r.units);
+        setFetchError(false);
         setLastPoll(new Date());
       })
-      .catch(() => {})
+      .catch(() => { setFetchError(true); })
       .finally(() => setLoading(false));
   }, []);
 
