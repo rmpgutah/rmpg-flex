@@ -222,6 +222,8 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   // Mark individual notification as read
   // ----------------------------------------------------------
   const handleMarkRead = useCallback(async (id: string) => {
+    const notification = notifications.find((n) => n.id === id);
+    if (!notification || notification.is_read) return;
     try {
       await apiFetch<void>(`/notifications/${id}/read`, { method: 'PUT' });
       setNotifications((prev) =>
@@ -231,7 +233,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
     } catch {
       // Silently fail
     }
-  }, []);
+  }, [notifications]);
 
   // ----------------------------------------------------------
   // Dismiss (delete) individual notification

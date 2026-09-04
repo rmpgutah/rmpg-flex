@@ -101,7 +101,11 @@ calls.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'ad
     if (status) {
       const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
       if (statuses.length === 1) { where += ' AND c.status = ?'; params.push(statuses[0]); }
-      else if (statuses.length > 1) { const capped = statuses.slice(0, 90); where += ` AND c.status IN (${capped.map(() => '?').join(',')})`; params.push(...capped); }
+      else if (statuses.length > 1) {
+        if (statuses.length > 90) return c.json({ error: 'Too many status values (max 90)' }, 400);
+        where += ` AND c.status IN (${statuses.map(() => '?').join(',')})`;
+        params.push(...statuses);
+      }
     }
     if (priority) { where += ' AND c.priority = ?'; params.push(priority.toUpperCase()); }
     if (startDate) { where += ' AND c.created_at >= ?'; params.push(startDate); }
