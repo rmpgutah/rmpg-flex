@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Monitor, ShieldCheck, ShieldOff, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 
+interface KioskElectron {
+  getKioskShellState?: () => Promise<{ supported: boolean; enabled: boolean } | null>;
+  setKioskShell?: (enable: boolean) => Promise<{ ok: boolean; error?: string }>;
+}
+
+function getElectron(): KioskElectron | undefined {
+  return (window as unknown as { electron?: KioskElectron }).electron;
+}
+
 interface KioskState {
   supported: boolean;
   enabled: boolean;
@@ -14,7 +23,7 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
 
   const refresh = useCallback(async () => {
     try {
-      const result = await (window as any).electron?.getKioskShellState?.();
+      const result = await getElectron()?.getKioskShellState?.();
       setState(result ?? { supported: false, enabled: false });
     } catch (err) {
       setState({ supported: false, enabled: false });
@@ -58,7 +67,7 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
     setBusy(true);
     setError(null);
     try {
-      const result = await (window as any).electron?.setKioskShell?.(enable);
+      const result = await getElectron()?.setKioskShell?.(enable);
       if (!result?.ok) {
         setError(result?.error ?? 'Failed to change Kiosk Mode');
         return;
@@ -249,7 +258,7 @@ function PolicyRow({ label, enabled }: { label: string; enabled: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-secondary)' }}>
       <span>{label}</span>
-      <span style={{ fontSize: 9, fontWeight: 700, color: enabled ? '#10b981' : 'var(--text-muted)' }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: enabled ? 'var(--sev-ok)' : 'var(--text-muted)' }}>
         {enabled ? 'ENFORCED' : 'OFFLINE'}
       </span>
     </div>
