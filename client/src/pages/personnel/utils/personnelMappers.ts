@@ -78,7 +78,7 @@ export function mapSchedule(row: any): Schedule {
     if (endTime <= startTime) {
       // Cross-midnight shift: end time is on the next calendar day (Denver local).
       const [y, mo, d] = shiftDate.split('-').map(Number);
-      const next = new Date(y, mo - 1, d + 1);
+      const next = new Date(y, mo - 1, d + 1); // new-date-ok — integer args, not a server string
       const pad = (n: number) => String(n).padStart(2, '0');
       endDateStr = `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
     }
