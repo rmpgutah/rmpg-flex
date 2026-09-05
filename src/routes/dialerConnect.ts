@@ -2,6 +2,19 @@
 // Dial Connect — recordings, transcripts, voicemail, call history
 // Mounted at /api/dialer-connect (auth required) plus
 // /api/dialer-connect/ingest (public, HMAC via DIAL_CONNECT_WEBHOOK_SECRET).
+//
+// Event contract (POST /events from the CAD iframe bridge in
+// client/src/components/DialerPanel.tsx, and POST /ingest from Dial Connect):
+//   type: 'call_status'      — carries `status`; the only event allowed to set it.
+//   type: 'recording_ready'  — NO status. Carries numbers/direction/duration/
+//                              recordingUrl; must enrich, never overwrite.
+//   type: 'transcript_ready' — NO status. Carries transcript only.
+//   type: 'voicemail' | 'voicemail_ready' | 'call_and_voicemail'
+// All call events funnel through upsertCall(): one INSERT … ON CONFLICT(call_sid)
+// statement whose every column COALESCEs to the stored value. Absent fields are
+// bound as NULL (see ingestCallFields) — never as a default — so out-of-order or
+// concurrent events for one SID converge on a single, fully-populated row.
+// Pinned by test-workers/dialerConnectEvents.test.ts.
 // ============================================================
 
 import { Hono } from 'hono';
@@ -27,6 +40,8 @@ import {
   DISPOSITIONS,
   assertMinFunctions,
   isAllowedRecordingSourceUrl,
+  ingestCallFields,
+  type IngestCall,
 } from '../utils/dialerConnect';
 
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
@@ -101,46 +116,17 @@ function actorOf(c: { get: (k: 'user') => Actor | undefined }): Actor | null {
   return c.get('user') ?? null;
 }
 
-interface IngestCall {
-  callSid?: string; call_sid?: string;
-  direction?: string;
-  from?: string; from_number?: string;
-  to?: string; to_number?: string;
-  fromName?: string; from_name?: string;
-  toName?: string; to_name?: string;
-  status?: string;
-  startedAt?: string; started_at?: string;
-  endedAt?: string; ended_at?: string;
-  durationSeconds?: number; duration_seconds?: number;
-  transcript?: string;
-  recordingUrl?: string; recording_url?: string;
-  agentName?: string; agent_name?: string;
-}
+const ingestFields = ingestCallFields;
 
-function ingestFields(body: IngestCall) {
-  const callSid = String(body.callSid || body.call_sid || '').trim() || null;
-  const direction = isCallDirection(body.direction) ? body.direction : 'inbound';
-  const status = isCallStatus(body.status) ? body.status : 'completed';
-  const fromNumber = normalizeDialNumber(body.from || body.from_number);
-  const toNumber = normalizeDialNumber(body.to || body.to_number);
-  return {
-    callSid,
-    direction,
-    status,
-    fromNumber: fromNumber || null,
-    toNumber: toNumber || null,
-    fromName: body.fromName || body.from_name || null,
-    toName: body.toName || body.to_name || null,
-    startedAt: body.startedAt || body.started_at || null,
-    endedAt: body.endedAt || body.ended_at || null,
-    duration: Number.isFinite(Number(body.durationSeconds ?? body.duration_seconds))
-      ? Number(body.durationSeconds ?? body.duration_seconds) : null,
-    transcript: body.transcript ? String(body.transcript) : null,
-    recordingUrl: body.recordingUrl || body.recording_url || null,
-    agentName: body.agentName || body.agent_name || null,
-  };
-}
-
+/**
+ * Insert-or-update a dialer_calls row keyed by call_sid.
+ *
+ * A single upsert (not check-then-insert) so a `completed` status event and a
+ * `recording_ready` event racing for the same SID cannot double-insert or trip
+ * the partial UNIQUE index into a 500. Every field COALESCEs to the stored
+ * value, so a late recording/transcript event enriches the row without wiping
+ * the numbers, duration, or a `missed`/`failed` status recorded earlier.
+ */
 async function upsertCall(
   db: ReturnType<typeof getDb>,
   body: IngestCall,
@@ -148,36 +134,48 @@ async function upsertCall(
 ) {
   const f = ingestFields(body);
   const transcriptStatus = f.transcript ? 'ready' : 'none';
+  const agentName = f.agentName ?? agent?.name ?? null;
+  const agentId = agent?.id ?? null;
   if (f.callSid) {
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dialer_calls WHERE call_sid = ?', f.callSid);
-    if (existing) {
-      await execute(db, `UPDATE dialer_calls SET
-        direction=COALESCE(?, direction), status=?, from_number=COALESCE(?, from_number),
-        to_number=COALESCE(?, to_number), from_name=COALESCE(?, from_name),
-        to_name=COALESCE(?, to_name), started_at=COALESCE(?, started_at),
-        ended_at=COALESCE(?, ended_at), duration_seconds=COALESCE(?, duration_seconds),
-        transcript=COALESCE(?, transcript),
-        transcript_status=CASE WHEN ? IS NOT NULL THEN 'ready' ELSE transcript_status END,
-        recording_source_url=COALESCE(?, recording_source_url),
-        agent_name=COALESCE(?, agent_name),
-        agent_user_id=COALESCE(?, agent_user_id),
-        updated_at=datetime('now')
-        WHERE id=?`,
-        f.direction, f.status, f.fromNumber, f.toNumber, f.fromName, f.toName,
-        f.startedAt, f.endedAt, f.duration, f.transcript, f.transcript,
-        f.recordingUrl, f.agentName ?? agent?.name ?? null, agent?.id ?? null,
-        existing.id,
-      );
-      return existing.id;
-    }
+    await execute(db, `INSERT INTO dialer_calls (
+      call_sid, direction, from_number, to_number, from_name, to_name,
+      agent_user_id, agent_name, status, started_at, ended_at, duration_seconds,
+      recording_source_url, transcript, transcript_status
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(call_sid) WHERE call_sid IS NOT NULL AND TRIM(call_sid) != '' DO UPDATE SET
+      direction=COALESCE(?, dialer_calls.direction),
+      status=COALESCE(?, dialer_calls.status),
+      from_number=COALESCE(excluded.from_number, dialer_calls.from_number),
+      to_number=COALESCE(excluded.to_number, dialer_calls.to_number),
+      from_name=COALESCE(excluded.from_name, dialer_calls.from_name),
+      to_name=COALESCE(excluded.to_name, dialer_calls.to_name),
+      started_at=COALESCE(?, dialer_calls.started_at),
+      ended_at=COALESCE(excluded.ended_at, dialer_calls.ended_at),
+      duration_seconds=COALESCE(excluded.duration_seconds, dialer_calls.duration_seconds),
+      transcript=COALESCE(excluded.transcript, dialer_calls.transcript),
+      transcript_status=CASE WHEN excluded.transcript IS NOT NULL THEN 'ready' ELSE dialer_calls.transcript_status END,
+      recording_source_url=COALESCE(excluded.recording_source_url, dialer_calls.recording_source_url),
+      agent_name=COALESCE(excluded.agent_name, dialer_calls.agent_name),
+      agent_user_id=COALESCE(excluded.agent_user_id, dialer_calls.agent_user_id),
+      updated_at=datetime('now')`,
+      f.callSid, f.direction ?? 'inbound', f.fromNumber, f.toNumber, f.fromName, f.toName,
+      agentId, agentName, f.status ?? 'completed',
+      f.startedAt ?? new Date().toISOString(), f.endedAt, f.duration,
+      f.recordingUrl, f.transcript, transcriptStatus,
+      // ON CONFLICT binds: raw (nullable) direction / status / started_at so the
+      // insert-only defaults ('inbound' / 'completed' / now) never overwrite stored values.
+      f.direction, f.status, f.startedAt,
+    );
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM dialer_calls WHERE call_sid = ?', f.callSid);
+    return row ? Number(row.id) : 0;
   }
   const res = await execute(db, `INSERT INTO dialer_calls (
     call_sid, direction, from_number, to_number, from_name, to_name,
     agent_user_id, agent_name, status, started_at, ended_at, duration_seconds,
     recording_source_url, transcript, transcript_status
   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    f.callSid, f.direction, f.fromNumber, f.toNumber, f.fromName, f.toName,
-    agent?.id ?? null, f.agentName ?? agent?.name ?? null, f.status,
+    null, f.direction ?? 'inbound', f.fromNumber, f.toNumber, f.fromName, f.toName,
+    agentId, agentName, f.status ?? 'completed',
     f.startedAt ?? new Date().toISOString(), f.endedAt, f.duration,
     f.recordingUrl, f.transcript, transcriptStatus,
   );

@@ -343,6 +343,38 @@ re-pull never re-bills a CarsXE credit. Secret `CARXE_API_KEY`; unset →
   `0214`/`0215`. Assume nothing about index coverage on older tables; check
   `sqlite_master` and confirm with `EXPLAIN QUERY PLAN`.
 
+### Dial Connect (Twilio dialer at dialer.rmpgutah.us) — call-archive invariants
+
+The dialer is a separate app embedded as an iframe by
+[`DialerPanel`](client/src/components/DialerPanel.tsx); it talks to the CAD via
+`postMessage` and the CAD archives calls through `POST /api/dialer-connect/events`
+([`src/routes/dialerConnect.ts`](src/routes/dialerConnect.ts)). Hardened 2026-09-05
+after call history showed 10 "unknown" rows with no number, no duration, and a
+`failed` call re-labelled `completed`.
+
+- **Only `call_status` may set `status`.** `recording_ready` / `transcript_ready`
+  carry no status and are bound as NULL so `COALESCE(?, status)` keeps
+  `missed`/`failed`. Before the fix the client rewrote them as `call_status` and the
+  Worker defaulted the missing status to `'completed'`.
+- **Absent fields are NULL, never defaults.** `ingestCallFields` in
+  [`src/utils/dialerConnect.ts`](src/utils/dialerConnect.ts) returns `null` for a
+  missing/invalid direction, status, number, or duration; insert-only defaults
+  (`'inbound'`, `'completed'`, `now`) are applied in the INSERT column list only and
+  the `ON CONFLICT … DO UPDATE` branch binds the raw nullable values.
+- **One upsert statement, keyed by the partial UNIQUE index on `call_sid`.** A
+  `completed` event and a `recording_ready` event racing for the same SID used to
+  check-then-insert and either double-inserted or 500'd on the index (the client
+  swallows that error, so it was invisible). Pinned by
+  `test-workers/dialerConnectEvents.test.ts`, including a `Promise.all` race.
+- **Forward everything on `recording_ready`.** It is the only event that carries
+  numbers/direction/duration for a call whose status event was missed; the bridge
+  must pass `from`/`to`/`direction`/`startedAt`/`endedAt`/`durationSeconds`/
+  `dispatcherName` through, not just the SID and URL.
+- **UI: `counterpartyNumber` / `clusterCounterparties`** in
+  [`client/src/utils/dialerConnect.ts`](client/src/utils/dialerConnect.ts) fall back to
+  whichever number exists and never cluster numberless rows (no more
+  "dup unknown ×10").
+
 ### Legal Data Hunter (manual warrant-charge validation)
 
 Manual, officer-initiated cross-reference of a warrant's charge text against the Legal Data

@@ -17,6 +17,7 @@ import {
   VOICEMAIL_FUNCTIONS,
   CALL_HISTORY_FUNCTIONS,
   isAllowedRecordingSourceUrl,
+  ingestCallFields,
 } from '../src/utils/dialerConnect';
 
 describe('Dial Connect function catalogs', () => {
@@ -112,5 +113,38 @@ describe('isAllowedRecordingSourceUrl', () => {
     expect(isAllowedRecordingSourceUrl('https://evil.example/steal')).toBe(false);
     expect(isAllowedRecordingSourceUrl('http://dialer.rmpgutah.us/rec/3.mp3')).toBe(false);
     expect(isAllowedRecordingSourceUrl('not-a-url')).toBe(false);
+  });
+});
+
+describe('ingestCallFields (event → row mapping)', () => {
+  it('leaves direction and status null when the event omits them so COALESCE keeps stored values', () => {
+    const f = ingestCallFields({ callSid: 'CA1', recordingUrl: 'https://dialer.rmpgutah.us/r.mp3' });
+    expect(f.callSid).toBe('CA1');
+    expect(f.direction).toBeNull();
+    expect(f.status).toBeNull();
+    expect(f.fromNumber).toBeNull();
+    expect(f.toNumber).toBeNull();
+    expect(f.duration).toBeNull();
+    expect(f.recordingUrl).toBe('https://dialer.rmpgutah.us/r.mp3');
+  });
+  it('normalizes numbers, accepts camelCase and snake_case, and rejects unknown enums', () => {
+    const f = ingestCallFields({
+      call_sid: ' CA2 ', direction: 'sideways', status: 'weird',
+      from: '(801) 555-0100', to_number: '+13855550100', duration_seconds: '42',
+      dispatcherName: 'Zamora',
+    });
+    expect(f.callSid).toBe('CA2');
+    expect(f.direction).toBeNull();
+    expect(f.status).toBeNull();
+    expect(f.fromNumber).toBe('+18015550100');
+    expect(f.toNumber).toBe('+13855550100');
+    expect(f.duration).toBe(42);
+    expect(f.agentName).toBe('Zamora');
+  });
+  it('keeps valid direction/status and treats a blank sid as absent', () => {
+    const f = ingestCallFields({ callSid: '   ', direction: 'outbound', status: 'failed' });
+    expect(f.callSid).toBeNull();
+    expect(f.direction).toBe('outbound');
+    expect(f.status).toBe('failed');
   });
 });

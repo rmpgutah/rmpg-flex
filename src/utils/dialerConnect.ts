@@ -274,3 +274,71 @@ export function isAllowedRecordingSourceUrl(raw: string | null | undefined): boo
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Event → dialer_calls row mapping (shared by /events and /ingest)
+// ---------------------------------------------------------------------------
+
+/** Wire shape accepted from Dial Connect (camelCase) and Twilio-style webhooks (snake_case). */
+export interface IngestCall {
+  callSid?: string; call_sid?: string;
+  direction?: string;
+  from?: string; from_number?: string;
+  to?: string; to_number?: string;
+  fromName?: string; from_name?: string;
+  toName?: string; to_name?: string;
+  status?: string;
+  startedAt?: string; started_at?: string;
+  endedAt?: string; ended_at?: string;
+  durationSeconds?: number | string; duration_seconds?: number | string;
+  transcript?: string;
+  recordingUrl?: string; recording_url?: string;
+  agentName?: string; agent_name?: string; dispatcherName?: string;
+}
+
+export interface IngestCallFields {
+  callSid: string | null;
+  /** null when the event did not carry a valid direction — callers COALESCE to the stored value. */
+  direction: CallDirection | null;
+  /** null when the event did not carry a valid status — a recording/transcript event must never
+   *  flip a `missed`/`failed` call to `completed`. */
+  status: CallStatus | null;
+  fromNumber: string | null;
+  toNumber: string | null;
+  fromName: string | null;
+  toName: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  duration: number | null;
+  transcript: string | null;
+  recordingUrl: string | null;
+  agentName: string | null;
+}
+
+function nonEmpty(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s ? s : null;
+}
+
+export function ingestCallFields(body: IngestCall): IngestCallFields {
+  const rawDuration = body.durationSeconds ?? body.duration_seconds;
+  const duration = rawDuration == null || rawDuration === ''
+    ? null
+    : Number(rawDuration);
+  return {
+    callSid: nonEmpty(body.callSid || body.call_sid),
+    direction: isCallDirection(body.direction) ? body.direction : null,
+    status: isCallStatus(body.status) ? body.status : null,
+    fromNumber: normalizeDialNumber(body.from || body.from_number) || null,
+    toNumber: normalizeDialNumber(body.to || body.to_number) || null,
+    fromName: nonEmpty(body.fromName || body.from_name),
+    toName: nonEmpty(body.toName || body.to_name),
+    startedAt: nonEmpty(body.startedAt || body.started_at),
+    endedAt: nonEmpty(body.endedAt || body.ended_at),
+    duration: duration != null && Number.isFinite(duration) && duration >= 0 ? Math.round(duration) : null,
+    transcript: nonEmpty(body.transcript),
+    recordingUrl: nonEmpty(body.recordingUrl || body.recording_url),
+    agentName: nonEmpty(body.agentName || body.agent_name || body.dispatcherName),
+  };
+}

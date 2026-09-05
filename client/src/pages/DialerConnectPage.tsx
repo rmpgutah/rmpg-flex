@@ -15,6 +15,7 @@ import { DIALER_HOST_ID } from '../components/dialerConnect';
 import {
   DIALER_FUNCTIONS, VOICEMAIL_FUNCTIONS, CALL_HISTORY_FUNCTIONS,
   DISPOSITIONS, PRESENCE_STATUSES, displayPhone, formatDuration, audioFilename,
+  counterpartyNumber, clusterCounterparties,
 } from '../utils/dialerConnect';
 import { downloadDialerCallRecordPdf, openDialerCallRecordPdf } from '../utils/dialerCallRecordPdf';
 import type { DialerRecordForPdf } from '../utils/dialerCallRecordPdf';
@@ -76,7 +77,7 @@ interface Presence { user_id: number; status: string; message?: string | null; n
 interface LookupHit { id: number; first_name?: string | null; last_name?: string | null; phone?: string | null }
 
 function counterparty(c: DialerCall): string {
-  return c.direction === 'outbound' ? (c.to_number || '') : (c.from_number || '');
+  return counterpartyNumber(c);
 }
 
 function callToPdf(c: DialerCall): DialerRecordForPdf {
@@ -674,14 +675,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
     saveBlob(blob, 'dialer-call-history.csv');
   };
 
-  const clusters = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of rows) {
-      const key = (r.direction === 'outbound' ? r.to_number : r.from_number) || 'unknown';
-      map.set(key, (map.get(key) || 0) + 1);
-    }
-    return [...map.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [rows]);
+  const clusters = useMemo(() => clusterCounterparties(rows), [rows]);
 
   return (
     <div className="h-full flex flex-col">

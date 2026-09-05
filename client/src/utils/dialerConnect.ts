@@ -94,3 +94,31 @@ export function minFunctionCounts(): { dialer: number; voicemail: number; histor
     history: CALL_HISTORY_FUNCTIONS.length,
   };
 }
+
+export interface CounterpartyRow {
+  direction?: string | null;
+  from_number?: string | null;
+  to_number?: string | null;
+}
+
+/**
+ * The "other party" on a call. Prefers the direction-appropriate side but falls
+ * back to whichever number was archived, so a row that only carries one number
+ * (e.g. enriched by a late recording event) never renders as "—".
+ */
+export function counterpartyNumber(row: CounterpartyRow): string {
+  const primary = row.direction === 'outbound' ? row.to_number : row.from_number;
+  const secondary = row.direction === 'outbound' ? row.from_number : row.to_number;
+  return (primary && primary.trim()) || (secondary && secondary.trim()) || '';
+}
+
+/** Top-5 counterparties (by last-10 digits) seen 2+ times. Rows without a number are ignored. */
+export function clusterCounterparties(rows: CounterpartyRow[], limit = 5): Array<[string, number]> {
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    const key = last10Digits(counterpartyNumber(r));
+    if (!key) continue;
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+  return [...map.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, limit);
+}
