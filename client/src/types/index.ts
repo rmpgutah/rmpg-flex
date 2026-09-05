@@ -1461,7 +1461,7 @@ export interface Warrant {
 
 // --- Notifications ---
 
-export type NotificationType = 'bolo' | 'warrant' | 'dispatch' | 'system' | 'message' | 'credential_expiry' | 'patrol_missed';
+export type NotificationType = 'bolo' | 'warrant' | 'dispatch' | 'system' | 'message' | 'credential_expiry' | 'patrol_missed' | 'serve_qr_scan' | 'serve_schedule_request';
 export type NotificationPriority = 'normal' | 'high' | 'critical';
 
 export interface Notification {
@@ -2241,6 +2241,10 @@ export type WSMessageType =
   | 'serve_attempt'
   | 'serve_created'
   | 'serve_attempt_reminder'
+  | 'serve_qr_scan'
+  | 'serve_qr_location'
+  | 'serve_qr_details'
+  | 'serve_schedule_request'
   // Radio events (for cross-integration)
   | 'radio_check'
   | 'radio_check_ack'

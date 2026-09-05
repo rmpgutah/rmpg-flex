@@ -137,8 +137,8 @@ app.get("/", async (c) => {
       ? ` from ${[geoCity, geoRegion, geoCountry].filter(Boolean).join(", ")}`
       : "";
     const deviceStr = deviceType !== "unknown" ? ` (${deviceType})` : "";
-    const title = "QR Code Scanned — Subject Engaged";
-    const message = `${recipientLabel} scanned the Notice of Attempt QR at ${scanTime} MT${locationStr}${deviceStr} (ref: ${ref}).`;
+    const title = `QR Scanned — ${recipientLabel}`;
+    const message = `Scanned Notice of Attempt QR at ${scanTime} MT${locationStr}${deviceStr} (ref: ${ref}).`;
 
     broadcastAll("serve_qr_scan", {
       ref,
