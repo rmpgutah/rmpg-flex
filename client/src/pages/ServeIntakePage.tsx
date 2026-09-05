@@ -21,6 +21,7 @@ import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
 import { toDisplayLabel } from '../utils/formatters';
 import { importWithRetry } from '../utils/importWithRetry';
 import QualityReviewPanel from '../components/serve-intake/QualityReviewPanel';
+import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -359,6 +360,7 @@ async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
 
 export default function ServeIntakePage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [pendingJobs, setPendingJobs] = useState<FolderGroup[]>([]);
   const [confirmRemoveFileIdx, setConfirmRemoveFileIdx] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   // Upload telemetry. `uploadPhase` distinguishes the byte-transfer phase
@@ -787,12 +789,21 @@ export default function ServeIntakePage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    // Expand any dropped folders. filesFromDrop must read the entry list
-    // before the first await (the DataTransfer is invalidated after), so we
-    // hand it the event's dataTransfer synchronously and resolve async.
-    filesFromDrop(e.dataTransfer).then((files) => {
-      if (files.length > 0) handleFiles(files);
-      else setError('No PDF or image files found in what you dropped. If you dropped a folder, its files should load automatically — otherwise drop the documents directly.');
+    // Use extractFolderGroups so each dropped top-level folder becomes its
+    // own job. The DataTransfer item list must be captured synchronously here
+    // (it's invalidated after the event handler returns); the async walk
+    // happens inside extractFolderGroups after entries are already snapshotted.
+    const isPdf = (f: File) => f.type === 'application/pdf' || f.type.startsWith('image/');
+    extractFolderGroups(e.dataTransfer, isPdf).then((groups) => {
+      if (groups.length === 0) {
+        setError('No PDF or image files found in what you dropped. If you dropped a folder, its files should load automatically — otherwise drop the documents directly.');
+        return;
+      }
+      // Load the first group immediately; queue the rest as pending jobs.
+      handleFiles(groups[0].files);
+      if (groups.length > 1) {
+        setPendingJobs(prev => [...prev, ...groups.slice(1)]);
+      }
     }).catch(() => {
       if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
     });
@@ -815,6 +826,23 @@ export default function ServeIntakePage() {
   // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
   // (derivedFrom === the removed file's name) so they don't upload orphaned.
   // Gated to canManage — non-managers cannot remove documents.
+  const loadNextJob = useCallback(() => {
+    if (pendingJobs.length === 0) return;
+    const [next, ...rest] = pendingJobs;
+    setFiles([]);
+    setResult(null);
+    setEditOverrides({});
+    setOcrSourced(new Set());
+    setJudgeVerdicts({});
+    setDetectedDefendants([]);
+    setSelectedDefendants([]);
+    setSelectedClientId(null);
+    setMissingFieldValues({});
+    setMissingFieldSaved(false);
+    setPendingJobs(rest);
+    handleFiles(next.files);
+  }, [pendingJobs, handleFiles]);
+
   const removeFile = (idx: number) => setFiles(prev => {
     const target = prev[idx];
     return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
@@ -1160,7 +1188,7 @@ export default function ServeIntakePage() {
       >
         <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
-        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
+        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — drop multiple job folders at once to queue them</p>
         <p className="text-[9px] text-rmpg-600 mt-2">
           <span>click to browse files</span>
           <span className="mx-1 text-rmpg-700">·</span>
@@ -1168,7 +1196,7 @@ export default function ServeIntakePage() {
             type="button"
             className="underline hover:text-rmpg-400 transition-colors"
             onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
-          >or pick a folder</button>
+          >{files.length > 0 ? 'add another folder' : 'pick a folder'}</button>
         </p>
         <input id="ff-serveintakepage-0"
           ref={fileInputRef}
@@ -1189,6 +1217,24 @@ export default function ServeIntakePage() {
         />
       </div>
 
+      {/* Pending job queue banner — shown whenever there are more folders queued */}
+      {pendingJobs.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-brand-400/10 border border-brand-400/30 rounded-sm text-[10px]">
+          <Upload size={12} className="text-brand-400 flex-shrink-0" />
+          <span className="text-brand-300 font-semibold">{pendingJobs.length} folder{pendingJobs.length > 1 ? 's' : ''} queued:</span>
+          <span className="text-rmpg-400 truncate">{pendingJobs.map(j => j.name).join(', ')}</span>
+          {!processing && (
+            <button
+              type="button"
+              onClick={loadNextJob}
+              className="ml-auto flex-shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase bg-brand-400/20 hover:bg-brand-400/40 text-brand-300 border border-brand-400/40 rounded-sm transition-colors"
+            >
+              Load next job →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Empty state — no files loaded, not processing, no completed result */}
       {!processing && !result && files.length === 0 && (
         <p className="text-center text-[10px] text-rmpg-600 py-2">
@@ -1200,14 +1246,37 @@ export default function ServeIntakePage() {
 
       {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
-          <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
-            {visibleFiles.length} Document{visibleFiles.length > 1 ? 's' : ''} Loaded
-            <span className="text-rmpg-600 font-normal ml-2">
-              {totalBytes > 0
-                ? `(${formatBytes(totalBytes)} total · OCR confidence per document)`
-                : '(OCR confidence shown per document)'}
-            </span>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex-1">
+              {visibleFiles.length} Document{visibleFiles.length > 1 ? 's' : ''} Loaded
+              <span className="text-rmpg-600 font-normal ml-2">
+                {totalBytes > 0
+                  ? `(${formatBytes(totalBytes)} total · OCR confidence per document)`
+                  : '(OCR confidence shown per document)'}
+              </span>
+            </p>
+            {visibleFiles.length > 1 && !processing && !result && (
+              <button
+                type="button"
+                title="Queue each document as its own separate service job — use for multiple recipients at the same address"
+                onClick={() => {
+                  const visible = files.filter(f => !f.derivedFrom);
+                  if (visible.length < 2) return;
+                  // Keep first document in the current job; queue the rest individually.
+                  const derived = files.filter(f => f.derivedFrom && f.derivedFrom === visible[0].name);
+                  setFiles([visible[0], ...derived]);
+                  const newJobs: FolderGroup[] = visible.slice(1).map(f => ({
+                    name: f.name,
+                    files: [f.file, ...files.filter(d => d.derivedFrom === f.name).map(d => d.file)].filter((x): x is File => x != null),
+                  }));
+                  setPendingJobs(prev => [...newJobs, ...prev]);
+                }}
+                className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase border border-rmpg-600 hover:border-brand-400/50 hover:text-brand-300 text-rmpg-500 rounded-sm transition-colors"
+              >
+                <Upload size={9} /> Split into separate jobs
+              </button>
+            )}
+          </div>
           {/* Show only the files the user actually dropped. Rasterized scan
               pages (derivedFrom) are internal Vision-OCR inputs — they still
               ride along in the upload payload, but listing them made one
@@ -2075,9 +2144,17 @@ export default function ServeIntakePage() {
                 Log First Attempt
               </button>
             )}
+            {pendingJobs.length > 0 && (
+              <button
+                onClick={loadNextJob}
+                className="toolbar-btn justify-center py-2 border-brand-400/50 text-brand-300 hover:bg-brand-400/10 col-span-2"
+              >
+                Next Job ({pendingJobs.length} remaining) →
+              </button>
+            )}
             <button
               onClick={() => setConfirmReset(true)}
-              className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
+              className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null && pendingJobs.length === 0 ? 'col-span-2' : ''}`}
             >
               Process Another Set of Documents
             </button>
@@ -2104,7 +2181,7 @@ export default function ServeIntakePage() {
       <ConfirmDialog
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
-        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); }}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); setPendingJobs([]); }}
         title="Start New Intake?"
         message="This will clear all loaded documents and results."
         confirmLabel="Clear & Start New"
