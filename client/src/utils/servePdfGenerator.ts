@@ -6,6 +6,7 @@
 
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import { SUBJECT_SUPPORT } from '../constants/organizationConstants';
 import {
   addConfidentialWatermark,
   addReportHeader,
@@ -114,7 +115,7 @@ export interface NoticeOfAttemptData {
   caseNumber: string;
   /**
    * The AGENCY's internal reference (CFS#, serve_queue JOB#, etc.). Renders
-   * at the top-right of the NIBRS header under the "AGENCY REF #" label so
+   * at the top-right of the NIBRS header under the "AGENCY REF ID" label so
    * the recipient can quote it back when calling our office. Falls back to
    * caseNumber when not supplied (preserves the old behavior for callers
    * that haven't been updated).
@@ -902,6 +903,90 @@ const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
   },
 ];
 
+/**
+ * Recipient-facing address: street on line one, "City, State ZIP" on line
+ * two. The subject panel honours "\n" in values. Deliberately does NOT go
+ * through formatServiceAddress — that helper abbreviates the state ("UT") and
+ * appends a county/country line, and the operator wants the address on this
+ * instrument printed exactly as entered, just split at the street.
+ */
+function noticeAddressLines(raw: string): string {
+  const t = (raw || '').trim();
+  if (!t || t.includes('\n')) return t;
+  const parts = t.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return t;
+  return `${parts[0]}\n${parts.slice(1).join(', ')}`;
+}
+
+/** Fixed height of the "How to reach us" panel (header strip + two text rows). */
+const NOTICE_CONTACT_PANEL_H = 16;
+
+/**
+ * Three-column support panel: CALL / EMAIL / ONLINE.
+ *
+ * Fixed height so the one-page reservation math stays deterministic — the
+ * copy is constant-driven, so nothing here can wrap unpredictably. Returns
+ * the y just below the panel border.
+ */
+function drawNoticeContactPanel(doc: jsPDF, y: number, company: string, serverPhone?: string): number {
+  const boxX = getRailX();
+  const boxW = getRailWidth(doc);
+  const headerH = SPACING.SECTION_HEADER_H;
+  const padX = SPACING.MD;
+
+  // Outer border + soft fill so it sits between the status band (tinted)
+  // and the plain-bordered NEXT ATTEMPT box in visual weight.
+  doc.setFillColor(247, 249, 252);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.rect(boxX, y, boxW, NOTICE_CONTACT_PANEL_H, 'FD');
+
+  // Header strip — same accent tier as the NEXT ATTEMPT call-out.
+  const accent = resolveSectionAccentColor('routine');
+  doc.setFillColor(accent[0], accent[1], accent[2]);
+  doc.rect(boxX, y, boxW, headerH, 'F');
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(255, 255, 255);
+  doc.text(`WE ARE HERE TO HELP  ·  HOW TO REACH ${sanitizePdfText(company).toUpperCase()}`, boxX + padX, y + headerH - 1.4);
+
+  // Three equal columns with hairline dividers.
+  const colW = boxW / 3;
+  const rowTop = y + headerH;
+  doc.setDrawColor(...COLOR.RULE_STRONG);
+  doc.setLineWidth(BORDER.TABLE_OUTER);
+  for (let i = 1; i < 3; i++) {
+    doc.line(boxX + colW * i, rowTop, boxX + colW * i, y + NOTICE_CONTACT_PANEL_H);
+  }
+
+  const phone = serverPhone || SUBJECT_SUPPORT.dispatchPhone;
+  const cols: Array<{ label: string; value: string; hint: string }> = [
+    { label: 'CALL DISPATCH', value: phone, hint: `Then ${SUBJECT_SUPPORT.dispatchPhoneRoute}` },
+    { label: 'EMAIL US', value: SUBJECT_SUPPORT.email, hint: 'Include the AGENCY REF ID above' },
+    { label: 'ONLINE SUPPORT', value: stripScheme(SUBJECT_SUPPORT.supportUrl), hint: `Learn more: ${stripScheme(SUBJECT_SUPPORT.noticeInfoUrl)}` },
+  ];
+  const labelY = rowTop + 2.8;
+  const valueY = rowTop + 6.2;
+  const hintY = rowTop + 9.2;
+  cols.forEach((c, i) => {
+    const cx = boxX + colW * i + colW / 2;
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(c.label, cx, labelY, { align: 'center' });
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 0.5);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(sanitizePdfText(c.value, { preserveCase: true }), cx, valueY, { align: 'center' });
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text(sanitizePdfText(c.hint, { preserveCase: true }), cx, hintY, { align: 'center' });
+  });
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + NOTICE_CONTACT_PANEL_H;
+}
+
 /** Subject-facing verify QR — one constant for layout reservation + render. */
 const NOTICE_QR_SIZE_MM = 14;
 const NOTICE_QR_LABEL_H_MM = 3;
@@ -940,18 +1025,23 @@ function noticeGuidanceSteps(
   if (compress.omitWhatToDoNext) return [];
   if (compress.useAbbreviatedSteps) {
     return [
-      `Call ${company} ${phoneCue} to schedule delivery and avoid further visits here.`,
-      `Confirm this notice using AGENCY REF # ${headerRef || 'above'} when you call.`,
-      `Read delivered documents promptly — this notice does not extend legal deadlines.`,
-      `Without contact, further attempts may occur here or at other locations tied to you.`,
+      `Reach us your way — call ${company} ${phoneCue}, email ${SUBJECT_SUPPORT.email}, or visit ${stripScheme(SUBJECT_SUPPORT.supportUrl)} to pick a delivery time that suits you.`,
+      `Have AGENCY REF ID ${headerRef || 'above'} handy — it lets us confirm this notice is genuine and find your file in seconds.`,
+      `Once delivered, read the documents promptly. This notice does not extend legal deadlines.`,
+      `Prefer to wait? Further attempts may then be made here or at other locations associated with you.`,
     ];
   }
   return [
-    `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
-    'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
-    'Read the underlying documents once delivered. The papers we have been engaged to deliver may contain time-sensitive deadlines. This notice does NOT extend, waive, or otherwise affect those deadlines.',
-    'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
+    `Choose a time that works for you. Call ${company} ${phoneCue}, email ${SUBJECT_SUPPORT.email}, or visit ${stripScheme(SUBJECT_SUPPORT.supportUrl)}. We will gladly deliver at a time and place convenient to you — often more discreet than a visit to your workplace.`,
+    `Confirm this notice is genuine. Quote the AGENCY REF ID at the top when you reach out, or scan the QR code below. We will confirm the assigned server and the matter without asking for any personal information.`,
+    `Learn what this means. A plain-language explanation is available at ${stripScheme(SUBJECT_SUPPORT.noticeInfoUrl)}. Once delivered, please read the documents promptly — they may contain deadlines that this notice does not extend, waive, or otherwise affect.`,
+    `If we do not hear from you, further attempts may be made here — including early morning, evening, or weekend hours — or at other locations associated with you (residence, workplace, or a known third party).`,
   ];
+}
+
+/** Display form of a URL for a printed page — drop the scheme, keep the path. */
+function stripScheme(url: string): string {
+  return url.replace(/^https?:\/\//i, '');
 }
 
 /**
@@ -1055,7 +1145,7 @@ export async function generateNoticeOfAttempt(
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'CIVIL PROCESS RECORD',
     caseNumber: headerRef,
-    caseNumberLabel: data.agencyRefNumber ? 'AGENCY REF #' : 'CASE NUMBER',
+    caseNumberLabel: data.agencyRefNumber ? 'AGENCY REF ID' : 'CASE NUMBER',
     // The header box is a two-row table. Passing no reportDate left the
     // second row drawn but empty, which reads as a defect on a document
     // handed to a stranger. The notice date belongs there anyway -- it is
@@ -1132,7 +1222,7 @@ export async function generateNoticeOfAttempt(
     const startY = y;
 
     const recipientRows: SubjectRow[] = [
-      { label: 'Service address', value: data.recipientAddress },
+      { label: 'Service address', value: noticeAddressLines(data.recipientAddress) },
       { label: 'Document(s) to serve', value: data.documentType },
     ];
     const caseRows: SubjectRow[] = [
@@ -1301,9 +1391,10 @@ export async function generateNoticeOfAttempt(
     const noticeText =
       `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
       'identified above to you in connection with the referenced case. As shown in the record of ' +
-      'attempt(s) above, delivery has not been completed. To arrange delivery at a date and time ' +
-      `convenient to you, you may contact our office${contact}. You are not required to respond to ` +
-      'this notice; however, arranging a time for delivery may prevent further attempts at this address.' +
+      'attempt(s) above, delivery has not been completed. We would be glad to deliver the documents at a ' +
+      `date, time, and place that is convenient for you — simply contact our office${contact} or use any ` +
+      'of the options listed at the bottom of this page. You are not required to respond to this notice; ' +
+      'however, choosing a delivery time helps us avoid further visits to this address.' +
       '\n\n' +
       'This notice was prepared and delivered by a private process server, not by a court or ' +
       'government agency. It does not create, waive, extend, or otherwise affect any deadline, ' +
@@ -1402,7 +1493,7 @@ export async function generateNoticeOfAttempt(
   const SIG_ROW_H = compress.sigRowH;
   const SIG_INFO_H = 7;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
-  const contactH = data.serverPhone ? 8 : 0;
+  const contactH = NOTICE_CONTACT_PANEL_H + ng(SPACING.MD) + 3;
   const footerCiteH = 9;
   y = checkPageBreak(doc, y, sigBlockH + contactH + footerCiteH + ng(SPACING.LG));
 
@@ -1427,18 +1518,16 @@ export async function generateNoticeOfAttempt(
   SIG_ROW_H, SIG_INFO_H);
   y += ng(SPACING.SM);
 
-  // ── Contact line (recipient-facing call-to-action) ──
-  if (data.serverPhone) {
-    const pageWidth = doc.internal.pageSize.getWidth();
-    doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    const company = data.serverCompany || 'Rocky Mountain Protective Group';
-    doc.text(`To arrange delivery, contact ${company}: ${data.serverPhone}`,
-      pageWidth / 2, y + 3, { align: 'center' });
-    y += 7;
-  }
-  y += ng(SPACING.XS) * 0.5;
+  // ── How to reach us (recipient-facing support panel) ──
+  // Previously a single bold line — "To arrange delivery, contact X: phone" —
+  // that only rendered when a server phone was on the job and offered one
+  // channel. A person who finds this at their door may not want to phone a
+  // stranger; the panel gives three equal ways in (call / email / online) in
+  // the same boxed, mini-header language as NEXT ATTEMPT so it reads as part
+  // of the instrument, not an afterthought. Always drawn: the dispatch line,
+  // mailbox, and support URL are org constants, not per-job data.
+  y = drawNoticeContactPanel(doc, y, data.serverCompany || 'Rocky Mountain Protective Group', data.serverPhone);
+  y += ng(SPACING.MD) + 3;
 
   // ── Footer legal text ── (rides with signature block — no separate break)
   const footerCiteWidth = doc.internal.pageSize.getWidth();
@@ -1473,7 +1562,7 @@ export async function generateNoticeOfAttempt(
 
   // ── Subject-facing QR code ──
   try {
-    const verifyUrl = `https://rmpgutah.us/verify?ref=${encodeURIComponent(headerRef)}`;
+    const verifyUrl = `${SUBJECT_SUPPORT.noticeInfoUrl}?ref=${encodeURIComponent(headerRef)}`;
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 1,
