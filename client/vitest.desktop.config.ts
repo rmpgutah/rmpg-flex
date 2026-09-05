@@ -13,5 +13,10 @@ export default defineConfig({
       'src/pages/DesktopPage.test.tsx',
     ],
     testTimeout: 20_000,
+    // maxForks:2 caps concurrent jsdom environments so they don't all compete
+    // for the 16 GB runner RAM simultaneously. Full parallelism on a 2-4 vCPU
+    // runner causes GC contention that pushes wall-clock past 60 min; capping
+    // at 2 forks keeps peak RSS bounded while staying well under the timeout.
+    poolOptions: { forks: { maxForks: 2 } },
   },
 });

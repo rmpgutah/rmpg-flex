@@ -158,10 +158,14 @@ jobs:
     # because one heavy test file alone exceeds it (same pattern as client-tests
     # which was fixed by raising 8192→12288). Reverted maxForks, raised to 14336.
     # ubuntu-latest is 16 GB; 14336 leaves ~1.7 GB for the OS and sibling processes.
-    # 2026-09-05: full parallelism at 14336 MB takes >35 min wall-clock (timed out
-    # cleanly — vitest still running at termination, no OOM). Raised to 60 to match
-    # client-tests, which also runs at full parallelism with the same heap ceiling.
-    timeout-minutes: 60
+    # 2026-09-05: full parallelism at 14336 MB takes >60 min wall-clock (suite
+    # cancelled at the ceiling on two consecutive runs — 35 min and 60 min). Root
+    # cause: 24 heavy jsdom forks competing for RAM on a 2-4 vCPU runner causes
+    # GC contention that slows every file. Reverted to maxForks:2 in
+    # vitest.desktop.config.ts to bound peak RSS; raised timeout to 90 min so
+    # the semi-serialized suite completes (Run 2 at maxForks:2+12288 MB passed
+    # 23/24 files in 57 min — 14336 MB covers the one file that OOM'd).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
