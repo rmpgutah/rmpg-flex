@@ -158,7 +158,10 @@ jobs:
     # because one heavy test file alone exceeds it (same pattern as client-tests
     # which was fixed by raising 8192→12288). Reverted maxForks, raised to 14336.
     # ubuntu-latest is 16 GB; 14336 leaves ~1.7 GB for the OS and sibling processes.
-    timeout-minutes: 35
+    # 2026-09-05: full parallelism at 14336 MB takes >35 min wall-clock (timed out
+    # cleanly — vitest still running at termination, no OOM). Raised to 60 to match
+    # client-tests, which also runs at full parallelism with the same heap ceiling.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
