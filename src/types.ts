@@ -56,6 +56,9 @@ export type Bindings = {
   // Optional — unset → { ok:false, code:'not_configured' } (200), per the
   // optional-integration pattern. `wrangler secret put TURNSTILE_SECRET_KEY`.
   TURNSTILE_SECRET_KEY?: string;
+  // Comma-separated frontend hostnames siteverify may report for the public
+  // form (non-secret, wrangler.toml [vars]). Empty → verification fails closed.
+  TURNSTILE_HOSTNAMES?: string;
   PRIMARY_DOMAIN?: string;
   // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
   // falls back to the incoming request's origin so non-prod environments

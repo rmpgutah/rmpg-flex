@@ -206,6 +206,8 @@ app.get("/", async (c) => {
 // PUBLIC write, so it is defended in layers:
 //   1. Cloudflare Turnstile token (TURNSTILE_SECRET_KEY). Unset → the whole
 //      feature reports not_configured rather than accepting unverified posts.
+//      siteverify must also echo action=schedule_delivery and a hostname in
+//      TURNSTILE_HOSTNAMES (rmpgutahps.us, www) — see verifyTurnstile.
 //   2. KV fixed-window rate limits: 5/hour per IP, 3/day per ref.
 //   3. Strict body validation — enums, length caps, no free text reaches the
 //      officer surface unbounded.
@@ -228,23 +230,49 @@ function cleanText(v: unknown, max: number): string {
   return v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-async function verifyTurnstile(secret: string, token: string, ip: string | null): Promise<boolean> {
+/** data-action the public form must render with; siteverify echoes it back. */
+export const TURNSTILE_ACTION_SCHEDULE = "schedule_delivery";
+
+/**
+ * Canonical siteverify. Passes only when Cloudflare reports success AND the
+ * token was minted for our action on an allow-listed frontend hostname. The
+ * allow-list comes from the TURNSTILE_HOSTNAMES var (comma-separated); an
+ * empty allow-list fails closed so a misconfigured deploy can never accept
+ * tokens minted on an arbitrary site that happens to share the widget.
+ */
+async function verifyTurnstile(
+  secret: string,
+  token: string,
+  ip: string | null,
+  expectedAction: string,
+  expectedHostnames: Set<string>,
+): Promise<boolean> {
+  if (!token || token.length > 2048 || expectedHostnames.size === 0) return false;
   try {
-    const form = new FormData();
-    form.set("secret", secret);
-    form.set("response", token);
-    if (ip) form.set("remoteip", ip);
+    const body = new URLSearchParams({ secret, response: token });
+    if (ip) body.set("remoteip", ip);
     const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       method: "POST",
-      body: form,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return false;
-    const data = (await res.json()) as { success?: boolean };
-    return data.success === true;
+    const data = (await res.json()) as { success?: boolean; action?: string; hostname?: string };
+    return (
+      data.success === true &&
+      data.action === expectedAction &&
+      typeof data.hostname === "string" &&
+      expectedHostnames.has(data.hostname.toLowerCase())
+    );
   } catch (err) {
     log.error("schedule-request: turnstile verify failed", {}, err as Error);
     return false;
   }
+}
+
+function turnstileHostnames(raw: string | undefined): Set<string> {
+  return new Set((raw ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean));
 }
 
 app.post("/schedule-request", async (c) => {
@@ -285,7 +313,7 @@ app.post("/schedule-request", async (c) => {
   if (!(await rateLimitAllow(c.env.KV, `verify-sched:ref:${parsed.ref}`, 3, 86400))) {
     return c.json({ ok: false, error: "This notice already has pending requests. Please call dispatch." }, 429);
   }
-  if (!(await verifyTurnstile(secret, turnstileToken, ip))) {
+  if (!(await verifyTurnstile(secret, turnstileToken, ip, TURNSTILE_ACTION_SCHEDULE, turnstileHostnames(c.env.TURNSTILE_HOSTNAMES)))) {
     return c.json({ ok: false, error: "Verification failed. Please try again." }, 403);
   }
 

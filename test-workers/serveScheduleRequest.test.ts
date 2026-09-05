@@ -11,7 +11,7 @@ const app = new Hono<{ Bindings: Record<string, unknown> }>();
 app.route('/api/verify', serveQrScan);
 
 const baseEnv = env as unknown as Record<string, unknown>;
-const withSecret = { ...baseEnv, TURNSTILE_SECRET_KEY: 'test-secret' };
+const withSecret = { ...baseEnv, TURNSTILE_SECRET_KEY: 'test-secret', TURNSTILE_HOSTNAMES: 'rmpgutahps.us,www.rmpgutahps.us' };
 
 function post(body: unknown, e: Record<string, unknown> = withSecret, ip = '203.0.113.7') {
   return app.request('/api/verify/schedule-request', {
@@ -45,7 +45,7 @@ beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
     if (url.includes('challenges.cloudflare.com/turnstile')) {
-      return new Response(JSON.stringify({ success: true }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, action: 'schedule_delivery', hostname: 'rmpgutahps.us' }), { status: 200 });
     }
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -108,6 +108,22 @@ describe('POST /api/verify/schedule-request', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: false }), { status: 200 }));
     const res = await post(good, withSecret, '198.51.100.12');
     expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when the token was minted for a different action', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: true, action: 'login', hostname: 'rmpgutahps.us' }), { status: 200 }));
+    expect((await post({ ...good, ref: 'JOB-3001' }, withSecret, '198.51.100.20')).status).toBe(403);
+  });
+
+  it('returns 403 when the token was minted on a hostname outside TURNSTILE_HOSTNAMES', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: true, action: 'schedule_delivery', hostname: 'evil.example' }), { status: 200 }));
+    expect((await post({ ...good, ref: 'JOB-3002' }, withSecret, '198.51.100.21')).status).toBe(403);
+  });
+
+  it('fails closed (403) when TURNSTILE_HOSTNAMES is unset, without calling siteverify', async () => {
+    const res = await post({ ...good, ref: 'JOB-3003' }, { ...baseEnv, TURNSTILE_SECRET_KEY: 'test-secret' }, '198.51.100.22');
+    expect(res.status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('rate-limits the 6th request from one IP within the hour', async () => {
