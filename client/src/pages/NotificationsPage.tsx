@@ -24,6 +24,7 @@ interface Notification {
   type: string;
   title: string;
   body: string | null;
+  message?: string | null;
   entity_type: string | null;
   entity_id: number | null;
   priority: 'normal' | 'high' | 'critical';
@@ -652,7 +653,7 @@ export default function NotificationsPage() {
                         <span className="text-[8px] px-1.5 py-0.5 bg-amber-700/40 text-amber-300 font-bold uppercase tracking-wider">High</span>
                       )}
                     </div>
-                    {n.body && <p className="text-[11px] text-rmpg-400 mt-0.5 line-clamp-2">{n.body}</p>}
+                    {(n.body || n.message) && <p className="text-[11px] text-rmpg-400 mt-0.5 line-clamp-2">{n.body || n.message}</p>}
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                       <span>{toDisplayLabel(n.type)}</span>
                       <span title={formatDateTime(n.created_at)}>{(() => {
