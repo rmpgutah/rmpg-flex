@@ -780,7 +780,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //   (WelfareCheckModal, PersonnelDetailPanel, PdfPreviewModal et al.).
   // 10644 -> 10662: rebuilt ScheduleDetailTab and DeploymentDetailTab with full
   //   UX (stats, grouping, cards) using existing rmpg-token patterns.
-  const PIN = 10662;
+  // 10662 -> 10664: feat(serve-intake) PR #4130 multi-folder job queue added
+  //   new intake form surfaces using rmpg-token patterns.
+  const PIN = 10664;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
