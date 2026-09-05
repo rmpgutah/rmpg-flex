@@ -1,6 +1,6 @@
 # rmpgutahps.us ↔ RMPG Flex — Notice of Attempt integration (follow-up scope)
 
-**Status:** scoped, not started · **Parent PR:** #4133 (Notice of Attempt copy + support panel)
+**Status:** Worker side (W1–W5) implemented — see the P1 PR; W6/W7 gated on rmpgutahps.us · **Parent PR:** #4133 (Notice of Attempt copy + support panel)
 **Owner:** process-service module · **Target:** one follow-up PR on RMPG Flex + a matching change on rmpgutahps.us
 
 ## 1. Problem
@@ -105,6 +105,19 @@ the Worker; anything else is a "we couldn't find that reference" page, not an AP
   `toString` in test, not pixel decoding) once W6 lands.
 - Manual: print one notice on the PJ-700 and scan with a phone from off-network; check
   Dispatch receives Subject Engaged.
+
+## 4.7 Decisions taken in the P1 PR
+
+- **Notes table:** `serve_job_comments` exists on live (author_name / author_role / is_system), so
+  schedule requests write a system comment there (`author_role='subject'`) in addition to their own
+  `serve_schedule_requests` row (migration **0279**). No new notes table.
+- **Turnstile binding name:** `TURNSTILE_SECRET_KEY` (optional). Unset → `200 {ok:false, code:'not_configured'}`.
+- **Unknown ref:** accepted with `ok:true` and stored, but no comment/notification — a 404 would let the
+  public enumerate live job ids.
+- **Officer surface:** `ServeJobCard` only. The mobile Active Calls card is deferred to W7's PR; the
+  notification + WS push already reach mobile via the existing notifications feed.
+- **Accepting a request** optionally stamps `serve_queue.next_attempt_note` (`set_next_attempt_note: true`,
+  which the card sends), answering open question 3 with "officer-confirmed, then auto-filled".
 
 ## 5. Open questions for the operator
 

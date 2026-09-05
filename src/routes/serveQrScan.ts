@@ -10,6 +10,7 @@
 // POST /details              Rich async fingerprint (canvas, WebGL, battery, WebRTC)
 // POST /details/timeonpage   Time-on-page beacon (sendBeacon on pagehide)
 // GET  /scans?jobRef=JOB-N   Scan history for a job (JWT auth required)
+// POST /schedule-request     Subject asks for a delivery window (public, Turnstile + KV rate limit)
 // ============================================================
 
 import { Hono } from "hono";
@@ -19,6 +20,8 @@ import { log } from "../utils/logger";
 import { clientIp } from "../utils/requestIp";
 import { broadcastAll } from "./ws";
 import { authMiddleware } from "../middleware/auth";
+import { rateLimitAllow } from "../utils/rateLimit";
+import { SUBJECT_SUPPORT, parseAgencyRef } from "../utils/subjectSupport";
 
 const app = new Hono<Env>();
 
@@ -179,14 +182,176 @@ app.get("/", async (c) => {
     ref,
     scanId,
     agency: "Rocky Mountain Protective Group",
-    phone: "(385) 340-6555",
+    phone: SUBJECT_SUPPORT.dispatchPhone,
     website: "https://rmpgutah.us",
+    // Same channels as the printed "How to reach us" panel, so the public
+    // page (rmpgutahps.us/notice-of-attempt) renders what is on the paper.
+    phone_route: SUBJECT_SUPPORT.dispatchPhoneRoute,
+    email: SUBJECT_SUPPORT.email,
+    support_url: SUBJECT_SUPPORT.supportUrl,
+    notice_info_url: SUBJECT_SUPPORT.noticeInfoUrl,
+    // True when the ref resolved to a live serve job. The public page shows a
+    // softer "we could not match that reference" state instead of "verified".
+    matched: jobId !== null,
     message:
       "This notice was issued by Rocky Mountain Protective Group, a licensed private process server " +
       "operating in the State of Utah. To arrange a convenient delivery time or confirm this notice " +
       "is genuine, please contact our office using the information above and reference: " +
       ref,
   });
+});
+
+// ── POST /schedule-request — subject asks for a delivery window ──
+//
+// PUBLIC write, so it is defended in layers:
+//   1. Cloudflare Turnstile token (TURNSTILE_SECRET_KEY). Unset → the whole
+//      feature reports not_configured rather than accepting unverified posts.
+//   2. KV fixed-window rate limits: 5/hour per IP, 3/day per ref.
+//   3. Strict body validation — enums, length caps, no free text reaches the
+//      officer surface unbounded.
+// On success it writes a serve_schedule_requests row, a system comment on the
+// job, a high-priority notification for the assigned officer, and a WS push.
+// The public response never echoes recipient data — only ok + request id.
+
+const WINDOWS = new Set(["morning", "afternoon", "evening", "weekend"]);
+const CONTACT_METHODS = new Set(["phone", "email"]);
+const WINDOW_LABEL: Record<string, string> = {
+  morning: "Morning (before noon)",
+  afternoon: "Afternoon (12–5 PM)",
+  evening: "Evening (after 5 PM)",
+  weekend: "Weekend",
+};
+
+/** Strip control chars and collapse whitespace; cap length. */
+function cleanText(v: unknown, max: number): string {
+  if (typeof v !== "string") return "";
+  return v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+async function verifyTurnstile(secret: string, token: string, ip: string | null): Promise<boolean> {
+  try {
+    const form = new FormData();
+    form.set("secret", secret);
+    form.set("response", token);
+    if (ip) form.set("remoteip", ip);
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { success?: boolean };
+    return data.success === true;
+  } catch (err) {
+    log.error("schedule-request: turnstile verify failed", {}, err as Error);
+    return false;
+  }
+}
+
+app.post("/schedule-request", async (c) => {
+  const secret = c.env.TURNSTILE_SECRET_KEY;
+  if (!secret) {
+    return c.json({ ok: false, code: "not_configured" });
+  }
+
+  const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+  const parsed = parseAgencyRef(typeof body.ref === "string" ? body.ref : "");
+  if (!parsed) return c.json({ ok: false, error: "ref must look like JOB-123" }, 400);
+
+  const preferredWindow = typeof body.preferred_window === "string" ? body.preferred_window : "";
+  if (!WINDOWS.has(preferredWindow)) {
+    return c.json({ ok: false, error: `preferred_window must be one of: ${[...WINDOWS].join(", ")}` }, 400);
+  }
+  const contactMethod = typeof body.contact_method === "string" ? body.contact_method : "";
+  if (!CONTACT_METHODS.has(contactMethod)) {
+    return c.json({ ok: false, error: "contact_method must be phone or email" }, 400);
+  }
+  const contactValue = cleanText(body.contact_value, 120);
+  if (contactMethod === "phone" && contactValue.replace(/\D/g, "").length < 10) {
+    return c.json({ ok: false, error: "contact_value must be a 10-digit phone number" }, 400);
+  }
+  if (contactMethod === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactValue)) {
+    return c.json({ ok: false, error: "contact_value must be an email address" }, 400);
+  }
+  const note = cleanText(body.note, 500) || null;
+  const turnstileToken = typeof body.turnstile_token === "string" ? body.turnstile_token : "";
+  if (!turnstileToken) return c.json({ ok: false, error: "turnstile_token required" }, 400);
+
+  const ip = clientIp(c);
+  const ua = c.req.header("User-Agent") ?? null;
+
+  if (!(await rateLimitAllow(c.env.KV, `verify-sched:ip:${ip ?? "unknown"}`, 5, 3600))) {
+    return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
+  }
+  if (!(await rateLimitAllow(c.env.KV, `verify-sched:ref:${parsed.ref}`, 3, 86400))) {
+    return c.json({ ok: false, error: "This notice already has pending requests. Please call dispatch." }, 429);
+  }
+  if (!(await verifyTurnstile(secret, turnstileToken, ip))) {
+    return c.json({ ok: false, error: "Verification failed. Please try again." }, 403);
+  }
+
+  const db = getDb(c.env);
+  const job = await queryFirst<{ id: number; officer_id: number | null; recipient_name: string | null }>(
+    db,
+    "SELECT id, officer_id, recipient_name FROM serve_queue WHERE id = ?",
+    parsed.jobId,
+  );
+  // Unknown ref: accept quietly (do not leak which ids exist) but store
+  // nothing beyond the request row, and notify nobody.
+  let requestId: number | null = null;
+  try {
+    const ins = await execute(
+      db,
+      `INSERT INTO serve_schedule_requests
+         (job_ref, job_id, preferred_window, contact_method, contact_value, note, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      parsed.ref, job?.id ?? null, preferredWindow, contactMethod, contactValue, note, ip, ua,
+    );
+    requestId = ins.meta?.last_row_id ?? null;
+  } catch (err) {
+    log.error("schedule-request: insert failed", { ref: parsed.ref }, err as Error);
+    return c.json({ ok: false, error: "Could not record your request. Please call dispatch." }, 500);
+  }
+
+  if (job) {
+    const summary =
+      `Subject requested delivery: ${WINDOW_LABEL[preferredWindow]} · ` +
+      `${contactMethod === "phone" ? "call" : "email"} ${contactValue}` +
+      (note ? ` · "${note}"` : "");
+    try {
+      await execute(
+        db,
+        `INSERT INTO serve_job_comments (serve_queue_id, author_name, author_role, body, is_system)
+         VALUES (?, 'Subject via rmpgutahps.us', 'subject', ?, 1)`,
+        job.id, summary,
+      );
+    } catch (err) {
+      log.error("schedule-request: comment insert failed", { jobId: job.id }, err as Error);
+    }
+    try {
+      await execute(
+        db,
+        `INSERT INTO notifications
+           (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('serve_schedule_request', 'high', ?, ?, 'serve_job', ?, ?, 0, datetime('now'))`,
+        "Delivery Requested — Subject Wants to Schedule",
+        `${job.recipient_name ?? "Subject"} (${parsed.ref}) asked for ${WINDOW_LABEL[preferredWindow].toLowerCase()} delivery. Open the job to accept.`,
+        job.id,
+        job.officer_id,
+      );
+      broadcastAll("serve_schedule_request", {
+        requestId,
+        ref: parsed.ref,
+        jobId: job.id,
+        preferredWindow,
+        contactMethod,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      log.error("schedule-request: notify failed", { jobId: job.id }, err as Error);
+    }
+  }
+
+  return c.json({ ok: true, requestId, ref: parsed.ref });
 });
 
 // ── POST /location — GPS callback after browser permission ───

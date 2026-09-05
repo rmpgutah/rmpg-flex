@@ -398,7 +398,7 @@ head_sampling_rate = 1
 # Without them the dual-write wrapper is a null no-op — local dev is unaffected.
 NODE_ENV = "production"
 PRIMARY_DOMAIN = "rmpgutah.us"
-CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,https://rmpgutahps.us,https://www.rmpgutahps.us,http://localhost:5173"
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
