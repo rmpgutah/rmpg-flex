@@ -115,7 +115,7 @@ npm run migrate:prod      # apply migrations to remote D1
 
 ## Schema changes (D1)
 
-1. Add a new file under `migrations/` using the next free integer prefix (see [`migrations/README.md`](migrations/README.md)). Current high-water is `0093` (check `ls migrations/ | tail` — duplicate prefixes exist, e.g. two `0075`/`0084`/`0085` files).
+1. Add a new file under `migrations/` using the next free integer prefix (see [`migrations/README.md`](migrations/README.md)). Current high-water is `0280` (check `ls migrations/ | tail` — duplicate prefixes exist, e.g. two `0075`/`0084`/`0085` files).
 2. Write idempotent DDL — `CREATE TABLE IF NOT EXISTS`. D1 does **not** support `IF NOT EXISTS` on `ADD COLUMN`, so either accept the failure on re-apply or wrap the `ALTER` in a check via the Worker boot reconciler.
 3. Test locally: `npm run migrate:local`.
 4. Merge to main — `deploy.yml` applies it to remote D1 (and continues on error, as documented above).
@@ -342,6 +342,54 @@ re-pull never re-bills a CarsXE credit. Secret `CARXE_API_KEY`; unset →
 - `notifications` and `vehicles_records` both had **zero indexes** before
   `0214`/`0215`. Assume nothing about index coverage on older tables; check
   `sqlite_master` and confirm with `EXPLAIN QUERY PLAN`.
+
+### Dial Connect (Twilio dialer at dialer.rmpgutah.us) — call-archive invariants
+
+The dialer is a separate app embedded as an iframe by
+[`DialerPanel`](client/src/components/DialerPanel.tsx); it talks to the CAD via
+`postMessage` and the CAD archives calls through `POST /api/dialer-connect/events`
+([`src/routes/dialerConnect.ts`](src/routes/dialerConnect.ts)). Hardened 2026-09-05
+after call history showed 10 "unknown" rows with no number, no duration, and a
+`failed` call re-labelled `completed`.
+
+- **Only `call_status` may set `status`.** `recording_ready` / `transcript_ready`
+  carry no status and are bound as NULL so `COALESCE(?, status)` keeps
+  `missed`/`failed`. Before the fix the client rewrote them as `call_status` and the
+  Worker defaulted the missing status to `'completed'`.
+- **Absent fields are NULL, never defaults.** `ingestCallFields` in
+  [`src/utils/dialerConnect.ts`](src/utils/dialerConnect.ts) returns `null` for a
+  missing/invalid direction, status, number, or duration; insert-only defaults
+  (`'inbound'`, `'completed'`, `now`) are applied in the INSERT column list only and
+  the `ON CONFLICT … DO UPDATE` branch binds the raw nullable values.
+- **One upsert statement, keyed by the partial UNIQUE index on `call_sid`.** A
+  `completed` event and a `recording_ready` event racing for the same SID used to
+  check-then-insert and either double-inserted or 500'd on the index (the client
+  swallows that error, so it was invisible). Pinned by
+  `test-workers/dialerConnectEvents.test.ts`, including a `Promise.all` race.
+- **Forward everything on `recording_ready`.** It is the only event that carries
+  numbers/direction/duration for a call whose status event was missed; the bridge
+  must pass `from`/`to`/`direction`/`startedAt`/`endedAt`/`durationSeconds`/
+  `dispatcherName` through, not just the SID and URL.
+- **Every recording is COPIED into RMPG Flex (encrypted R2), never just linked.**
+  `mirrorRecording` runs inline on `/events` + `/ingest` (via `waitUntil`), lazily
+  when `/calls/:id/audio` has to proxy, and from the `*/30` cron backstop
+  (`mirrorPendingRecordings`, exported from the route). `recording_source_url`
+  stays as provenance; `recording_r2_key` is what playback/download/export serve.
+  Retries are bounded by `MIRROR_MAX_ATTEMPTS` via `recording_mirror_attempts` /
+  `recording_mirror_error` / `recording_mirrored_at` (migration
+  `0280_dialer_recording_mirror.sql`, also reconciled at runtime). Only
+  `isAllowedRecordingSourceUrl` hosts are ever fetched. Pinned by
+  `test-workers/dialerConnectRecordingMirror.test.ts`. The UI shows an
+  `Archived` / `Copy pending` chip per row. The dialer stays at
+  `https://dialer.rmpgutah.us` (`DIALER_ORIGIN`) — the mirror is additive.
+- **🔴 After merge**: `scripts/apply-migration.sh 0280_dialer_recording_mirror.sql`
+  against live D1 `785de7ae`, then confirm the backfill with
+  `SELECT COUNT(*) FROM dialer_calls WHERE recording_source_url IS NOT NULL AND recording_r2_key IS NULL`
+  trending to 0 over the next few cron ticks.
+- **UI: `counterpartyNumber` / `clusterCounterparties`** in
+  [`client/src/utils/dialerConnect.ts`](client/src/utils/dialerConnect.ts) fall back to
+  whichever number exists and never cluster numberless rows (no more
+  "dup unknown ×10").
 
 ### Legal Data Hunter (manual warrant-charge validation)
 

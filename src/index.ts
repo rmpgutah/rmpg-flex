@@ -435,6 +435,16 @@ export default {
 
     // ── Every 30 minutes ──
     if (event.cron === '*/30 * * * *') {
+      // Dial Connect recording mirror backstop — copies any call/voicemail
+      // recording that still only has a dialer.rmpgutah.us source URL into
+      // encrypted R2 (inline ingest mirror may have lost the race / upstream).
+      ctx.waitUntil(
+        import('./routes/dialerConnect').then((m) =>
+          m.mirrorPendingRecordings(env, 25).then((r) => {
+            if (r.attempted > 0) log.info(`[dialer-mirror] attempted ${r.attempted}, mirrored ${r.mirrored}, failed ${r.failed}`);
+          }).catch((err) => log.error('[dialer-mirror] sweep failed:', {}, err)),
+        ).catch((err) => log.error('[dialer-mirror] import failed:', {}, err)),
+      );
       // Stale warrant-watch-run reaper. A Cron Trigger is capped at 15 min of
       // wall time and a waitUntil() at 30s, so a scan whose isolate is evicted
       // mid-loop never writes its own completion row and sits at 'running'

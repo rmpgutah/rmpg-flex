@@ -252,12 +252,29 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           recordingUrl: message.recordingUrl,
           durationSeconds: message.durationSeconds,
         });
-      } else if (message.type === 'recording_ready' || message.type === 'transcript_ready') {
+      } else if (message.type === 'recording_ready') {
+        // Forward everything Dial Connect knows about the call. These events are
+        // the only source of numbers/direction/duration for calls whose status
+        // event was missed, and they deliberately carry NO status so the Worker
+        // never flips a `missed`/`failed` row to `completed`.
         ingestDialConnect({
-          type: 'call_status',
-          callSid: 'callSid' in message ? message.callSid : undefined,
-          recordingUrl: 'recordingUrl' in message ? message.recordingUrl : undefined,
-          transcript: 'transcript' in message ? message.transcript : undefined,
+          type: 'recording_ready',
+          callSid: message.callSid ?? message.call_sid,
+          recordingUrl: message.recordingUrl,
+          transcript: message.transcript,
+          from: message.from,
+          to: message.to,
+          direction: message.direction,
+          startedAt: message.startedAt,
+          endedAt: message.endedAt,
+          durationSeconds: message.durationSeconds,
+          agentName: message.dispatcherName,
+        });
+      } else if (message.type === 'transcript_ready') {
+        ingestDialConnect({
+          type: 'transcript_ready',
+          callSid: message.callSid,
+          transcript: message.transcript,
         });
       } else if (message.type === 'duress_alert') {
         if (!poppedOut) revealDialer();

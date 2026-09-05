@@ -2,6 +2,19 @@
 // Dial Connect — recordings, transcripts, voicemail, call history
 // Mounted at /api/dialer-connect (auth required) plus
 // /api/dialer-connect/ingest (public, HMAC via DIAL_CONNECT_WEBHOOK_SECRET).
+//
+// Event contract (POST /events from the CAD iframe bridge in
+// client/src/components/DialerPanel.tsx, and POST /ingest from Dial Connect):
+//   type: 'call_status'      — carries `status`; the only event allowed to set it.
+//   type: 'recording_ready'  — NO status. Carries numbers/direction/duration/
+//                              recordingUrl; must enrich, never overwrite.
+//   type: 'transcript_ready' — NO status. Carries transcript only.
+//   type: 'voicemail' | 'voicemail_ready' | 'call_and_voicemail'
+// All call events funnel through upsertCall(): one INSERT … ON CONFLICT(call_sid)
+// statement whose every column COALESCEs to the stored value. Absent fields are
+// bound as NULL (see ingestCallFields) — never as a default — so out-of-order or
+// concurrent events for one SID converge on a single, fully-populated row.
+// Pinned by test-workers/dialerConnectEvents.test.ts.
 // ============================================================
 
 import { Hono } from 'hono';
@@ -27,6 +40,8 @@ import {
   DISPOSITIONS,
   assertMinFunctions,
   isAllowedRecordingSourceUrl,
+  ingestCallFields,
+  type IngestCall,
 } from '../utils/dialerConnect';
 
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
@@ -82,17 +97,33 @@ async function ensureSchema(db: ReturnType<typeof getDb>): Promise<void> {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_dialer_calls_started ON dialer_calls(started_at)`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_dialer_vm_received ON dialer_voicemails(received_at)`);
   _schemaReady = true;
+  await reconcileCallCols(db);
 }
 
+const MIRROR_EXTRAS: Array<[string, string]> = [
+  ['recording_mirror_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+  ['recording_mirror_error', 'TEXT'],
+  ['recording_mirrored_at', 'TEXT'],
+];
 const CALL_EXTRAS: Array<[string, string]> = [
   ['recording_source_url', 'TEXT'], ['callback_at', 'TEXT'], ['person_id', 'INTEGER'],
+  ...MIRROR_EXTRAS,
 ];
+let _colsReady = false;
+/** Runtime reconcile for columns added after the CREATE TABLE baseline (mirrors migration 0280). */
 async function reconcileCallCols(db: ReturnType<typeof getDb>) {
+  if (_colsReady) return;
   for (const [col, typ] of CALL_EXTRAS) {
     if (!(await columnExists(db, 'dialer_calls', col))) {
       await execute(db, `ALTER TABLE dialer_calls ADD COLUMN ${col} ${typ}`);
     }
   }
+  for (const [col, typ] of MIRROR_EXTRAS) {
+    if (!(await columnExists(db, 'dialer_voicemails', col))) {
+      await execute(db, `ALTER TABLE dialer_voicemails ADD COLUMN ${col} ${typ}`);
+    }
+  }
+  _colsReady = true;
 }
 
 type Actor = { id: number; username: string; role: string; full_name: string };
@@ -101,46 +132,17 @@ function actorOf(c: { get: (k: 'user') => Actor | undefined }): Actor | null {
   return c.get('user') ?? null;
 }
 
-interface IngestCall {
-  callSid?: string; call_sid?: string;
-  direction?: string;
-  from?: string; from_number?: string;
-  to?: string; to_number?: string;
-  fromName?: string; from_name?: string;
-  toName?: string; to_name?: string;
-  status?: string;
-  startedAt?: string; started_at?: string;
-  endedAt?: string; ended_at?: string;
-  durationSeconds?: number; duration_seconds?: number;
-  transcript?: string;
-  recordingUrl?: string; recording_url?: string;
-  agentName?: string; agent_name?: string;
-}
+const ingestFields = ingestCallFields;
 
-function ingestFields(body: IngestCall) {
-  const callSid = String(body.callSid || body.call_sid || '').trim() || null;
-  const direction = isCallDirection(body.direction) ? body.direction : 'inbound';
-  const status = isCallStatus(body.status) ? body.status : 'completed';
-  const fromNumber = normalizeDialNumber(body.from || body.from_number);
-  const toNumber = normalizeDialNumber(body.to || body.to_number);
-  return {
-    callSid,
-    direction,
-    status,
-    fromNumber: fromNumber || null,
-    toNumber: toNumber || null,
-    fromName: body.fromName || body.from_name || null,
-    toName: body.toName || body.to_name || null,
-    startedAt: body.startedAt || body.started_at || null,
-    endedAt: body.endedAt || body.ended_at || null,
-    duration: Number.isFinite(Number(body.durationSeconds ?? body.duration_seconds))
-      ? Number(body.durationSeconds ?? body.duration_seconds) : null,
-    transcript: body.transcript ? String(body.transcript) : null,
-    recordingUrl: body.recordingUrl || body.recording_url || null,
-    agentName: body.agentName || body.agent_name || null,
-  };
-}
-
+/**
+ * Insert-or-update a dialer_calls row keyed by call_sid.
+ *
+ * A single upsert (not check-then-insert) so a `completed` status event and a
+ * `recording_ready` event racing for the same SID cannot double-insert or trip
+ * the partial UNIQUE index into a 500. Every field COALESCEs to the stored
+ * value, so a late recording/transcript event enriches the row without wiping
+ * the numbers, duration, or a `missed`/`failed` status recorded earlier.
+ */
 async function upsertCall(
   db: ReturnType<typeof getDb>,
   body: IngestCall,
@@ -148,36 +150,48 @@ async function upsertCall(
 ) {
   const f = ingestFields(body);
   const transcriptStatus = f.transcript ? 'ready' : 'none';
+  const agentName = f.agentName ?? agent?.name ?? null;
+  const agentId = agent?.id ?? null;
   if (f.callSid) {
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dialer_calls WHERE call_sid = ?', f.callSid);
-    if (existing) {
-      await execute(db, `UPDATE dialer_calls SET
-        direction=COALESCE(?, direction), status=?, from_number=COALESCE(?, from_number),
-        to_number=COALESCE(?, to_number), from_name=COALESCE(?, from_name),
-        to_name=COALESCE(?, to_name), started_at=COALESCE(?, started_at),
-        ended_at=COALESCE(?, ended_at), duration_seconds=COALESCE(?, duration_seconds),
-        transcript=COALESCE(?, transcript),
-        transcript_status=CASE WHEN ? IS NOT NULL THEN 'ready' ELSE transcript_status END,
-        recording_source_url=COALESCE(?, recording_source_url),
-        agent_name=COALESCE(?, agent_name),
-        agent_user_id=COALESCE(?, agent_user_id),
-        updated_at=datetime('now')
-        WHERE id=?`,
-        f.direction, f.status, f.fromNumber, f.toNumber, f.fromName, f.toName,
-        f.startedAt, f.endedAt, f.duration, f.transcript, f.transcript,
-        f.recordingUrl, f.agentName ?? agent?.name ?? null, agent?.id ?? null,
-        existing.id,
-      );
-      return existing.id;
-    }
+    await execute(db, `INSERT INTO dialer_calls (
+      call_sid, direction, from_number, to_number, from_name, to_name,
+      agent_user_id, agent_name, status, started_at, ended_at, duration_seconds,
+      recording_source_url, transcript, transcript_status
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(call_sid) WHERE call_sid IS NOT NULL AND TRIM(call_sid) != '' DO UPDATE SET
+      direction=COALESCE(?, dialer_calls.direction),
+      status=COALESCE(?, dialer_calls.status),
+      from_number=COALESCE(excluded.from_number, dialer_calls.from_number),
+      to_number=COALESCE(excluded.to_number, dialer_calls.to_number),
+      from_name=COALESCE(excluded.from_name, dialer_calls.from_name),
+      to_name=COALESCE(excluded.to_name, dialer_calls.to_name),
+      started_at=COALESCE(?, dialer_calls.started_at),
+      ended_at=COALESCE(excluded.ended_at, dialer_calls.ended_at),
+      duration_seconds=COALESCE(excluded.duration_seconds, dialer_calls.duration_seconds),
+      transcript=COALESCE(excluded.transcript, dialer_calls.transcript),
+      transcript_status=CASE WHEN excluded.transcript IS NOT NULL THEN 'ready' ELSE dialer_calls.transcript_status END,
+      recording_source_url=COALESCE(excluded.recording_source_url, dialer_calls.recording_source_url),
+      agent_name=COALESCE(excluded.agent_name, dialer_calls.agent_name),
+      agent_user_id=COALESCE(excluded.agent_user_id, dialer_calls.agent_user_id),
+      updated_at=datetime('now')`,
+      f.callSid, f.direction ?? 'inbound', f.fromNumber, f.toNumber, f.fromName, f.toName,
+      agentId, agentName, f.status ?? 'completed',
+      f.startedAt ?? new Date().toISOString(), f.endedAt, f.duration,
+      f.recordingUrl, f.transcript, transcriptStatus,
+      // ON CONFLICT binds: raw (nullable) direction / status / started_at so the
+      // insert-only defaults ('inbound' / 'completed' / now) never overwrite stored values.
+      f.direction, f.status, f.startedAt,
+    );
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM dialer_calls WHERE call_sid = ?', f.callSid);
+    return row ? Number(row.id) : 0;
   }
   const res = await execute(db, `INSERT INTO dialer_calls (
     call_sid, direction, from_number, to_number, from_name, to_name,
     agent_user_id, agent_name, status, started_at, ended_at, duration_seconds,
     recording_source_url, transcript, transcript_status
   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    f.callSid, f.direction, f.fromNumber, f.toNumber, f.fromName, f.toName,
-    agent?.id ?? null, f.agentName ?? agent?.name ?? null, f.status,
+    null, f.direction ?? 'inbound', f.fromNumber, f.toNumber, f.fromName, f.toName,
+    agentId, agentName, f.status ?? 'completed',
     f.startedAt ?? new Date().toISOString(), f.endedAt, f.duration,
     f.recordingUrl, f.transcript, transcriptStatus,
   );
@@ -200,6 +214,130 @@ async function insertVoicemail(db: ReturnType<typeof getDb>, body: IngestCall & 
   return Number(res.meta.last_row_id);
 }
 
+// ---------------------------------------------------------------------------
+// Recording mirror — copy every Dial Connect recording INTO RMPG Flex.
+//
+// Dial Connect hands us a recording_source_url on dialer.rmpgutah.us. That link
+// stays as provenance, but the bytes are copied into encrypted R2 so playback,
+// download, evidence export and retention never depend on the dialer host.
+// Runs (a) inline on ingest via waitUntil, (b) lazily when the audio endpoint
+// has to proxy, and (c) from the */30 cron sweep (mirrorPendingRecordings) as
+// the backstop. Retries are bounded by MIRROR_MAX_ATTEMPTS per row.
+// ---------------------------------------------------------------------------
+
+const AUDIO_MAX = 25 * 1024 * 1024;
+export const MIRROR_MAX_ATTEMPTS = 5;
+const MIRROR_FETCH_TIMEOUT_MS = 20_000;
+
+type MirrorKind = 'call' | 'vm';
+type MirrorOutcome = 'mirrored' | 'skipped' | 'failed';
+
+function mirrorTable(kind: MirrorKind): 'dialer_calls' | 'dialer_voicemails' {
+  return kind === 'call' ? 'dialer_calls' : 'dialer_voicemails';
+}
+
+interface MirrorCandidate {
+  id: number;
+  recording_r2_key: string | null;
+  recording_source_url: string | null;
+  recording_mirror_attempts: number | null;
+}
+
+async function mirrorRecording(env: Env['Bindings'], kind: MirrorKind, id: number): Promise<MirrorOutcome> {
+  const db = getDb(env);
+  const table = mirrorTable(kind);
+  const row = await queryFirst<MirrorCandidate>(
+    db, `SELECT id, recording_r2_key, recording_source_url, recording_mirror_attempts FROM ${table} WHERE id = ?`, id,
+  );
+  if (!row || row.recording_r2_key) return 'skipped';
+  if (!isAllowedRecordingSourceUrl(row.recording_source_url)) return 'skipped';
+  if ((row.recording_mirror_attempts ?? 0) >= MIRROR_MAX_ATTEMPTS) return 'skipped';
+  if (!env.UPLOADS) return 'skipped';
+
+  const fail = async (reason: string) => {
+    await execute(db, `UPDATE ${table} SET
+        recording_mirror_attempts = COALESCE(recording_mirror_attempts, 0) + 1,
+        recording_mirror_error = ?, updated_at = datetime('now')
+      WHERE id = ?`, reason.slice(0, 300), id);
+    log.warn('dialer recording mirror failed', { kind, id, reason });
+    return 'failed' as const;
+  };
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), MIRROR_FETCH_TIMEOUT_MS);
+    let upstream: Response;
+    try {
+      upstream = await fetch(row.recording_source_url!, { redirect: 'follow', signal: ctrl.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!upstream.ok) return fail(`upstream HTTP ${upstream.status}`);
+    const type = (upstream.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim();
+    if (!type.startsWith('audio/') && type !== 'application/octet-stream') return fail(`not audio: ${type}`);
+    const buf = new Uint8Array(await upstream.arrayBuffer());
+    if (buf.byteLength === 0) return fail('empty body');
+    if (buf.byteLength > AUDIO_MAX) return fail(`too large: ${buf.byteLength} bytes`);
+
+    const key = `dialer-connect/${kind}/${id}/${Date.now()}`;
+    await putEncrypted(env.UPLOADS, db, env, key, buf, { httpMetadata: { contentType: type } });
+    await execute(db, `UPDATE ${table} SET
+        recording_r2_key = ?, recording_content_type = ?, recording_bytes = ?,
+        recording_mirrored_at = datetime('now'), recording_mirror_error = NULL,
+        updated_at = datetime('now')
+      WHERE id = ? AND recording_r2_key IS NULL`, key, type, buf.byteLength, id);
+    log.info('dialer recording mirrored', { kind, id, bytes: buf.byteLength });
+    return 'mirrored';
+  } catch (err) {
+    if (err instanceof FileEncryptionError) return fail(`encryption: ${err.message}`);
+    return fail(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+  }
+}
+
+/** Cron backstop: mirror rows that still only have a source URL. Bounded per tick. */
+export async function mirrorPendingRecordings(
+  env: Env['Bindings'],
+  limit = 10,
+): Promise<{ attempted: number; mirrored: number; failed: number }> {
+  const db = getDb(env);
+  await ensureSchema(db);
+  const out = { attempted: 0, mirrored: 0, failed: 0 };
+  for (const kind of ['call', 'vm'] as const) {
+    const rows = await query<{ id: number }>(db, `SELECT id FROM ${mirrorTable(kind)}
+      WHERE recording_source_url IS NOT NULL AND recording_r2_key IS NULL
+        AND COALESCE(recording_mirror_attempts, 0) < ?
+      ORDER BY id DESC LIMIT ?`, MIRROR_MAX_ATTEMPTS, limit);
+    for (const r of rows) {
+      out.attempted += 1;
+      const res = await mirrorRecording(env, kind, r.id);
+      if (res === 'mirrored') out.mirrored += 1;
+      else if (res === 'failed') out.failed += 1;
+    }
+  }
+  return out;
+}
+
+/** Minimal structural view of ExecutionContext (Hono's and workers-types' declarations differ). */
+type WaitUntilCtx = { waitUntil(promise: Promise<unknown>): void };
+
+/** Run the mirror without blocking the response; await it when no ExecutionContext exists (tests). */
+function scheduleMirror(
+  c: { env: Env['Bindings']; executionCtx?: WaitUntilCtx },
+  kind: MirrorKind,
+  id: number,
+): Promise<void> {
+  const task = mirrorRecording(c.env, kind, id).then(() => undefined).catch((err) => {
+    log.error('dialer recording mirror crashed', { kind, id }, err instanceof Error ? err : new Error(String(err)));
+  });
+  let ctx: WaitUntilCtx | undefined;
+  try { ctx = c.executionCtx; } catch { ctx = undefined; }
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(task);
+    return Promise.resolve();
+  }
+  return task;
+}
+
 function verifyIngestSecret(c: { env: Env['Bindings']; req: { header: (n: string) => string | undefined } }): boolean {
   const secret = c.env.DIAL_CONNECT_WEBHOOK_SECRET;
   if (!secret) return false;
@@ -218,12 +356,15 @@ dialerConnectIngest.post('/', async (c) => {
     const type = body.type || 'call';
     if (type === 'voicemail') {
       const id = await insertVoicemail(db, body);
+      if (body.recordingUrl || body.recording_url) await scheduleMirror(c, 'vm', id);
       return c.json({ ok: true, id, kind: 'voicemail' }, 201);
     }
     const id = await upsertCall(db, body);
     if (body.status === 'voicemail' || type === 'call_and_voicemail') {
-      await insertVoicemail(db, body);
+      const vmId = await insertVoicemail(db, body);
+      if (body.recordingUrl || body.recording_url) await scheduleMirror(c, 'vm', vmId);
     }
+    if (id && (body.recordingUrl || body.recording_url)) await scheduleMirror(c, 'call', id);
     return c.json({ ok: true, id, kind: 'call' }, 201);
   } catch (err) {
     log.error('dialer-connect ingest failed', {}, err instanceof Error ? err : new Error(String(err)));
@@ -246,9 +387,11 @@ dialerConnect.post('/events', async (c) => {
   const agent = user ? { id: user.id, name: user.full_name || user.username } : null;
   if (type === 'voicemail' || type === 'voicemail_ready') {
     const id = await insertVoicemail(db, body);
+    if (body.recordingUrl || body.recording_url) await scheduleMirror(c, 'vm', id);
     return c.json({ ok: true, id, kind: 'voicemail' }, 201);
   }
   const id = await upsertCall(db, body, agent);
+  if (id && (body.recordingUrl || body.recording_url)) await scheduleMirror(c, 'call', id);
   return c.json({ ok: true, id, kind: 'call' }, 201);
 });
 
@@ -611,8 +754,6 @@ dialerConnect.get('/lookup', async (c) => {
   return c.json({ data: rows });
 });
 
-const AUDIO_MAX = 25 * 1024 * 1024;
-
 async function storeAudio(
   c: { env: Env['Bindings'] },
   kind: 'call' | 'vm',
@@ -682,7 +823,7 @@ dialerConnect.post('/voicemails/:id/recording', async (c) => {
 });
 
 async function serveAudio(
-  c: { env: Env['Bindings']; json: (b: unknown, s?: 404 | 503) => Response },
+  c: { env: Env['Bindings']; executionCtx?: WaitUntilCtx; json: (b: unknown, s?: 404 | 503) => Response },
   kind: 'call' | 'vm',
   id: number,
 ) {
@@ -717,6 +858,9 @@ async function serveAudio(
     }
   }
   if (isAllowedRecordingSourceUrl(row.recording_source_url)) {
+    // Not yet copied into RMPG Flex — proxy this play AND kick the mirror so the
+    // next one is served from our own encrypted R2.
+    void scheduleMirror(c, kind, id);
     try {
       const upstream = await fetch(row.recording_source_url!, { redirect: 'follow' });
       if (!upstream.ok) return c.json({ error: 'Recording unavailable' }, 404);
