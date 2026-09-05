@@ -2311,11 +2311,23 @@ export default function ServePage() {
     if (jobTarget) {
       pendingJobIdRef.current = null;
       const hit = jobs.find((j) => String(j.id) === String(jobTarget));
-      if (!hit) {
-        addToast(`Serve job ${jobTarget} not in the current view (try clearing the date filter)`, 'warning');
-      } else {
+      if (hit) {
         setActiveTab('Queue');
         setExpandedJobId(hit.id);
+      } else {
+        apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobTarget}`)
+          .then((fetched) => {
+            if (fetched?.id) {
+              setJobs((prev: ServeJob[]) => prev.some((j: ServeJob) => j.id === fetched.id) ? prev : [fetched, ...prev]);
+              setActiveTab('Queue');
+              setExpandedJobId(fetched.id);
+            } else {
+              addToast(`Serve job ${jobTarget} not found`, 'warning');
+            }
+          })
+          .catch(() => {
+            addToast(`Serve job ${jobTarget} not found`, 'warning');
+          });
       }
     }
 
