@@ -4,6 +4,8 @@ import {
   Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Voicemail,
   History, Search, Star, Printer, Download, Play, Pause, RefreshCw,
   Plus, Trash2, Copy, Archive, CheckCheck, UserPlus, Link2, FileDown, MicOff, PhoneOff,
+  Delete, PhoneForwarded, Users, Disc, Pause as PauseIcon, ExternalLink, ShieldCheck, CloudOff,
+  ChevronUp, ChevronDown, Hash,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch, apiFetchBlob, apiPostForm } from '../hooks/useApi';
@@ -132,7 +134,9 @@ export default function DialerConnectPage() {
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
   const [liveOpen, setLiveOpen] = useState(true);
+  const [dockCollapsed, setDockCollapsed] = useState(false);
   const [vmUnread, setVmUnread] = useState(0);
+  const dockVisible = liveOpen && !dockCollapsed;
 
   useEffect(() => {
     document.title = 'Dialer Connect — RMPG Flex';
@@ -157,6 +161,17 @@ export default function DialerConnectPage() {
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="DIAL CONNECT" icon={PhoneCall} statusLed="var(--sev-ok)">
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setDockCollapsed((v) => !v)}
+            aria-label={dockVisible ? 'Hide live dialer' : 'Show live dialer'}
+            aria-pressed={!dockCollapsed}
+            title={liveOpen ? (dockVisible ? 'Hide the live Dial Connect dock' : 'Show the live Dial Connect dock') : 'Dial Connect is popped out or minimized'}
+            className="px-2 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1 border border-border-subtle text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-500 mr-1"
+          >
+            {dockVisible ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            LIVE
+          </button>
           {([
             ['dialer', 'Dialer', Phone, null as number | null],
             ['voicemail', 'Voicemail', Voicemail, vmUnread],
@@ -166,16 +181,16 @@ export default function DialerConnectPage() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className="px-2.5 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1.5 rounded-full"
-              style={{
-                color: tab === id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: tab === id ? 'color-mix(in srgb, var(--surface-overlay) 80%, transparent)' : 'transparent',
-                boxShadow: tab === id ? 'inset 0 0 0 1px color-mix(in srgb, var(--accent-silver-500) 45%, transparent)' : undefined,
-              }}
+              aria-pressed={tab === id}
+              className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1.5 border ${
+                tab === id
+                  ? 'bg-surface-overlay text-rmpg-50 border-accent-silver-500/60'
+                  : 'text-fg-secondary border-transparent hover:text-rmpg-100 hover:border-border-subtle'
+              }`}
             >
               <Icon className="w-3 h-3" /> {label}
               {badge ? (
-                <span className="min-w-[1.1rem] px-1 text-[8px] font-mono rounded-full" style={{ background: 'var(--sev-warn)', color: '#111' }}>{badge}</span>
+                <span className="min-w-[1.1rem] px-1 text-[8px] font-mono font-bold" style={{ background: 'var(--sev-warn)', color: 'var(--text-on-warn)' }}>{badge}</span>
               ) : null}
             </button>
           ))}
@@ -185,7 +200,7 @@ export default function DialerConnectPage() {
         id={DIALER_HOST_ID}
         data-testid="dialer-connect-host"
         className="relative w-full shrink-0 overflow-hidden transition-[height,min-height] duration-300 ease-out"
-        style={liveOpen
+        style={dockVisible
           ? { height: 'min(42vh, 680px)', minHeight: 240 }
           : { height: 0, minHeight: 0 }}
       />
@@ -212,7 +227,7 @@ function FunctionStrip({
           key={f.id}
           type="button"
           onClick={() => onPick?.(f.id)}
-          className="text-[8px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-border-subtle text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-500"
+          className="text-[8px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-border-subtle text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-500"
         >
           {f.label}
         </button>
@@ -232,6 +247,63 @@ function ErrorBar({ message, onRetry }: { message: string; onRetry: () => void }
 
 type AddToast = (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 
+/** Gold section header — the ONLY place gold appears (routed via --panel-header-color). */
+function SectionHeader({ children, right }: { children: ReactNode; right?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>{children}</div>
+      {right}
+    </div>
+  );
+}
+
+function Card({ id, children, className = '' }: { id?: string; children: ReactNode; className?: string }) {
+  return (
+    <section id={id} className={`bg-surface-raised border border-border-subtle p-3 space-y-2 ${className}`}>
+      {children}
+    </section>
+  );
+}
+
+const FIELD = 'w-full bg-surface-sunken border border-border-subtle px-2 py-1 text-[11px] text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-accent-silver-500/70';
+const BTN = 'text-[9px] font-semibold uppercase tracking-wide border border-border-subtle py-1.5 px-2 text-rmpg-200 hover:text-rmpg-50 hover:bg-surface-hover hover:border-rmpg-500 flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
+
+type Sev = 'ok' | 'critical' | 'warn';
+function sevStyle(sev: Sev, active = true) {
+  if (!active) return undefined;
+  return {
+    color: `var(--sev-${sev})`,
+    background: `rgb(var(--sev-${sev}-rgb) / 0.16)`,
+    borderColor: `rgb(var(--sev-${sev}-rgb) / 0.45)`,
+  };
+}
+
+/** Whether a recording has been COPIED into RMPG Flex (encrypted R2) or is still only a remote link. */
+function ArchiveChip({ row }: { row: { recording_r2_key?: string | null; recording_source_url?: string | null } }) {
+  if (row.recording_r2_key) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-wide text-accent-silver-400" title="Recording copied into RMPG Flex encrypted storage">
+        <ShieldCheck className="w-2.5 h-2.5" /> Archived
+      </span>
+    );
+  }
+  if (row.recording_source_url) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-wide text-fg-muted" title="Recording still only on dialer.rmpgutah.us — copy to RMPG Flex is pending">
+        <CloudOff className="w-2.5 h-2.5" /> Copy pending
+      </span>
+    );
+  }
+  return null;
+}
+
+const KEYPAD: ReadonlyArray<{ d: string; sub: string }> = [
+  { d: '1', sub: '' }, { d: '2', sub: 'ABC' }, { d: '3', sub: 'DEF' },
+  { d: '4', sub: 'GHI' }, { d: '5', sub: 'JKL' }, { d: '6', sub: 'MNO' },
+  { d: '7', sub: 'PQRS' }, { d: '8', sub: 'TUV' }, { d: '9', sub: 'WXYZ' },
+  { d: '*', sub: '' }, { d: '0', sub: '+' }, { d: '#', sub: '' },
+];
+
 function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: AddToast }) {
   const navigate = useNavigate();
   const [digits, setDigits] = useState('');
@@ -241,12 +313,16 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
   const [speed, setSpeed] = useState<SpeedDial[]>([]);
   const [newLabel, setNewLabel] = useState('');
   const [newNum, setNewNum] = useState('');
-  const [lookup, setLookup] = useState<LookupHit[]>([]);
+  const [lookup, setLookup] = useState<LookupHit[] | null>(null);
   const [cfsId, setCfsId] = useState('');
   const [notes, setNotes] = useState('');
   const [disposition, setDisposition] = useState('completed');
   const [callbackAt, setCallbackAt] = useState('');
+  const [dtmfMode, setDtmfMode] = useState(false);
   const [dtmfLog, setDtmfLog] = useState('');
+  const [muted, setMuted] = useState(false);
+  const [held, setHeld] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -264,6 +340,8 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
   }, []);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
+  const target = normalizeDialTarget(digits);
+
   const place = (raw: string) => {
     const to = normalizeDialTarget(raw);
     if (!to) { addToast('Enter a valid number', 'error'); return; }
@@ -271,23 +349,54 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
     addToast(`Dialing ${displayPhone(to)}`, 'success');
   };
 
+  const send = (payload: Record<string, unknown>) => postToDialer({ source: 'rmpg-flex', ...payload });
+
+  const pressKey = (d: string) => {
+    if (dtmfMode) {
+      send({ type: 'dtmf', digit: d });
+      setDtmfLog((p) => p + d);
+    } else {
+      setDigits((p) => p + d);
+    }
+  };
+
   const lookupNumber = async (raw: string) => {
     const to = normalizeDialTarget(raw);
-    if (!to) return;
+    if (!to) { addToast('Enter a number to look up', 'warning'); return; }
     const res = await apiFetch<{ data: LookupHit[] }>(`/dialer-connect/lookup?number=${encodeURIComponent(to)}`);
     setLookup(res.data || []);
-    if (!(res.data || []).length) addToast('No RMS person match', 'info');
   };
 
   const saveSpeed = async () => {
+    if (!newLabel.trim() || !normalizeDialTarget(newNum)) { addToast('Label and a valid number are required', 'warning'); return; }
     await apiFetch('/dialer-connect/speed-dials', {
-      method: 'POST', body: JSON.stringify({ label: newLabel, number: newNum }),
+      method: 'POST', body: JSON.stringify({ label: newLabel.trim(), number: normalizeDialTarget(newNum) }),
     });
     setNewLabel(''); setNewNum('');
     await load();
   };
 
-  const pad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+  const logCall = async () => {
+    try {
+      const created = await apiFetch<{ data: DialerCall }>('/dialer-connect/calls', {
+        method: 'POST',
+        body: JSON.stringify({ direction: 'outbound', to: target, status: 'completed' }),
+      });
+      if (!created.data?.id) throw new Error('Call was not created');
+      const patched = await apiFetch<{ data: DialerCall }>(`/dialer-connect/calls/${created.data.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          callback_at: callbackAt || undefined,
+          notes, disposition,
+          call_id: cfsId ? Number(cfsId) : undefined,
+        }),
+      });
+      addToast('Call logged', 'success');
+      openDialerCallRecordPdf({ record: callToPdf(patched.data || created.data), exportedBy });
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to log call', 'error');
+    }
+  };
 
   const jump = (id: string) => {
     const map: Record<string, string> = {
@@ -300,161 +409,217 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
     document.getElementById(map[id] || 'dc-keypad')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const presenceDot = (status: string) =>
+    status === 'available' ? 'var(--sev-ok)' : status === 'dnd' || status === 'offline' ? 'var(--sev-critical)' : 'var(--sev-warn)';
+
   return (
     <div className="h-full overflow-y-auto scrollbar-dark">
       <FunctionStrip items={DIALER_FUNCTIONS} onPick={jump} />
       {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
-      <div className="p-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div id="dc-keypad" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
-          <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>Keypad</div>
-          <input
-            value={digits}
-            onChange={(e) => setDigits(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); place(digits); } }}
-            className="w-full bg-surface-sunken border border-border-subtle px-2 py-1.5 font-mono text-rmpg-100 text-sm"
-            aria-label="Dial number"
-          />
-          <div className="grid grid-cols-3 gap-1">
-            {pad.map((d) => (
+      <div className="p-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 items-start">
+
+        {/* ---------------- SOFTPHONE ---------------- */}
+        <Card id="dc-keypad">
+          <SectionHeader
+            right={(
+              <button
+                type="button"
+                onClick={() => setDtmfMode((v) => !v)}
+                aria-pressed={dtmfMode}
+                className={`${BTN} py-0.5`}
+                style={sevStyle('warn', dtmfMode)}
+                title="Toggle keypad between dialing a number and sending in-call DTMF tones"
+              >
+                <Hash className="w-3 h-3" /> {dtmfMode ? 'DTMF mode' : 'Dial mode'}
+              </button>
+            )}
+          >Softphone</SectionHeader>
+
+          <div className="bg-surface-sunken border border-border-subtle px-3 py-2">
+            <div className="text-[9px] uppercase tracking-widest text-fg-muted flex items-center justify-between">
+              <span>{dtmfMode ? 'Sending tones' : 'Number'}</span>
+              {target && !dtmfMode && <span className="font-mono normal-case tracking-normal">{target}</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                value={digits}
+                onChange={(e) => setDigits(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); place(digits); } }}
+                placeholder="Enter number"
+                inputMode="tel"
+                className="flex-1 min-w-0 bg-transparent border-0 p-0 font-mono text-xl text-rmpg-50 placeholder-fg-muted focus:outline-none"
+                aria-label="Dial number"
+              />
+              <button type="button" aria-label="Backspace" className="p-1 text-fg-secondary hover:text-rmpg-100 disabled:opacity-30" disabled={!digits} onClick={() => setDigits((p) => p.slice(0, -1))}>
+                <Delete className="w-4 h-4" />
+              </button>
+              <button type="button" aria-label="Clear number" className="text-[9px] uppercase text-fg-muted hover:text-rmpg-100 disabled:opacity-30" disabled={!digits} onClick={() => setDigits('')}>
+                Clear
+              </button>
+            </div>
+            {digits && !dtmfMode && (
+              <div className="text-[11px] font-mono text-fg-secondary">{displayPhone(target)}</div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            {KEYPAD.map(({ d, sub }) => (
               <button
                 key={d}
                 type="button"
-                className="py-2 bg-surface-base border border-border-subtle text-rmpg-100 font-mono text-sm hover:bg-surface-raised"
-                onClick={() => setDigits((p) => p + d)}
-              >{d}</button>
+                aria-label={`Key ${d}`}
+                className="h-11 bg-surface-base border border-border-subtle text-rmpg-50 hover:bg-surface-hover hover:border-rmpg-500 active:bg-surface-overlay flex flex-col items-center justify-center leading-none"
+                onClick={() => pressKey(d)}
+              >
+                <span className="font-mono text-base">{d}</span>
+                <span className="text-[7px] tracking-[0.2em] text-fg-muted h-2">{sub}</span>
+              </button>
             ))}
           </div>
-          <div className="flex gap-1">
-            <button type="button" onClick={() => place(digits)} className="flex-1 py-1.5 text-[10px] font-bold uppercase border text-[color:var(--sev-ok)]" style={{ background: 'color-mix(in srgb, var(--sev-ok) 20%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-ok) 40%, transparent)' }}>Call</button>
-            <button type="button" onClick={() => setDigits((p) => p.slice(0, -1))} className="px-2 text-[10px] border border-border-subtle text-rmpg-400">⌫</button>
-            <button type="button" onClick={() => openDialerWindow()} className="px-2 text-[10px] border border-border-subtle text-rmpg-300">Open</button>
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300 flex items-center justify-center gap-1" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'hangup' })}>
-              <PhoneOff className="w-3 h-3" /> Hang up
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <button type="button" onClick={() => place(digits)} className={`${BTN} py-2 text-[10px] font-bold`} style={sevStyle('ok')}>
+              <PhoneCall className="w-3.5 h-3.5" /> Call
             </button>
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300 flex items-center justify-center gap-1" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'mute' })}>
-              <MicOff className="w-3 h-3" /> Mute
+            <button type="button" onClick={() => { send({ type: 'hangup' }); setMuted(false); setHeld(false); setRecording(false); }} className={`${BTN} py-2 text-[10px] font-bold`} style={sevStyle('critical')}>
+              <PhoneOff className="w-3.5 h-3.5" /> Hang up
             </button>
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>In-call DTMF</div>
-          <div className="flex flex-wrap gap-1">
-            {pad.map((d) => (
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <button type="button" aria-pressed={muted} onClick={() => { send({ type: muted ? 'unmute' : 'mute' }); setMuted((v) => !v); }} className={BTN} style={sevStyle('warn', muted)}>
+              <MicOff className="w-3 h-3" /> {muted ? 'Unmute' : 'Mute'}
+            </button>
+            <button type="button" aria-pressed={held} onClick={() => { send({ type: held ? 'resume' : 'hold' }); setHeld((v) => !v); }} className={BTN} style={sevStyle('warn', held)}>
+              <PauseIcon className="w-3 h-3" /> {held ? 'Resume' : 'Hold'}
+            </button>
+            <button type="button" aria-pressed={recording} onClick={() => { send({ type: 'recording', action: recording ? 'stop' : 'start' }); setRecording((v) => !v); }} className={BTN} style={sevStyle('critical', recording)}>
+              <Disc className="w-3 h-3" /> {recording ? 'Stop rec' : 'Record'}
+            </button>
+            <button type="button" disabled={!target} onClick={() => send({ type: 'transfer', to: target })} className={BTN} title="Transfer the live call to the number entered above">
+              <PhoneForwarded className="w-3 h-3" /> Transfer
+            </button>
+            <button type="button" disabled={!target} onClick={() => send({ type: 'conference', to: target })} className={BTN} title="Add the number entered above to the live call">
+              <Users className="w-3 h-3" /> Conference
+            </button>
+            <button type="button" onClick={() => openDialerWindow()} className={BTN} title="Open Dial Connect in its own window">
+              <ExternalLink className="w-3 h-3" /> Pop out
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] font-mono text-fg-muted pt-1 border-t border-border-subtle">
+            <span>Tones sent: <span className="text-fg-secondary">{dtmfLog || '—'}</span></span>
+            {dtmfLog && <button type="button" className="uppercase text-[9px] hover:text-rmpg-100" onClick={() => setDtmfLog('')}>Clear</button>}
+          </div>
+        </Card>
+
+        {/* ---------------- DIRECTORY ---------------- */}
+        <div className="space-y-3">
+          <Card id="dc-speed">
+            <SectionHeader right={<span className="text-[9px] font-mono text-fg-muted">{speed.length}</span>}>Speed dial</SectionHeader>
+            <div className="divide-y divide-border-subtle max-h-56 overflow-y-auto scrollbar-dark -mx-1">
+              {speed.map((s) => (
+                <div key={s.id} className="flex items-center gap-1 px-1 py-1 group hover:bg-surface-hover">
+                  <button type="button" className="flex-1 min-w-0 text-left" onClick={() => place(s.number)} title={`Call ${s.label}`}>
+                    <div className="text-[11px] text-rmpg-100 truncate">{s.label}</div>
+                    <div className="text-[10px] font-mono text-fg-secondary">{displayPhone(s.number)}</div>
+                  </button>
+                  <button type="button" aria-label={`Call ${s.label}`} className="p-1 text-fg-secondary hover:text-[color:var(--sev-ok)]" onClick={() => place(s.number)}><Phone className="w-3 h-3" /></button>
+                  <button type="button" aria-label={`Copy ${s.label}`} className="p-1 text-fg-secondary hover:text-rmpg-100" onClick={() => copyToClipboard(s.number).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}><Copy className="w-3 h-3" /></button>
+                  <button type="button" aria-label={`Delete ${s.label}`} className="p-1 text-fg-secondary hover:text-[color:var(--sev-critical)]" onClick={() => apiFetch(`/dialer-connect/speed-dials/${s.id}`, { method: 'DELETE' }).then(load).catch(() => addToast('Delete failed', 'error'))}><Trash2 className="w-3 h-3" /></button>
+                </div>
+              ))}
+              {speed.length === 0 && <div className="text-[10px] text-fg-muted px-1 py-2">No saved numbers yet — add one below.</div>}
+            </div>
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-1">
+              <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Label" aria-label="Speed dial label" className={FIELD} />
+              <input value={newNum} onChange={(e) => setNewNum(e.target.value)} placeholder="Number" aria-label="Speed dial number" inputMode="tel" className={FIELD} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveSpeed().catch((err) => addToast(String(err), 'error')); } }} />
+              <button type="button" onClick={() => saveSpeed().catch((e) => addToast(String(e), 'error'))} className={BTN} aria-label="Add speed dial"><Plus className="w-3 h-3" /></button>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>Caller lookup</SectionHeader>
+            <div className="flex gap-1">
+              <div className={`${FIELD} font-mono flex-1 truncate ${target ? '' : 'text-fg-muted'}`}>{target ? displayPhone(target) : 'Enter a number on the keypad'}</div>
+              <button type="button" className={BTN} disabled={!target} onClick={() => lookupNumber(digits).catch((e) => addToast(e instanceof Error ? e.message : 'Lookup failed', 'error'))}>
+                <Search className="w-3 h-3" /> RMS
+              </button>
+            </div>
+            {lookup && lookup.length === 0 && <div className="text-[10px] text-fg-muted">No RMS person match for this number.</div>}
+            {lookup && lookup.length > 0 && (
+              <div className="divide-y divide-border-subtle -mx-1">
+                {lookup.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="w-full text-left px-1 py-1 hover:bg-surface-hover"
+                    onClick={() => navigate(`/records?tab=persons&personId=${p.id}`)}
+                  >
+                    <div className="text-[11px] text-rmpg-100">{p.first_name} {p.last_name}</div>
+                    <div className="text-[10px] font-mono text-fg-secondary">{displayPhone(p.phone)} · open person record</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* ---------------- WRAP-UP + PRESENCE ---------------- */}
+        <div className="space-y-3">
+          <Card id="dc-notes">
+            <SectionHeader>Call wrap-up</SectionHeader>
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="space-y-0.5">
+                <span className="text-[9px] uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>Link CFS</span>
+                <input value={cfsId} onChange={(e) => setCfsId(e.target.value.replace(/\D/g, ''))} placeholder="CFS id" inputMode="numeric" className={FIELD} />
+              </label>
+              <label className="space-y-0.5">
+                <span className="text-[9px] uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>Disposition</span>
+                <select value={disposition} onChange={(e) => setDisposition(e.target.value)} className={FIELD}>
+                  {DISPOSITIONS.map((d) => <option key={d} value={d}>{toDisplayLabel(d)}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="block space-y-0.5">
+              <span className="text-[9px] uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>Callback</span>
+              <input type="datetime-local" value={callbackAt} onChange={(e) => setCallbackAt(e.target.value)} className={FIELD} />
+            </label>
+            <label className="block space-y-0.5">
+              <span className="text-[9px] uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>Notes</span>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Call notes" className={`${FIELD} resize-y`} />
+            </label>
+            <button type="button" className={`${BTN} w-full`} disabled={!target} title={target ? 'Archive this call in RMPG Flex and open the printable record' : 'Enter the number first'} onClick={() => { void logCall(); }}>
+              <Printer className="w-3 h-3" /> Log + print form
+            </button>
+          </Card>
+
+          <Card id="dc-presence">
+            <SectionHeader right={<span className="text-[9px] font-mono text-fg-muted">{agents.length} on shift</span>}>Agent presence</SectionHeader>
+            <div className="grid grid-cols-[auto_1fr_auto] gap-1.5">
+              <select value={presence} onChange={(e) => setPresence(e.target.value)} aria-label="My presence" className={`${FIELD} w-auto`}>
+                {PRESENCE_STATUSES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
+              </select>
+              <input value={presenceMsg} onChange={(e) => setPresenceMsg(e.target.value)} placeholder="Status message" className={FIELD} />
               <button
-                key={`dtmf-${d}`}
                 type="button"
-                className="w-7 h-7 text-[10px] font-mono border border-border-subtle text-rmpg-200"
-                onClick={() => {
-                  postToDialer({ source: 'rmpg-flex', type: 'dtmf', digit: d });
-                  setDtmfLog((p) => p + d);
-                }}
-              >{d}</button>
-            ))}
-          </div>
-          <div className="text-[10px] font-mono text-rmpg-500">Sent: {dtmfLog || '—'}</div>
-          <div className="grid grid-cols-2 gap-1 pt-1">
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'hold' })}>Hold</button>
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'resume' })}>Resume</button>
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'transfer', to: normalizeDialTarget(digits) })}>Transfer</button>
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'conference', to: normalizeDialTarget(digits) })}>Conference</button>
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'recording', action: 'start' })}>Start rec</button>
-            <button type="button" className="text-[9px] uppercase border border-border-subtle py-1 text-rmpg-300" onClick={() => postToDialer({ source: 'rmpg-flex', type: 'recording', action: 'stop' })}>Stop rec</button>
-          </div>
-        </div>
-
-        <div id="dc-speed" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
-          <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>Speed dial</div>
-          <div className="space-y-1 max-h-40 overflow-y-auto">
-            {speed.map((s) => (
-              <div key={s.id} className="flex items-center gap-1 text-[11px]">
-                <button type="button" className="flex-1 text-left text-rmpg-100 truncate" onClick={() => place(s.number)}>
-                  {s.label} <span className="text-rmpg-500 font-mono">{displayPhone(s.number)}</span>
-                </button>
-                <button type="button" aria-label={`Copy ${s.label}`} onClick={() => copyToClipboard(s.number).then((ok) => addToast(ok ? 'Copied' : 'Copy failed', ok ? 'success' : 'error'))}>
-                  <Copy className="w-3 h-3 text-rmpg-500" />
-                </button>
-                <button type="button" aria-label={`Delete ${s.label}`} onClick={() => apiFetch(`/dialer-connect/speed-dials/${s.id}`, { method: 'DELETE' }).then(load).catch(() => addToast('Delete failed', 'error'))}>
-                  <Trash2 className="w-3 h-3 text-rmpg-500" />
-                </button>
-              </div>
-            ))}
-            {speed.length === 0 && <div className="text-[10px] text-rmpg-500">No saved numbers.</div>}
-          </div>
-          <div className="flex gap-1">
-            <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Label" className="flex-1 bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
-            <input value={newNum} onChange={(e) => setNewNum(e.target.value)} placeholder="Number" className="flex-1 bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
-            <button type="button" onClick={() => saveSpeed().catch((e) => addToast(String(e), 'error'))} className="px-2 border border-border-subtle" aria-label="Add speed dial"><Plus className="w-3 h-3" /></button>
-          </div>
-          <div className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>Caller lookup</div>
-          <button type="button" className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300" onClick={() => lookupNumber(digits).catch(() => {})}>Lookup current number</button>
-          {lookup.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="block text-left text-[11px] text-rmpg-200 hover:text-rmpg-50"
-              onClick={() => navigate(`/records?tab=persons&personId=${p.id}`)}
-            >
-              {p.first_name} {p.last_name} <span className="font-mono text-rmpg-500">{displayPhone(p.phone)}</span>
-            </button>
-          ))}
-          <div id="dc-notes" className="text-[10px] font-bold uppercase tracking-widest pt-2" style={{ color: 'var(--panel-header-color)' }}>Link CFS / notes</div>
-          <input value={cfsId} onChange={(e) => setCfsId(e.target.value)} placeholder="CFS id" className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
-          <select value={disposition} onChange={(e) => setDisposition(e.target.value)} className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100">
-            {DISPOSITIONS.map((d) => <option key={d} value={d}>{toDisplayLabel(d)}</option>)}
-          </select>
-          <input type="datetime-local" value={callbackAt} onChange={(e) => setCallbackAt(e.target.value)} className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Call notes" className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
-          <button
-            type="button"
-            className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300"
-            onClick={async () => {
-              try {
-                const to = normalizeDialTarget(digits);
-                const created = await apiFetch<{ data: DialerCall }>('/dialer-connect/calls', {
-                  method: 'POST',
-                  body: JSON.stringify({ direction: 'outbound', to: to, status: 'completed' }),
-                });
-                if (created.data?.id) {
-                  const patched = await apiFetch<{ data: DialerCall }>(`/dialer-connect/calls/${created.data.id}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({
-                      callback_at: callbackAt || undefined,
-                      notes, disposition,
-                      call_id: cfsId ? Number(cfsId) : undefined,
-                    }),
-                  });
-                  addToast('Call logged', 'success');
-                  openDialerCallRecordPdf({ record: callToPdf(patched.data || created.data), exportedBy });
-                }
-              } catch (e) {
-                addToast(e instanceof Error ? e.message : 'Failed to log call', 'error');
-              }
-            }}
-          >Log + print form</button>
-        </div>
-
-        <div id="dc-presence" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
-          <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--panel-header-color)' }}>Agent presence</div>
-          <select value={presence} onChange={(e) => setPresence(e.target.value)} className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100">
-            {PRESENCE_STATUSES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
-          </select>
-          <input value={presenceMsg} onChange={(e) => setPresenceMsg(e.target.value)} placeholder="Status message" className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[11px] text-rmpg-100" />
-          <button
-            type="button"
-            className="text-[10px] uppercase border border-border-subtle px-2 py-1 text-rmpg-300"
-            onClick={() => apiFetch('/dialer-connect/presence', { method: 'PUT', body: JSON.stringify({ status: presence, message: presenceMsg }) }).then(() => { addToast('Presence updated', 'success'); return load(); }).catch(() => addToast('Failed to update presence', 'error'))}
-          >Set presence</button>
-          <div className="space-y-1 pt-2">
-            {agents.map((a) => (
-              <div key={a.user_id} className="flex items-center gap-2 text-[11px] text-rmpg-200">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: a.status === 'available' ? 'var(--sev-ok)' : a.status === 'dnd' ? 'var(--sev-critical)' : 'var(--sev-warn)' }} />
-                <span className="truncate">{a.name || `User ${a.user_id}`} · {toDisplayLabel(a.status)}</span>
-              </div>
-            ))}
-            {agents.map((a) => a.message ? (
-              <div key={`${a.user_id}-msg`} className="pl-3.5 text-[10px] text-rmpg-500">{a.message}</div>
-            ) : null)}
-          </div>
+                className={BTN}
+                onClick={() => apiFetch('/dialer-connect/presence', { method: 'PUT', body: JSON.stringify({ status: presence, message: presenceMsg }) }).then(() => { addToast('Presence updated', 'success'); return load(); }).catch(() => addToast('Failed to update presence', 'error'))}
+              >Set</button>
+            </div>
+            <div className="divide-y divide-border-subtle -mx-1">
+              {agents.map((a) => (
+                <div key={a.user_id} className="flex items-start gap-2 px-1 py-1 text-[11px] text-rmpg-200">
+                  <span className="mt-1 w-1.5 h-1.5 shrink-0" style={{ background: presenceDot(a.status) }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{a.name || `User ${a.user_id}`} <span className="text-fg-muted">· {toDisplayLabel(a.status)}</span></div>
+                    {a.message && <div className="text-[10px] text-fg-muted truncate">{a.message}</div>}
+                  </div>
+                </div>
+              ))}
+              {agents.length === 0 && <div className="text-[10px] text-fg-muted px-1 py-2">No agents have set presence.</div>}
+            </div>
+          </Card>
         </div>
       </div>
     </div>
@@ -517,11 +682,11 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
       <FunctionStrip items={VOICEMAIL_FUNCTIONS} />
       {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1.5 items-center shrink-0">
-        <Search className="w-3 h-3 text-rmpg-500" />
+        <Search className="w-3 h-3 text-fg-muted" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search transcript / number" aria-label="Search transcripts or numbers" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
-        <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={unread} onChange={(e) => setUnread(e.target.checked)} /> Unheard</label>
-        <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={starred} onChange={(e) => setStarred(e.target.checked)} /> Starred</label>
-        <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Archive</label>
+        <label className="text-[10px] text-fg-secondary flex items-center gap-1"><input type="checkbox" checked={unread} onChange={(e) => setUnread(e.target.checked)} /> Unheard</label>
+        <label className="text-[10px] text-fg-secondary flex items-center gap-1"><input type="checkbox" checked={starred} onChange={(e) => setStarred(e.target.checked)} /> Starred</label>
+        <label className="text-[10px] text-fg-secondary flex items-center gap-1"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Archive</label>
         <select value={urgency} onChange={(e) => setUrgency(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5">
           <option value="">Any urgency</option>
           <option value="normal">Normal</option>
@@ -530,17 +695,17 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
         </select>
         <button
           type="button"
-          className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300"
+          className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-fg-secondary"
           onClick={() => {
             apiFetchBlob(`/dialer-connect/voicemails/export.csv?archived=${archived ? '1' : '0'}`)
               .then((blob) => saveBlob(blob, 'dialer-voicemail.csv'))
               .catch((e) => addToast(e instanceof Error ? e.message : 'Export failed', 'error'));
           }}
         >CSV</button>
-        <button type="button" onClick={() => load()} className="ml-auto text-rmpg-400" aria-label="Refresh voicemail"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => load()} className="ml-auto text-fg-secondary" aria-label="Refresh voicemail"><RefreshCw className="w-3.5 h-3.5" /></button>
         <button
           type="button"
-          className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300 flex items-center gap-1"
+          className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-fg-secondary flex items-center gap-1"
           onClick={() => {
             if (selected.size === 0) { addToast('Select voicemails first', 'warning'); return; }
             apiFetch('/dialer-connect/voicemails/bulk-heard', { method: 'POST', body: JSON.stringify({ ids: [...selected] }) })
@@ -551,7 +716,7 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
         ><CheckCheck className="w-3 h-3" /> Bulk heard</button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-2 space-y-1">
-        {rows.length === 0 && !loadError && <div className="text-[11px] text-rmpg-500 text-center py-8">No voicemail in this filter.</div>}
+        {rows.length === 0 && !loadError && <div className="text-[11px] text-fg-muted text-center py-8">No voicemail in this filter.</div>}
         {rows.map((v) => (
           <div key={v.id} className="bg-surface-raised/40 border border-rmpg-800 px-2 py-1.5 space-y-1">
             <div className="flex items-center gap-1.5">
@@ -564,17 +729,18 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
               }} />
               <span className={`w-1.5 h-1.5 rounded-full ${v.is_read ? 'bg-rmpg-600' : ''}`} style={v.is_read ? undefined : { background: 'var(--sev-warn)' }} />
               <span className="text-[11px] font-mono text-rmpg-100">{displayPhone(v.from_number)}</span>
-              <span className="text-[10px] text-rmpg-400 truncate flex-1">{v.from_name || 'Unknown'}</span>
-              <span className="text-[8px] font-bold uppercase text-rmpg-400">{v.urgency}</span>
-              <span className="text-[9px] font-mono text-rmpg-500">{formatDuration(v.duration_seconds)}</span>
-              <span className="text-[9px] font-mono text-rmpg-600">{safeDateTimeStr(v.received_at)}</span>
+              <span className="text-[10px] text-fg-secondary truncate flex-1">{v.from_name || 'Unknown'}</span>
+              <span className="text-[8px] font-bold uppercase" style={{ color: v.urgency === 'emergency' ? 'var(--sev-critical)' : v.urgency === 'urgent' ? 'var(--sev-warn)' : undefined }}>{v.urgency}</span>
+              <ArchiveChip row={v} />
+              <span className="text-[9px] font-mono text-fg-muted">{formatDuration(v.duration_seconds)}</span>
+              <span className="text-[9px] font-mono text-fg-muted">{safeDateTimeStr(v.received_at)}</span>
             </div>
             {v.transcript && (
-              <button type="button" className={`text-left text-[10px] text-rmpg-300 pl-5 ${expanded === v.id ? '' : 'line-clamp-2'}`} onClick={() => setExpanded(expanded === v.id ? null : v.id)}>
+              <button type="button" className={`text-left text-[10px] text-fg-secondary pl-5 ${expanded === v.id ? '' : 'line-clamp-2'}`} onClick={() => setExpanded(expanded === v.id ? null : v.id)}>
                 {v.transcript}
               </button>
             )}
-            {v.notes && <div className="text-[10px] text-rmpg-500 pl-5">Note: {v.notes}</div>}
+            {v.notes && <div className="text-[10px] text-fg-muted pl-5">Note: {v.notes}</div>}
             <div className="flex flex-wrap gap-1 pl-5">
               <IconAction
                 label="Play"
@@ -682,7 +848,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
       <FunctionStrip items={CALL_HISTORY_FUNCTIONS} />
       {loadError && <ErrorBar message={loadError} onRetry={() => { void load(); }} />}
       <div className="px-3 py-1.5 border-b border-rmpg-800 flex flex-wrap gap-1.5 items-center shrink-0">
-        <Search className="w-3 h-3 text-rmpg-500" />
+        <Search className="w-3 h-3 text-fg-muted" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number, name, transcript" className="bg-surface-sunken border border-border-subtle px-1.5 py-0.5 text-[11px] text-rmpg-100 w-48" />
         <select value={direction} onChange={(e) => setDirection(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5">
           <option value="all">All directions</option>
@@ -690,15 +856,15 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
           <option value="outbound">Outbound</option>
           <option value="internal">Internal</option>
         </select>
-        <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={missed} onChange={(e) => setMissed(e.target.checked)} /> Missed</label>
-        <label className="text-[10px] text-rmpg-400 flex items-center gap-1"><input type="checkbox" checked={starredOnly} onChange={(e) => setStarredOnly(e.target.checked)} /> Starred</label>
+        <label className="text-[10px] text-fg-secondary flex items-center gap-1"><input type="checkbox" checked={missed} onChange={(e) => setMissed(e.target.checked)} /> Missed</label>
+        <label className="text-[10px] text-fg-secondary flex items-center gap-1"><input type="checkbox" checked={starredOnly} onChange={(e) => setStarredOnly(e.target.checked)} /> Starred</label>
         <input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
         <input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
-        <button type="button" onClick={() => exportCsv().catch((e) => addToast(String(e), 'error'))} className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-rmpg-300">CSV</button>
-        <button type="button" onClick={() => { void load(); }} className="ml-auto text-rmpg-400" aria-label="Refresh history"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => exportCsv().catch((e) => addToast(String(e), 'error'))} className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-fg-secondary">CSV</button>
+        <button type="button" onClick={() => { void load(); }} className="ml-auto text-fg-secondary" aria-label="Refresh history"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {summary && (
-        <div className="px-3 py-1 border-b border-rmpg-800 flex gap-3 text-[9px] font-mono text-rmpg-400 shrink-0">
+        <div className="px-3 py-1 border-b border-rmpg-800 flex gap-3 text-[9px] font-mono text-fg-secondary shrink-0">
           <span>{summary.total ?? 0} calls</span>
           <span>in {summary.inbound ?? 0}</span>
           <span>out {summary.outbound ?? 0}</span>
@@ -734,19 +900,20 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
         }}
       />
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-2 space-y-1">
-        {rows.length === 0 && !loadError && <div className="text-[11px] text-rmpg-500 text-center py-8">No Dial Connect calls in this filter.</div>}
+        {rows.length === 0 && !loadError && <div className="text-[11px] text-fg-muted text-center py-8">No Dial Connect calls in this filter.</div>}
         {rows.map((c) => (
           <div key={c.id} className="bg-surface-raised/40 border border-rmpg-800 px-2 py-1.5">
             <div className="flex items-center gap-1.5">
-              {c.direction === 'inbound' ? <PhoneIncoming className="w-3 h-3 text-rmpg-400" /> : c.direction === 'outbound' ? <PhoneOutgoing className="w-3 h-3 text-rmpg-400" /> : <PhoneMissed className="w-3 h-3 text-rmpg-400" />}
+              {c.direction === 'inbound' ? <PhoneIncoming className="w-3 h-3 text-fg-secondary" /> : c.direction === 'outbound' ? <PhoneOutgoing className="w-3 h-3 text-fg-secondary" /> : <PhoneMissed className="w-3 h-3 text-fg-secondary" />}
               <span className="text-[11px] font-mono text-rmpg-100">{displayPhone(counterparty(c))}</span>
-              <span className="text-[10px] text-rmpg-400 truncate flex-1">{c.from_name || c.to_name || c.agent_name || ''}</span>
-              <span className="text-[8px] font-bold uppercase text-rmpg-400">{c.status}</span>
-              <span className="text-[9px] font-mono text-rmpg-500">{formatDuration(c.duration_seconds)}</span>
-              <span className="text-[9px] font-mono text-rmpg-600">{safeDateTimeStr(c.started_at)}</span>
+              <span className="text-[10px] text-fg-secondary truncate flex-1">{c.from_name || c.to_name || c.agent_name || ''}</span>
+              <span className="text-[8px] font-bold uppercase" style={{ color: ['missed', 'failed', 'busy'].includes(c.status) ? 'var(--sev-warn)' : undefined }}>{c.status}</span>
+              <ArchiveChip row={c} />
+              <span className="text-[9px] font-mono text-fg-muted">{formatDuration(c.duration_seconds)}</span>
+              <span className="text-[9px] font-mono text-fg-muted">{safeDateTimeStr(c.started_at)}</span>
             </div>
             {c.transcript && (
-              <button type="button" className={`text-left text-[10px] text-rmpg-300 pl-5 mt-0.5 ${expanded === c.id ? '' : 'line-clamp-2'}`} onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
+              <button type="button" className={`text-left text-[10px] text-fg-secondary pl-5 mt-0.5 ${expanded === c.id ? '' : 'line-clamp-2'}`} onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
                 {c.transcript}
               </button>
             )}
@@ -766,7 +933,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
                 />
                 <button
                   type="button"
-                  className="text-[9px] uppercase border border-border-subtle px-1.5 text-rmpg-300"
+                  className="text-[9px] uppercase border border-border-subtle px-1.5 text-fg-secondary"
                   onClick={() => apiFetch(`/dialer-connect/calls/${c.id}`, {
                     method: 'PATCH',
                     body: JSON.stringify({
@@ -813,7 +980,7 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
 
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" title={label} aria-label={label} onClick={onClick} className="p-0.5 text-rmpg-400 hover:text-rmpg-100">
+    <button type="button" title={label} aria-label={label} onClick={onClick} className="p-0.5 text-fg-secondary hover:text-rmpg-100">
       {children}
     </button>
   );
