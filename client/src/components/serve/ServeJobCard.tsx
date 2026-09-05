@@ -889,7 +889,7 @@ export default React.memo(function ServeJobCard({
           {/* Notice of Attempt — QR scan evidence (migration 0189) */}
           {job.scans && job.scans.length > 0 && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">
+              <span className="text-[9px] font-bold text-[color:var(--field-label-color)] uppercase tracking-wider">
                 Notice Scans ({job.scans.length})
               </span>
               <div className="mt-1 space-y-1">
