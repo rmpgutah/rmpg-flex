@@ -399,6 +399,9 @@ head_sampling_rate = 1
 NODE_ENV = "production"
 PRIMARY_DOMAIN = "rmpgutah.us"
 CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,https://rmpgutahps.us,https://www.rmpgutahps.us,http://localhost:5173"
+# Frontend hostnames allowed to mint Turnstile tokens for /api/verify/schedule-request.
+# Must match the Turnstile widget's domains. Never add localhost here in prod.
+TURNSTILE_HOSTNAMES = "rmpgutahps.us,www.rmpgutahps.us"
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
