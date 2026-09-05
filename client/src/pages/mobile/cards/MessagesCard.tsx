@@ -6,6 +6,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+import { useMountedRef } from '../../../hooks/useMountedRef';
 
 // See BolosCard for why we build menus inline (useMenuActions throws without
 // ToastProvider/Router, which the bare-render tests don't mount).
@@ -46,8 +47,7 @@ export default function MessagesCard() {
   const [error, setError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   const fetchMessages = useCallback(async () => {
     setError(null);

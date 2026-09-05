@@ -3,6 +3,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch, executeInChunks, queryInChunks } from '../../utils/db';
 import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
+import { resolveTakeHome } from '../../utils/takeHome';
 import { haversineM } from '../../utils/tripTelemetry';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
@@ -138,12 +139,12 @@ gps.post('/', async (c) => {
     // not rejected — dispatchers may still want to see a suspect point.
     const lastPt = points[points.length - 1];
 
-    // Unit identity: officer → units row. Take-home officers (has_take_home = 1
-    // on the user) bypass the unit requirement and return a sentinel so the
-    // client gets unitId = null but the breadcrumbs still persist.
-    const userRow = await queryFirst<{ has_take_home: number }>(db,
-      'SELECT has_take_home FROM users WHERE id = ?', userId);
-    const isTakeHome = userRow?.has_take_home === 1;
+    // Unit identity: officer → units row. Take-home officers (a take_home
+    // fleet vehicle linked on the user) bypass the unit requirement and return
+    // a sentinel so the client gets unitId = null but the breadcrumbs still
+    // persist. Resolved best-effort: a schema gap here must never 500 the GPS
+    // write path.
+    const isTakeHome = await resolveTakeHome(db, userId).then((t) => t.hasTakeHome).catch(() => false);
 
     // NOTE: keep this critical-path SELECT to columns guaranteed present on
     // every deployed DB. on_foot (migration 0102) is OPTIONAL and only used by

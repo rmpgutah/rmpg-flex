@@ -43,6 +43,7 @@ import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import type { CustodyEntry, RecordEntityType } from '../../types';
+import { useMountedRef } from '../../hooks/useMountedRef';
 
 // ── Helpers ──────────────────────────────────────
 
@@ -399,8 +400,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   const fetchHashes = useCallback(async () => {
     try {

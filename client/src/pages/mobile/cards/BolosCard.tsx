@@ -5,6 +5,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+import { useMountedRef } from '../../../hooks/useMountedRef';
 
 // NOTE: these cards render in bare-render unit tests with no ToastProvider /
 // Router. useMenuActions() (the usual PATH-B helper) calls useToast()/useNavigate()
@@ -55,8 +56,7 @@ export default function BolosCard() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   const fetchAll = useCallback(async () => {
     setError(null);

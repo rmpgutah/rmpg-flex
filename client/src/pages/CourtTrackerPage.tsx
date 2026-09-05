@@ -38,6 +38,7 @@ import { useAuth } from '../context/AuthContext';
 import { openCourtAppearancePdf } from '../utils/courtAppearancePdf';
 import { useSlashFocus } from '../hooks/useSlashFocus';
 import { courtDocketToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
   { value: 'arraignment', label: 'Arraignment' }, { value: 'hearing', label: 'Hearing' },
@@ -120,8 +121,7 @@ export default function CourtTrackerPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
   const [filterType, setFilterType] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);

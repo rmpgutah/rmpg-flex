@@ -57,6 +57,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { renderPdfV2, downloadPdfV2 } from '../../utils/pdf/v2';
 import { tripLogSchema, type TripLogData } from '../../utils/pdf/v2/forms/tripLog';
+import { useMountedRef } from '../../hooks/useMountedRef';
 
 type ChainRow = {
   id: number;
@@ -155,8 +156,7 @@ export default function MileageAuditTab() {
   // Guard against setState on unmounted component — the refresh
   // callback does multiple async apiFetch calls; if the user switches
   // tabs or navigates between them, setState fires on a dead component.
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   // Reference data (officers, units)
   const [officers, setOfficers] = useState<Array<{ id: number; full_name: string }>>([]);

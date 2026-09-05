@@ -27,6 +27,7 @@ import DeleteRecordModal from '../components/DeleteRecordModal';
 import { isEvidenceLocked, evidenceLockReason } from '../utils/evidenceLock';
 import { parseTimestamp } from '../utils/dateUtils';
 import { bodyCamerasToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
@@ -129,8 +130,7 @@ export default function BodyCamerasPage() {
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   const fetchData = useCallback(async () => {
     try {

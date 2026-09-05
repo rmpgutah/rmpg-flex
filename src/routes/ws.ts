@@ -153,11 +153,20 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
     return new Response('Expected WebSocket', { status: 426 });
   }
 
+  // The DispatchHub DO this route bridges to is not bound in wrangler.toml
+  // (there is no `HUB` binding — only ALERT_HUB/VOICE_HUB, which speak a
+  // different protocol). Without this guard `env.HUB.idFromName` threw inside
+  // the message handler: the client's authenticate frame got no reply, its
+  // 15 s connect timeout fired, and it reconnected forever. Fail fast instead
+  // so the client falls back to polling immediately.
+  const hubBound = typeof (env as Partial<Bindings>).HUB?.idFromName === 'function';
+
   // ── Fast path: URL token (legacy or testing) ──
   const urlToken = url.searchParams.get('token');
   if (urlToken) {
     const user = await verifyToken(urlToken, env);
     if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!hubBound) return new Response('Dispatch hub unavailable', { status: 503 });
     return forwardToHub(request, env, user);
   }
 
@@ -213,6 +222,14 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
     }
 
     clearTimeout(authTimer);
+
+    if (!hubBound) {
+      try { edgeSide.send(JSON.stringify({ type: 'auth_error', message: 'Dispatch hub unavailable' })); } catch {}
+      try { edgeSide.close(1011, 'Hub unavailable'); } catch {}
+      authInFlight = false;
+      pendingFrames.length = 0;
+      return;
+    }
 
     // Open a WS to the DO, then bridge frames.
     const id = env.HUB.idFromName('global');

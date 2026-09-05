@@ -296,6 +296,91 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   }
 });
 
+// POST /dispatch/units/:id/dispose — admin/manager only.
+// The CAD board's unit-delete confirm calls this (useDispatchUnitActions.
+// handleDisposeUnit). Unlike DELETE /:id it never refuses a unit that is still
+// attached to a call: that stuck state is exactly what operators need to get
+// rid of, so the call link is force-cleared first.
+//   mode 'delete' — permanently removes the row (vehicle/officer back-links cleared).
+//   mode 'retire' — soft-decommission: out_of_service, detached from call + officer.
+units.post('/:id/dispose', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
+    const unit = await queryFirst<{ id: number; call_sign: string | null; current_call_id: number | null }>(
+      db, 'SELECT id, call_sign, current_call_id FROM units WHERE id = ?', id);
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ mode?: string }>().catch(() => ({} as { mode?: string }));
+    const mode = body.mode ?? 'delete';
+    if (mode !== 'delete' && mode !== 'retire') {
+      return c.json({ error: "mode must be 'delete' or 'retire'", code: 'INVALID_MODE' }, 400);
+    }
+
+    // Force-clear the call assignment so the call stops showing a ghost unit.
+    const clearedCallId = unit.current_call_id;
+    if (clearedCallId != null) {
+      try {
+        const call = await queryFirst<{ assigned_unit_ids: string | null; unit_call_signs: string | null; status: string | null }>(
+          db, 'SELECT assigned_unit_ids, unit_call_signs, status FROM calls_for_service WHERE id = ?', clearedCallId);
+        if (call) {
+          const parse = (s: string | null): unknown[] => { try { return JSON.parse(s || '[]'); } catch { return []; } };
+          const ids = (parse(call.assigned_unit_ids) as number[]).filter((u) => u !== id);
+          const signs = (parse(call.unit_call_signs) as string[]).filter((s) => s !== unit.call_sign);
+          // A call whose only responder was just disposed would otherwise sit
+          // 'dispatched' with nobody on it and never resurface in the pending
+          // queue — drop it back to pending so a dispatcher re-assigns it.
+          const orphaned = ids.length === 0 && ['dispatched', 'enroute', 'onscene'].includes(call.status ?? '');
+          await execute(db,
+            orphaned
+              ? "UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, status = 'pending', previous_status = ?, status_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
+              : "UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime('now') WHERE id = ?",
+            ...(orphaned
+              ? [JSON.stringify(ids), JSON.stringify(signs), call.status, clearedCallId]
+              : [JSON.stringify(ids), JSON.stringify(signs), clearedCallId]));
+          const updatedCall = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', clearedCallId);
+          if (updatedCall) {
+            try { await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updatedCall }); }
+            catch { log.warn('Broadcast call_updated failed after unit dispose', { callId: clearedCallId }); }
+          }
+        }
+      } catch (callErr) {
+        log.error('dispose: call cleanup failed (non-fatal)', { unitId: id, callId: clearedCallId }, callErr as Error);
+      }
+    }
+
+    if (mode === 'retire') {
+      await execute(db,
+        `UPDATE units SET status = 'out_of_service', current_call_id = NULL, queued_call_ids = '[]',
+                officer_id = NULL, on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0,
+                last_status_change = datetime('now'), updated_at = datetime('now')
+          WHERE id = ?`, id);
+      await execute(db,
+        `UPDATE users SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ?`, id);
+      const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', id);
+      try { await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: updated }); }
+      catch { log.warn('Broadcast unit_status_changed failed after retire', { unitId: id }); }
+      return c.json({ id, mode, cleared_call_id: clearedCallId, unit: updated });
+    }
+
+    // mode === 'delete' — same unlink sequence as DELETE /:id.
+    await execute(db,
+      `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE unit_id = ? AND unassigned_at IS NULL`, id);
+    await execute(db,
+      `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ?`, id);
+    await execute(db,
+      `UPDATE users SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ?`, id);
+    await execute(db, 'DELETE FROM units WHERE id = ?', id);
+    try { await emitAlert(c.env, 'dispatch_update', { action: 'unit_deleted', unit_id: id, call_sign: unit.call_sign, call_id: clearedCallId }); }
+    catch { log.warn('Broadcast unit_deleted failed', { unitId: id }); }
+    return c.json({ id, mode, cleared_call_id: clearedCallId, message: 'Unit deleted' });
+  } catch (err) {
+    log.error('POST /:id/dispose failed', { src: 'src/routes/dispatch/units.ts' }, err);
+    return c.json({ error: 'Failed to dispose unit' }, 500);
+  }
+});
+
 // PUT /dispatch/units/:id/status — thin convenience route for status-only updates.
 // Multiple client surfaces (MdtPage, UnitStatusCard, voiceCommandExecutor,
 // cadCommandParser) call this path rather than the general PUT /:id.
@@ -314,7 +399,10 @@ units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'man
     }
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
-    const VALID_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    // Must match the units.status CHECK on live D1 (baseline schema). 'on_patrol'
+    // was advertised here but no schema permits it — the UPDATE hit the CHECK
+    // and 500'd instead of 400ing.
+    const VALID_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
     if (!VALID_STATUSES.includes(body.status as string)) {
       return c.json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
     }
@@ -346,13 +434,13 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     const db = getDb(c.env);
     const { unit_ids, status } = await c.req.json<{ unit_ids: number[]; status: string }>();
     if (!Array.isArray(unit_ids) || !unit_ids.length) return c.json({ error: 'unit_ids array required' }, 400);
-    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
     if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
 
     // Disengaged statuses must clear current_call_id and remove the unit
     // from the call's assigned_unit_ids — otherwise the board shows ghost
     // assignments and those calls never release for queue promotion.
-    const DISENGAGING = new Set(['available', 'off_duty', 'out_of_service', 'on_patrol']);
+    const DISENGAGING = new Set(['available', 'off_duty', 'out_of_service']);
     const isDisengaging = DISENGAGING.has(status);
 
     let updated = 0;
@@ -394,6 +482,10 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
             userId, unitId, JSON.stringify({ status, unit_id: unitId }));
         }
       }
+    }
+    if (updated > 0) {
+      try { await emitAlert(c.env, 'dispatch_update', { action: 'units_batch_status_changed', unit_ids, status, updated }); }
+      catch { log.warn('Broadcast units_batch_status_changed failed', { count: unit_ids.length, status }); }
     }
     return c.json({ updated, total: unit_ids.length });
   } catch (err) {

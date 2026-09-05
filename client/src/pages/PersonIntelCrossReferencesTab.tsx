@@ -12,6 +12,7 @@ import { useToast } from '../components/ToastProvider';
 import { toDisplayLabel } from '../utils/formatters';
 import { copyToClipboard } from '../utils/clipboard';
 import { personIntelXrefsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 interface CrossRef {
   id: number;
@@ -76,8 +77,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
   const [refreshing, setRefreshing] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ method: string; evidence: string }>({ method: 'dob', evidence: '' });
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   const load = useCallback(async () => {
     setLoadError(false);

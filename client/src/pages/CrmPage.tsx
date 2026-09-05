@@ -64,6 +64,7 @@ import type {
 } from '../types';
 import { crmAccountsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import { useSlashFocus } from '../hooks/useSlashFocus';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl' | 'deepresearch';
 
@@ -168,8 +169,7 @@ export default function CrmPage() {
   const { user } = useAuth();
   const isIntelUser = INTEL_ROLES.has(user?.role ?? '');
   const clientSearchRef = useRef<HTMLInputElement>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
   useSlashFocus(clientSearchRef);
   // Per-user localStorage key — the prior global 'crm_active_section' key
   // leaked the previous operator's last-viewed tab to the next person who

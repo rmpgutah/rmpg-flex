@@ -13,6 +13,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatCostAbbrev, toDisplayLabel } from '../../../utils/formatters';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 import { chartSeriesColors } from '../../../utils/chartPalette';
+import { useMountedRef } from '../../../hooks/useMountedRef';
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
@@ -187,8 +188,7 @@ function InfoTooltip({ text }: { text: string }) {
 
 export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }: Props) {
   useEffect(() => { document.title = 'Fleet - Analytics \u2014 RMPG Flex'; }, []);
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   const [period, setPeriod] = useState('90d');
 

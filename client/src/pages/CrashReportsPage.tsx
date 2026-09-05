@@ -76,7 +76,10 @@ export default function CrashReportsPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(true);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+  useEffect(() => {
+    mountedRef.current = true; // re-arm: StrictMode runs cleanup then remounts
+    return () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, []);
 
   // ── Wizard state ──
   const [wizardOpen, setWizardOpen] = useState(false);

@@ -1312,8 +1312,10 @@ export default function DispatchPage() {
     apiFetch<any[]>('/admin/call-templates')
       .then((data) => { if (!cancelled) setTemplates((data || []).filter((t: any) => t.is_active !== 0)); })
       .catch(() => { /* silent — template dropdown just stays empty */ });
-    // Fetch disposition codes from admin config
-    apiFetch('/admin/config').then((cfg: any) => {
+    // Fetch admin-configured disposition codes. Read from the dispatch-scoped
+    // endpoint, not /admin/config — that one is admin/manager/supervisor-only,
+    // so dispatchers and officers 403'd and never saw custom codes.
+    apiFetch('/dispatch/disposition-codes').then((cfg: any) => {
       if (cancelled) return;
       const disps = (cfg.dispositions || [])
         .filter((d: any) => d.is_active)

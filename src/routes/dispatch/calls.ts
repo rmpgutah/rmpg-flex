@@ -1988,6 +1988,10 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     } catch (err) { log.error('[dispatch] premise auto-push failed', { callId: id, unit_id }, err as Error); }
 
     const updatedCall = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (updatedCall) {
+      try { await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updatedCall }); }
+      catch { log.warn('Broadcast call_updated failed after assign-unit', { callId: id, unitId: unit_id }); }
+    }
     return c.json({ ...(updatedCall ?? {}), message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
   } catch (err) {
     log.error('POST /:id/assign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Assign failed' }, 500); }
@@ -2117,6 +2121,10 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
     // (handleMultiUnitDispatch) feeds this straight into mapDbCall() and splices
     // it into dispatch state — a bare message produced a blank-id corrupted call.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (updated) {
+      try { await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated }); }
+      catch { log.warn('Broadcast call_updated failed after multi-unit dispatch', { callId: id }); }
+    }
     return c.json(updated);
   } catch (err) {
     log.error('POST /:id/dispatch failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Dispatch failed' }, 500); }
