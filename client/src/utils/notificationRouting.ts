@@ -44,6 +44,8 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
   case_task_nudge: '/tasks',
   task_nudge: '/tasks',
   serve_nudge: '/serve',
+  serve_qr_scan: '/serve',
+  serve_schedule_request: '/serve',
   email_rule: '/communications?tab=messages',
   intel_product: '/intel/reports',
   escalation: '/notifications',
