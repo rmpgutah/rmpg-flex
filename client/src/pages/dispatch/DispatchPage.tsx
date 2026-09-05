@@ -3773,7 +3773,7 @@ export default function DispatchPage() {
         {duplicateWarning && (
           <div
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] flex items-start gap-2 px-3 py-2 max-w-sm w-[90%] text-[11px] font-bold"
-            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgb(0 0 0 / 0.5)' }}
             role="alert"
           >
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />

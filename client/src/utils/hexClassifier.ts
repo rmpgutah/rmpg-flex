@@ -367,6 +367,46 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // stored to the API. The input type="color" value attribute requires a 6-digit hex
   // string — CSS variables or named colors are not valid there.
   firecrawlColorPicker: /(^|\/)FirecrawlTab\.(tsx)$/,
+  // Mapbox paint modules not yet covered by the mapboxPaint rule:
+  // mapboxOptimizationLayer: route-color palette array feeding addLayer line-color paint.
+  // mapCadInk: named export constants (MAP_CAD_INK, MAP_CAD_WARN, …) for Mapbox CAD paint.
+  // useBeatCoverage: covered/undermanned/uncovered status colors for Mapbox fill paint.
+  // CSS var() cannot resolve in Mapbox paint expressions; these layers silently blank.
+  mapboxRemainingPaintModules: /(^|\/)(mapboxOptimizationLayer|mapCadInk|useBeatCoverage)\.(ts)$/,
+  // Step5SignSubmit renders a signature capture canvas. The `backgroundColor: '#ffffff'` is the
+  // required document-white canvas background for the signature output — it must be literal white
+  // for the canvas to render the signature correctly regardless of the app theme.
+  signatureDocumentCanvas: /(^|\/)Step5SignSubmit\.(tsx)$/,
+  // Desktop screen saver surfaces — always-dark tactical display (runs on a full-screen pure-black
+  // canvas set in DesktopScreenSaver.tsx). NVG night-vision reds (#ef4444, #dc2626), P1-Emergency
+  // severity red, and battery-stealth slate (#64748b) are intentionally pinned to the night palette
+  // (same rationale as HudInstruments / NavSettingsPanel). Migrating them would make the screen
+  // saver fight the display environment. DesktopScreenSaverModes is excluded together because all
+  // its hex lives on that same always-dark surface.
+  desktopScreenSaverTactical: /(^|\/)DesktopScreenSaver(Modes)?\.(tsx)$/,
+  // Desktop diagnostic display panels — always-dark surfaces (#0f172a, #0b1329, #090d16) showing
+  // fixed data-display indicator colors (sky-400 for connectivity, amber for IP highlights, emerald
+  // for OK/yes states). Same tactical-dark rationale as DashCamVideoPlayer: re-theming these would
+  // make diagnostic readouts fight the always-dark UI environment.
+  // DesktopEmergencyAccessModal is excluded for the same reason: its audit-log terminal uses green
+  // (#10b981) as a fixed diagnostic-terminal color on a near-black backdrop, not theme chrome.
+  desktopDiagnosticDisplays: /(^|\/)(Desktop500FeaturesBoard|DesktopHardwareTelemetryPanel|DesktopEmergencyAccessModal)\.(tsx)$/,
+  // NewCallModal uses border-[var(--spm-border,#334155)] — the hex is a CSS-var fallback inside a
+  // Tailwind arbitrary-value expression, already correctly using the CSS variable system.
+  // AssignmentProposalModal uses var(--brand-blue,#1d4ed8) — same pattern, already var-backed.
+  // DialerPanel has rgba(0,0,0,0.45) inside a Tailwind shadow utility — drop shadows are always black
+  // and the opacity is the only meaningful value; CSS var() adds no semantic benefit here.
+  // FileAttachments uses rgba(0,0,0,…) for lightbox gradient scrims and fullscreen overlay
+  // backgrounds — black overlay scrims are always correct regardless of theme.
+  // useIncidentHeatmap has rgba(0,0,0,0) as a Mapbox heatmap color stop (paint context).
+  cssVarFallbacksAndOverlayScrims: /(^|\/)(NewCallModal|AssignmentProposalModal|DialerPanel|FileAttachments|useIncidentHeatmap)\.(tsx?)$/,
+  // FeatureInspectorPanel has a single `color: '#0a1422'` on a button whose background is
+  // `var(--brand-gold)` — which renders as silver in the blue-silver theme, as #d4a017 gold in the
+  // night theme, and as #936c0a darker gold in the light theme. The dark-navy text is load-bearing
+  // contrast: no single CSS surface token stays dark across all four theme variants (in the light
+  // theme, --surface-sunken is #d6d3c8, which would fail contrast on #936c0a). Migrating this
+  // single literal to a theme variable would regress accessibility in the light theme.
+  brandGoldButtonContrastText: /(^|\/)FeatureInspectorPanel\.(tsx)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {
