@@ -19,6 +19,7 @@ import { useToast } from '../components/ToastProvider';
 import GeoDataMapView from '../components/GeoDataMapView';
 import { downloadTextFile, geoLayersToCsv } from '../utils/rmsListExport';
 import { useSlashFocus } from '../hooks/useSlashFocus';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -283,10 +284,9 @@ export default function GeoDataViewerPage() {
   const [columnFilter, setColumnFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'table' | 'map'>('table');
 
-  const mountedRef = useRef(true);
+  const mountedRef = useMountedRef();
   const searchInputRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchInputRef);
-  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // ── Load layer ──────────────────────────────────────────
 

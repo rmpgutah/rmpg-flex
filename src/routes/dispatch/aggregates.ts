@@ -5,6 +5,8 @@ import { log } from '../../utils/logger';
 import { denverDateExpr, denverNowDateExpr, denverOffsetHours } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
+import { mergeDispositions, type DispositionConfigRow } from '../../utils/dispositionConfig';
+import { requireRole } from '../../middleware/auth';
 
 // Same day-boundary shift used elsewhere (reports.ts, admin.ts, dispatch/
 // units.ts) via the shared denverDateExpr/denverNowDateExpr helpers in
@@ -76,6 +78,25 @@ aggregates.get('/', async (c) => {
 });
 
 // GET /dispatch/disposition-stats
+// GET /dispatch/disposition-codes — the admin-configured disposition roster,
+// readable by every role that clears calls. /admin/config (where DispatchPage
+// used to read it) is admin/manager/supervisor-only, so dispatchers and
+// officers 403'd and silently fell back to the built-in list. Exposes ONLY the
+// merged dispositions, never the rest of system_config.
+aggregates.get('/disposition-codes', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer', 'contract_manager', 'human_resources'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<DispositionConfigRow>(
+      // Both namespaces mergeDispositions() understands: category rows and the
+      // legacy `disposition.<code>` keys.
+      db, "SELECT config_key, config_value, category FROM system_config WHERE category = 'dispositions' OR config_key LIKE 'disposition.%' ORDER BY id");
+    return c.json({ dispositions: mergeDispositions(rows) });
+  } catch (err) {
+    log.error('GET /disposition-codes failed', { src: 'src/routes/dispatch/aggregates.ts' }, err);
+    return c.json({ error: 'Failed to load disposition codes' }, 500);
+  }
+});
+
 aggregates.get('/disposition-stats', async (c) => {
   try {
     const db = getDb(c.env);

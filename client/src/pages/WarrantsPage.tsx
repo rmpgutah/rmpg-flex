@@ -49,6 +49,7 @@ import WarrantsListTab, { type WarrantsListTabHandle } from './warrants/Warrants
 // Canonical /warrants/scrapers row shape. See the note above ScraperSource's old
 // local declaration site below — do not redeclare this locally.
 import type { ScraperSource } from '../types/scrapers';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 // ============================================================
 // Types
@@ -627,8 +628,7 @@ export default function WarrantsPage() {
   const [nameTypeahead, setNameTypeahead] = useState<Person[]>([]);
   const [nameTypeaheadLoading, setNameTypeaheadLoading] = useState(false);
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   // Utah warrant detail modal (shared for unified search results)
   const [utahDetailWarrant, setUtahDetailWarrant] = useState<(UtahWarrantResult & { _source: 'utah' | 'local' | 'scraped' }) | null>(null);

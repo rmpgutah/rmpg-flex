@@ -12,6 +12,7 @@ import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../u
 import { Swords, Shield, Wrench, AlertTriangle, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { useSlashFocus } from '../hooks/useSlashFocus';
 import { specialOpsCalloutsToCsv, specialOpsEquipmentToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 interface Callout { id: number; date: string; call_type: string; location: string; resolution: string; duration_minutes: number; team_size: number; notes: string; }
 interface Equipment { id: number; equipment_type: string; serial_number: string; condition: string; assigned_to: string; notes: string; }
@@ -49,8 +50,7 @@ export default function SpecialOpsPage() {
 
   const canCreate = CAN_CREATE_ROLES.has(user?.role ?? '');
 
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   // -- Deep-link: ?op_id= or ?operation_id= ---------------------
   // Captured once at mount so navigation after hydration does not re-fire.

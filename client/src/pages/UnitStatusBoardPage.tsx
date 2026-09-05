@@ -22,21 +22,54 @@ interface DispatchUnit {
 
 type FilterMode = 'ALL' | 'AVAILABLE' | 'ON-CALL' | 'OUT';
 
+// Status vocabulary = the units.status CHECK enum the Worker enforces
+// (PUT /dispatch/units/:id/status). The board previously used its own
+// hyphenated set ('on-call', 'traffic-stop', 'out-of-service') that the API
+// never emits or accepts, so every card fell through to the default style and
+// every status change was rejected with 400.
 const STATUS_LABELS: Record<string, string> = {
   available: 'Available',
   busy: 'Busy',
-  'on-call': 'On Call',
-  'traffic-stop': 'Traffic Stop',
-  'out-of-service': 'Out of Service',
+  dispatched: 'Dispatched',
+  enroute: 'En Route',
+  onscene: 'On Scene',
+  off_duty: 'Off Duty',
+  out_of_service: 'Out of Service',
 };
 
 const CHANGEABLE_STATUSES = [
   'available',
   'busy',
-  'on-call',
-  'traffic-stop',
-  'out-of-service',
+  'dispatched',
+  'enroute',
+  'onscene',
+  'off_duty',
+  'out_of_service',
 ];
+
+const ENGAGED_STATUSES = new Set(['dispatched', 'enroute', 'onscene', 'busy']);
+
+// GET /dispatch/units returns the raw units row joined to the officer:
+// call_sign + badge_number. The board's own field names are unit_id + badge, so
+// map at the fetch boundary instead of leaking the API shape into every card.
+interface ApiUnitRow extends Partial<Omit<DispatchUnit, 'officer_name'>> {
+  id: number;
+  status: string;
+  call_sign?: string | null;
+  badge_number?: string | null;
+  officer_name?: string | null;
+}
+
+export function normalizeUnit(row: ApiUnitRow): DispatchUnit {
+  return {
+    ...row,
+    id: row.id,
+    status: row.status,
+    unit_id: row.unit_id ?? row.call_sign ?? `#${row.id}`,
+    badge: row.badge ?? row.badge_number ?? '',
+    officer_name: row.officer_name ?? 'Unassigned',
+  };
+}
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -46,11 +79,12 @@ function statusColorClass(status: string): string {
       return 'text-[color:var(--sev-ok)]';
     case 'busy':
       return 'text-[color:var(--sev-warn)]';
-    case 'on-call':
+    case 'dispatched':
+    case 'enroute':
+    case 'onscene':
       return 'text-[color:var(--sev-critical)]';
-    case 'traffic-stop':
-      return 'text-[color:var(--sev-warn)]';
-    case 'out-of-service':
+    case 'off_duty':
+    case 'out_of_service':
     default:
       return 'text-[color:var(--text-secondary)]';
   }
@@ -62,11 +96,12 @@ function statusBgClass(status: string): string {
       return 'bg-[color:var(--sev-ok)]/15 border border-[color:var(--sev-ok)]/30';
     case 'busy':
       return 'bg-[color:var(--sev-warn)]/15 border border-[color:var(--sev-warn)]/30';
-    case 'on-call':
+    case 'dispatched':
+    case 'enroute':
+    case 'onscene':
       return 'bg-[color:var(--sev-critical)]/15 border border-[color:var(--sev-critical)]/30';
-    case 'traffic-stop':
-      return 'bg-[color:var(--sev-warn)]/10 border border-[color:var(--sev-warn)]/25';
-    case 'out-of-service':
+    case 'off_duty':
+    case 'out_of_service':
     default:
       return 'bg-[color:var(--surface-sunken)]/50 border border-[color:var(--border-subtle)]';
   }
@@ -78,11 +113,12 @@ function statusDotClass(status: string): string {
       return 'bg-[color:var(--sev-ok)]';
     case 'busy':
       return 'bg-[color:var(--sev-warn)]';
-    case 'on-call':
+    case 'dispatched':
+    case 'enroute':
+    case 'onscene':
       return 'bg-[color:var(--sev-critical)]';
-    case 'traffic-stop':
-      return 'bg-[color:var(--sev-warn)]';
-    case 'out-of-service':
+    case 'off_duty':
+    case 'out_of_service':
     default:
       return 'bg-[color:var(--text-secondary)]';
   }
@@ -93,9 +129,9 @@ function matchesFilter(unit: DispatchUnit, filter: FilterMode): boolean {
     case 'AVAILABLE':
       return unit.status === 'available';
     case 'ON-CALL':
-      return unit.status === 'dispatched' || unit.status === 'enroute' || unit.status === 'onscene' || unit.status === 'busy';
+      return ENGAGED_STATUSES.has(unit.status);
     case 'OUT':
-      return unit.status === 'off_duty';
+      return unit.status === 'off_duty' || unit.status === 'out_of_service';
     default:
       return true;
   }
@@ -290,7 +326,13 @@ export default function UnitStatusBoardPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(true);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => { return () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }; }, []);
+  // Re-arm on every mount: React 18 StrictMode runs mount → cleanup → mount in
+  // dev, so a cleanup-only effect left this false forever and every fetch
+  // result was dropped — the board sat on "Loading…" with zero units.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, []);
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = isAdmin || user?.role === 'supervisor' || user?.role === 'manager';
@@ -301,9 +343,9 @@ export default function UnitStatusBoardPage() {
 
   const fetchUnits = useCallback(async () => {
     try {
-      const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
+      const data = await apiFetch<ApiUnitRow[]>('/dispatch/units');
       if (!mountedRef.current) return;
-      setUnits(Array.isArray(data) ? data : []);
+      setUnits(Array.isArray(data) ? data.map(normalizeUnit) : []);
       setLastUpdated(new Date());
       setSecondsAgo(0);
       setError(null);
@@ -336,8 +378,9 @@ export default function UnitStatusBoardPage() {
 
   const handleStatusChange = useCallback(async (unitId: number, status: string) => {
     try {
+      // The Worker route is PUT /dispatch/units/:id/status (PATCH is not mounted).
       await apiFetch(`/dispatch/units/${unitId}/status`, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify({ status }),
       });
       setToast('Status updated');
@@ -355,8 +398,8 @@ export default function UnitStatusBoardPage() {
   // ── Counts ──────────────────────────────────────────────────────────────────
 
   const countAvailable = units.filter(u => u.status === 'available').length;
-  const countOnCall = units.filter(u => u.status === 'dispatched' || u.status === 'enroute' || u.status === 'onscene' || u.status === 'busy').length;
-  const countOut = units.filter(u => u.status === 'off_duty').length;
+  const countOnCall = units.filter(u => ENGAGED_STATUSES.has(u.status)).length;
+  const countOut = units.filter(u => u.status === 'off_duty' || u.status === 'out_of_service').length;
 
   // ── Filtered list ────────────────────────────────────────────────────────────
 
