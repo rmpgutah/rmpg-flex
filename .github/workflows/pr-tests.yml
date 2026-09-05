@@ -165,7 +165,10 @@ jobs:
     # vitest.desktop.config.ts to bound peak RSS; raised timeout to 90 min so
     # the semi-serialized suite completes (Run 2 at maxForks:2+12288 MB passed
     # 23/24 files in 57 min — 14336 MB covers the one file that OOM'd).
-    timeout-minutes: 90
+    # 2026-09-05: maxForks:2+14336 MB consistently takes ~90 min wall-clock and
+    # hit the 90 min ceiling twice (runner loss at 82 min, timeout at 90 min).
+    # Raised to 120 min to give the semi-serialized suite room to complete.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
