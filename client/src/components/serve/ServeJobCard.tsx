@@ -43,6 +43,7 @@ import DiligencePanel from './DiligencePanel';
 import ServeJobComments from './ServeJobComments';
 import ServeJobOpsPanel from './ServeJobOpsPanel';
 import ServeJobQuickFields from './ServeJobQuickFields';
+import ServeScheduleRequests from './ServeScheduleRequests';
 import { parseServeJobMeta } from '../../utils/serveJobIntake';
 
 interface ServeJobCardProps {
@@ -884,6 +885,11 @@ export default React.memo(function ServeJobCard({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Subject "schedule a delivery" requests from rmpgutahps.us (migration 0279) */}
+          {job.schedule_requests && job.schedule_requests.length > 0 && (
+            <ServeScheduleRequests requests={job.schedule_requests} onResolved={onOpsSaved} />
           )}
 
           {/* Notice of Attempt — QR scan evidence (migration 0189) */}

@@ -1099,6 +1099,31 @@ sv.get('/', async (c) => {
         scansByQueue.set(s.serve_queue_id, bucket);
       }
       for (const j of jobs) j.scans = scansByQueue.get(j.id) ?? [];
+
+      // ── Attach subject schedule requests per job (migration 0279) ──
+      // Public form on rmpgutahps.us/notice-of-attempt → POST /api/verify/
+      // schedule-request. Only pending rows ride on the list payload; the
+      // detail endpoint returns the full history.
+      try {
+        const reqs = await queryInChunks<any>(
+          db,
+          ids,
+          (placeholders) => `SELECT id, job_id, job_ref, preferred_window, contact_method,
+                  contact_value, note, status, created_at
+             FROM serve_schedule_requests
+            WHERE status = 'pending' AND job_id IN (${placeholders})
+            ORDER BY created_at ASC, id ASC`,
+        );
+        const reqsByJob = new Map<number, any[]>();
+        for (const r of reqs) {
+          const bucket = reqsByJob.get(r.job_id) ?? [];
+          bucket.push(r);
+          reqsByJob.set(r.job_id, bucket);
+        }
+        for (const j of jobs) j.schedule_requests = reqsByJob.get(j.id) ?? [];
+      } catch {
+        // Table may be absent until 0279 lands on live.
+      }
     }
   }
   await attachLearnedDwellSeconds(db, jobs).catch(() => {});
@@ -1197,6 +1222,60 @@ sv.post('/', async (c) => {
 // ── Bulk status update ────────────────────────────────────────────────────────
 // PUT /serve/bulk-status { ids: number[], status: string }
 // Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
+// ── Subject schedule requests: officer accept / decline (migration 0279) ──
+// PATCH /api/serve/schedule-requests/:id  { status: 'accepted'|'declined', set_next_attempt_note?: boolean }
+// Accepting optionally stamps serve_queue.next_attempt_note so the next
+// printed Notice tells the subject we heard them. Officer-and-up only.
+sv.patch('/schedule-requests/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json().catch(() => ({})) as { status?: unknown; set_next_attempt_note?: unknown };
+  const status = body.status === 'accepted' || body.status === 'declined' ? body.status : null;
+  if (!status) return c.json({ error: "status must be 'accepted' or 'declined'" }, 400);
+
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const row = await queryFirst<{ id: number; job_id: number | null; preferred_window: string; contact_method: string; contact_value: string; status: string }>(
+    db,
+    'SELECT id, job_id, preferred_window, contact_method, contact_value, status FROM serve_schedule_requests WHERE id = ?',
+    id,
+  );
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.status !== 'pending') return c.json({ error: `Request already ${row.status}` }, 409);
+
+  await execute(
+    db,
+    `UPDATE serve_schedule_requests SET status = ?, resolved_by = ?, resolved_at = datetime('now') WHERE id = ?`,
+    status, userId, id,
+  );
+
+  if (row.job_id) {
+    const verb = status === 'accepted' ? 'accepted' : 'declined';
+    await execute(
+      db,
+      `INSERT INTO serve_job_comments (serve_queue_id, author_id, author_name, author_role, body, is_system)
+       VALUES (?, ?, 'System', 'system', ?, 1)`,
+      row.job_id, userId,
+      `Officer ${verb} the subject's ${row.preferred_window} delivery request (${row.contact_method}: ${row.contact_value}).`,
+    ).catch(() => {});
+    if (status === 'accepted' && body.set_next_attempt_note === true) {
+      const label: Record<string, string> = {
+        morning: 'in the morning (before noon)', afternoon: 'in the afternoon (12–5 PM)',
+        evening: 'in the evening (after 5 PM)', weekend: 'over the weekend',
+      };
+      await execute(
+        db,
+        `UPDATE serve_queue SET next_attempt_note = ?, updated_at = datetime('now') WHERE id = ?`,
+        `Per your request we will return ${label[row.preferred_window] ?? row.preferred_window}. We will confirm by ${row.contact_method} beforehand.`,
+        row.job_id,
+      ).catch(() => {});
+    }
+  }
+  return c.json({ ok: true, id, status });
+});
+
 sv.put('/bulk-status', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
@@ -1372,6 +1451,13 @@ sv.get('/:id', async (c) => {
        FROM notice_scans WHERE serve_queue_id = ? ORDER BY scanned_at DESC`,
     id,
   );
+  const scheduleRequests = await query(
+    db,
+    `SELECT id, job_id, job_ref, preferred_window, contact_method, contact_value, note,
+            status, resolved_by, resolved_at, created_at
+       FROM serve_schedule_requests WHERE job_id = ? ORDER BY created_at DESC`,
+    id,
+  ).catch(() => [] as Record<string, unknown>[]);
   const skipTraceRows = await query(
     db,
     `SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC`,
@@ -1386,7 +1472,7 @@ sv.get('/:id', async (c) => {
     const { addresses_found_json: _drop, ...rest } = row;
     return { ...rest, addresses_found };
   });
-  return c.json(normalizeFees({ ...row, attempts, scans, skipTraces }));
+  return c.json(normalizeFees({ ...row, attempts, scans, skipTraces, schedule_requests: scheduleRequests }));
 });
 
 // ── Serve audit trail ──────────────────────────────────────────

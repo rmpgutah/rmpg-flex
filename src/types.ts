@@ -51,6 +51,11 @@ export type Bindings = {
   FILE_ENCRYPTION_KEK_PREVIOUS?: string;
   JWT_SECRET_PREVIOUS?: string;
   CORS_ORIGINS?: string;
+  // Cloudflare Turnstile secret for the PUBLIC schedule-request form on the
+  // Notice of Attempt landing page (POST /api/verify/schedule-request).
+  // Optional — unset → { ok:false, code:'not_configured' } (200), per the
+  // optional-integration pattern. `wrangler secret put TURNSTILE_SECRET_KEY`.
+  TURNSTILE_SECRET_KEY?: string;
   PRIMARY_DOMAIN?: string;
   // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
   // falls back to the incoming request's origin so non-prod environments
