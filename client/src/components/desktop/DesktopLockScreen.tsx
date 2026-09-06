@@ -281,9 +281,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       });
       if (r?.ok) {
         setSwitchAdminPin(''); setWindowsSwitchOpen(false);
-        // Signal Electron to exit kiosk and surface the Windows desktop
-        (window as unknown as { electron?: { ipcRenderer?: { send: (ch: string) => void } } })
-          .electron?.ipcRenderer?.send('exit-kiosk');
+        (window as any).electron?.returnToWindows?.().catch(() => {});
       } else {
         setSwitchError('Invalid admin code. Administrator authorization required.');
         setSwitchAdminPin('');

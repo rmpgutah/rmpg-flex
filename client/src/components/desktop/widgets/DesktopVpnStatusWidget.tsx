@@ -36,13 +36,13 @@ export default function DesktopVpnStatusWidget() {
   });
 
   const refresh = useCallback(async () => {
-    const api = (window as { electronAPI?: { sysNetworkInterfaces?: () => Promise<NetworkInterface[]> } }).electronAPI;
-    if (!api?.sysNetworkInterfaces) {
+    const el = (window as any).electron;
+    if (!el?.getNetworkInterfaces) {
       setState({ checked: true, inElectron: false, connected: false, interfaceName: null, assignedIp: null });
       return;
     }
     try {
-      const ifaces = await api.sysNetworkInterfaces();
+      const ifaces = await el.getNetworkInterfaces();
       const result = detectVpn(ifaces);
       setState({ checked: true, inElectron: true, ...result });
     } catch {

@@ -2773,6 +2773,164 @@ guardedHandle('print:to-pdf', async (event) => {
   });
 });
 
+// ─── Print Queue Management ─────────────────────────────────
+guardedHandle('print:get-queue', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform', jobs: [] };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const { stdout } = await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PrintJob -PrinterName * -ErrorAction SilentlyContinue | Select-Object Id, PrinterName, DocumentName, UserName, JobStatus, Size, SubmittedTime | ConvertTo-Json -Compress'],
+      { timeout: 5000 }
+    );
+    const raw = stdout.trim();
+    if (!raw || raw === '') return { ok: true, jobs: [] };
+    const parsed = JSON.parse(raw);
+    const jobs = Array.isArray(parsed) ? parsed : [parsed];
+    return { ok: true, jobs };
+  } catch (err) {
+    console.error('[PRINT:GET-QUEUE]', err.message);
+    return { ok: false, reason: err.message, jobs: [] };
+  }
+});
+
+guardedHandle('print:cancel-job', async (_event, id) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `Remove-PrintJob -ID ${parseInt(id, 10)} -PrinterName * -ErrorAction Stop`],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:CANCEL-JOB]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('print:resume-job', async (_event, id) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `Resume-PrintJob -ID ${parseInt(id, 10)} -PrinterName * -ErrorAction Stop`],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:RESUME-JOB]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('print:pause-job', async (_event, id) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `Suspend-PrintJob -ID ${parseInt(id, 10)} -PrinterName * -ErrorAction Stop`],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:PAUSE-JOB]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('print:clear-completed', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        "Get-PrintJob -PrinterName * -ErrorAction SilentlyContinue | Where-Object { $_.JobStatus -match 'Printed|Completed' } | Remove-PrintJob -ErrorAction SilentlyContinue"],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:CLEAR-COMPLETED]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ─── Screen Capture ─────────────────────────────────────────
+guardedHandle('screen:capture', async (event) => {
+  try {
+    const sources = await require('electron').desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1920, height: 1080 },
+    });
+    if (!sources.length) return { ok: false, reason: 'no_sources' };
+    const dataUrl = sources[0].thumbnail.toDataURL('image/png');
+    return { ok: true, dataUrl, name: sources[0].name };
+  } catch (err) {
+    console.error('[SCREEN:CAPTURE]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('screen:save', async (_event, dataUrl, filename) => {
+  try {
+    const { dialog } = require('electron');
+    const fs = require('fs');
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.join(app.getPath('pictures'), filename || `screenshot-${Date.now()}.png`),
+      filters: [{ name: 'Images', extensions: ['png', 'jpg'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, reason: 'canceled' };
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    await fs.promises.writeFile(result.filePath, Buffer.from(base64, 'base64'));
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    console.error('[SCREEN:SAVE]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('screen:copy-to-clipboard', async (_event, dataUrl) => {
+  try {
+    const { nativeImage, clipboard } = require('electron');
+    const img = nativeImage.createFromDataURL(dataUrl);
+    clipboard.writeImage(img);
+    return { ok: true };
+  } catch (err) {
+    console.error('[SCREEN:COPY-TO-CLIPBOARD]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ─── File Download (native save dialog) ─────────────────────
+guardedHandle('fs:download-file', async (_event, url, filename) => {
+  try {
+    const { dialog, net } = require('electron');
+    const fs = require('fs');
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.join(app.getPath('downloads'), filename || 'download'),
+    });
+    if (result.canceled || !result.filePath) return { ok: false, reason: 'canceled' };
+    const response = await net.fetch(url);
+    if (!response.ok) return { ok: false, reason: `HTTP ${response.status}` };
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fs.promises.writeFile(result.filePath, buffer);
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    console.error('[FS:DOWNLOAD-FILE]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
 // ─── Recon Connect launcher ───────────────────────────────
 // Spawns the locally-installed toolkit in a detached terminal window. The
 // Python CLI lives outside Flex; we only hand off — no stdio piping, no
