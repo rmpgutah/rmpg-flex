@@ -631,7 +631,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     <div className="overflow-x-auto">
                       <table className="w-full text-[10px]">
                         <thead>
-                          <tr className="text-[9px] text-rmpg-400 font-semibold border-b border-border-subtle">
+                          <tr className="text-[9px] text-fg-muted font-semibold border-b border-border-subtle">
                             <th className="text-left py-[3px] pr-3">SOURCE</th>
                             <th className="text-left py-[3px] pr-3">NAME</th>
                             <th className="text-left py-[3px] pr-3">DOB</th>
@@ -647,7 +647,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                               : '—';
                             return (
                               <tr key={i} className="border-b border-border-subtle/50 last:border-0">
-                                <td className="py-[2px] pr-3 text-rmpg-400 whitespace-nowrap">
+                                <td className="py-[2px] pr-3 text-fg-muted whitespace-nowrap">
                                   {rec.source.replace(/_/g, ' ').toUpperCase()}
                                 </td>
                                 <td className="py-[2px] pr-3 text-text-primary">{rec.name ?? '—'}</td>
@@ -762,12 +762,12 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                           </span>
                         )}
                         {scan.browser && (
-                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-rmpg-300">
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-fg-secondary">
                             {scan.browser}{scan.browser_ver ? ` ${scan.browser_ver.split('.')[0]}` : ''}
                           </span>
                         )}
                         {scan.os_family && (
-                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-rmpg-300">
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-fg-secondary">
                             {scan.os_family}{scan.os_ver ? ` ${scan.os_ver}` : ''}
                           </span>
                         )}

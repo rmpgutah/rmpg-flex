@@ -346,6 +346,95 @@ interface SignalDetection extends Omit<SignalDetectionRow, 'properties'> {
 // Allowed signal types and property keys (no raw user strings in SQL)
 const ALLOWED_SIGNAL_TYPES: Set<string> = new Set(['wifi_ap', 'bt_classic', 'ble', 'cell_tower']);
 
+function str(v: unknown, max = 256): string | null {
+  return v != null && v !== '' ? String(v).slice(0, max) : null;
+}
+function int(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+function real(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function bool(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  if (typeof v === 'number') return v ? 1 : 0;
+  if (typeof v === 'string') return ['true', '1', 'yes'].includes(v.toLowerCase()) ? 1 : 0;
+  return null;
+}
+
+function extractTypedColumns(sigType: SignalType, p: Record<string, unknown>): (string | number | null)[] {
+  // WiFi (18)
+  const wifi = sigType === 'wifi_ap';
+  const wifiCols = [
+    wifi ? str(p.ssid) : null, wifi ? str(p.bssid) : null, wifi ? int(p.channel) : null,
+    wifi ? int(p.frequency_mhz ?? p.frequency) : null, wifi ? str(p.band) : null,
+    wifi ? str(p.security_type ?? p.security ?? p.authentication) : null,
+    wifi ? str(p.cipher_suite ?? p.cipher) : null, wifi ? str(p.auth_suite) : null,
+    wifi ? bool(p.wps_enabled ?? p.wps) : null, wifi ? bool(p.hidden) : null,
+    wifi ? str(p.vendor) : null, wifi ? str(p.network_type) : null,
+    wifi ? str(p.radio_type) : null, wifi ? real(p.max_data_rate_mbps ?? p.max_rate) : null,
+    wifi ? int(p.beacon_interval_ms ?? p.beacon_interval) : null,
+    wifi ? str(p.supported_rates) : null, wifi ? str(p.country_code, 4) : null,
+    wifi ? int(p.channel_utilization_pct ?? p.channel_utilization) : null,
+  ];
+
+  // BT Classic (12)
+  const bt = sigType === 'bt_classic';
+  const btCols = [
+    bt ? str(p.bt_name ?? p.name) : null, bt ? str(p.bt_mac ?? p.mac_address) : null,
+    bt ? str(p.bt_class_hex ?? p.class_hex) : null,
+    bt ? str(p.bt_device_category ?? p.device_category ?? p.major_class) : null,
+    bt ? str(p.bt_device_subcategory ?? p.device_subcategory ?? p.minor_class) : null,
+    (bt || sigType === 'ble') ? str(p.bt_vendor ?? p.vendor) : null,
+    bt ? bool(p.bt_connectable ?? p.connectable) : null,
+    bt ? bool(p.bt_paired ?? p.paired) : null,
+    bt ? str(p.bt_services ?? (Array.isArray(p.services) ? p.services.join(', ') : p.services)) : null,
+    bt ? str(p.bt_version ?? p.version) : null,
+    bt ? str(p.bt_lmp_version ?? p.lmp_version) : null,
+    bt ? int(p.bt_manufacturer_id ?? p.manufacturer_id) : null,
+  ];
+
+  // BLE (11)
+  const ble = sigType === 'ble';
+  const bleCols = [
+    ble ? str(p.ble_complete_local_name ?? p.complete_local_name ?? p.local_name ?? p.name) : null,
+    ble ? str(p.ble_mac_type ?? p.mac_type ?? p.address_type) : null,
+    ble ? str(p.ble_service_uuids ?? (Array.isArray(p.service_uuids) ? p.service_uuids.join(', ') : p.service_uuids)) : null,
+    ble ? int(p.ble_manufacturer_id ?? p.manufacturer_id ?? p.company_id) : null,
+    ble ? str(p.ble_manufacturer_name ?? p.manufacturer_name ?? p.manufacturer) : null,
+    ble ? str(p.ble_appearance_category ?? p.appearance_category ?? p.appearance) : null,
+    ble ? int(p.ble_advertisement_interval_ms ?? p.advertisement_interval_ms ?? p.adv_interval) : null,
+    ble ? bool(p.ble_connectable ?? p.connectable) : null,
+    ble ? str(p.ble_manufacturer_data_hex ?? p.manufacturer_data_hex ?? p.manufacturer_data) : null,
+    ble ? str(p.ble_service_data ?? (typeof p.service_data === 'object' ? JSON.stringify(p.service_data) : p.service_data)) : null,
+    ble ? int(p.ble_flags ?? p.flags) : null,
+  ];
+
+  // Cell Tower (15)
+  const cell = sigType === 'cell_tower';
+  const cellCols = [
+    cell ? int(p.cell_mcc ?? p.mcc) : null, cell ? int(p.cell_mnc ?? p.mnc) : null,
+    cell ? str(p.cell_carrier_name ?? p.carrier_name ?? p.carrier) : null,
+    cell ? str(p.cell_technology ?? p.technology ?? p.radio_type) : null,
+    cell ? str(p.cell_frequency_band ?? p.frequency_band) : null,
+    cell ? int(p.cell_arfcn ?? p.arfcn ?? p.earfcn) : null,
+    cell ? int(p.cell_pci ?? p.pci) : null, cell ? int(p.cell_lac ?? p.lac) : null,
+    cell ? int(p.cell_tac ?? p.tac) : null, cell ? int(p.cell_cell_id ?? p.cell_id ?? p.cid) : null,
+    cell ? int(p.cell_rsrp_dbm ?? p.rsrp_dbm ?? p.rsrp) : null,
+    cell ? int(p.cell_rsrq_db ?? p.rsrq_db ?? p.rsrq) : null,
+    cell ? int(p.cell_sinr_db ?? p.sinr_db ?? p.sinr) : null,
+    cell ? int(p.cell_timing_advance_m ?? p.timing_advance_m ?? p.timing_advance) : null,
+    cell ? bool(p.cell_is_serving ?? p.is_serving) : null,
+  ];
+
+  return [...wifiCols, ...btCols, ...bleCols, ...cellCols];
+}
+
 // ── POST /api/radar360/signal-scan ───────────────────────
 // Accepts a batch of signals from an Electron or mobile client.
 // Body: { scan_session_id, scanned_at, scanner_lat?, scanner_lng?,
@@ -391,6 +480,9 @@ radar360.post('/signal-scan', async (c) => {
     const firstSeen = typeof sig.first_seen_at === 'string' ? sig.first_seen_at : scannedAt;
     const lastSeen = typeof sig.last_seen_at === 'string' ? sig.last_seen_at : scannedAt;
 
+    const props = typeof sig.properties === 'object' && sig.properties ? sig.properties : {};
+    const col = extractTypedColumns(sigType as SignalType, props);
+
     try {
       await db.prepare(
         `INSERT INTO signal_detections
@@ -398,14 +490,34 @@ radar360.post('/signal-scan', async (c) => {
             rssi_dbm, signal_pct, tx_power_dbm, distance_estimate_m,
             scanner_lat, scanner_lng, scanner_device_id,
             properties, call_id, submitted_by,
-            first_seen_at, last_seen_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            first_seen_at, last_seen_at,
+            ssid, bssid, channel, frequency_mhz, band, security_type,
+            cipher_suite, auth_suite, wps_enabled, hidden, vendor,
+            network_type, radio_type, max_data_rate_mbps, beacon_interval_ms,
+            supported_rates, country_code, channel_utilization_pct,
+            bt_name, bt_mac, bt_class_hex, bt_device_category,
+            bt_device_subcategory, bt_vendor, bt_connectable, bt_paired,
+            bt_services, bt_version, bt_lmp_version, bt_manufacturer_id,
+            ble_complete_local_name, ble_mac_type, ble_service_uuids,
+            ble_manufacturer_id, ble_manufacturer_name, ble_appearance_category,
+            ble_advertisement_interval_ms, ble_connectable,
+            ble_manufacturer_data_hex, ble_service_data, ble_flags,
+            cell_mcc, cell_mnc, cell_carrier_name, cell_technology,
+            cell_frequency_band, cell_arfcn, cell_pci, cell_lac, cell_tac,
+            cell_cell_id, cell_rsrp_dbm, cell_rsrq_db, cell_sinr_db,
+            cell_timing_advance_m, cell_is_serving)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                 ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                 ?,?,?,?,?,?,?,?,?,?,?,?,
+                 ?,?,?,?,?,?,?,?,?,?,?,
+                 ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         sessionId, sigType, identifier, displayName,
         rssiDbm, signalPct, txPower, distM,
         scannerLat, scannerLng, scannerDevice,
         propStr, callId, userId,
-        firstSeen, lastSeen
+        firstSeen, lastSeen,
+        ...col
       ).run();
       inserted.push(identifier);
     } catch (err) {
@@ -467,6 +579,62 @@ radar360.get('/signals', async (c) => {
 
   log.info('[Radar360] signals query', { signals: signals.length, lat, lng, radiusMi });
   return c.json({ signals, count: signals.length, lat, lng, radiusMi });
+});
+
+// ── GET /api/radar360/signals/all ────────────────────────
+// Paginated signal list for Signal Intelligence page (no bbox filter).
+// Query params: type, limit (max 500, default 100), offset (default 0),
+//               since (ISO timestamp), search (name/identifier substring)
+
+radar360.get('/signals/all', async (c) => {
+  const typeFilter = c.req.query('type');
+  const limitParam = Math.min(parseInt(c.req.query('limit') ?? '100'), 500);
+  const offset = Math.max(parseInt(c.req.query('offset') ?? '0'), 0);
+  const since = c.req.query('since');
+  const search = c.req.query('search');
+
+  const db = getDb(c.env);
+  const conditions: string[] = [];
+  const binds: (string | number)[] = [];
+
+  if (typeFilter && ALLOWED_SIGNAL_TYPES.has(typeFilter)) {
+    conditions.push('signal_type = ?');
+    binds.push(typeFilter);
+  }
+  if (since) {
+    conditions.push('last_seen_at >= ?');
+    binds.push(since);
+  }
+  if (search) {
+    conditions.push('(display_name LIKE ? OR identifier LIKE ? OR ssid LIKE ? OR bt_name LIKE ? OR ble_complete_local_name LIKE ? OR cell_carrier_name LIKE ?)');
+    const pat = `%${search}%`;
+    binds.push(pat, pat, pat, pat, pat, pat);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = await query<SignalDetectionRow>(db,
+    `SELECT * FROM signal_detections ${where}
+     ORDER BY last_seen_at DESC
+     LIMIT ? OFFSET ?`,
+    ...binds, limitParam, offset,
+  );
+
+  const countRow = await db.prepare(
+    `SELECT COUNT(*) as total FROM signal_detections ${where}`,
+  ).bind(...binds).first<{ total: number }>();
+
+  const signals: SignalDetection[] = rows.map((r) => ({
+    ...r,
+    properties: (() => { try { return JSON.parse(r.properties); } catch { return {}; } })(),
+  }));
+
+  return c.json({
+    signals,
+    count: signals.length,
+    total: countRow?.total ?? 0,
+    offset,
+    limit: limitParam,
+  });
 });
 
 // ── GET /api/radar360/signals/:id ────────────────────────
