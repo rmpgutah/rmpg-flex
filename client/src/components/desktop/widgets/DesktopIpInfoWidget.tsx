@@ -16,17 +16,12 @@ interface IpInfo {
 }
 
 async function resolveIpInfo(): Promise<IpInfo> {
-  const api = (window as {
-    electronAPI?: {
-      sysInfo?: () => Promise<{ hostname?: string }>;
-      sysNetworkInterfaces?: () => Promise<NetworkInterface[]>;
-    };
-  }).electronAPI;
+  const el = (window as any).electron;
 
   // Hostname
   let hostname = window.location.hostname;
   try {
-    const info = await api?.sysInfo?.();
+    const info = await el?.getSystemInfo?.();
     if (info?.hostname) hostname = info.hostname;
   } catch { /* ignore */ }
 
@@ -34,9 +29,9 @@ async function resolveIpInfo(): Promise<IpInfo> {
   let primaryIp: string | null = null;
   let mac: string | null = null;
   try {
-    const ifaces = await api?.sysNetworkInterfaces?.();
+    const ifaces = await el?.getNetworkInterfaces?.();
     if (ifaces) {
-      const active = ifaces.find(i => !i.internal && i.family === 'IPv4' && i.address);
+      const active = ifaces.find((i: any) => !i.internal && i.family === 'IPv4' && i.address);
       if (active) {
         primaryIp = active.address ?? null;
         mac = active.mac ?? null;

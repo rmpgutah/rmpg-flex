@@ -2246,6 +2246,81 @@ auth.post('/recover-all', async (c) => {
   }
 });
 
+// ── POST /auth/verify-pin — lock-screen PIN verification ──────────────────
+// Used by the FlexOS lock screen (DesktopLockScreen) to unlock without a full
+// login cycle. Auth is NOT required — the lock screen calls this when the
+// session JWT may have expired during lock. Verifies against pin_hash if set,
+// otherwise falls back to badge_number as a default PIN.
+auth.post('/verify-pin', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { pin, username, require_role } = body;
+    if (!pin || !username) {
+      return c.json({ ok: false, error: 'PIN and username are required' }, 400);
+    }
+
+    const db = c.env.DB;
+    const user = await db
+      .prepare('SELECT id, username, badge_number, role, pin_hash, status FROM users WHERE username = ? LIMIT 1')
+      .bind(username)
+      .first<{ id: number; username: string; badge_number: string | null; role: string; pin_hash: string | null; status: string }>();
+
+    if (!user || user.status !== 'active') {
+      return c.json({ ok: false, error: 'Invalid credentials' });
+    }
+
+    if (require_role && user.role !== require_role && user.role !== 'admin') {
+      return c.json({ ok: false, error: 'Insufficient role' });
+    }
+
+    let verified = false;
+
+    if (user.pin_hash) {
+      verified = compareSync(String(pin), user.pin_hash);
+    } else if (user.badge_number) {
+      verified = String(pin) === String(user.badge_number);
+    }
+
+    if (!verified) {
+      await recordLoginAttempt(c, db, username, clientIp(c), false, 'pin_invalid');
+      return c.json({ ok: false, error: 'Invalid PIN' });
+    }
+
+    await recordLoginAttempt(c, db, username, clientIp(c), true, null);
+    return c.json({ ok: true, role: user.role });
+  } catch (err) {
+    log.error('POST /auth/verify-pin failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ ok: false, error: 'Verification failed' }, 500);
+  }
+});
+
+// ── POST /auth/set-pin — set a user's lock-screen PIN ─────────────────────
+// Requires auth. Users set their own PIN; admins can set anyone's.
+auth.post('/set-pin', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json();
+    const { pin, target_user_id } = body;
+    if (!pin || typeof pin !== 'string' || pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) {
+      return c.json({ ok: false, error: 'PIN must be 4-6 digits' }, 400);
+    }
+
+    const currentUser = c.get('user') as { id: number; role: string };
+    const userId = target_user_id && currentUser.role === 'admin' ? target_user_id : currentUser.id;
+
+    const db = c.env.DB;
+    const pinHash = hashSync(pin, 10);
+    await db
+      .prepare('UPDATE users SET pin_hash = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .bind(pinHash, userId)
+      .run();
+
+    return c.json({ ok: true });
+  } catch (err) {
+    log.error('POST /auth/set-pin failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ ok: false, error: 'Failed to set PIN' }, 500);
+  }
+});
+
 // ── GET /auth/users/list — public user picker for the FlexOS login screen ──
 // Returns display-safe fields only (no password hashes, no secrets).
 // Auth is intentionally NOT required — the login screen calls this before

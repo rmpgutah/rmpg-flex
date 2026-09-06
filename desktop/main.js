@@ -2820,6 +2820,164 @@ guardedHandle('print:to-pdf', async (event) => {
   });
 });
 
+// ─── Print Queue Management ─────────────────────────────────
+guardedHandle('print:get-queue', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform', jobs: [] };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const { stdout } = await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PrintJob -PrinterName * -ErrorAction SilentlyContinue | Select-Object Id, PrinterName, DocumentName, UserName, JobStatus, Size, SubmittedTime | ConvertTo-Json -Compress'],
+      { timeout: 5000 }
+    );
+    const raw = stdout.trim();
+    if (!raw || raw === '') return { ok: true, jobs: [] };
+    const parsed = JSON.parse(raw);
+    const jobs = Array.isArray(parsed) ? parsed : [parsed];
+    return { ok: true, jobs };
+  } catch (err) {
+    console.error('[PRINT:GET-QUEUE]', err.message);
+    return { ok: false, reason: err.message, jobs: [] };
+  }
+});
+
+guardedHandle('print:cancel-job', async (_event, id) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `Remove-PrintJob -ID ${parseInt(id, 10)} -PrinterName * -ErrorAction Stop`],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:CANCEL-JOB]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('print:resume-job', async (_event, id) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `Resume-PrintJob -ID ${parseInt(id, 10)} -PrinterName * -ErrorAction Stop`],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:RESUME-JOB]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('print:pause-job', async (_event, id) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `Suspend-PrintJob -ID ${parseInt(id, 10)} -PrinterName * -ErrorAction Stop`],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:PAUSE-JOB]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('print:clear-completed', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        "Get-PrintJob -PrinterName * -ErrorAction SilentlyContinue | Where-Object { $_.JobStatus -match 'Printed|Completed' } | Remove-PrintJob -ErrorAction SilentlyContinue"],
+      { timeout: 5000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[PRINT:CLEAR-COMPLETED]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ─── Screen Capture ─────────────────────────────────────────
+guardedHandle('screen:capture', async (event) => {
+  try {
+    const sources = await require('electron').desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1920, height: 1080 },
+    });
+    if (!sources.length) return { ok: false, reason: 'no_sources' };
+    const dataUrl = sources[0].thumbnail.toDataURL('image/png');
+    return { ok: true, dataUrl, name: sources[0].name };
+  } catch (err) {
+    console.error('[SCREEN:CAPTURE]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('screen:save', async (_event, dataUrl, filename) => {
+  try {
+    const { dialog } = require('electron');
+    const fs = require('fs');
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.join(app.getPath('pictures'), filename || `screenshot-${Date.now()}.png`),
+      filters: [{ name: 'Images', extensions: ['png', 'jpg'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, reason: 'canceled' };
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    await fs.promises.writeFile(result.filePath, Buffer.from(base64, 'base64'));
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    console.error('[SCREEN:SAVE]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('screen:copy-to-clipboard', async (_event, dataUrl) => {
+  try {
+    const { nativeImage, clipboard } = require('electron');
+    const img = nativeImage.createFromDataURL(dataUrl);
+    clipboard.writeImage(img);
+    return { ok: true };
+  } catch (err) {
+    console.error('[SCREEN:COPY-TO-CLIPBOARD]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ─── File Download (native save dialog) ─────────────────────
+guardedHandle('fs:download-file', async (_event, url, filename) => {
+  try {
+    const { dialog, net } = require('electron');
+    const fs = require('fs');
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.join(app.getPath('downloads'), filename || 'download'),
+    });
+    if (result.canceled || !result.filePath) return { ok: false, reason: 'canceled' };
+    const response = await net.fetch(url);
+    if (!response.ok) return { ok: false, reason: `HTTP ${response.status}` };
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fs.promises.writeFile(result.filePath, buffer);
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    console.error('[FS:DOWNLOAD-FILE]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
 // ─── Recon Connect launcher ───────────────────────────────
 // Spawns the locally-installed toolkit in a detached terminal window. The
 // Python CLI lives outside Flex; we only hand off — no stdio piping, no
@@ -4512,30 +4670,69 @@ guardedHandle('geo:ip-locate', async () => {
 }
 });
 
-// ─── Device: get capture log ──────────────────────────────────────
+// ─── Device scan log — persistent JSON store ─────────────────────────
+const SCAN_LOG_FILE = path.join(app.getPath('userData'), 'device-scan-log.json');
+
+function readScanLog() {
+  try {
+    const raw = fs.readFileSync(SCAN_LOG_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function writeScanLog(log) {
+  try {
+    fs.writeFileSync(SCAN_LOG_FILE, JSON.stringify(log, null, 2), 'utf8');
+  } catch (err) { console.error('[DEVICE:SCAN-LOG] write failed:', err.message); }
+}
+
+function appendScanLog(entry) {
+  const log = readScanLog();
+  log.push(entry);
+  if (log.length > 5000) log.splice(0, log.length - 5000);
+  writeScanLog(log);
+  return log;
+}
+
 guardedHandle('device:get-log', async () => {
-  return { ok: true, log: [], latestEntry: null };
+  const log = readScanLog();
+  return { ok: true, log, latestEntry: log.length ? log[log.length - 1] : null };
 });
 
 // ─── Device: export capture log ──────────────────────────────────
 guardedHandle('device:export-log', async () => {
-  return { ok: true };
+  const { dialog } = require('electron');
+  const log = readScanLog();
+  if (!log.length) return { ok: false, reason: 'empty_log' };
+  const { filePath } = await dialog.showSaveDialog({
+    defaultPath: `radar360-scan-log-${new Date().toISOString().slice(0,10)}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (!filePath) return { ok: false, reason: 'cancelled' };
+  fs.writeFileSync(filePath, JSON.stringify(log, null, 2), 'utf8');
+  return { ok: true, filePath };
 });
 
 // ─── Device: clear capture log ───────────────────────────────────
 guardedHandle('device:clear-log', async () => {
+  writeScanLog([]);
   return { ok: true };
 });
 
 // ─── Device: delete a log entry ──────────────────────────────────
 guardedHandle('device:delete-entry', async (_event, id) => {
-  return { ok: true };
+  const log = readScanLog();
+  const filtered = log.filter(e => e.scan_session_id !== id);
+  writeScanLog(filtered);
+  return { ok: true, removed: log.length - filtered.length };
 });
 
 // ─── Device: full RF scan ────────────────────────────────────────
 guardedHandle('device:scan-all', async () => {
   try {
-    const result = await runRfScan({});
+    const result = await runRfScan({ protocol: 'all' });
+    appendScanLog(result);
     return { ok: true, ...result };
   } catch (err) {
     return { ok: false, error: err && err.message };
@@ -4546,6 +4743,7 @@ guardedHandle('device:scan-all', async () => {
 guardedHandle('device:scan-arp', async () => {
   try {
     const result = await runRfScan({ protocol: 'arp' });
+    appendScanLog(result);
     return { ok: true, ...result };
   } catch (err) {
     return { ok: false, error: err && err.message };
@@ -4556,6 +4754,7 @@ guardedHandle('device:scan-arp', async () => {
 guardedHandle('device:scan-bt', async () => {
   try {
     const result = await runRfScan({ protocol: 'bt' });
+    appendScanLog(result);
     return { ok: true, ...result };
   } catch (err) {
     return { ok: false, error: err && err.message };
@@ -4566,6 +4765,7 @@ guardedHandle('device:scan-bt', async () => {
 guardedHandle('device:scan-sd', async () => {
   try {
     const result = await runRfScan({ protocol: 'ssdp' });
+    appendScanLog(result);
     return { ok: true, ...result };
   } catch (err) {
     return { ok: false, error: err && err.message };
@@ -4576,6 +4776,7 @@ guardedHandle('device:scan-sd', async () => {
 guardedHandle('device:scan-md', async () => {
   try {
     const result = await runRfScan({ protocol: 'mdns' });
+    appendScanLog(result);
     return { ok: true, ...result };
   } catch (err) {
     return { ok: false, error: err && err.message };
@@ -4586,6 +4787,7 @@ guardedHandle('device:scan-md', async () => {
 guardedHandle('device:scan-nb', async () => {
   try {
     const result = await runRfScan({ protocol: 'nb' });
+    appendScanLog(result);
     return { ok: true, ...result };
   } catch (err) {
     return { ok: false, error: err && err.message };
@@ -5100,19 +5302,51 @@ guardedHandle('wifi:disconnect', async () => {
   }
 });
 
-// ── System: set OS master volume ──────────────────────────────
+// ── System: set OS master volume (PowerShell on Windows, osascript on macOS) ──
 guardedHandle('system:set-volume', async (_event, level) => {
   const clamped = Math.max(0, Math.min(100, Number(level) || 0));
   try {
     if (process.platform === 'win32') {
-      // nircmd setsysvolume takes 0–65535
-      const nircmdPath = path.join(
-        process.resourcesPath || path.join(__dirname, 'vendor'),
-        'nircmd.exe'
-      );
+      const scalar = (clamped / 100).toFixed(4);
+      const ps = `
+Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+  int _0(); int _1(); int _2(); int _3(); int _4(); int _5(); int _6();
+  int SetMasterVolumeLevelScalar(float fLevel, System.Guid pguidEventContext);
+  int GetMasterVolumeLevelScalar(out float pfLevel);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice { int Activate(ref System.Guid iid, int dwClsCtx, System.IntPtr pActivationParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface); }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator { int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice); }
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
+public class Audio {
+  public static void SetVolume(float level) {
+    var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+    IMMDevice dev; enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+    var iid = typeof(IAudioEndpointVolume).GUID;
+    object o; dev.Activate(ref iid, 1, System.IntPtr.Zero, out o);
+    var vol = (IAudioEndpointVolume)o;
+    vol.SetMasterVolumeLevelScalar(level, System.Guid.Empty);
+  }
+  public static float GetVolume() {
+    var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+    IMMDevice dev; enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+    var iid = typeof(IAudioEndpointVolume).GUID;
+    object o; dev.Activate(ref iid, 1, System.IntPtr.Zero, out o);
+    var vol = (IAudioEndpointVolume)o;
+    float level; vol.GetMasterVolumeLevelScalar(out level);
+    return level;
+  }
+}
+'@
+[Audio]::SetVolume(${scalar})
+`;
       const { execFile } = require('child_process');
       const { promisify } = require('util');
-      await promisify(execFile)(nircmdPath, ['setsysvolume', String(Math.round(clamped / 100 * 65535))], { timeout: 2000 });
+      await promisify(execFile)('powershell.exe', ['-NoProfile', '-Command', ps], { timeout: 5000 });
     } else if (process.platform === 'darwin') {
       const { execFile } = require('child_process');
       const { promisify } = require('util');
@@ -5123,6 +5357,57 @@ guardedHandle('system:set-volume', async (_event, level) => {
     return { ok: true };
   } catch (err) {
     console.error('[SYSTEM:SET-VOLUME]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── System: get OS master volume ──────────────────────────────
+guardedHandle('system:get-volume', async () => {
+  try {
+    if (process.platform === 'win32') {
+      const ps = `
+Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+  int _0(); int _1(); int _2(); int _3(); int _4(); int _5(); int _6();
+  int SetMasterVolumeLevelScalar(float fLevel, System.Guid pguidEventContext);
+  int GetMasterVolumeLevelScalar(out float pfLevel);
+}
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice { int Activate(ref System.Guid iid, int dwClsCtx, System.IntPtr pActivationParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface); }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator { int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice); }
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
+public class Audio {
+  public static float GetVolume() {
+    var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+    IMMDevice dev; enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+    var iid = typeof(IAudioEndpointVolume).GUID;
+    object o; dev.Activate(ref iid, 1, System.IntPtr.Zero, out o);
+    var vol = (IAudioEndpointVolume)o;
+    float level; vol.GetMasterVolumeLevelScalar(out level);
+    return level;
+  }
+}
+'@
+[Math]::Round([Audio]::GetVolume() * 100)
+`;
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-Command', ps], { timeout: 5000 });
+      const level = parseInt(stdout.trim(), 10);
+      return { ok: true, level: isNaN(level) ? null : level };
+    } else if (process.platform === 'darwin') {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      const { stdout } = await promisify(execFile)('osascript', ['-e', 'output volume of (get volume settings)'], { timeout: 2000 });
+      const level = parseInt(stdout.trim(), 10);
+      return { ok: true, level: isNaN(level) ? null : level };
+    }
+    return { ok: false, reason: 'unsupported_platform' };
+  } catch (err) {
+    console.error('[SYSTEM:GET-VOLUME]', err.message);
     return { ok: false, reason: err.message };
   }
 });
@@ -5143,6 +5428,26 @@ guardedHandle('device:set-brightness', async (_event, level) => {
     return { ok: true };
   } catch (err) {
     console.error('[DEVICE:SET-BRIGHTNESS]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── Device: read current display brightness (Windows only — WMI) ──
+guardedHandle('device:get-brightness', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const { stdout } = await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        '(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness'],
+      { timeout: 3000 }
+    );
+    const level = parseInt(stdout.trim(), 10);
+    return { ok: true, level: isNaN(level) ? null : level };
+  } catch (err) {
+    console.error('[DEVICE:GET-BRIGHTNESS]', err.message);
     return { ok: false, reason: err.message };
   }
 });

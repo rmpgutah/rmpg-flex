@@ -281,6 +281,16 @@ contextBridge.exposeInMainWorld('electron', {
   getBattery: () => ipcRenderer.invoke('system:get-battery'),
   getNetwork: () => ipcRenderer.invoke('system:get-network'),
   setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+  getVolume:  ()      => ipcRenderer.invoke('system:get-volume'),
+  setBrightness: (level) => ipcRenderer.invoke('device:set-brightness', level),
+  getBrightness: () => ipcRenderer.invoke('device:get-brightness'),
+
+  // ─── Extended Hardware (Toughbook FZ-55) ──────────────
+  getBatteryDetail: () => ipcRenderer.invoke('sys:battery-detail'),
+  getWwanSignal: () => ipcRenderer.invoke('device:wwan-signal'),
+  getWwanCarrier: () => ipcRenderer.invoke('device:wwan-carrier'),
+  getUsbDevices: () => ipcRenderer.invoke('device:usb-devices'),
+  getFingerprintStatus: () => ipcRenderer.invoke('device:fingerprint-status'),
 
   // ─── WiFi Selector ──────────────────────────────────────
   // Full detail for the currently-connected network (IP, gateway, DNS, channel, etc.)
@@ -411,6 +421,37 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('hardware:barcode-scan', handler);
     return () => ipcRenderer.removeListener('hardware:barcode-scan', handler);
   },
+
+  // ─── RADAR360 Passive Device Capture ─────────────────────────
+  devicesGetLog:        ()   => ipcRenderer.invoke('device:get-log'),
+  devicesExportLog:     ()   => ipcRenderer.invoke('device:export-log'),
+  devicesClearLog:      ()   => ipcRenderer.invoke('device:clear-log'),
+  devicesDeleteEntry:   (id) => ipcRenderer.invoke('device:delete-entry', id),
+  devicesScanAll:       ()   => ipcRenderer.invoke('device:scan-all'),
+  devicesScanArp:       ()   => ipcRenderer.invoke('device:scan-arp'),
+  devicesScanBluetooth: ()   => ipcRenderer.invoke('device:scan-bt'),
+  devicesScanSsdp:      ()   => ipcRenderer.invoke('device:scan-sd'),
+  devicesScanMdns:      ()   => ipcRenderer.invoke('device:scan-md'),
+  devicesScanNetbios:   ()   => ipcRenderer.invoke('device:scan-nb'),
+
+  // ─── Thermal & smartcard hardware status ────────────────────
+  getThermalStatus:   () => ipcRenderer.invoke('sys:thermal-status'),
+  getSmartcardStatus: () => ipcRenderer.invoke('device:smartcard-status'),
+
+  // ─── Print Queue Management ─────────────────────────────────
+  getPrintQueue:           () => ipcRenderer.invoke('print:get-queue'),
+  cancelPrintJob:          (id) => ipcRenderer.invoke('print:cancel-job', id),
+  resumePrintJob:          (id) => ipcRenderer.invoke('print:resume-job', id),
+  pausePrintJob:           (id) => ipcRenderer.invoke('print:pause-job', id),
+  clearCompletedPrintJobs: () => ipcRenderer.invoke('print:clear-completed'),
+
+  // ─── Screen Capture ─────────────────────────────────────────
+  captureScreen:   ()                   => ipcRenderer.invoke('screen:capture'),
+  saveScreenshot:  (dataUrl, filename)  => ipcRenderer.invoke('screen:save', dataUrl, filename),
+  copyToClipboard: (dataUrl)            => ipcRenderer.invoke('screen:copy-to-clipboard', dataUrl),
+
+  // ─── File Downloads ─────────────────────────────────────────
+  downloadFile: (url, filename) => ipcRenderer.invoke('fs:download-file', url, filename),
 
   // ─── Thermal / connectivity signals ──────────────────────────
   // Fired when the Toughbook's thermal zone exceeds 185°F. No consumer

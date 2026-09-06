@@ -166,19 +166,17 @@ export default function DesktopSettingsApp({
   const [healthLastPolled, setHealthLastPolled] = useState<Date | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
 
-  const refreshDeviceHealth = useCallback(() => {
+  const refreshDeviceHealth = useCallback(async () => {
     setHealthLoading(true);
-    type ElectronAPI = {
-      sysBattery?: () => { percent: number; charging: boolean } | null;
-      sysTpmStatus?: () => { present: boolean; enabled: boolean; ready: boolean } | null;
-      sysNetworkInterfaces?: () => Array<{ name: string; ipv4?: string; status?: string }>;
-    };
-    const ea = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
-    if (ea?.sysBattery) setBatteryInfo(ea.sysBattery() ?? null);
-    if (ea?.sysTpmStatus) setTpmInfo(ea.sysTpmStatus() ?? null);
-    if (ea?.sysNetworkInterfaces) {
-      setHealthInterfaces((ea.sysNetworkInterfaces() ?? []).map((i) => ({ name: i.name, ipv4: i.ipv4 })));
-    }
+    const el = (window as any).electron;
+    try {
+      if (el?.getBatteryStatus) setBatteryInfo(await el.getBatteryStatus() ?? null);
+      if (el?.getTpmStatus) setTpmInfo(await el.getTpmStatus() ?? null);
+      if (el?.getNetworkInterfaces) {
+        const ifaces = await el.getNetworkInterfaces() ?? [];
+        setHealthInterfaces(ifaces.map((i: any) => ({ name: i.name, ipv4: i.ipv4 })));
+      }
+    } catch { /* offline-tolerant */ }
     setHealthLastPolled(new Date());
     setHealthLoading(false);
   }, []);
@@ -966,13 +964,12 @@ export default function DesktopSettingsApp({
                     const on = e.target.checked;
                     setUsbMonitoringOn(on);
                     localStorage.setItem('rmpg_usb_monitoring', on ? '1' : '0');
-                    const api = (window as { electronAPI?: { usbMonitoring?: (enabled: boolean) => void } }).electronAPI;
-                    api?.usbMonitoring?.(on);
+                    // USB monitoring toggle — no IPC handler exists yet; placeholder for future hardware integration
                   }}
                 />
                 Enable USB monitoring
               </label>
-              {!(window as { electronAPI?: unknown }).electronAPI && (
+              {!(window as any).electron?.isElectron && (
                 <p className="text-[10px] mb-1" style={{ color: 'var(--sev-warn)' }}>Requires desktop app</p>
               )}
               <div className="text-[10px] mb-1" style={{ color: 'var(--text-secondary)' }}>Whitelist (VendorID:ProductID, one per line):</div>
@@ -1173,7 +1170,7 @@ export default function DesktopSettingsApp({
               {/* Battery */}
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Battery</div>
-                {!(window as unknown as { electronAPI?: { sysBattery?: unknown } }).electronAPI?.sysBattery ? (
+                {!(window as any).electron?.getBatteryStatus ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Battery info requires the desktop app.</p>
                 ) : batteryInfo ? (
                   <div style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', gap: 12 }}>
@@ -1190,7 +1187,7 @@ export default function DesktopSettingsApp({
               {/* TPM */}
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>TPM</div>
-                {!(window as unknown as { electronAPI?: { sysTpmStatus?: unknown } }).electronAPI?.sysTpmStatus ? (
+                {!(window as any).electron?.getTpmStatus ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>TPM status requires the desktop app.</p>
                 ) : tpmInfo ? (
                   <div style={{ display: 'flex', gap: 12, fontSize: 11 }}>
@@ -1215,7 +1212,7 @@ export default function DesktopSettingsApp({
               {/* Network */}
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Network Interfaces</div>
-                {!(window as unknown as { electronAPI?: { sysNetworkInterfaces?: unknown } }).electronAPI?.sysNetworkInterfaces ? (
+                {!(window as any).electron?.getNetworkInterfaces ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Interface list requires the desktop app.</p>
                 ) : !healthInterfaces ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Press Refresh All to load.</p>
