@@ -30,8 +30,38 @@
 //   - useRadio.ts      (PTT radio channels)
 // ============================================================
 
+// Module-level shared AudioContext pool. Chrome caps hardware AudioContexts
+// at ~6; creating a new one per radio transmission (StreamPlayer.init) was
+// exhausting that cap during connectivity flapping with active radio traffic,
+// causing a hard crash (white screen). Instances now borrow from this pool
+// and return on destroy.
+let _sharedAudioCtx: AudioContext | null = null;
+let _sharedAudioCtxRefCount = 0;
+
+function acquireSharedAudioContext(): AudioContext | null {
+  try {
+    if (!_sharedAudioCtx || _sharedAudioCtx.state === 'closed') {
+      _sharedAudioCtx = new AudioContext();
+      _sharedAudioCtxRefCount = 0;
+    }
+    if (_sharedAudioCtx.state === 'suspended') {
+      _sharedAudioCtx.resume().catch(() => {});
+    }
+    _sharedAudioCtxRefCount++;
+    return _sharedAudioCtx;
+  } catch (err) {
+    console.error('[StreamPlayer] Failed to acquire AudioContext:', err);
+    return null;
+  }
+}
+
+function releaseSharedAudioContext(): void {
+  _sharedAudioCtxRefCount = Math.max(0, _sharedAudioCtxRefCount - 1);
+}
+
 export class StreamPlayer {
   private audioContext: AudioContext | null = null;
+  private ownsContext = false;
   private buffer: Uint8Array = new Uint8Array(64 * 1024); // 64KB initial
   private totalBytes = 0;
   private mimeType: string = 'audio/webm;codecs=opus';
@@ -81,15 +111,8 @@ export class StreamPlayer {
 
     if (mimeType) this.mimeType = mimeType;
 
-    try {
-      this.audioContext = new AudioContext();
-      // Resume in case it was created in a suspended state
-      if (this.audioContext.state === 'suspended') {
-        this.audioContext.resume().catch(() => {});
-      }
-    } catch (err) {
-      console.error('[StreamPlayer] Failed to create AudioContext:', err);
-    }
+    this.audioContext = acquireSharedAudioContext();
+    this.ownsContext = false;
   }
 
   /** Append a base64-encoded audio chunk to the stream */
@@ -216,17 +239,21 @@ export class StreamPlayer {
 
   /** End the stream and clean up all resources */
   destroy() {
-    // Stop all active source nodes
     for (const src of this.activeSources) {
       try { src.stop(); } catch { /* already stopped */ }
     }
     this.activeSources = [];
 
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close().catch(() => {});
+    if (this.audioContext) {
+      if (this.ownsContext && this.audioContext.state !== 'closed') {
+        this.audioContext.close().catch(() => {});
+      } else {
+        releaseSharedAudioContext();
+      }
     }
 
     this.audioContext = null;
+    this.ownsContext = false;
     this.buffer = new Uint8Array(64 * 1024);
     this.totalBytes = 0;
     this.chunkCount = 0;

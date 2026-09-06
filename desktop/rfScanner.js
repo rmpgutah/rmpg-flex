@@ -532,39 +532,210 @@ function scanBluetoothMacos() {
   });
 }
 
+// ── ARP / NDP scan (local network devices) ──────────────────────────
+
+async function scanArp() {
+  const platform = os.platform();
+  try {
+    const cmd = platform === 'win32' ? 'arp -a' : 'arp -an';
+    const { stdout } = await new Promise((resolve, reject) => {
+      exec(cmd, { timeout: 10000, encoding: 'utf8' }, (err, stdout) => {
+        if (err) reject(err); else resolve({ stdout });
+      });
+    });
+    if (!stdout) return [];
+    const results = [];
+    const lines = stdout.split(/\r?\n/);
+    for (const line of lines) {
+      const match = platform === 'win32'
+        ? line.match(/^\s*([\d.]+)\s+([\da-f:-]+)\s+(\w+)/i)
+        : line.match(/\(([\d.]+)\)\s+at\s+([\da-f:]+)/i);
+      if (!match) continue;
+      const ip = match[1];
+      const mac = match[2].toUpperCase().replace(/-/g, ':');
+      if (mac === 'FF:FF:FF:FF:FF:FF' || ip === '255.255.255.255') continue;
+      results.push({
+        signal_type: 'arp_device',
+        identifier: mac.toLowerCase(),
+        display_name: `${ip} (${lookupVendor(mac) || 'Unknown'})`,
+        rssi_dbm: null,
+        signal_pct: null,
+        tx_power_dbm: null,
+        distance_estimate_m: null,
+        properties: { ip_address: ip, mac_address: mac, vendor: lookupVendor(mac) },
+      });
+    }
+    return results;
+  } catch (err) {
+    console.warn('[rfScanner] ARP scan failed:', err && err.message);
+    return [];
+  }
+}
+
+// ── SSDP / UPnP scan ────────────────────────────────────────────────
+
+async function scanSsdp() {
+  try {
+    const dgram = require('dgram');
+    const SSDP_ADDR = '239.255.255.250';
+    const SSDP_PORT = 1900;
+    const SEARCH = 'M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n';
+    return await new Promise((resolve) => {
+      const devices = new Map();
+      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      sock.on('message', (msg, rinfo) => {
+        const text = msg.toString('utf8');
+        const loc = (text.match(/LOCATION:\s*(.+)/i) || [])[1]?.trim();
+        const server = (text.match(/SERVER:\s*(.+)/i) || [])[1]?.trim();
+        const usn = (text.match(/USN:\s*(.+)/i) || [])[1]?.trim();
+        const key = usn || `${rinfo.address}:${loc || ''}`;
+        if (!devices.has(key)) {
+          devices.set(key, {
+            signal_type: 'ssdp_device',
+            identifier: key,
+            display_name: server || loc || rinfo.address,
+            rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
+            properties: { ip_address: rinfo.address, port: rinfo.port, location: loc, server, usn },
+          });
+        }
+      });
+      sock.on('error', () => { sock.close(); resolve([]); });
+      sock.bind(() => {
+        sock.addMembership(SSDP_ADDR);
+        sock.send(Buffer.from(SEARCH), SSDP_PORT, SSDP_ADDR);
+        setTimeout(() => { sock.close(); resolve([...devices.values()]); }, 3000);
+      });
+    });
+  } catch (err) {
+    console.warn('[rfScanner] SSDP scan failed:', err && err.message);
+    return [];
+  }
+}
+
+// ── mDNS scan ────────────────────────────────────────────────────────
+
+async function scanMdns() {
+  try {
+    const dgram = require('dgram');
+    const MDNS_ADDR = '224.0.0.251';
+    const MDNS_PORT = 5353;
+    // Query for _services._dns-sd._udp.local PTR
+    const query = Buffer.from([
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x09, 0x5f, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73,
+      0x07, 0x5f, 0x64, 0x6e, 0x73, 0x2d, 0x73, 0x64,
+      0x04, 0x5f, 0x75, 0x64, 0x70,
+      0x05, 0x6c, 0x6f, 0x63, 0x61, 0x6c,
+      0x00, 0x00, 0x0c, 0x00, 0x01
+    ]);
+    return await new Promise((resolve) => {
+      const devices = new Map();
+      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      sock.on('message', (_msg, rinfo) => {
+        const key = rinfo.address;
+        if (!devices.has(key)) {
+          devices.set(key, {
+            signal_type: 'mdns_device',
+            identifier: key,
+            display_name: `mDNS responder at ${rinfo.address}`,
+            rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
+            properties: { ip_address: rinfo.address, port: rinfo.port },
+          });
+        }
+      });
+      sock.on('error', () => { sock.close(); resolve([]); });
+      sock.bind(() => {
+        try { sock.addMembership(MDNS_ADDR); } catch { /* already a member */ }
+        sock.send(query, MDNS_PORT, MDNS_ADDR);
+        setTimeout(() => { sock.close(); resolve([...devices.values()]); }, 3000);
+      });
+    });
+  } catch (err) {
+    console.warn('[rfScanner] mDNS scan failed:', err && err.message);
+    return [];
+  }
+}
+
+// ── NetBIOS scan ─────────────────────────────────────────────────────
+
+async function scanNetbios() {
+  try {
+    if (os.platform() !== 'win32') return [];
+    const { stdout } = await new Promise((resolve, reject) => {
+      exec('nbtstat -n', { timeout: 10000, encoding: 'utf8' }, (err, stdout) => {
+        if (err) reject(err); else resolve({ stdout });
+      });
+    });
+    if (!stdout) return [];
+    const results = [];
+    const lines = stdout.split(/\r?\n/);
+    for (const line of lines) {
+      const match = line.match(/^\s*(\S+)\s+<([0-9A-Fa-f]{2})>\s+(\w+)/);
+      if (!match) continue;
+      const name = match[1].trim();
+      const suffix = match[2];
+      const type = match[3];
+      results.push({
+        signal_type: 'netbios_device',
+        identifier: `nb-${name}-${suffix}`,
+        display_name: `${name} <${suffix}> [${type}]`,
+        rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
+        properties: { netbios_name: name, suffix, registration_type: type },
+      });
+    }
+    return results;
+  } catch (err) {
+    console.warn('[rfScanner] NetBIOS scan failed:', err && err.message);
+    return [];
+  }
+}
+
+// ── Protocol → scan function mapping ─────────────────────────────────
+
+const PROTOCOL_SCANNERS = {
+  wifi: [scanWifi],
+  bt: [scanBluetooth],
+  arp: [scanArp],
+  ssdp: [scanSsdp],
+  mdns: [scanMdns],
+  nb: [scanNetbios],
+  all: [scanWifi, scanBluetooth, scanArp, scanSsdp, scanMdns, scanNetbios],
+};
+
 // ── Main scan entry point ─────────────────────────────────────────────
 
 /**
- * Run a full RF scan (WiFi + Bluetooth) and return a scan session object
- * ready to POST to /api/radar360/signal-scan.
+ * Run an RF/network scan and return a scan session object.
  *
  * @param {object} opts
+ * @param {string|null} opts.protocol - Protocol filter: 'wifi', 'bt', 'arp', 'ssdp', 'mdns', 'nb', or null/undefined for all
  * @param {number|null} opts.lat  - Scanner GPS latitude
  * @param {number|null} opts.lng  - Scanner GPS longitude
  * @param {string|null} opts.deviceId - Scanner device tag
  * @param {number|null} opts.callId - Link to active call
  * @returns {Promise<object>} scan session object
  */
-async function runRfScan({ lat = null, lng = null, deviceId = null, callId = null } = {}) {
+async function runRfScan({ protocol = null, lat = null, lng = null, deviceId = null, callId = null } = {}) {
   const scanSessionId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  const [wifiResults, btResults] = await Promise.allSettled([scanWifi(), scanBluetooth()]);
+  const scanners = PROTOCOL_SCANNERS[protocol] || PROTOCOL_SCANNERS.all;
+  const results = await Promise.allSettled(scanners.map(fn => fn()));
 
-  const signals = [
-    ...(wifiResults.status === 'fulfilled' ? wifiResults.value : []),
-    ...(btResults.status === 'fulfilled'   ? btResults.value   : []),
-  ].map((s) => ({
-    ...s,
-    scan_session_id: scanSessionId,
-    scanner_lat: lat,
-    scanner_lng: lng,
-    scanner_device_id: deviceId,
-    call_id: callId,
-    first_seen_at: now,
-    last_seen_at: now,
-    properties: JSON.stringify(s.properties ?? {}),
-  }));
+  const signals = results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+    .map((s) => ({
+      ...s,
+      scan_session_id: scanSessionId,
+      scanner_lat: lat,
+      scanner_lng: lng,
+      scanner_device_id: deviceId,
+      call_id: callId,
+      first_seen_at: now,
+      last_seen_at: now,
+      properties: JSON.stringify(s.properties ?? {}),
+    }));
 
   return {
     scan_session_id: scanSessionId,
@@ -573,14 +744,22 @@ async function runRfScan({ lat = null, lng = null, deviceId = null, callId = nul
     scanner_lng: lng,
     scanner_device_id: deviceId,
     call_id: callId,
+    protocol: protocol || 'all',
     signals,
     counts: {
       wifi: signals.filter(s => s.signal_type === 'wifi_ap').length,
       bt_classic: signals.filter(s => s.signal_type === 'bt_classic').length,
       ble: signals.filter(s => s.signal_type === 'ble').length,
       cell: signals.filter(s => s.signal_type === 'cell_tower').length,
+      arp: signals.filter(s => s.signal_type === 'arp_device').length,
+      ssdp: signals.filter(s => s.signal_type === 'ssdp_device').length,
+      mdns: signals.filter(s => s.signal_type === 'mdns_device').length,
+      netbios: signals.filter(s => s.signal_type === 'netbios_device').length,
     },
   };
 }
 
-module.exports = { runRfScan, lookupVendor, pctToDbm, rssiToMetres, freqToBand, btClassToCategory };
+module.exports = {
+  runRfScan, scanWifi, scanBluetooth, scanArp, scanSsdp, scanMdns, scanNetbios,
+  lookupVendor, pctToDbm, rssiToMetres, freqToBand, btClassToCategory,
+};

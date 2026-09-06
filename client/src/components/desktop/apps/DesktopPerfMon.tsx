@@ -72,19 +72,7 @@ function MetricCard({ label, value, unit, data, color, note }: {
   );
 }
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      sysCpuUsage?: () => number;
-      sysInfo?: () => { usedMemMb: number; totalMemMb: number };
-      sysNetworkInterfaces?: () => Array<{ name: string; ipv4?: string; ipv6?: string; mac?: string; status?: string }>;
-      sysBattery?: () => { percent: number; charging: boolean } | null;
-      sysTpmStatus?: () => { present: boolean; enabled: boolean; ready: boolean } | null;
-    };
-  }
-}
-
-const hasElectron = () => typeof window !== 'undefined' && !!window.electronAPI;
+const hasElectron = () => typeof window !== 'undefined' && !!(window as any).electron?.isElectron;
 
 export default function DesktopPerfMon({ onClose }: DesktopPerfMonProps) {
   const [pos, setPos] = useState({
@@ -98,10 +86,20 @@ export default function DesktopPerfMon({ onClose }: DesktopPerfMonProps) {
   const [live, setLive] = useState<MetricPoint[]>([]);
   const [history, setHistory] = useState<MetricPoint[]>([]);
 
-  const poll = useCallback(() => {
-    const cpu = hasElectron() ? (window.electronAPI?.sysCpuUsage?.() ?? 0) : 0;
-    const sysInfo = hasElectron() ? (window.electronAPI?.sysInfo?.() ?? null) : null;
-    const ram = sysInfo ? (sysInfo.usedMemMb / sysInfo.totalMemMb) * 100 : 0;
+  const poll = useCallback(async () => {
+    const el = (window as any).electron;
+    let cpu = 0;
+    let ram = 0;
+    if (hasElectron()) {
+      try {
+        const [cpuRes, sysInfo] = await Promise.all([
+          el.getCpuUsage?.() as Promise<number | null>,
+          el.getSystemInfo?.() as Promise<{ usedMemMb: number; totalMemMb: number } | null>,
+        ]);
+        cpu = cpuRes ?? 0;
+        if (sysInfo) ram = (sysInfo.usedMemMb / sysInfo.totalMemMb) * 100;
+      } catch { /* offline-tolerant */ }
+    }
     const point: MetricPoint = { cpu, ram, net: 0, disk: 0, ts: Date.now() };
 
     historyRef.current = [...historyRef.current, point].slice(-HISTORY_POINTS);

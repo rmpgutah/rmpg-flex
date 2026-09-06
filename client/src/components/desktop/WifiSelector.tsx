@@ -186,13 +186,18 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
 
   useEffect(() => () => { if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current); }, []);
 
+  const hasWifiIpc = !!el?.wifiScanNetworks;
+
   const loadDetail = useCallback(async () => {
     if (!el?.wifiGetDetail) return;
     try { setDetail(await el.wifiGetDetail()); } catch { /* silent */ }
   }, [el]);
 
   const scan = useCallback(async () => {
-    if (!el?.wifiScanNetworks) return;
+    if (!el?.wifiScanNetworks) {
+      setStatusMsg('WiFi scanning requires the FlexOS desktop app with system permissions.');
+      return;
+    }
     setScanning(true);
     setStatusMsg(null);
     setExpanded(new Set());
@@ -201,10 +206,14 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
         el.wifiScanNetworks(),
         el.wifiListProfiles?.() ?? Promise.resolve([]),
       ]);
-      setNetworks((nets as ScannedNetwork[]).sort((a, b) => b.signal - a.signal));
+      const sorted = (nets as ScannedNetwork[]).sort((a, b) => b.signal - a.signal);
+      setNetworks(sorted);
       setProfiles(profs as string[]);
+      if (sorted.length === 0) {
+        setStatusMsg('No networks in range. Move closer to an access point or check WiFi hardware.');
+      }
     } catch (err) {
-      setStatusMsg('Scan failed: ' + (err instanceof Error ? err.message : 'unknown'));
+      setStatusMsg('Scan failed: ' + (err instanceof Error ? err.message : 'unknown error — check WiFi adapter.'));
     } finally {
       setScanning(false);
     }
@@ -415,14 +424,20 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
           );
         })}
 
-        {!scanning && networks.length === 0 && (
-          <div style={{ padding: '8px 10px', fontSize: 9, color: 'var(--text-secondary)' }}>No networks found. Click ↺ to scan.</div>
+        {!scanning && networks.length === 0 && !statusMsg && (
+          <div style={{ padding: '8px 10px', fontSize: 9, color: 'var(--text-secondary)' }}>
+            {hasWifiIpc
+              ? 'No networks found. Click ↺ to scan.'
+              : 'WiFi management requires the FlexOS desktop app.'}
+          </div>
         )}
       </div>
 
       {/* Footer */}
       <div style={{ padding: '4px 10px 6px', borderTop: '1px solid var(--border-subtle)', fontSize: 8, color: 'var(--text-muted)', flexShrink: 0 }}>
-        Click a network row to inspect RF details · Saved profiles connect directly · New networks require OS credentials
+        {hasWifiIpc
+          ? 'Click a network row to inspect RF details · Saved profiles connect directly · New networks require OS credentials'
+          : 'WiFi scanning requires FlexOS desktop app · Browser shows connection status only'}
       </div>
     </div>
   );
