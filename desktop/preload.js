@@ -281,6 +281,15 @@ contextBridge.exposeInMainWorld('electron', {
   getBattery: () => ipcRenderer.invoke('system:get-battery'),
   getNetwork: () => ipcRenderer.invoke('system:get-network'),
   setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+  setBrightness: (level) => ipcRenderer.invoke('device:set-brightness', level),
+  getBrightness: () => ipcRenderer.invoke('device:get-brightness'),
+
+  // ─── Extended Hardware (Toughbook FZ-55) ──────────────
+  getBatteryDetail: () => ipcRenderer.invoke('sys:battery-detail'),
+  getWwanSignal: () => ipcRenderer.invoke('device:wwan-signal'),
+  getWwanCarrier: () => ipcRenderer.invoke('device:wwan-carrier'),
+  getUsbDevices: () => ipcRenderer.invoke('device:usb-devices'),
+  getFingerprintStatus: () => ipcRenderer.invoke('device:fingerprint-status'),
 
   // ─── WiFi Selector ──────────────────────────────────────
   // Full detail for the currently-connected network (IP, gateway, DNS, channel, etc.)

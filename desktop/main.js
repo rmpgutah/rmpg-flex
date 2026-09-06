@@ -5088,6 +5088,26 @@ guardedHandle('device:set-brightness', async (_event, level) => {
   }
 });
 
+// ── Device: read current display brightness (Windows only — WMI) ──
+guardedHandle('device:get-brightness', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const { stdout } = await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        '(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness'],
+      { timeout: 3000 }
+    );
+    const level = parseInt(stdout.trim(), 10);
+    return { ok: true, level: isNaN(level) ? null : level };
+  } catch (err) {
+    console.error('[DEVICE:GET-BRIGHTNESS]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
 // ─── Application Menu ───────────────────────────────────────
 function createMenu() {
   const isMac = process.platform === 'darwin';
