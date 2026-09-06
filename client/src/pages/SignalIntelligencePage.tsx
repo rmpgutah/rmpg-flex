@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronRight, X, RefreshCw, Clock,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { parseTimestamp, safeDateTimeStr } from '../utils/dateUtils';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 
@@ -122,7 +123,7 @@ function signalLabel(bars: number): string {
 }
 
 function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const diff = Date.now() - parseTimestamp(iso).getTime();
   if (diff < 0) return 'just now';
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
@@ -182,7 +183,7 @@ function sortSignals(signals: SignalDetection[], key: SortKey): SignalDetection[
     case 'distance':
       return sorted.sort((a, b) => (a.distance_estimate_m ?? 99999) - (b.distance_estimate_m ?? 99999));
     case 'recent':
-      return sorted.sort((a, b) => new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime());
+      return sorted.sort((a, b) => parseTimestamp(b.last_seen_at).getTime() - parseTimestamp(a.last_seen_at).getTime());
     case 'type':
       return sorted.sort((a, b) => a.signal_type.localeCompare(b.signal_type));
     default:
@@ -303,9 +304,9 @@ function DetailPanel({ signal, onClose }: { signal: SignalDetection; onClose: ()
             ? `${signal.scanner_lat.toFixed(5)}, ${signal.scanner_lng.toFixed(5)}` : null],
           ['Session', signal.scan_session_id],
           ['Call ID', signal.call_id],
-          ['First Seen', signal.first_seen_at ? new Date(signal.first_seen_at).toLocaleString() : null],
-          ['Last Seen', signal.last_seen_at ? new Date(signal.last_seen_at).toLocaleString() : null],
-          ['Created', signal.created_at ? new Date(signal.created_at).toLocaleString() : null],
+          ['First Seen', signal.first_seen_at ? safeDateTimeStr(signal.first_seen_at) : null],
+          ['Last Seen', signal.last_seen_at ? safeDateTimeStr(signal.last_seen_at) : null],
+          ['Created', signal.created_at ? safeDateTimeStr(signal.created_at) : null],
         ])}
 
         {/* WiFi */}
@@ -494,7 +495,7 @@ export default function SignalIntelligencePage() {
       const cutoff = timeRange === '1h' ? now - 3600_000
         : timeRange === '24h' ? now - 86400_000
         : now - 604800_000;
-      result = result.filter((s) => new Date(s.last_seen_at).getTime() >= cutoff);
+      result = result.filter((s) => parseTimestamp(s.last_seen_at).getTime() >= cutoff);
     }
 
     // Sort
