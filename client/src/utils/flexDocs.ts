@@ -23,10 +23,26 @@ export interface DocCitation {
   score: number;
 }
 
+export type WebMode = 'off' | 'auto' | 'on';
+
+export interface WebCitation {
+  tag: string;
+  url: string;
+  title: string;
+  snippet: string;
+  provider: 'firecrawl' | 'duckduckgo';
+}
+
 export interface AskResponse {
   answer: string;
   citations: DocCitation[];
   results: DocChunk[];
+  /** Live web sources used (hybrid mode). Empty for docs-only answers. */
+  web?: WebCitation[];
+  /** 'docs' | 'hybrid' | 'docs+web-unavailable' */
+  mode?: string;
+  web_provider?: string;
+  provider?: string;
   model?: string;
   /** Present when the Worker has no FLEX_SEARCH binding (dev/preview). */
   skipped?: boolean;
@@ -42,13 +58,15 @@ export interface SearchResponse {
 export const MAX_QUESTION_CHARS = 2000;
 
 /** Ask a natural-language question; returns a cited answer. Throws on transport error. */
-export async function askFlexDocs(question: string, maxResults = 10): Promise<AskResponse> {
+export async function askFlexDocs(question: string, opts: { maxResults?: number; web?: WebMode } = {}): Promise<AskResponse> {
   const q = question.trim().slice(0, MAX_QUESTION_CHARS);
+  const { maxResults = 10, web = 'auto' } = opts;
   return apiFetch<AskResponse>('/knowledge/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, max_results: maxResults }),
-    timeoutMs: 60_000,
+    body: JSON.stringify({ question: q, max_results: maxResults, web }),
+    // Hybrid answers fetch live pages + run the LLM chain — allow up to 90s.
+    timeoutMs: 90_000,
   });
 }
 
