@@ -4,8 +4,8 @@
 // the mode toggle.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, Loader2, Send, X, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
-import { askFlexDocs, docTitle, MAX_QUESTION_CHARS, type AskResponse } from '../utils/flexDocs';
+import { BookOpen, Loader2, Send, X, ChevronDown, ChevronRight, AlertTriangle, Globe, ExternalLink } from 'lucide-react';
+import { askFlexDocs, docTitle, MAX_QUESTION_CHARS, type AskResponse, type WebMode } from '../utils/flexDocs';
 
 interface Turn {
   id: number;
@@ -17,8 +17,14 @@ interface Turn {
 const SUGGESTIONS = [
   'How do I escape Flex Kiosk Mode?',
   'Who can authorize a redaction of dashcam evidence?',
-  'What are the steps to release a new Kiosk Linux OS image?',
+  'What does Utah Rule of Civil Procedure 4 say about the time limit for service?',
   'How do I create a serve receipt in ServeManager?',
+];
+
+const WEB_MODES: Array<{ id: WebMode; label: string; hint: string }> = [
+  { id: 'auto', label: 'Docs + Web (auto)', hint: 'RMPG docs first; searches the web when the question looks external or the docs are thin' },
+  { id: 'off', label: 'Docs only', hint: 'Only indexed RMPG documents' },
+  { id: 'on', label: 'Always web', hint: 'Always search the live web as well and cite both' },
 ];
 
 export default function FlexDocsPanel({ autoFocus = true }: { autoFocus?: boolean }) {
@@ -26,6 +32,10 @@ export default function FlexDocsPanel({ autoFocus = true }: { autoFocus?: boolea
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const [openSources, setOpenSources] = useState<Record<number, boolean>>({});
+  const [webMode, setWebMode] = useState<WebMode>(() => {
+    try { const v = localStorage.getItem('flex_docs_web_mode'); return v === 'off' || v === 'on' ? v : 'auto'; } catch { return 'auto'; }
+  });
+  useEffect(() => { try { localStorage.setItem('flex_docs_web_mode', webMode); } catch { /* private mode */ } }, [webMode]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
@@ -41,7 +51,7 @@ export default function FlexDocsPanel({ autoFocus = true }: { autoFocus?: boolea
     setQuestion('');
     setBusy(true);
     try {
-      const res = await askFlexDocs(text);
+      const res = await askFlexDocs(text, { web: webMode });
       if (res.skipped) {
         setTurns((t) => t.map((x) => (x.id === id ? { ...x, error: 'The documentation search is not configured on this server yet (FLEX_SEARCH binding missing).' } : x)));
       } else {
@@ -54,7 +64,7 @@ export default function FlexDocsPanel({ autoFocus = true }: { autoFocus?: boolea
       setBusy(false);
       inputRef.current?.focus();
     }
-  }, [busy]);
+  }, [busy, webMode]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(question); }
@@ -94,12 +104,32 @@ export default function FlexDocsPanel({ autoFocus = true }: { autoFocus?: boolea
         </button>
       </div>
 
+      {/* Web mode */}
+      <div className="flex flex-wrap items-center gap-1.5 px-1" role="radiogroup" aria-label="Answer sources">
+        <Globe className="w-3.5 h-3.5 text-fg-muted" />
+        {WEB_MODES.map((m) => {
+          const active = webMode === m.id;
+          return (
+            <button
+              key={m.id} type="button" role="radio" aria-checked={active} title={m.hint} onClick={() => setWebMode(m.id)}
+              className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border"
+              style={{
+                borderRadius: 2,
+                color: active ? 'var(--surface-base)' : 'var(--text-secondary)',
+                background: active ? 'var(--brand-500)' : 'transparent',
+                borderColor: active ? 'var(--brand-500)' : 'var(--border-default)',
+              }}
+            >{m.label}</button>
+          );
+        })}
+      </div>
+
       {/* Empty state */}
       {turns.length === 0 && (
         <div className="px-1 space-y-2">
           <p className="text-[11px] text-fg-muted">
-            Answers come only from indexed RMPG documents — SOPs, runbooks, guides and forms — and cite the source.
-            For calls, persons, warrants and other records, switch to <span className="text-fg-secondary">Records</span>.
+            Answers draw on indexed RMPG documents — SOPs, runbooks, guides, forms, engineering specs — and, when useful, live web sources.
+            Every claim is tagged [I#] (internal) or [W#] (web). For calls, persons, warrants and other records, switch to <span className="text-fg-secondary">Records</span>.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {SUGGESTIONS.map((s) => (
@@ -146,6 +176,25 @@ export default function FlexDocsPanel({ autoFocus = true }: { autoFocus?: boolea
                         >{docTitle(c.source)}</span>
                       ))}
                     </div>
+                  )}
+                  {(t.response.web?.length ?? 0) > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <span className="text-[10px] uppercase tracking-wide text-fg-muted">Web sources</span>
+                      {t.response.web!.map((w) => (
+                        <a
+                          key={w.tag} href={w.url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-start gap-1.5 text-[11px] text-fg-secondary hover:text-brand-400"
+                          title={w.snippet}
+                        >
+                          <span className="font-mono text-[10px] text-fg-muted shrink-0 mt-px">[{w.tag}]</span>
+                          <span className="truncate">{w.title || w.url}</span>
+                          <ExternalLink className="w-3 h-3 shrink-0 mt-0.5" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {t.response.mode === 'docs+web-unavailable' && (
+                    <div className="mt-1 text-[10px] text-fg-muted">Web search returned no usable sources for this question; answer is from RMPG documents only.</div>
                   )}
                   {t.response.results.length > 0 && (
                     <div className="mt-2">
