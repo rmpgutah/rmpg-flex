@@ -281,6 +281,7 @@ contextBridge.exposeInMainWorld('electron', {
   getBattery: () => ipcRenderer.invoke('system:get-battery'),
   getNetwork: () => ipcRenderer.invoke('system:get-network'),
   setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+  getVolume:  ()      => ipcRenderer.invoke('system:get-volume'),
   setBrightness: (level) => ipcRenderer.invoke('device:set-brightness', level),
   getBrightness: () => ipcRenderer.invoke('device:get-brightness'),
 

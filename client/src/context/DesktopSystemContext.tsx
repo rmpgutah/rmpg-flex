@@ -228,10 +228,19 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
     applyBrightnessOverlay(brightness);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Apply volume on mount + start MutationObserver for new media elements
+  // Apply volume on mount + sync from hardware + start MutationObserver
   useEffect(() => {
     applyVolumeToAll(volume);
     ensureVolumeObserver(() => volumeRef.current);
+    const el = (window as any).electron;
+    if (el?.getVolume) {
+      el.getVolume().then((res: { ok: boolean; level?: number | null }) => {
+        if (res?.ok && typeof res.level === 'number') {
+          setVolumeState(res.level);
+          applyVolumeToAll(res.level);
+        }
+      }).catch(() => {});
+    }
     return () => { if (volumeObserver) { volumeObserver.disconnect(); volumeObserver = null; } };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
