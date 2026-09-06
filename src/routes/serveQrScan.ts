@@ -87,6 +87,8 @@ app.get("/", async (c) => {
     return c.json({ ok: false, error: "ref required" }, 400);
   }
 
+  const bypass = c.req.query("bypass") === "1";
+
   const db = getDb(c.env);
   const ip = clientIp(c);
   const ua = c.req.header("User-Agent") ?? null;
@@ -236,17 +238,14 @@ app.get("/", async (c) => {
     ok: true,
     ref,
     scanId,
+    ...(bypass ? { bypassed: true } : {}),
     agency: "Rocky Mountain Protective Group",
     phone: SUBJECT_SUPPORT.dispatchPhone,
     website: "https://rmpgutah.us",
-    // Same channels as the printed "How to reach us" panel, so the public
-    // page (rmpgutahps.us/notice-of-attempt) renders what is on the paper.
     phone_route: SUBJECT_SUPPORT.dispatchPhoneRoute,
     email: SUBJECT_SUPPORT.email,
     support_url: SUBJECT_SUPPORT.supportUrl,
     notice_info_url: SUBJECT_SUPPORT.noticeInfoUrl,
-    // True when the ref resolved to a live serve job. The public page shows a
-    // softer "we could not match that reference" state instead of "verified".
     matched: jobId !== null,
     message:
       "This notice was issued by Rocky Mountain Protective Group, a licensed private process server " +
@@ -282,7 +281,7 @@ const WINDOW_LABEL: Record<string, string> = {
 /** Strip control chars and collapse whitespace; cap length. */
 function cleanText(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
-  return v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  return v.replace(/[ -]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 /** data-action the public form must render with; siteverify echoes it back. */
