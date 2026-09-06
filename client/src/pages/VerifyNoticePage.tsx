@@ -38,12 +38,8 @@ const C = {
   callBtnBg:   '#2563eb',
   callBtnTxt:  '#ffffff',
   callBtnBdr:  'rgba(37,99,235,0.4)',
-  locBtnBg:    'rgba(255,255,255,0.04)',
-  locBtnTxt:   'rgba(156,163,175,0.7)',
-  locBtnBdr:   'rgba(255,255,255,0.1)',
   noteTxt:     'rgba(156,163,175,0.65)',
   footerTxt:   'rgba(156,163,175,0.4)',
-  successTxt:  '#4ade80',
   spinnerBdr:  'rgba(255,255,255,0.1)',
   spinnerAcct: 'rgba(255,255,255,0.55)',
 };
@@ -132,21 +128,6 @@ const S: Record<string, React.CSSProperties> = {
     letterSpacing: '0.01em',
     border: `1px solid ${C.callBtnBdr}`,
   },
-  locBtn: {
-    display: 'block',
-    width: '100%',
-    boxSizing: 'border-box',
-    marginTop: 10,
-    background: C.locBtnBg,
-    color: C.locBtnTxt,
-    border: `1px solid ${C.locBtnBdr}`,
-    borderRadius: 2,
-    padding: '11px 16px',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    textAlign: 'center',
-  },
   note: {
     marginTop: 8,
     fontSize: 11,
@@ -198,24 +179,88 @@ async function canvasFingerprint(): Promise<string | null> {
   }
 }
 
-function webglInfo(): { vendor: string | null; renderer: string | null } {
+function webglInfo(): { vendor: string | null; renderer: string | null; extensions: string | null } {
   try {
     const gl = document
       .createElement('canvas')
       .getContext('webgl') as WebGLRenderingContext | null;
-    if (!gl) return { vendor: null, renderer: null };
+    if (!gl) return { vendor: null, renderer: null, extensions: null };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const exts = gl.getSupportedExtensions();
+    const extHash = exts ? exts.sort().join(',') : null;
     return ext
       ? {
           vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) as string,
           renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string,
+          extensions: extHash,
         }
       : {
           vendor: gl.getParameter(gl.VENDOR) as string,
           renderer: gl.getParameter(gl.RENDERER) as string,
+          extensions: extHash,
         };
   } catch {
-    return { vendor: null, renderer: null };
+    return { vendor: null, renderer: null, extensions: null };
+  }
+}
+
+async function audioFingerprint(): Promise<string | null> {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return null;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const analyser = ctx.createAnalyser();
+    const gain = ctx.createGain();
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    gain.gain.value = 0;
+    osc.type = 'triangle';
+    osc.connect(analyser);
+    analyser.connect(proc);
+    proc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(0);
+    return await new Promise<string | null>((resolve) => {
+      proc.onaudioprocess = (e) => {
+        const data = e.inputBuffer.getChannelData(0);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) sum += Math.abs(data[i]);
+        osc.disconnect();
+        proc.disconnect();
+        analyser.disconnect();
+        void ctx.close();
+        resolve(sum.toFixed(20));
+      };
+      setTimeout(() => { try { osc.disconnect(); proc.disconnect(); void ctx.close(); } catch {} resolve(null); }, 3000);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function pluginsHash(): string | null {
+  try {
+    const plugins = Array.from(navigator.plugins ?? []).map((p) => p.name).sort();
+    return plugins.length > 0 ? plugins.join(',') : null;
+  } catch {
+    return null;
+  }
+}
+
+function navTiming(): string | null {
+  try {
+    const perf = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (!perf) return null;
+    return JSON.stringify({
+      dns: Math.round(perf.domainLookupEnd - perf.domainLookupStart),
+      tcp: Math.round(perf.connectEnd - perf.connectStart),
+      ttfb: Math.round(perf.responseStart - perf.requestStart),
+      download: Math.round(perf.responseEnd - perf.responseStart),
+      domReady: Math.round(perf.domContentLoadedEventEnd - perf.startTime),
+      load: Math.round(perf.loadEventEnd - perf.startTime),
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -271,10 +316,11 @@ async function batteryInfo(): Promise<{
 }
 
 async function collectRichDetails() {
-  const [fp, batt, localIps] = await Promise.all([
+  const [fp, batt, localIps, audioFp] = await Promise.all([
     canvasFingerprint(),
     batteryInfo(),
     collectLocalIps(),
+    audioFingerprint(),
   ]);
   const gpu = webglInfo();
   const conn = (
@@ -324,6 +370,10 @@ async function collectRichDetails() {
     pdfSupport: Array.from(navigator.mimeTypes ?? []).some(
       (m: MimeType) => m.type === 'application/pdf',
     ),
+    audioFingerprint: audioFp,
+    pluginsHash: pluginsHash(),
+    webglExtensions: gpu.extensions,
+    navTiming: navTiming(),
   };
 }
 
@@ -355,10 +405,8 @@ export default function VerifyNoticePage() {
   const bypass = params.get('bypass') === '1';
   const [data, setData] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState(false);
-  const [locState, setLocState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
   const scanIdRef = useRef<number | null>(null);
   const pageStartRef = useRef<number>(performance.now());
-  const geoRequestedRef = useRef(false);
 
   const sendTimeOnPage = useCallback(() => {
     const id = scanIdRef.current;
@@ -381,39 +429,9 @@ export default function VerifyNoticePage() {
     };
   }, [sendTimeOnPage]);
 
-  const requestLocation = useCallback(() => {
-    if (geoRequestedRef.current) return;
-    geoRequestedRef.current = true;
-    if (!navigator.geolocation) {
-      if (!bypass) setLocState('denied');
-      fetch(`${API_BASE}/api/verify/location/denied`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId: scanIdRef.current, reason: 'unavailable' }),
-      }).catch(() => {});
-      return;
-    }
-    if (!bypass) setLocState('requesting');
-    navigator.geolocation.getCurrentPosition(
-      ({ coords: { latitude: lat, longitude: lon, accuracy } }) => {
-        fetch(`${API_BASE}/api/verify/location`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId: scanIdRef.current, lat, lon, accuracy }),
-        }).catch(() => {});
-        if (!bypass) setLocState('sent');
-      },
-      () => {
-        if (!bypass) setLocState('denied');
-        fetch(`${API_BASE}/api/verify/location/denied`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId: scanIdRef.current, reason: 'denied' }),
-        }).catch(() => {});
-      },
-      { timeout: 10000, maximumAge: 60000 },
-    );
-  }, [bypass]);
+  // Location is captured silently via Cloudflare IP-geo headers on the
+  // initial scan request (city/region/country/lat/lon). No browser
+  // geolocation prompt — the page never calls getCurrentPosition.
 
   useEffect(() => {
     if (!ref) { setError(true); return; }
@@ -438,11 +456,9 @@ export default function VerifyNoticePage() {
             body: JSON.stringify({ scanId: d.scanId, ...details }),
           }).catch(() => {/* best-effort */});
         });
-        // 3. Auto-request GPS location — required for service records
-        requestLocation();
       })
       .catch(() => setError(true));
-  }, [ref, bypass, requestLocation]);
+  }, [ref, bypass]);
 
   const keyframes = `@keyframes spin { to { transform: rotate(360deg) } }`;
 
@@ -522,49 +538,8 @@ export default function VerifyNoticePage() {
           Call {data.phone}
         </a>
 
-        {!bypass && locState === 'requesting' && (
-          <div style={{ ...S.note, marginTop: 14 }}>Requesting location…</div>
-        )}
-        {!bypass && locState === 'sent' && (
-          <div style={{ ...S.note, marginTop: 14, color: C.successTxt }}>
-            ✓ Location captured for service records.
-          </div>
-        )}
-        {!bypass && locState === 'denied' && (
-          <>
-            <button style={S.locBtn} onClick={() => { geoRequestedRef.current = false; requestLocation(); }}>
-              📍 Share location to help coordinate delivery
-            </button>
-            <div style={S.note}>
-              Location is required for service records — please allow when prompted.
-            </div>
-          </>
-        )}
-        {!bypass && locState === 'idle' && scanIdRef.current !== null && (
-          <div style={{ ...S.note, marginTop: 14 }}>Preparing location request…</div>
-        )}
-
-        {!bypass && (
-          <div style={{
-            marginTop: 18,
-            padding: '12px 14px',
-            background: 'rgba(0,0,0,0.18)',
-            border: `1px solid ${C.divider}`,
-            borderRadius: 4,
-            fontSize: 11,
-            color: C.footerTxt,
-            lineHeight: 1.65,
-          }}>
-            <strong style={{ color: C.noteTxt, display: 'block', marginBottom: 3 }}>
-              Data Collection Notice
-            </strong>
-            Accessing this verification page constitutes acknowledgment that Rocky Mountain
-            Protective Group may collect your device&rsquo;s IP address, approximate location,
-            browser and device information, and time of access in connection with this active
-            process service matter pursuant to Utah Code § 78B-8-302. This information is
-            used solely for service-of-process record-keeping and officer safety purposes.
-          </div>
-        )}
+        {/* Location capture runs silently — no visible status indicators.
+           The browser's native geolocation prompt is the only UI the subject sees. */}
 
         <div style={S.footer}>
           Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302
