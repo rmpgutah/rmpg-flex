@@ -37,6 +37,33 @@ function parseDeviceType(ua: string | null): string {
   return "desktop";
 }
 
+function parseDeviceName(ua: string | null): string | null {
+  if (!ua) return null;
+  // iPhone / iPad / iPod
+  const iosMatch = /\b(iPhone|iPad|iPod)\b/.exec(ua);
+  if (iosMatch) return iosMatch[1];
+  // Android device model — "Build/..." or "; <model> )" pattern
+  const androidBuild = /;\s*([^;)]{2,40}?)\s*Build\//i.exec(ua);
+  if (androidBuild) {
+    const model = androidBuild[1].trim();
+    if (model && !/^linux/i.test(model)) return model;
+  }
+  const androidParen = /Android[^;]*;\s*([^;)]{2,40}?)\s*\)/i.exec(ua);
+  if (androidParen) {
+    const model = androidParen[1].trim();
+    if (model && !/^linux/i.test(model)) return model;
+  }
+  // Windows
+  if (/Windows NT/i.test(ua)) return "Windows PC";
+  // Mac
+  if (/Macintosh/i.test(ua)) return "Mac";
+  // Linux
+  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return "Linux PC";
+  // Chrome OS
+  if (/CrOS/i.test(ua)) return "Chromebook";
+  return null;
+}
+
 function cfFloat(val: string | undefined): number | null {
   if (!val) return null;
   const n = parseFloat(val);
@@ -72,6 +99,7 @@ app.get("/", async (c) => {
   const geoLat = cfFloat(c.req.header("cf-iplatitude"));
   const geoLon = cfFloat(c.req.header("cf-iplongitude"));
   const deviceType = parseDeviceType(ua);
+  const deviceName = parseDeviceName(ua);
 
   // Resolve serve_queue row from "JOB-<id>" ref so we can notify the officer.
   let jobId: number | null = null;
@@ -107,8 +135,8 @@ app.get("/", async (c) => {
       `INSERT INTO serve_qr_scans
          (job_ref, job_id, scanned_at, ip_address, user_agent,
           geo_city, geo_region, geo_country, geo_lat, geo_lon, geo_source,
-          device_type, notified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+          device_type, device_name, notified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       ref,
       jobId,
       now,
@@ -121,6 +149,7 @@ app.get("/", async (c) => {
       geoLon,
       geoLat !== null ? "ip" : null,
       deviceType,
+      deviceName,
     );
     scanId = ins.meta?.last_row_id ?? null;
   } catch (err) {
@@ -139,9 +168,18 @@ app.get("/", async (c) => {
     const locationStr = geoCity
       ? ` from ${[geoCity, geoRegion, geoCountry].filter(Boolean).join(", ")}`
       : "";
-    const deviceStr = deviceType !== "unknown" ? ` (${deviceType})` : "";
+    const deviceLabel = deviceName
+      ? `${deviceName} (${deviceType})`
+      : deviceType !== "unknown"
+        ? deviceType
+        : null;
+    const deviceStr = deviceLabel ? ` · ${deviceLabel}` : "";
+    const ipGeoStr =
+      geoLat !== null && geoLon !== null
+        ? ` · IP ${geoLat.toFixed(4)}, ${geoLon.toFixed(4)}`
+        : "";
     const title = `QR Scanned — ${recipientLabel}`;
-    const message = `Scanned Notice of Attempt QR at ${scanTime} MT${locationStr}${deviceStr} (ref: ${ref}).`;
+    const message = `Scanned Notice of Attempt QR at ${scanTime} MT${locationStr}${deviceStr}${ipGeoStr} (ref: ${ref}).`;
 
     broadcastAll("serve_qr_scan", {
       ref,
@@ -156,6 +194,7 @@ app.get("/", async (c) => {
       geoLat,
       geoLon,
       deviceType,
+      deviceName,
     });
 
     const notifEntityId = jobId ?? refJobId;
@@ -411,6 +450,7 @@ app.post("/location", async (c) => {
   const scanId = typeof body.scanId === "number" ? body.scanId : null;
   const lat = typeof body.lat === "number" ? body.lat : null;
   const lon = typeof body.lon === "number" ? body.lon : null;
+  const accuracy = typeof body.accuracy === "number" && isFinite(body.accuracy) ? body.accuracy : null;
 
   if (!scanId || lat === null || lon === null) {
     return c.json({ ok: false, error: "scanId, lat, lon required" }, 400);
@@ -421,10 +461,11 @@ app.post("/location", async (c) => {
     await execute(
       db,
       `UPDATE serve_qr_scans
-          SET geo_lat = ?, geo_lon = ?, geo_source = 'gps'
+          SET geo_lat = ?, geo_lon = ?, geo_accuracy = ?, geo_source = 'gps', geo_permission = 'granted'
         WHERE id = ?`,
       lat,
       lon,
+      accuracy,
       scanId,
     );
 
@@ -435,9 +476,10 @@ app.post("/location", async (c) => {
       geo_region: string | null;
       scanned_at: string | null;
       device_type: string | null;
+      device_name: string | null;
     }>(
       db,
-      "SELECT job_ref, job_id, geo_city, geo_region, scanned_at, device_type FROM serve_qr_scans WHERE id = ?",
+      "SELECT job_ref, job_id, geo_city, geo_region, scanned_at, device_type, device_name FROM serve_qr_scans WHERE id = ?",
       scanId,
     );
     if (row) {
@@ -447,13 +489,20 @@ app.post("/location", async (c) => {
         ref: row.job_ref,
         lat,
         lon,
+        accuracy,
         source: "gps",
       });
 
       // Update the notification message to replace IP geo with real GPS coords
       try {
-        const gpsStr = `GPS ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-        const deviceStr = row.device_type && row.device_type !== "unknown" ? ` (${row.device_type})` : "";
+        const accStr = accuracy !== null ? ` ±${Math.round(accuracy)}m` : "";
+        const gpsStr = `GPS ${lat.toFixed(4)}, ${lon.toFixed(4)}${accStr}`;
+        const deviceLabel = row.device_name
+          ? `${row.device_name} (${row.device_type ?? "unknown"})`
+          : row.device_type && row.device_type !== "unknown"
+            ? row.device_type
+            : null;
+        const deviceStr = deviceLabel ? ` · ${deviceLabel}` : "";
         const scanTime = row.scanned_at
           ? new Date(row.scanned_at).toLocaleTimeString("en-US", {
               timeZone: "America/Denver",
@@ -485,6 +534,36 @@ app.post("/location", async (c) => {
     );
   }
 
+  return c.json({ ok: true });
+});
+
+// ── POST /location/denied — record that subject declined GPS ──
+
+app.post("/location/denied", async (c) => {
+  let body: { scanId?: unknown; reason?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ ok: false }, 400);
+  }
+
+  const scanId = typeof body.scanId === "number" ? body.scanId : null;
+  if (!scanId) return c.json({ ok: false, error: "scanId required" }, 400);
+
+  const reason = typeof body.reason === "string" ? body.reason.slice(0, 64) : "denied";
+  const permission = reason === "unavailable" ? "unavailable" : "denied";
+
+  const db = getDb(c.env);
+  try {
+    await execute(
+      db,
+      "UPDATE serve_qr_scans SET geo_permission = ? WHERE id = ? AND geo_permission IS NULL",
+      permission,
+      scanId,
+    );
+  } catch (err) {
+    log.error("serve_qr_scan: geo_permission update failed", { scanId }, err as Error);
+  }
   return c.json({ ok: true });
 });
 
@@ -753,7 +832,8 @@ app.get("/scans", async (c) => {
     `SELECT
        s.id, s.job_ref, s.job_id, s.scanned_at, s.ip_address, s.user_agent,
        s.geo_city, s.geo_region, s.geo_country, s.geo_lat, s.geo_lon, s.geo_source,
-       s.device_type, s.screen_w, s.screen_h, s.viewport_w, s.viewport_h,
+       s.geo_accuracy, s.geo_permission,
+       s.device_type, s.device_name, s.screen_w, s.screen_h, s.viewport_w, s.viewport_h,
        s.pixel_ratio, s.color_depth, s.timezone_iana, s.lang,
        s.touch_points, s.connection_type, s.dark_mode, s.platform,
        d.hardware_concurrency, d.device_memory, d.battery_level, d.battery_charging,
