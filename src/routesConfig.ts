@@ -84,6 +84,7 @@ import notificationsInbox from './routes/notificationsInbox';
 import community from './routes/community';
 import intel from './routes/intel';
 import intelAi from './routes/intelAi';
+import knowledge from './routes/knowledge';
 import { intelReports, intelSources } from './routes/intel/development';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
@@ -653,6 +654,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
+  { prefix: '/api/knowledge', router: knowledge, auth: 'required',
+    note: 'RMPG Flex knowledge base (Cloudflare AI Search "flex-search", binding FLEX_SEARCH): POST /search (chunks+citations), POST /ask (RAG answer w/ citations), GET /health. Same-origin façade so SPA/desktop/kiosk avoid the public endpoint\'s host allow-list. Internal roles only.' },
   { prefix: '/api/intel/ai', router: intelAi, auth: 'required',
     note: 'Intel AI engine (Claude): POST /ask (NL search w/ citations), /extract (entities+links from narrative), /summarize (dossier). Gated on anthropic_api_key → 503 when unset. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
   { prefix: '/api/intel/reports', router: intelReports, auth: 'required',

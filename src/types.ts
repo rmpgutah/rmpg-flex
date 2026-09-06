@@ -113,6 +113,10 @@ export type Bindings = {
   // Workers AI — vision-LLM OCR + structured field extraction for
   // process-service intake. See src/routes/serveIntake.ts.
   AI: Ai;
+  // AI Search — RMPG Flex knowledge base ("flex-search" instance). Optional so
+  // preview/dev environments without the binding degrade to notConfigured()
+  // instead of crashing. See src/routes/knowledge.ts.
+  FLEX_SEARCH?: AiSearchInstance;
   // Optional LoRA fine-tune name/id for the serve-intake field extractor.
   // When set, extractFromText() applies this adapter on top of the 70B base
   // (with raw:true). Created via `wrangler ai finetune create` from the
