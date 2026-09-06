@@ -79,7 +79,8 @@ app.get("/", async (c) => {
   let recipientName: string | null = null;
 
   const jobMatch = /^JOB-(\d+)$/i.exec(ref);
-  if (jobMatch) {
+  const refJobId = jobMatch ? parseInt(jobMatch[1], 10) : null;
+  if (refJobId !== null) {
     const jobRow = await queryFirst<{
       id: number;
       officer_id: number | null;
@@ -87,12 +88,14 @@ app.get("/", async (c) => {
     }>(
       db,
       "SELECT id, officer_id, recipient_name FROM serve_queue WHERE id = ?",
-      parseInt(jobMatch[1], 10),
+      refJobId,
     );
     if (jobRow) {
       jobId = jobRow.id;
       officerId = jobRow.officer_id;
       recipientName = jobRow.recipient_name;
+    } else {
+      jobId = refJobId;
     }
   }
 
@@ -155,16 +158,29 @@ app.get("/", async (c) => {
       deviceType,
     });
 
-    await execute(
-      db,
-      `INSERT INTO notifications
-         (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-       VALUES ('serve_qr_scan', 'high', ?, ?, 'serve_job', ?, ?, 0, datetime('now'))`,
-      title,
-      message,
-      jobId,
-      officerId,
-    );
+    const notifEntityId = jobId ?? refJobId;
+    if (officerId) {
+      await execute(
+        db,
+        `INSERT INTO notifications
+           (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('serve_qr_scan', 'high', ?, ?, 'serve_job', ?, ?, 0, datetime('now'))`,
+        title,
+        message,
+        notifEntityId,
+        officerId,
+      );
+    } else {
+      await execute(
+        db,
+        `INSERT INTO notifications
+           (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('serve_qr_scan', 'high', ?, ?, 'serve_job', ?, NULL, 0, datetime('now'))`,
+        title,
+        message,
+        notifEntityId,
+      );
+    }
 
     if (scanId !== null) {
       await execute(
@@ -417,9 +433,11 @@ app.post("/location", async (c) => {
       job_id: number | null;
       geo_city: string | null;
       geo_region: string | null;
+      scanned_at: string | null;
+      device_type: string | null;
     }>(
       db,
-      "SELECT job_ref, job_id, geo_city, geo_region FROM serve_qr_scans WHERE id = ?",
+      "SELECT job_ref, job_id, geo_city, geo_region, scanned_at, device_type FROM serve_qr_scans WHERE id = ?",
       scanId,
     );
     if (row) {
@@ -431,6 +449,33 @@ app.post("/location", async (c) => {
         lon,
         source: "gps",
       });
+
+      // Update the notification message to replace IP geo with real GPS coords
+      try {
+        const gpsStr = `GPS ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        const deviceStr = row.device_type && row.device_type !== "unknown" ? ` (${row.device_type})` : "";
+        const scanTime = row.scanned_at
+          ? new Date(row.scanned_at).toLocaleTimeString("en-US", {
+              timeZone: "America/Denver",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })
+          : null;
+        const timeStr = scanTime ? ` at ${scanTime} MT` : "";
+        const updatedMessage = `Scanned Notice of Attempt QR${timeStr} — ${gpsStr}${deviceStr} (ref: ${row.job_ref}).`;
+        await execute(
+          db,
+          `UPDATE notifications SET message = ?
+           WHERE type = 'serve_qr_scan' AND entity_type = 'serve_job' AND entity_id = ?
+             AND id = (SELECT MAX(id) FROM notifications WHERE type = 'serve_qr_scan' AND entity_type = 'serve_job' AND entity_id = ?)`,
+          updatedMessage,
+          row.job_id,
+          row.job_id,
+        );
+      } catch (notifErr) {
+        log.error("serve_qr_scan: notification update failed", { scanId }, notifErr as Error);
+      }
     }
   } catch (err) {
     log.error(
