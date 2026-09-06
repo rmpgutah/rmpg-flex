@@ -785,7 +785,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10664 -> 10612: Dialer Connect redesign (softphone layout, archive chips)
   //   migrated DialerConnectPage entirely off text-rmpg-300..600 onto
   //   text-fg-secondary / text-fg-muted / placeholder-fg-muted.
-  const PIN = 10612;
+  const PIN = 10610;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
