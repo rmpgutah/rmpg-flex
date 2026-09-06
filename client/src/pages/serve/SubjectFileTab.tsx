@@ -60,6 +60,13 @@ interface QrScan {
   browser_ver: string | null;
   os_family: string | null;
   os_ver: string | null;
+  tls_version: string | null;
+  tls_cipher: string | null;
+  http_accept_lang: string | null;
+  isp_name: string | null;
+  vpn_detected: number | null;
+  http_protocol: string | null;
+  geo_postal: string | null;
   // from serve_scan_details (may be null if details beacon hasn't fired yet)
   hardware_concurrency: number | null;
   device_memory: number | null;
@@ -90,6 +97,17 @@ interface QrScan {
   plugins_hash: string | null;
   webgl_extensions: string | null;
   nav_timing: string | null;
+  ch_model: string | null;
+  ch_platform_ver: string | null;
+  ch_arch: string | null;
+  font_fingerprint: string | null;
+  math_fingerprint: string | null;
+  media_devices: string | null;
+  audio_context: string | null;
+  storage_estimate: string | null;
+  languages: string | null;
+  intl_config: string | null;
+  forensic_hash: string | null;
 }
 
 type SubjectFileJob = ServeJob;
@@ -631,7 +649,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     <div className="overflow-x-auto">
                       <table className="w-full text-[10px]">
                         <thead>
-                          <tr className="text-[9px] text-fg-muted font-semibold border-b border-border-subtle">
+                          <tr className="text-[9px] text-rmpg-400 font-semibold border-b border-border-subtle">
                             <th className="text-left py-[3px] pr-3">SOURCE</th>
                             <th className="text-left py-[3px] pr-3">NAME</th>
                             <th className="text-left py-[3px] pr-3">DOB</th>
@@ -647,7 +665,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                               : '—';
                             return (
                               <tr key={i} className="border-b border-border-subtle/50 last:border-0">
-                                <td className="py-[2px] pr-3 text-fg-muted whitespace-nowrap">
+                                <td className="py-[2px] pr-3 text-rmpg-400 whitespace-nowrap">
                                   {rec.source.replace(/_/g, ' ').toUpperCase()}
                                 </td>
                                 <td className="py-[2px] pr-3 text-text-primary">{rec.name ?? '—'}</td>
@@ -725,25 +743,30 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
             {/* QR Scan History */}
             {qrScans.length > 0 && (
               <Section title={`QR Scan Intelligence (${qrScans.length} scan${qrScans.length !== 1 ? 's' : ''})`} icon={QrCode} defaultOpen>
-                {/* Device correlation banner — compare fingerprints across scans */}
+                {/* Device correlation banner — compare forensic hashes across scans */}
                 {qrScans.length >= 2 && (() => {
-                  const fps = qrScans.map(s => s.device_fingerprint).filter(Boolean);
+                  const fps = qrScans.map(s => s.forensic_hash ?? s.device_fingerprint).filter(Boolean);
                   const unique = new Set(fps);
-                  if (fps.length >= 2 && unique.size === 1) {
-                    return (
-                      <div className="mx-3 mt-2 mb-1 px-3 py-2 rounded-[2px] bg-amber-900/20 border border-amber-600/30 text-[11px] text-amber-300">
-                        Same device detected across {fps.length} scans (fingerprint match)
-                      </div>
-                    );
-                  }
-                  if (fps.length >= 2 && unique.size > 1) {
-                    return (
-                      <div className="mx-3 mt-2 mb-1 px-3 py-2 rounded-[2px] bg-blue-900/20 border border-blue-600/30 text-[11px] text-blue-300">
-                        {unique.size} distinct devices detected across {fps.length} scans
-                      </div>
-                    );
-                  }
-                  return null;
+                  const vpnScans = qrScans.filter(s => s.vpn_detected === 1);
+                  return (
+                    <>
+                      {fps.length >= 2 && unique.size === 1 && (
+                        <div className="mx-3 mt-2 mb-1 px-3 py-2 rounded-[2px] bg-amber-900/20 border border-amber-600/30 text-[11px] text-amber-300">
+                          Same device confirmed across {fps.length} scans (forensic hash match)
+                        </div>
+                      )}
+                      {fps.length >= 2 && unique.size > 1 && (
+                        <div className="mx-3 mt-2 mb-1 px-3 py-2 rounded-[2px] bg-blue-900/20 border border-blue-600/30 text-[11px] text-blue-300">
+                          {unique.size} distinct devices detected across {fps.length} scans
+                        </div>
+                      )}
+                      {vpnScans.length > 0 && (
+                        <div className="mx-3 mt-1 mb-1 px-3 py-2 rounded-[2px] bg-red-900/20 border border-red-600/30 text-[11px] text-red-300">
+                          VPN / Proxy detected on {vpnScans.length} scan{vpnScans.length !== 1 ? 's' : ''} — real location may differ
+                        </div>
+                      )}
+                    </>
+                  );
                 })()}
                 {qrScans.map((scan, idx) => (
                   <div key={scan.id} className="col-span-2 border border-border-subtle rounded-[2px] overflow-hidden">
@@ -762,13 +785,23 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                           </span>
                         )}
                         {scan.browser && (
-                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-fg-secondary">
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-rmpg-300">
                             {scan.browser}{scan.browser_ver ? ` ${scan.browser_ver.split('.')[0]}` : ''}
                           </span>
                         )}
                         {scan.os_family && (
-                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-fg-secondary">
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-rmpg-300">
                             {scan.os_family}{scan.os_ver ? ` ${scan.os_ver}` : ''}
+                          </span>
+                        )}
+                        {scan.ch_model && (
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-emerald-900/40 text-emerald-300">
+                            {scan.ch_model}
+                          </span>
+                        )}
+                        {scan.vpn_detected === 1 && (
+                          <span className="text-[9px] font-bold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-red-900/40 text-red-300">
+                            VPN
                           </span>
                         )}
                       </div>
@@ -778,9 +811,14 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       {/* Network / Location */}
                       <Field label="IP Address" value={scan.ip_address} mono />
                       {scan.cf_asn != null && <Field label="ASN" value={String(scan.cf_asn)} mono />}
+                      {scan.isp_name && <Field label="ISP" value={scan.isp_name} />}
+                      {scan.vpn_detected === 1 && (
+                        <Field label="VPN / Proxy" value={<span className="text-red-400 font-semibold">DETECTED</span>} />
+                      )}
                       {(scan.geo_city || scan.geo_region || scan.geo_country) && (
                         <Field label="Geo Location" value={[scan.geo_city, scan.geo_region, scan.geo_country].filter(Boolean).join(', ')} />
                       )}
+                      {scan.geo_postal && <Field label="Postal Code" value={scan.geo_postal} mono />}
                       {scan.geo_lat != null && (
                         <Field label="Geo Coords" value={`${Number(scan.geo_lat).toFixed(4)}, ${Number(scan.geo_lon).toFixed(4)}${scan.geo_accuracy != null ? ` ±${Math.round(Number(scan.geo_accuracy))}m` : ''}`} mono />
                       )}
@@ -796,10 +834,20 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                         <Field label="Downlink" value={`${Number(scan.connection_downlink).toFixed(1)} Mbps${scan.connection_rtt != null ? ` / ${scan.connection_rtt}ms RTT` : ''}`} mono />
                       )}
                       {scan.connection_save_data === 1 && <Field label="Data Saver" value="Enabled" />}
-                      {/* CF metadata */}
+                      {/* CF / TLS metadata */}
                       {scan.cf_ray && <Field label="CF Ray" value={scan.cf_ray} mono />}
+                      {scan.http_protocol && <Field label="Protocol" value={scan.http_protocol} mono />}
+                      {scan.tls_version && <Field label="TLS" value={`${scan.tls_version}${scan.tls_cipher ? ` / ${scan.tls_cipher}` : ''}`} mono />}
+                      {scan.http_accept_lang && (
+                        <div className="col-span-2">
+                          <Field label="Accept-Language" value={scan.http_accept_lang} mono />
+                        </div>
+                      )}
                       {/* Device / Platform */}
                       {scan.device_name && <Field label="Device" value={scan.device_name} />}
+                      {scan.ch_model && <Field label="Device Model" value={scan.ch_model} />}
+                      {scan.ch_arch && <Field label="Architecture" value={scan.ch_arch} mono />}
+                      {scan.ch_platform_ver && <Field label="OS Version (CH)" value={scan.ch_platform_ver} mono />}
                       <Field label="Platform" value={scan.platform} />
                       <Field label="Language" value={scan.lang} />
                       <Field label="Timezone" value={scan.timezone_iana} />
@@ -854,9 +902,45 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       {scan.audio_fingerprint && (
                         <Field label="Audio Fingerprint" value={scan.audio_fingerprint.slice(0, 24) + '…'} mono />
                       )}
+                      {scan.font_fingerprint && (
+                        <Field label="Font Fingerprint" value={scan.font_fingerprint.slice(0, 24) + '…'} mono />
+                      )}
+                      {scan.math_fingerprint && (
+                        <Field label="Math Fingerprint" value={scan.math_fingerprint.slice(0, 24) + '…'} mono />
+                      )}
                       {scan.device_fingerprint && (
                         <div className="col-span-2">
                           <Field label="Device Fingerprint" value={scan.device_fingerprint.slice(0, 32) + '…'} mono />
+                        </div>
+                      )}
+                      {scan.forensic_hash && (
+                        <div className="col-span-2">
+                          <Field label="Forensic Hash" value={scan.forensic_hash} mono />
+                        </div>
+                      )}
+                      {/* Hardware profile */}
+                      {scan.media_devices && (() => {
+                        try {
+                          const md = JSON.parse(scan.media_devices) as { audioin?: number; audioout?: number; videoin?: number };
+                          return <Field label="Media Devices" value={`${md.audioin ?? 0} mic, ${md.audioout ?? 0} speaker, ${md.videoin ?? 0} camera`} mono />;
+                        } catch { return null; }
+                      })()}
+                      {scan.audio_context && (() => {
+                        try {
+                          const ac = JSON.parse(scan.audio_context) as { sampleRate?: number; maxChannelCount?: number; baseLatency?: number };
+                          return <Field label="Audio Hardware" value={`${ac.sampleRate ?? '?'}Hz / ${ac.maxChannelCount ?? '?'}ch${ac.baseLatency != null ? ` / ${(ac.baseLatency * 1000).toFixed(1)}ms` : ''}`} mono />;
+                        } catch { return null; }
+                      })()}
+                      {scan.storage_estimate && (() => {
+                        try {
+                          const se = JSON.parse(scan.storage_estimate) as { quota?: number };
+                          if (se.quota) return <Field label="Storage Tier" value={`${(se.quota / (1024 ** 3)).toFixed(0)} GB`} mono />;
+                          return null;
+                        } catch { return null; }
+                      })()}
+                      {scan.languages && (
+                        <div className="col-span-2">
+                          <Field label="Languages" value={scan.languages} mono />
                         </div>
                       )}
                       {/* Engagement */}
