@@ -31,13 +31,17 @@ interface QrScan {
   job_ref: string;
   scanned_at: string;
   ip_address: string | null;
+  user_agent: string | null;
   geo_city: string | null;
   geo_region: string | null;
   geo_country: string | null;
   geo_lat: number | null;
   geo_lon: number | null;
   geo_source: string | null;
+  geo_accuracy: number | null;
+  geo_permission: string | null;
   device_type: string | null;
+  device_name: string | null;
   platform: string | null;
   timezone_iana: string | null;
   lang: string | null;
@@ -50,6 +54,12 @@ interface QrScan {
   touch_points: number | null;
   connection_type: string | null;
   dark_mode: number | null;
+  cf_asn: number | null;
+  cf_ray: string | null;
+  browser: string | null;
+  browser_ver: string | null;
+  os_family: string | null;
+  os_ver: string | null;
   // from serve_scan_details (may be null if details beacon hasn't fired yet)
   hardware_concurrency: number | null;
   device_memory: number | null;
@@ -75,6 +85,11 @@ interface QrScan {
   referrer: string | null;
   pdf_support: number | null;
   time_on_page_ms: number | null;
+  device_fingerprint: string | null;
+  audio_fingerprint: string | null;
+  plugins_hash: string | null;
+  webgl_extensions: string | null;
+  nav_timing: string | null;
 }
 
 type SubjectFileJob = ServeJob;
@@ -710,15 +725,50 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
             {/* QR Scan History */}
             {qrScans.length > 0 && (
               <Section title={`QR Scan Intelligence (${qrScans.length} scan${qrScans.length !== 1 ? 's' : ''})`} icon={QrCode} defaultOpen>
+                {/* Device correlation banner — compare fingerprints across scans */}
+                {qrScans.length >= 2 && (() => {
+                  const fps = qrScans.map(s => s.device_fingerprint).filter(Boolean);
+                  const unique = new Set(fps);
+                  if (fps.length >= 2 && unique.size === 1) {
+                    return (
+                      <div className="mx-3 mt-2 mb-1 px-3 py-2 rounded-[2px] bg-amber-900/20 border border-amber-600/30 text-[11px] text-amber-300">
+                        Same device detected across {fps.length} scans (fingerprint match)
+                      </div>
+                    );
+                  }
+                  if (fps.length >= 2 && unique.size > 1) {
+                    return (
+                      <div className="mx-3 mt-2 mb-1 px-3 py-2 rounded-[2px] bg-blue-900/20 border border-blue-600/30 text-[11px] text-blue-300">
+                        {unique.size} distinct devices detected across {fps.length} scans
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {qrScans.map((scan, idx) => (
                   <div key={scan.id} className="col-span-2 border border-border-subtle rounded-[2px] overflow-hidden">
                     {/* Scan header */}
                     <div className="flex items-center justify-between px-3 py-2 bg-rmpg-900/60 border-b border-border-subtle">
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] font-bold uppercase tracking-wider text-fg-muted">Scan #{idx + 1}</span>
-                        {scan.device_type && (
+                        {scan.device_name && (
+                          <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800 text-rmpg-200">
+                            {scan.device_name}
+                          </span>
+                        )}
+                        {scan.device_type && !scan.device_name && (
                           <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800 text-rmpg-200">
                             {formatEnumValue(scan.device_type)}
+                          </span>
+                        )}
+                        {scan.browser && (
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-rmpg-300">
+                            {scan.browser}{scan.browser_ver ? ` ${scan.browser_ver.split('.')[0]}` : ''}
+                          </span>
+                        )}
+                        {scan.os_family && (
+                          <span className="text-[9px] font-semibold tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800/60 text-rmpg-300">
+                            {scan.os_family}{scan.os_ver ? ` ${scan.os_ver}` : ''}
                           </span>
                         )}
                       </div>
@@ -727,13 +777,15 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-3">
                       {/* Network / Location */}
                       <Field label="IP Address" value={scan.ip_address} mono />
+                      {scan.cf_asn != null && <Field label="ASN" value={String(scan.cf_asn)} mono />}
                       {(scan.geo_city || scan.geo_region || scan.geo_country) && (
                         <Field label="Geo Location" value={[scan.geo_city, scan.geo_region, scan.geo_country].filter(Boolean).join(', ')} />
                       )}
                       {scan.geo_lat != null && (
-                        <Field label="Geo Coords" value={`${Number(scan.geo_lat).toFixed(4)}, ${Number(scan.geo_lon).toFixed(4)}`} mono />
+                        <Field label="Geo Coords" value={`${Number(scan.geo_lat).toFixed(4)}, ${Number(scan.geo_lon).toFixed(4)}${scan.geo_accuracy != null ? ` ±${Math.round(Number(scan.geo_accuracy))}m` : ''}`} mono />
                       )}
                       {scan.geo_source && <Field label="Geo Source" value={formatEnumValue(scan.geo_source)} />}
+                      {scan.geo_permission && <Field label="GPS Permission" value={formatEnumValue(scan.geo_permission)} />}
                       {scan.local_ips && (
                         <div className="col-span-2">
                           <Field label="Local IPs (WebRTC)" value={scan.local_ips} mono />
@@ -744,16 +796,23 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                         <Field label="Downlink" value={`${Number(scan.connection_downlink).toFixed(1)} Mbps${scan.connection_rtt != null ? ` / ${scan.connection_rtt}ms RTT` : ''}`} mono />
                       )}
                       {scan.connection_save_data === 1 && <Field label="Data Saver" value="Enabled" />}
+                      {/* CF metadata */}
+                      {scan.cf_ray && <Field label="CF Ray" value={scan.cf_ray} mono />}
                       {/* Device / Platform */}
+                      {scan.device_name && <Field label="Device" value={scan.device_name} />}
                       <Field label="Platform" value={scan.platform} />
                       <Field label="Language" value={scan.lang} />
                       <Field label="Timezone" value={scan.timezone_iana} />
                       {scan.screen_w != null && (
-                        <Field label="Screen" value={`${scan.screen_w}×${scan.screen_h}${scan.pixel_ratio != null ? ` @${Number(scan.pixel_ratio).toFixed(1)}x` : ''}`} mono />
+                        <Field label="Screen" value={`${scan.screen_w}×${scan.screen_h}${scan.pixel_ratio != null ? ` @${Number(scan.pixel_ratio).toFixed(1)}x` : ''}${scan.color_depth != null ? ` ${scan.color_depth}bit` : ''}`} mono />
+                      )}
+                      {scan.screen_avail_w != null && (
+                        <Field label="Avail Screen" value={`${scan.screen_avail_w}×${scan.screen_avail_h}`} mono />
                       )}
                       {scan.viewport_w != null && (
                         <Field label="Viewport" value={`${scan.viewport_w}×${scan.viewport_h}`} mono />
                       )}
+                      {scan.screen_orientation && <Field label="Orientation" value={formatEnumValue(scan.screen_orientation)} />}
                       {scan.touch_points != null && Number(scan.touch_points) > 0 && (
                         <Field label="Touch Points" value={String(scan.touch_points)} mono />
                       )}
@@ -774,12 +833,14 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       )}
                       {/* Display / A11y */}
                       {scan.color_gamut && <Field label="Color Gamut" value={scan.color_gamut.toUpperCase()} />}
+                      {scan.hdr_support === 1 && <Field label="HDR" value="Supported" />}
                       {scan.dark_mode != null && <Field label="Dark Mode" value={scan.dark_mode ? 'Yes' : 'No'} />}
                       {scan.reduced_motion === 1 && <Field label="Reduced Motion" value="Enabled" />}
+                      {scan.history_length != null && <Field label="History Length" value={String(scan.history_length)} mono />}
                       {/* Privacy signals */}
                       {scan.do_not_track === 1 && <Field label="Do Not Track" value="Enabled" />}
                       {scan.cookie_enabled === 0 && <Field label="Cookies" value="Disabled" />}
-                      {/* Fingerprint */}
+                      {/* Fingerprints */}
                       {scan.webgl_vendor && (
                         <div className="col-span-2">
                           <Field label="GPU" value={[scan.webgl_vendor, scan.webgl_renderer].filter(Boolean).join(' — ')} mono />
@@ -788,6 +849,14 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       {scan.canvas_fingerprint && (
                         <div className="col-span-2">
                           <Field label="Canvas Fingerprint" value={scan.canvas_fingerprint.slice(0, 32) + '…'} mono />
+                        </div>
+                      )}
+                      {scan.audio_fingerprint && (
+                        <Field label="Audio Fingerprint" value={scan.audio_fingerprint.slice(0, 24) + '…'} mono />
+                      )}
+                      {scan.device_fingerprint && (
+                        <div className="col-span-2">
+                          <Field label="Device Fingerprint" value={scan.device_fingerprint.slice(0, 32) + '…'} mono />
                         </div>
                       )}
                       {/* Engagement */}
@@ -800,6 +869,12 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                         </div>
                       )}
                       {scan.pdf_support === 1 && <Field label="PDF Support" value="Yes" />}
+                      {/* Raw UA */}
+                      {scan.user_agent && (
+                        <div className="col-span-2">
+                          <Field label="User Agent" value={scan.user_agent} mono />
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

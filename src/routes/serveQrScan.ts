@@ -22,6 +22,7 @@ import { broadcastAll } from "./ws";
 import { authMiddleware } from "../middleware/auth";
 import { rateLimitAllow } from "../utils/rateLimit";
 import { SUBJECT_SUPPORT, parseAgencyRef } from "../utils/subjectSupport";
+import { getRequestGeo } from "../utils/requestGeo";
 
 const app = new Hono<Env>();
 
@@ -79,6 +80,70 @@ const toStr = (v: unknown, max = 512) =>
 const toBool = (v: unknown) =>
   typeof v === "boolean" ? (v ? 1 : 0) : null;
 
+function parseUa(ua: string | null): {
+  browser: string | null;
+  browserVer: string | null;
+  osFamily: string | null;
+  osVer: string | null;
+} {
+  if (!ua) return { browser: null, browserVer: null, osFamily: null, osVer: null };
+
+  let browser: string | null = null;
+  let browserVer: string | null = null;
+  const edg = /Edg\/(\d[\d.]*)/i.exec(ua);
+  if (edg) { browser = "Edge"; browserVer = edg[1]; }
+  else {
+    const opr = /OPR\/(\d[\d.]*)/i.exec(ua);
+    if (opr) { browser = "Opera"; browserVer = opr[1]; }
+    else {
+      const crios = /CriOS\/(\d[\d.]*)/i.exec(ua);
+      if (crios) { browser = "Chrome"; browserVer = crios[1]; }
+      else {
+        const chr = /Chrome\/(\d[\d.]*)/i.exec(ua);
+        if (chr) { browser = "Chrome"; browserVer = chr[1]; }
+        else {
+          const fxios = /FxiOS\/(\d[\d.]*)/i.exec(ua);
+          if (fxios) { browser = "Firefox"; browserVer = fxios[1]; }
+          else {
+            const ff = /Firefox\/(\d[\d.]*)/i.exec(ua);
+            if (ff) { browser = "Firefox"; browserVer = ff[1]; }
+            else {
+              const saf = /Version\/(\d[\d.]*)\s.*Safari/i.exec(ua);
+              if (saf) { browser = "Safari"; browserVer = saf[1]; }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let osFamily: string | null = null;
+  let osVer: string | null = null;
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    osFamily = "iOS";
+    const m = /OS (\d[\d_]*)/i.exec(ua);
+    if (m) osVer = m[1].replace(/_/g, ".");
+  } else if (/Android/i.test(ua)) {
+    osFamily = "Android";
+    const m = /Android (\d[\d.]*)/i.exec(ua);
+    if (m) osVer = m[1];
+  } else if (/Windows NT/i.test(ua)) {
+    osFamily = "Windows";
+    const m = /Windows NT (\d[\d.]*)/i.exec(ua);
+    if (m) osVer = m[1];
+  } else if (/Mac OS X/i.test(ua)) {
+    osFamily = "macOS";
+    const m = /Mac OS X (\d[\d_.]*)/i.exec(ua);
+    if (m) osVer = m[1].replace(/_/g, ".");
+  } else if (/CrOS/i.test(ua)) {
+    osFamily = "ChromeOS";
+  } else if (/Linux/i.test(ua)) {
+    osFamily = "Linux";
+  }
+
+  return { browser, browserVer, osFamily, osVer };
+}
+
 // ── GET / — initial QR scan ──────────────────────────────────
 
 app.get("/", async (c) => {
@@ -102,6 +167,14 @@ app.get("/", async (c) => {
   const geoLon = cfFloat(c.req.header("cf-iplongitude"));
   const deviceType = parseDeviceType(ua);
   const deviceName = parseDeviceName(ua);
+
+  // CF network metadata for VPN/proxy detection + support correlation.
+  const geo = getRequestGeo(c);
+  const cfAsn = geo.asn ? parseInt(geo.asn, 10) : null;
+  const cfRay = c.req.header("cf-ray") ?? null;
+
+  // Structured UA fields for officer display.
+  const parsed = parseUa(ua);
 
   // Resolve serve_queue row from "JOB-<id>" ref so we can notify the officer.
   let jobId: number | null = null;
@@ -137,8 +210,10 @@ app.get("/", async (c) => {
       `INSERT INTO serve_qr_scans
          (job_ref, job_id, scanned_at, ip_address, user_agent,
           geo_city, geo_region, geo_country, geo_lat, geo_lon, geo_source,
-          device_type, device_name, notified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+          device_type, device_name,
+          cf_asn, cf_ray, browser, browser_ver, os_family, os_ver,
+          notified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       ref,
       jobId,
       now,
@@ -152,6 +227,12 @@ app.get("/", async (c) => {
       geoLat !== null ? "ip" : null,
       deviceType,
       deviceName,
+      Number.isFinite(cfAsn) ? cfAsn : null,
+      cfRay,
+      parsed.browser,
+      parsed.browserVer,
+      parsed.osFamily,
+      parsed.osVer,
     );
     scanId = ins.meta?.last_row_id ?? null;
   } catch (err) {
@@ -658,6 +739,10 @@ interface DetailsBody {
   historyLength?: unknown;
   referrer?: unknown;
   pdfSupport?: unknown;
+  audioFingerprint?: unknown;
+  pluginsHash?: unknown;
+  webglExtensions?: unknown;
+  navTiming?: unknown;
 }
 
 app.post("/details", async (c) => {
@@ -683,6 +768,35 @@ app.post("/details", async (c) => {
     if (ips.length > 0) localIpsJson = JSON.stringify(ips);
   }
 
+  // Compute a composite device fingerprint from deterministic signals.
+  const canvasFp = toStr(body.canvasFingerprint, 64);
+  const audioFp = toStr(body.audioFingerprint, 128);
+  const webglRen = toStr(body.webglRenderer, 256);
+  const pluginsH = toStr(body.pluginsHash, 128);
+  const webglExt = toStr(body.webglExtensions, 512);
+  const navTimingJson = toStr(body.navTiming, 2048);
+
+  let deviceFingerprint: string | null = null;
+  try {
+    const signals = [
+      canvasFp ?? "",
+      audioFp ?? "",
+      webglRen ?? "",
+      String(toInt(body.hardwareConcurrency) ?? ""),
+      String(toFlt(body.deviceMemory) ?? ""),
+      pluginsH ?? "",
+    ].join("|");
+    if (signals.replace(/\|/g, "").length > 0) {
+      const buf = new TextEncoder().encode(signals);
+      const hash = await crypto.subtle.digest("SHA-256", buf);
+      deviceFingerprint = Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  } catch {
+    // best effort — crypto.subtle always available on Workers
+  }
+
   const db = getDb(c.env);
   try {
     // ON CONFLICT upsert — replay-safe if client re-sends.
@@ -696,8 +810,9 @@ app.post("/details", async (c) => {
           color_gamut, hdr_support, reduced_motion, pointer_type,
           cookie_enabled, do_not_track,
           canvas_fingerprint, webgl_vendor, webgl_renderer,
-          local_ips, history_length, referrer, pdf_support)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          local_ips, history_length, referrer, pdf_support,
+          device_fingerprint, audio_fingerprint, plugins_hash, webgl_extensions, nav_timing)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(scan_id) DO UPDATE SET
          hardware_concurrency = excluded.hardware_concurrency,
          device_memory        = excluded.device_memory,
@@ -721,7 +836,12 @@ app.post("/details", async (c) => {
          local_ips            = COALESCE(excluded.local_ips, local_ips),
          history_length       = excluded.history_length,
          referrer             = excluded.referrer,
-         pdf_support          = excluded.pdf_support`,
+         pdf_support          = excluded.pdf_support,
+         device_fingerprint   = COALESCE(excluded.device_fingerprint, device_fingerprint),
+         audio_fingerprint    = COALESCE(excluded.audio_fingerprint, audio_fingerprint),
+         plugins_hash         = COALESCE(excluded.plugins_hash, plugins_hash),
+         webgl_extensions     = COALESCE(excluded.webgl_extensions, webgl_extensions),
+         nav_timing           = COALESCE(excluded.nav_timing, nav_timing)`,
       scanId,
       toInt(body.hardwareConcurrency),
       toFlt(body.deviceMemory),
@@ -739,13 +859,18 @@ app.post("/details", async (c) => {
       toStr(body.pointerType, 16),
       toBool(body.cookieEnabled),
       toStr(body.doNotTrack, 4),
-      toStr(body.canvasFingerprint, 64),
+      canvasFp,
       toStr(body.webglVendor, 256),
-      toStr(body.webglRenderer, 256),
+      webglRen,
       localIpsJson,
       toInt(body.historyLength),
       toStr(body.referrer, 512),
       toBool(body.pdfSupport),
+      deviceFingerprint,
+      audioFp,
+      pluginsH,
+      webglExt,
+      navTimingJson,
     );
 
     // Re-broadcast enhanced data to officers watching the serve module.
@@ -759,12 +884,14 @@ app.post("/details", async (c) => {
         scanId,
         jobId: scanRow.job_id,
         ref: scanRow.job_ref,
-        canvasFingerprint: toStr(body.canvasFingerprint, 64),
-        webglRenderer: toStr(body.webglRenderer, 256),
+        canvasFingerprint: canvasFp,
+        webglRenderer: webglRen,
         localIps: localIpsJson,
         hardwareConcurrency: toInt(body.hardwareConcurrency),
         deviceMemory: toFlt(body.deviceMemory),
         batteryLevel: toFlt(body.batteryLevel),
+        deviceFingerprint,
+        audioFingerprint: audioFp,
       });
     }
   } catch (err) {
@@ -835,13 +962,15 @@ app.get("/scans", async (c) => {
        s.device_type, s.device_name, s.screen_w, s.screen_h, s.viewport_w, s.viewport_h,
        s.pixel_ratio, s.color_depth, s.timezone_iana, s.lang,
        s.touch_points, s.connection_type, s.dark_mode, s.platform,
+       s.cf_asn, s.cf_ray, s.browser, s.browser_ver, s.os_family, s.os_ver,
        d.hardware_concurrency, d.device_memory, d.battery_level, d.battery_charging,
        d.connection_downlink, d.connection_rtt, d.connection_save_data,
        d.screen_avail_w, d.screen_avail_h, d.screen_orientation,
        d.color_gamut, d.hdr_support, d.reduced_motion, d.pointer_type,
        d.cookie_enabled, d.do_not_track,
        d.canvas_fingerprint, d.webgl_vendor, d.webgl_renderer,
-       d.local_ips, d.history_length, d.referrer, d.pdf_support, d.time_on_page_ms
+       d.local_ips, d.history_length, d.referrer, d.pdf_support, d.time_on_page_ms,
+       d.device_fingerprint, d.audio_fingerprint, d.plugins_hash, d.webgl_extensions, d.nav_timing
      FROM serve_qr_scans s
      LEFT JOIN serve_scan_details d ON d.scan_id = s.id
      WHERE s.job_ref = ?

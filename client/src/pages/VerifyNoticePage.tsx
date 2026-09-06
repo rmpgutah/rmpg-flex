@@ -198,24 +198,88 @@ async function canvasFingerprint(): Promise<string | null> {
   }
 }
 
-function webglInfo(): { vendor: string | null; renderer: string | null } {
+function webglInfo(): { vendor: string | null; renderer: string | null; extensions: string | null } {
   try {
     const gl = document
       .createElement('canvas')
       .getContext('webgl') as WebGLRenderingContext | null;
-    if (!gl) return { vendor: null, renderer: null };
+    if (!gl) return { vendor: null, renderer: null, extensions: null };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const exts = gl.getSupportedExtensions();
+    const extHash = exts ? exts.sort().join(',') : null;
     return ext
       ? {
           vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) as string,
           renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string,
+          extensions: extHash,
         }
       : {
           vendor: gl.getParameter(gl.VENDOR) as string,
           renderer: gl.getParameter(gl.RENDERER) as string,
+          extensions: extHash,
         };
   } catch {
-    return { vendor: null, renderer: null };
+    return { vendor: null, renderer: null, extensions: null };
+  }
+}
+
+async function audioFingerprint(): Promise<string | null> {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return null;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const analyser = ctx.createAnalyser();
+    const gain = ctx.createGain();
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    gain.gain.value = 0;
+    osc.type = 'triangle';
+    osc.connect(analyser);
+    analyser.connect(proc);
+    proc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(0);
+    return await new Promise<string | null>((resolve) => {
+      proc.onaudioprocess = (e) => {
+        const data = e.inputBuffer.getChannelData(0);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) sum += Math.abs(data[i]);
+        osc.disconnect();
+        proc.disconnect();
+        analyser.disconnect();
+        void ctx.close();
+        resolve(sum.toFixed(20));
+      };
+      setTimeout(() => { try { osc.disconnect(); proc.disconnect(); void ctx.close(); } catch {} resolve(null); }, 3000);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function pluginsHash(): string | null {
+  try {
+    const plugins = Array.from(navigator.plugins ?? []).map((p) => p.name).sort();
+    return plugins.length > 0 ? plugins.join(',') : null;
+  } catch {
+    return null;
+  }
+}
+
+function navTiming(): string | null {
+  try {
+    const perf = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (!perf) return null;
+    return JSON.stringify({
+      dns: Math.round(perf.domainLookupEnd - perf.domainLookupStart),
+      tcp: Math.round(perf.connectEnd - perf.connectStart),
+      ttfb: Math.round(perf.responseStart - perf.requestStart),
+      download: Math.round(perf.responseEnd - perf.responseStart),
+      domReady: Math.round(perf.domContentLoadedEventEnd - perf.startTime),
+      load: Math.round(perf.loadEventEnd - perf.startTime),
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -271,10 +335,11 @@ async function batteryInfo(): Promise<{
 }
 
 async function collectRichDetails() {
-  const [fp, batt, localIps] = await Promise.all([
+  const [fp, batt, localIps, audioFp] = await Promise.all([
     canvasFingerprint(),
     batteryInfo(),
     collectLocalIps(),
+    audioFingerprint(),
   ]);
   const gpu = webglInfo();
   const conn = (
@@ -324,6 +389,10 @@ async function collectRichDetails() {
     pdfSupport: Array.from(navigator.mimeTypes ?? []).some(
       (m: MimeType) => m.type === 'application/pdf',
     ),
+    audioFingerprint: audioFp,
+    pluginsHash: pluginsHash(),
+    webglExtensions: gpu.extensions,
+    navTiming: navTiming(),
   };
 }
 
