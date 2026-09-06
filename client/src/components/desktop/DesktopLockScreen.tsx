@@ -4,7 +4,7 @@ import { useClock } from '../../hooks/useClock';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../hooks/useApi';
 import DesktopEmergencyAccessModal from './DesktopEmergencyAccessModal';
-import { verifyOfflinePin } from '../../utils/DesktopOfflineAuthVault';
+import { verifyOfflinePin, storeOfflinePin } from '../../utils/DesktopOfflineAuthVault';
 
 const AGENCY_NAME = 'Rocky Mountain Protective Group';
 const AGENCY_SHORT = 'RMPG';
@@ -227,12 +227,19 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       if (r.success && !r.requires2FA) {
         setAttempts(0); setSwitchingUser(false);
         try { localStorage.setItem(LAST_USER_KEY, JSON.stringify(selectedUser)); } catch { /* */ }
+        storeOfflinePin(
+          selectedUser.username,
+          selectedUser.badge_number ?? '',
+          selectedUser.first_name,
+          selectedUser.last_name,
+          selectedUser.role,
+          selectedUser.badge_number,
+        ).catch(() => {});
         onUnlock();
       } else handleFailedAttempt();
     } catch {
-      const off = await verifyOfflinePin(selectedUser.username, password);
-      if (off.ok) { setAttempts(0); onUnlock(); }
-      else { setNetworkError('Unable to reach server — offline auth attempted'); handleFailedAttempt(); }
+      setNetworkError('Unable to reach server. Use PIN mode for offline access.');
+      handleFailedAttempt();
     } finally { setBusy(false); }
   }, [password, selectedUser, login, onUnlock, handleFailedAttempt, isLockedOut, busy]);
 
@@ -243,14 +250,26 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       const r = await apiFetch<{ ok: boolean }>('/auth/verify-pin', {
         method: 'POST', body: JSON.stringify({ pin: pinVal, username: selectedUser.username }),
       });
-      if (r?.ok) { setAttempts(0); setSwitchingUser(false); onUnlock(); }
-      else handleFailedAttempt();
+      if (r?.ok) {
+        setAttempts(0); setSwitchingUser(false);
+        storeOfflinePin(
+          selectedUser.username, pinVal,
+          selectedUser.first_name, selectedUser.last_name,
+          selectedUser.role, selectedUser.badge_number,
+        ).catch(() => {});
+        onUnlock();
+      } else handleFailedAttempt();
     } catch {
       const off = await verifyOfflinePin(selectedUser.username, pinVal);
       if (off.ok) { setAttempts(0); onUnlock(); }
-      else { setNetworkError('Unable to reach server — offline auth attempted'); handleFailedAttempt(); }
+      else {
+        setNetworkError(isOnline
+          ? 'PIN verification failed. Check server connection.'
+          : 'Offline — PIN not recognized. Try your badge number.');
+        handleFailedAttempt();
+      }
     } finally { setBusy(false); }
-  }, [isLockedOut, selectedUser, onUnlock, handleFailedAttempt, busy]);
+  }, [isLockedOut, selectedUser, onUnlock, handleFailedAttempt, busy, isOnline]);
 
   const handleWindowsSwitch = useCallback(async (pinVal: string) => {
     if (pinVal.length < PIN_MIN_LEN || switchBusy) return;

@@ -13,7 +13,7 @@ export type FocusAssistLevel = 'off' | 'priority' | 'alarms-only';
 
 export interface DesktopSystemState {
   nightLightOn: boolean; nightLightIntensity: number;
-  dndOn: boolean; brightness: number;
+  dndOn: boolean; brightness: number; volume: number;
   focusAssist: FocusAssistLevel;
   activeCall: ActiveCall | null; welfareTimer: WelfareTimer | null;
   updateAvailable: string | null; clipboardHistory: string[];
@@ -24,6 +24,7 @@ interface DesktopSystemActions {
   setNightLight: (on: boolean, intensity?: number) => void;
   setDnd: (on: boolean) => void;
   setBrightness: (value: number) => void;
+  setVolume: (value: number) => void;
   setFocusAssist: (level: FocusAssistLevel) => void;
   startWelfareTimer: (minutes: number) => void;
   cancelWelfareTimer: () => void;
@@ -42,6 +43,61 @@ const WELFARE_KEY = 'rmpg_welfare_timer';
 import {
   addClipEntry as persistClip, loadClipHistory, MAX_CLIP,
 } from '../utils/clipboardStore';
+
+const BRIGHTNESS_OVERLAY_ID = 'rmpg-brightness-overlay';
+
+function applyBrightnessOverlay(pct: number) {
+  let overlay = document.getElementById(BRIGHTNESS_OVERLAY_ID);
+  if (pct >= 100) {
+    overlay?.remove();
+    return;
+  }
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = BRIGHTNESS_OVERLAY_ID;
+    overlay.style.cssText =
+      'position:fixed;inset:0;pointer-events:none;z-index:99998;background:#000;transition:opacity 150ms ease';
+    document.body.appendChild(overlay);
+  }
+  overlay.style.opacity = String(1 - pct / 100);
+}
+
+const VOLUME_KEY = 'rmpg_desktop_volume';
+const VOLUME_OVERLAY_ATTR = 'data-rmpg-vol';
+
+function getPersistedVolume(): number {
+  try { return Math.min(100, Math.max(0, parseInt(localStorage.getItem(VOLUME_KEY) ?? '100', 10))); }
+  catch { return 100; }
+}
+
+function applyVolumeToAll(pct: number) {
+  const v = pct / 100;
+  document.querySelectorAll<HTMLMediaElement>('audio, video').forEach(el => {
+    el.volume = v;
+    el.setAttribute(VOLUME_OVERLAY_ATTR, '1');
+  });
+  try { localStorage.setItem(VOLUME_KEY, String(pct)); } catch {}
+}
+
+let volumeObserver: MutationObserver | null = null;
+
+function ensureVolumeObserver(getVolume: () => number) {
+  if (volumeObserver) return;
+  volumeObserver = new MutationObserver((mutations) => {
+    const v = getVolume() / 100;
+    for (const m of mutations) {
+      m.addedNodes.forEach(node => {
+        if (node instanceof HTMLElement) {
+          const els = node.matches('audio, video')
+            ? [node as HTMLMediaElement]
+            : Array.from(node.querySelectorAll<HTMLMediaElement>('audio, video'));
+          els.forEach(el => { el.volume = v; el.setAttribute(VOLUME_OVERLAY_ATTR, '1'); });
+        }
+      });
+    }
+  });
+  volumeObserver.observe(document.body, { childList: true, subtree: true });
+}
 
 const DesktopSystemContext = createContext<(DesktopSystemState & DesktopSystemActions) | null>(null);
 
@@ -91,10 +147,13 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
   const [welfareTimer, setWelfareTimer] = useState<WelfareTimer | null>(loadWelfare);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [clipboardHistory, setClipboardHistory] = useState<string[]>(loadClip);
+  const [volume, setVolumeState] = useState(getPersistedVolume);
   const [unitStatus, setUnitStatusState] = useState('available');
   const [radioChannel, setRadioChannelState] = useState(() => localStorage.getItem(RADIO_KEY) ?? 'CH1');
   const [syncPending, setSyncPending] = useState(0);
   const dismissedVersion = useRef<string | null>(null);
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
 
   // Poll active call
   useEffect(() => {
@@ -164,6 +223,26 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
     return () => clearTimeout(t);
   }, [welfareTimer]);
 
+  // Apply brightness on mount
+  useEffect(() => {
+    applyBrightnessOverlay(brightness);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply volume on mount + start MutationObserver for new media elements
+  useEffect(() => {
+    applyVolumeToAll(volume);
+    ensureVolumeObserver(() => volumeRef.current);
+    return () => { if (volumeObserver) { volumeObserver.disconnect(); volumeObserver = null; } };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setVolume = useCallback((value: number) => {
+    const clamped = Math.max(0, Math.min(100, value));
+    setVolumeState(clamped);
+    applyVolumeToAll(clamped);
+    const el = (window as any).electron;
+    if (el?.setVolume) el.setVolume(clamped).catch(() => {});
+  }, []);
+
   const setNightLight = useCallback((on: boolean, intensity?: number) => {
     setNightLightOnState(on);
     localStorage.setItem(NIGHT_KEY, on ? '1' : '0');
@@ -187,7 +266,9 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
     const clamped = Math.max(10, Math.min(100, value));
     setBrightnessState(clamped);
     localStorage.setItem(BRIGHTNESS_KEY, String(clamped));
-    // brightness is a local UI state only; no Electron IPC for display brightness
+    applyBrightnessOverlay(clamped);
+    const el = (window as any).electron;
+    if (el?.setBrightness) el.setBrightness(clamped).catch(() => {});
   }, []);
 
   const startWelfareTimer = useCallback((minutes: number) => {
@@ -224,9 +305,9 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
 
   return (
     <DesktopSystemContext.Provider value={{
-      nightLightOn, nightLightIntensity, dndOn, focusAssist, brightness, activeCall, welfareTimer,
+      nightLightOn, nightLightIntensity, dndOn, focusAssist, brightness, volume, activeCall, welfareTimer,
       updateAvailable, clipboardHistory, unitStatus, radioChannel, syncPending,
-      setNightLight, setDnd, setFocusAssist, setBrightness, startWelfareTimer, cancelWelfareTimer,
+      setNightLight, setDnd, setFocusAssist, setBrightness, setVolume, startWelfareTimer, cancelWelfareTimer,
       dismissUpdate, addClipboardEntry, setUnitStatus, setRadioChannel,
     }}>
       {children}
