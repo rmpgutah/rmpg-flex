@@ -356,6 +356,7 @@ export default function VerifyNoticePage() {
   const [locState, setLocState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
   const scanIdRef = useRef<number | null>(null);
   const pageStartRef = useRef<number>(performance.now());
+  const geoRequestedRef = useRef(false);
 
   const sendTimeOnPage = useCallback(() => {
     const id = scanIdRef.current;
@@ -377,6 +378,40 @@ export default function VerifyNoticePage() {
       window.removeEventListener('pagehide', sendTimeOnPage);
     };
   }, [sendTimeOnPage]);
+
+  const requestLocation = useCallback(() => {
+    if (geoRequestedRef.current) return;
+    geoRequestedRef.current = true;
+    if (!navigator.geolocation) {
+      setLocState('denied');
+      fetch(`${API_BASE}/api/verify/location/denied`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scanId: scanIdRef.current, reason: 'unavailable' }),
+      }).catch(() => {});
+      return;
+    }
+    setLocState('requesting');
+    navigator.geolocation.getCurrentPosition(
+      ({ coords: { latitude: lat, longitude: lon, accuracy } }) => {
+        fetch(`${API_BASE}/api/verify/location`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId: scanIdRef.current, lat, lon, accuracy }),
+        }).catch(() => {});
+        setLocState('sent');
+      },
+      () => {
+        setLocState('denied');
+        fetch(`${API_BASE}/api/verify/location/denied`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId: scanIdRef.current, reason: 'denied' }),
+        }).catch(() => {});
+      },
+      { timeout: 10000, maximumAge: 60000 },
+    );
+  }, []);
 
   useEffect(() => {
     if (!ref) { setError(true); return; }
@@ -400,26 +435,11 @@ export default function VerifyNoticePage() {
             body: JSON.stringify({ scanId: d.scanId, ...details }),
           }).catch(() => {/* best-effort */});
         });
+        // 3. Auto-request GPS location — required for service records
+        requestLocation();
       })
       .catch(() => setError(true));
-  }, [ref]);
-
-  function requestLocation() {
-    if (!navigator.geolocation) { setLocState('denied'); return; }
-    setLocState('requesting');
-    navigator.geolocation.getCurrentPosition(
-      ({ coords: { latitude: lat, longitude: lon, accuracy } }) => {
-        fetch(`${API_BASE}/api/verify/location`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId: scanIdRef.current, lat, lon, accuracy }),
-        }).catch(() => {/* best-effort */});
-        setLocState('sent');
-      },
-      () => setLocState('denied'),
-      { timeout: 10000, maximumAge: 60000 },
-    );
-  }
+  }, [ref, requestLocation]);
 
   const keyframes = `@keyframes spin { to { transform: rotate(360deg) } }`;
 
@@ -499,28 +519,26 @@ export default function VerifyNoticePage() {
           Call {data.phone}
         </a>
 
-        {locState === 'idle' && scanIdRef.current !== null && (
-          <>
-            <button style={S.locBtn} onClick={requestLocation}>
-              📍 Share location to help coordinate delivery
-            </button>
-            <div style={S.note}>
-              Optional · your browser will ask for permission
-            </div>
-          </>
-        )}
         {locState === 'requesting' && (
-          <div style={{ ...S.note, marginTop: 14 }}>Waiting for permission…</div>
+          <div style={{ ...S.note, marginTop: 14 }}>Requesting location…</div>
         )}
         {locState === 'sent' && (
           <div style={{ ...S.note, marginTop: 14, color: C.successTxt }}>
-            ✓ Location shared.
+            ✓ Location captured for service records.
           </div>
         )}
         {locState === 'denied' && (
-          <div style={{ ...S.note, marginTop: 14 }}>
-            Location not shared — call us to arrange delivery.
-          </div>
+          <>
+            <button style={S.locBtn} onClick={() => { geoRequestedRef.current = false; requestLocation(); }}>
+              📍 Share location to help coordinate delivery
+            </button>
+            <div style={S.note}>
+              Location is required for service records — please allow when prompted.
+            </div>
+          </>
+        )}
+        {locState === 'idle' && scanIdRef.current !== null && (
+          <div style={{ ...S.note, marginTop: 14 }}>Preparing location request…</div>
         )}
 
         <div style={{
