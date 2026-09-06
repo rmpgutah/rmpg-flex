@@ -269,7 +269,7 @@ function DetailPanel({ signal, onClose }: { signal: SignalDetection; onClose: ()
             {signalName(signal)}
           </span>
         </div>
-        <IconButton aria-label="Close detail panel" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100">
+        <IconButton aria-label="Close detail panel" onClick={onClose} className="text-fg-muted hover:text-rmpg-100">
           <X style={{ width: 14, height: 14 }} />
         </IconButton>
       </div>
@@ -378,7 +378,7 @@ function DetailPanel({ signal, onClose }: { signal: SignalDetection; onClose: ()
             >
               Properties
             </div>
-            <pre className="text-[9px] text-rmpg-300 bg-surface-sunken p-1.5 rounded-[2px] overflow-x-auto whitespace-pre-wrap break-all">
+            <pre className="text-[9px] text-fg-secondary bg-surface-sunken p-1.5 rounded-[2px] overflow-x-auto whitespace-pre-wrap break-all">
               {JSON.stringify(signal.properties, null, 2)}
             </pre>
           </div>
@@ -549,7 +549,7 @@ export default function SignalIntelligencePage() {
         <IconButton
           aria-label="Refresh signals"
           onClick={() => { setOffset(0); fetchSignals(); }}
-          className="text-rmpg-400 hover:text-rmpg-100"
+          className="text-fg-muted hover:text-rmpg-100"
         >
           <RefreshCw style={{ width: 14, height: 14 }} className={loading ? 'animate-spin' : ''} />
         </IconButton>
@@ -570,8 +570,8 @@ export default function SignalIntelligencePage() {
                   activeTypes.has(key)
                     ? 'bg-brand-700/40 border-brand-500 text-rmpg-100'
                     : activeTypes.size === 0
-                      ? 'bg-surface-sunken border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-500'
-                      : 'bg-surface-sunken border-rmpg-700 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-600'
+                      ? 'bg-surface-sunken border-rmpg-700 text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-500'
+                      : 'bg-surface-sunken border-rmpg-700 text-fg-muted hover:text-fg-secondary hover:border-rmpg-600'
                 }`}
                 style={{ opacity: active ? 1 : 0.5 }}
               >
@@ -584,19 +584,19 @@ export default function SignalIntelligencePage() {
 
         {/* Search */}
         <div className="relative flex items-center flex-1 min-w-[160px] max-w-[280px]">
-          <Search className="absolute left-1.5 text-rmpg-500" style={{ width: 12, height: 12 }} />
+          <Search className="absolute left-1.5 text-fg-muted" style={{ width: 12, height: 12 }} />
           <input
             type="text"
             placeholder="Search identifier, name, SSID..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setOffset(0); }}
-            className="w-full pl-6 pr-2 py-0.5 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-brand-500"
+            className="w-full pl-6 pr-2 py-0.5 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-brand-500"
           />
           {searchQuery && (
             <IconButton
               aria-label="Clear search"
               onClick={() => setSearchQuery('')}
-              className="absolute right-1 text-rmpg-500 hover:text-rmpg-100"
+              className="absolute right-1 text-fg-muted hover:text-rmpg-100"
             >
               <X style={{ width: 10, height: 10 }} />
             </IconButton>
@@ -605,7 +605,7 @@ export default function SignalIntelligencePage() {
 
         {/* Time range */}
         <div className="flex items-center gap-0.5">
-          <Clock className="text-rmpg-500 mr-0.5" style={{ width: 11, height: 11 }} />
+          <Clock className="text-fg-muted mr-0.5" style={{ width: 11, height: 11 }} />
           {TIME_RANGES.map(({ key, label }) => (
             <button
               key={key}
@@ -614,7 +614,7 @@ export default function SignalIntelligencePage() {
               className={`px-1.5 py-0.5 text-[9px] font-medium rounded-[2px] transition-colors ${
                 timeRange === key
                   ? 'bg-brand-700/40 text-rmpg-100'
-                  : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-sunken'
+                  : 'text-fg-muted hover:text-fg-secondary hover:bg-surface-sunken'
               }`}
             >
               {label}
@@ -627,7 +627,7 @@ export default function SignalIntelligencePage() {
           <button
             type="button"
             onClick={() => setShowSortDropdown((v) => !v)}
-            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 border border-rmpg-700 rounded-[2px] bg-surface-sunken"
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-fg-secondary hover:text-rmpg-100 border border-rmpg-700 rounded-[2px] bg-surface-sunken"
           >
             <Filter style={{ width: 10, height: 10 }} />
             {SORT_OPTIONS.find((o) => o.key === sortBy)?.label}
@@ -643,7 +643,7 @@ export default function SignalIntelligencePage() {
                     type="button"
                     onClick={() => { setSortBy(key); setShowSortDropdown(false); }}
                     className={`block w-full text-left px-2 py-1 text-[10px] hover:bg-surface-sunken ${
-                      sortBy === key ? 'text-rmpg-100 font-medium' : 'text-rmpg-300'
+                      sortBy === key ? 'text-rmpg-100 font-medium' : 'text-fg-secondary'
                     }`}
                   >
                     {label}
@@ -673,7 +673,7 @@ export default function SignalIntelligencePage() {
               <SIcon className={colors[key]} style={{ width: 14, height: 14, flexShrink: 0 }} />
               <div className="min-w-0">
                 <div className="text-[13px] font-semibold text-rmpg-100 leading-tight">{count}</div>
-                <div className="text-[8px] text-rmpg-400 uppercase tracking-wide truncate">{label}{key === 'wifi_ap' ? ' APs' : key === 'ble' ? ' Beacons' : key === 'cell_tower' ? ' Towers' : ' Devices'}</div>
+                <div className="text-[8px] text-fg-muted uppercase tracking-wide truncate">{label}{key === 'wifi_ap' ? ' APs' : key === 'ble' ? ' Beacons' : key === 'cell_tower' ? ' Towers' : ' Devices'}</div>
               </div>
             </div>
           );
@@ -685,7 +685,7 @@ export default function SignalIntelligencePage() {
         {/* Table */}
         <div className="flex-1 overflow-auto">
           {loading && signals.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-rmpg-400 text-[11px]">
+            <div className="flex items-center justify-center h-40 text-fg-muted text-[11px]">
               <RefreshCw className="animate-spin mr-2" style={{ width: 14, height: 14 }} />
               Loading signals...
             </div>
@@ -694,7 +694,7 @@ export default function SignalIntelligencePage() {
               {error}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-rmpg-400">
+            <div className="flex flex-col items-center justify-center h-40 text-fg-muted">
               <Radio style={{ width: 24, height: 24 }} className="mb-2 opacity-40" />
               <span className="text-[11px]">No signal detections found</span>
               {(activeTypes.size > 0 || searchQuery || timeRange !== 'all') && (
@@ -745,22 +745,22 @@ export default function SignalIntelligencePage() {
                         <td className="px-2 py-[2px] text-[11px]">
                           <div className="flex items-center gap-1.5">
                             <SignalBars rssi={s.rssi_dbm} distance={s.distance_estimate_m} />
-                            <span className="text-rmpg-300">{s.rssi_dbm != null ? `${s.rssi_dbm}` : '—'}</span>
+                            <span className="text-fg-secondary">{s.rssi_dbm != null ? `${s.rssi_dbm}` : '—'}</span>
                           </div>
                         </td>
                         <td className="px-2 py-[2px] text-[11px]" style={{ color: tier.cssVar }}>
                           {fmtDist(s.distance_estimate_m)}
                         </td>
-                        <td className="px-2 py-[2px] text-[11px] text-rmpg-300 max-w-[120px] truncate">
+                        <td className="px-2 py-[2px] text-[11px] text-fg-secondary max-w-[120px] truncate">
                           {signalVendor(s)}
                         </td>
-                        <td className="px-2 py-[2px] text-[11px] text-rmpg-400 max-w-[140px] truncate">
+                        <td className="px-2 py-[2px] text-[11px] text-fg-muted max-w-[140px] truncate">
                           {signalDetail(s)}
                         </td>
-                        <td className="px-2 py-[2px] text-[11px] text-rmpg-400 truncate">
+                        <td className="px-2 py-[2px] text-[11px] text-fg-muted truncate">
                           {s.scanner_device_id || '—'}
                         </td>
-                        <td className="px-2 py-[2px] text-[11px] text-rmpg-400 whitespace-nowrap">
+                        <td className="px-2 py-[2px] text-[11px] text-fg-muted whitespace-nowrap">
                           {relativeTime(s.last_seen_at)}
                         </td>
                       </tr>
@@ -776,7 +776,7 @@ export default function SignalIntelligencePage() {
                     type="button"
                     onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
                     disabled={loadingMore}
-                    className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium text-rmpg-300 bg-surface-raised border border-rmpg-700 rounded-[2px] hover:bg-surface-sunken hover:text-rmpg-100 disabled:opacity-40"
+                    className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-medium text-fg-secondary bg-surface-raised border border-rmpg-700 rounded-[2px] hover:bg-surface-sunken hover:text-rmpg-100 disabled:opacity-40"
                   >
                     {loadingMore && <RefreshCw style={{ width: 10, height: 10 }} className="animate-spin" />}
                     Load More ({filtered.length - visible.length} remaining)
@@ -785,7 +785,7 @@ export default function SignalIntelligencePage() {
               )}
 
               {/* Count footer */}
-              <div className="px-3 py-1 text-[9px] text-rmpg-500 border-t border-rmpg-800">
+              <div className="px-3 py-1 text-[9px] text-fg-muted border-t border-rmpg-800">
                 Showing {visible.length} of {filtered.length} signals{filtered.length !== total ? ` (${total} total)` : ''}
               </div>
             </>
