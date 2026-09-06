@@ -45,12 +45,13 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 const WS_RECONNECT_DELAY = 2000;
-const WS_MAX_RECONNECT_DELAY = 10000;
+const WS_MAX_RECONNECT_DELAY = 30000; // 30s cap (was 10s — too aggressive on cellular dead zones)
 const WS_CONNECT_TIMEOUT = 15000; // 15s — cellular can be slow
 const WS_MAX_RETRIES = 100;       // keep trying for the full shift
 const WS_HEARTBEAT_INTERVAL = 30000; // 30s ping interval
 const WS_PONG_TIMEOUT = 20000;       // 20s — generous for cellular hand-offs
 const WS_OFFLINE_GRACE_MS = 5000; // delay before showing OFFLINE in status bar
+const WS_ALERTS_STAGGER_MS = 3000; // stagger AlertHub reconnect vs main socket
 
 // dispatch_update action discriminators that carry a unit (not a call). These
 // get re-fanned to the legacy 'unit_update' channel (see onmessage) so the map,
@@ -254,7 +255,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           markDisconnected();
           retryCountRef.current++;
           reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectDelayRef.current = Math.min(reconnectDelayRef.current + 2000, WS_MAX_RECONNECT_DELAY);
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, WS_MAX_RECONNECT_DELAY);
             connect();
           }, reconnectDelayRef.current);
         }

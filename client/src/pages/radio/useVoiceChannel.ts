@@ -180,12 +180,6 @@ export function useVoiceChannel(
             break;
           }
           case 'dispatch_action': {
-            // The AI dispatcher wrote to the CAD (created/cleared a call,
-            // changed a unit status, dispatched backup). Surface it live so the
-            // operator console / dispatch board can badge it without waiting for
-            // a poll. Emitted as a window event — non-invasive, any mounted view
-            // can listen. (The spoken confirmation also lands in the feed via
-            // dispatch_speak, so operators see it regardless.)
             try {
               window.dispatchEvent(new CustomEvent('rmpg:dispatch-action', {
                 detail: {
@@ -198,19 +192,32 @@ export function useVoiceChannel(
             } catch { /* SSR / no-DOM */ }
             break;
           }
+          case 'error': {
+            // TX_TOO_LARGE: the server killed our transmission because the mic
+            // stayed open too long (20 MB cap — stuck PTT on rugged hardware).
+            // Without this handler the client believed it was still transmitting,
+            // holding the mic open and sending chunks the server silently dropped.
+            console.warn('[Radio] Server error:', msg.code, msg.message);
+            if (msg.code === 'TX_TOO_LARGE') {
+              setActiveSpeaker(null);
+              try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+            }
+            break;
+          }
         }
       };
 
       ws.onclose = () => {
         if (!alive) return;
         setConnected(false); setActiveSpeaker(null);
-        // Backoff reconnect while this channel stays selected — not while
-        // the radio is down (wss handshake spam on cellular drop).
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-        if (attempts < 6) {
-          attempts++;
-          retry = setTimeout(open, Math.min(1000 * attempts, 5000));
-        }
+        // Exponential backoff with no hard cap — the 6-attempt limit silently
+        // killed radio voice with no auto-recovery, forcing officers to manually
+        // reload the page. The online listener below resets attempts on network
+        // recovery, so this only backs off during sustained outages.
+        attempts++;
+        const delay = Math.min(1000 * Math.pow(2, Math.min(attempts, 5)), 30000);
+        retry = setTimeout(open, delay);
       };
       ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
     };
