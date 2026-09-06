@@ -172,6 +172,13 @@ app.get("/", async (c) => {
   const geo = getRequestGeo(c);
   const cfAsn = geo.asn ? parseInt(geo.asn, 10) : null;
   const cfRay = c.req.header("cf-ray") ?? null;
+  const tlsVersion = geo.tlsVersion;
+  const tlsCipher = geo.tlsCipher;
+  const httpAcceptLang = c.req.header("Accept-Language") ?? null;
+  const ispName = geo.isp;
+  const vpnDetected = geo.likelyVpnOrHosting ? 1 : 0;
+  const httpProtocol = geo.httpProtocol;
+  const geoPostal = geo.postalCode;
 
   // Structured UA fields for officer display.
   const parsed = parseUa(ua);
@@ -212,8 +219,10 @@ app.get("/", async (c) => {
           geo_city, geo_region, geo_country, geo_lat, geo_lon, geo_source,
           device_type, device_name,
           cf_asn, cf_ray, browser, browser_ver, os_family, os_ver,
+          tls_version, tls_cipher, http_accept_lang, isp_name, vpn_detected,
+          http_protocol, geo_postal,
           notified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       ref,
       jobId,
       now,
@@ -233,6 +242,13 @@ app.get("/", async (c) => {
       parsed.browserVer,
       parsed.osFamily,
       parsed.osVer,
+      tlsVersion,
+      tlsCipher,
+      httpAcceptLang,
+      ispName,
+      vpnDetected,
+      httpProtocol,
+      geoPostal,
     );
     scanId = ins.meta?.last_row_id ?? null;
   } catch (err) {
@@ -743,6 +759,16 @@ interface DetailsBody {
   pluginsHash?: unknown;
   webglExtensions?: unknown;
   navTiming?: unknown;
+  fontFingerprint?: unknown;
+  mathFingerprint?: unknown;
+  mediaDevices?: unknown;
+  audioContext?: unknown;
+  storageEstimate?: unknown;
+  languages?: unknown;
+  intlConfig?: unknown;
+  chModel?: unknown;
+  chPlatformVer?: unknown;
+  chArch?: unknown;
 }
 
 app.post("/details", async (c) => {
@@ -776,6 +802,28 @@ app.post("/details", async (c) => {
   const webglExt = toStr(body.webglExtensions, 512);
   const navTimingJson = toStr(body.navTiming, 2048);
 
+  // New forensic signals
+  const fontFp = toStr(body.fontFingerprint, 1024);
+  const mathFp = toStr(body.mathFingerprint, 1024);
+  const mediaDevJson = toStr(body.mediaDevices, 256);
+  const audioCtxJson = toStr(body.audioContext, 512);
+  const storageEstJson = toStr(body.storageEstimate, 256);
+  const languagesJson = toStr(body.languages, 512);
+  const intlConfigJson = toStr(body.intlConfig, 512);
+  const chModel = toStr(body.chModel, 128);
+  const chPlatformVer = toStr(body.chPlatformVer, 64);
+  const chArch = toStr(body.chArch, 32);
+
+  // Hash font + math fingerprints for storage (raw values can be long)
+  async function sha256Short(input: string | null): Promise<string | null> {
+    if (!input) return null;
+    const buf = new TextEncoder().encode(input);
+    const hash = await crypto.subtle.digest("SHA-256", buf);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  const fontFpHash = await sha256Short(fontFp);
+  const mathFpHash = await sha256Short(mathFp);
+
   let deviceFingerprint: string | null = null;
   try {
     const signals = [
@@ -797,6 +845,43 @@ app.post("/details", async (c) => {
     // best effort — crypto.subtle always available on Workers
   }
 
+  // Master forensic hash — combines ALL stable signals into one court-grade
+  // device identifier. Changing any single signal changes the hash.
+  let forensicHash: string | null = null;
+  try {
+    const allSignals = [
+      canvasFp ?? "",
+      audioFp ?? "",
+      webglRen ?? "",
+      toStr(body.webglVendor, 256) ?? "",
+      String(toInt(body.hardwareConcurrency) ?? ""),
+      String(toFlt(body.deviceMemory) ?? ""),
+      pluginsH ?? "",
+      fontFp ?? "",
+      mathFp ?? "",
+      webglExt ?? "",
+      String(toInt(body.screenAvailW) ?? ""),
+      String(toInt(body.screenAvailH) ?? ""),
+      toStr(body.colorGamut, 16) ?? "",
+      String(toInt(body.historyLength) ?? ""),
+      languagesJson ?? "",
+      intlConfigJson ?? "",
+      mediaDevJson ?? "",
+      audioCtxJson ?? "",
+      chModel ?? "",
+      chArch ?? "",
+    ].join("|");
+    if (allSignals.replace(/\|/g, "").length > 0) {
+      const buf = new TextEncoder().encode(allSignals);
+      const hash = await crypto.subtle.digest("SHA-256", buf);
+      forensicHash = Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  } catch {
+    // best effort
+  }
+
   const db = getDb(c.env);
   try {
     // ON CONFLICT upsert — replay-safe if client re-sends.
@@ -811,8 +896,12 @@ app.post("/details", async (c) => {
           cookie_enabled, do_not_track,
           canvas_fingerprint, webgl_vendor, webgl_renderer,
           local_ips, history_length, referrer, pdf_support,
-          device_fingerprint, audio_fingerprint, plugins_hash, webgl_extensions, nav_timing)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          device_fingerprint, audio_fingerprint, plugins_hash, webgl_extensions, nav_timing,
+          ch_model, ch_platform_ver, ch_arch,
+          font_fingerprint, math_fingerprint,
+          media_devices, audio_context, storage_estimate,
+          languages, intl_config, forensic_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(scan_id) DO UPDATE SET
          hardware_concurrency = excluded.hardware_concurrency,
          device_memory        = excluded.device_memory,
@@ -841,7 +930,18 @@ app.post("/details", async (c) => {
          audio_fingerprint    = COALESCE(excluded.audio_fingerprint, audio_fingerprint),
          plugins_hash         = COALESCE(excluded.plugins_hash, plugins_hash),
          webgl_extensions     = COALESCE(excluded.webgl_extensions, webgl_extensions),
-         nav_timing           = COALESCE(excluded.nav_timing, nav_timing)`,
+         nav_timing           = COALESCE(excluded.nav_timing, nav_timing),
+         ch_model             = COALESCE(excluded.ch_model, ch_model),
+         ch_platform_ver      = COALESCE(excluded.ch_platform_ver, ch_platform_ver),
+         ch_arch              = COALESCE(excluded.ch_arch, ch_arch),
+         font_fingerprint     = COALESCE(excluded.font_fingerprint, font_fingerprint),
+         math_fingerprint     = COALESCE(excluded.math_fingerprint, math_fingerprint),
+         media_devices        = COALESCE(excluded.media_devices, media_devices),
+         audio_context        = COALESCE(excluded.audio_context, audio_context),
+         storage_estimate     = COALESCE(excluded.storage_estimate, storage_estimate),
+         languages            = COALESCE(excluded.languages, languages),
+         intl_config          = COALESCE(excluded.intl_config, intl_config),
+         forensic_hash        = COALESCE(excluded.forensic_hash, forensic_hash)`,
       scanId,
       toInt(body.hardwareConcurrency),
       toFlt(body.deviceMemory),
@@ -871,6 +971,17 @@ app.post("/details", async (c) => {
       pluginsH,
       webglExt,
       navTimingJson,
+      chModel,
+      chPlatformVer,
+      chArch,
+      fontFpHash,
+      mathFpHash,
+      mediaDevJson,
+      audioCtxJson,
+      storageEstJson,
+      languagesJson,
+      intlConfigJson,
+      forensicHash,
     );
 
     // Re-broadcast enhanced data to officers watching the serve module.
@@ -892,6 +1003,8 @@ app.post("/details", async (c) => {
         batteryLevel: toFlt(body.batteryLevel),
         deviceFingerprint,
         audioFingerprint: audioFp,
+        forensicHash,
+        chModel,
       });
     }
   } catch (err) {
@@ -963,6 +1076,8 @@ app.get("/scans", async (c) => {
        s.pixel_ratio, s.color_depth, s.timezone_iana, s.lang,
        s.touch_points, s.connection_type, s.dark_mode, s.platform,
        s.cf_asn, s.cf_ray, s.browser, s.browser_ver, s.os_family, s.os_ver,
+       s.tls_version, s.tls_cipher, s.http_accept_lang, s.isp_name, s.vpn_detected,
+       s.http_protocol, s.geo_postal,
        d.hardware_concurrency, d.device_memory, d.battery_level, d.battery_charging,
        d.connection_downlink, d.connection_rtt, d.connection_save_data,
        d.screen_avail_w, d.screen_avail_h, d.screen_orientation,
@@ -970,7 +1085,11 @@ app.get("/scans", async (c) => {
        d.cookie_enabled, d.do_not_track,
        d.canvas_fingerprint, d.webgl_vendor, d.webgl_renderer,
        d.local_ips, d.history_length, d.referrer, d.pdf_support, d.time_on_page_ms,
-       d.device_fingerprint, d.audio_fingerprint, d.plugins_hash, d.webgl_extensions, d.nav_timing
+       d.device_fingerprint, d.audio_fingerprint, d.plugins_hash, d.webgl_extensions, d.nav_timing,
+       d.ch_model, d.ch_platform_ver, d.ch_arch,
+       d.font_fingerprint, d.math_fingerprint,
+       d.media_devices, d.audio_context, d.storage_estimate,
+       d.languages, d.intl_config, d.forensic_hash
      FROM serve_qr_scans s
      LEFT JOIN serve_scan_details d ON d.scan_id = s.id
      WHERE s.job_ref = ?

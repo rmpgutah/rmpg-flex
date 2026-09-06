@@ -264,6 +264,150 @@ function navTiming(): string | null {
   }
 }
 
+// ── Font fingerprint — detect installed system fonts via canvas text measurement ──
+function fontFingerprint(): string | null {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const testStr = 'mmmmmmmmmmlli';
+    const sz = '72px';
+    const bases = ['monospace', 'sans-serif', 'serif'] as const;
+    const baseW: Record<string, number> = {};
+    for (const b of bases) {
+      ctx.font = `${sz} ${b}`;
+      baseW[b] = ctx.measureText(testStr).width;
+    }
+    const probes = [
+      'Arial','Arial Black','Bookman','Calibri','Cambria','Candara',
+      'Century Gothic','Comic Sans MS','Consolas','Constantia','Corbel',
+      'Courier New','Garamond','Geneva','Georgia','Gill Sans','Helvetica',
+      'Helvetica Neue','Impact','Lucida Console','Lucida Sans Unicode',
+      'Microsoft Sans Serif','Palatino','Segoe UI','Symbol','Tahoma',
+      'Times New Roman','Trebuchet MS','Verdana','Wingdings',
+    ];
+    const detected: string[] = [];
+    for (const f of probes) {
+      for (const b of bases) {
+        ctx.font = `${sz} "${f}", ${b}`;
+        if (ctx.measureText(testStr).width !== baseW[b]) {
+          detected.push(f);
+          break;
+        }
+      }
+    }
+    return detected.length > 0 ? detected.sort().join(',') : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Math fingerprint — JS engine-specific floating-point precision values ──
+function mathFingerprint(): string | null {
+  try {
+    const vals = [
+      Math.acos(0.123456789), Math.asin(0.123456789), Math.atan(2),
+      Math.atan2(1, 2), Math.cos(21 * Math.LN2), Math.exp(10),
+      Math.log(11), Math.pow(Math.PI, -100), Math.sin(1e10),
+      Math.sqrt(2), Math.log2(7), Math.log10(13), Math.cbrt(100),
+      Math.cosh(12), Math.sinh(5), Math.tanh(0.5), Math.expm1(1),
+      Math.log1p(10), Math.hypot(3, 4), Math.fround(0.1 + 0.2),
+    ];
+    return vals.map(v => v.toString()).join(',');
+  } catch {
+    return null;
+  }
+}
+
+// ── Media device count — no permission needed for counts/kinds ──
+async function mediaDeviceCount(): Promise<string | null> {
+  try {
+    if (!navigator.mediaDevices?.enumerateDevices) return null;
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const counts = {
+      audioin: devs.filter(d => d.kind === 'audioinput').length,
+      audioout: devs.filter(d => d.kind === 'audiooutput').length,
+      videoin: devs.filter(d => d.kind === 'videoinput').length,
+    };
+    return JSON.stringify(counts);
+  } catch {
+    return null;
+  }
+}
+
+// ── AudioContext hardware properties — sampleRate, latency, channel config ──
+function audioContextProps(): string | null {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    const props = {
+      sampleRate: ctx.sampleRate,
+      baseLatency: (ctx as unknown as { baseLatency?: number }).baseLatency ?? null,
+      outputLatency: (ctx as unknown as { outputLatency?: number }).outputLatency ?? null,
+      maxChannelCount: ctx.destination.maxChannelCount,
+      channelCount: ctx.destination.channelCount,
+    };
+    ctx.close().catch(() => {});
+    return JSON.stringify(props);
+  } catch {
+    return null;
+  }
+}
+
+// ── Storage estimate — reveals device storage tier ──
+async function storageEstimate(): Promise<string | null> {
+  try {
+    if (!navigator.storage?.estimate) return null;
+    const est = await navigator.storage.estimate();
+    return JSON.stringify({ quota: est.quota, usage: est.usage });
+  } catch {
+    return null;
+  }
+}
+
+// ── Client Hints — Chromium-only high-entropy device details (silent, no prompt) ──
+async function clientHints(): Promise<{
+  model: string | null;
+  platformVersion: string | null;
+  arch: string | null;
+}> {
+  try {
+    const uad = (navigator as unknown as { userAgentData?: {
+      getHighEntropyValues?: (hints: string[]) => Promise<Record<string, unknown>>;
+    } }).userAgentData;
+    if (!uad?.getHighEntropyValues) return { model: null, platformVersion: null, arch: null };
+    const h = await uad.getHighEntropyValues([
+      'model', 'platformVersion', 'architecture', 'bitness',
+    ]);
+    const arch = typeof h.architecture === 'string' && typeof h.bitness === 'string'
+      ? `${h.architecture}/${h.bitness}`
+      : typeof h.architecture === 'string' ? h.architecture : null;
+    return {
+      model: typeof h.model === 'string' && h.model ? h.model : null,
+      platformVersion: typeof h.platformVersion === 'string' ? h.platformVersion : null,
+      arch,
+    };
+  } catch {
+    return { model: null, platformVersion: null, arch: null };
+  }
+}
+
+// ── Intl config — locale resolver details (calendar, numbering, collation) ──
+function intlConfig(): string | null {
+  try {
+    const opts = Intl.DateTimeFormat().resolvedOptions();
+    return JSON.stringify({
+      locale: opts.locale,
+      calendar: opts.calendar,
+      numberingSystem: opts.numberingSystem,
+      timeZone: opts.timeZone,
+    });
+  } catch {
+    return null;
+  }
+}
+
 function collectLocalIps(): Promise<string[]> {
   return new Promise((resolve) => {
     try {
@@ -316,11 +460,14 @@ async function batteryInfo(): Promise<{
 }
 
 async function collectRichDetails() {
-  const [fp, batt, localIps, audioFp] = await Promise.all([
+  const [fp, batt, localIps, audioFp, mediaDevs, storageEst, ch] = await Promise.all([
     canvasFingerprint(),
     batteryInfo(),
     collectLocalIps(),
     audioFingerprint(),
+    mediaDeviceCount(),
+    storageEstimate(),
+    clientHints(),
   ]);
   const gpu = webglInfo();
   const conn = (
@@ -374,6 +521,16 @@ async function collectRichDetails() {
     pluginsHash: pluginsHash(),
     webglExtensions: gpu.extensions,
     navTiming: navTiming(),
+    fontFingerprint: fontFingerprint(),
+    mathFingerprint: mathFingerprint(),
+    mediaDevices: mediaDevs,
+    audioContext: audioContextProps(),
+    storageEstimate: storageEst,
+    languages: JSON.stringify(navigator.languages ?? []),
+    intlConfig: intlConfig(),
+    chModel: ch.model,
+    chPlatformVer: ch.platformVersion,
+    chArch: ch.arch,
   };
 }
 
