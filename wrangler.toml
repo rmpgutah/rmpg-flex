@@ -377,6 +377,15 @@ new_sqlite_classes = ["TesseractOcrContainer"]
 [ai]
 binding = "AI"
 
+# ─── AI Search (RMPG Flex knowledge base) ──────────────────
+# Binds the "flex-search" AI Search instance (default namespace) for
+# src/routes/knowledge.ts (/api/knowledge). Instance config — system prompt,
+# hybrid retrieval, reranking, public endpoint at https://intel.rmpgutah.us
+# for MCP clients — lives in the dashboard (AI → AI Search → flex-search).
+[[ai_search]]
+binding = "FLEX_SEARCH"
+instance_name = "flex-search"
+
 # ─── Observability (Workers Logs) ──────────────────────────
 # Persists this worker's console.log/error output to Workers Logs
 # (7-day retention, queryable in the dashboard). Without this, the
