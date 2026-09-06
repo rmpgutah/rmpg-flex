@@ -66,6 +66,29 @@ try {
 const { ConnectivityMonitor } = require('./connectivityMonitor');
 const { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen } = require('./internalGps');
 
+// ─── GPU stability flags for Toughbook FZ-55 (Intel UHD 620) ─
+// The FZ-55's Intel integrated GPU driver on Windows 10 IoT is prone to
+// GPU process crashes under WebGL load (Mapbox GL maps). Without these
+// flags, Chromium's GPU process crashes repeatedly, exhausting the
+// recovery cap (3 per 5 min) and leaving the officer on a dead screen.
+// --use-angle=d3d11: forces ANGLE's D3D11 backend (more stable than the
+//   default D3D9/GL path on Intel UHD 620 drivers).
+// --disable-gpu-sandbox: prevents the GPU process sandbox from interfering
+//   with the Intel driver's kernel calls (known Intel UHD issue).
+// --enable-features=CanvasOopRasterization: offloads canvas rasterization
+//   to the GPU process, reducing main-thread jank on weak CPUs.
+// --disable-renderer-backgrounding: paired with backgroundThrottling:false
+//   in webPreferences, ensures renderer stays fully active.
+// --max-old-space-size=2048: caps renderer V8 heap at 2 GB to prevent OOM
+//   on 8 GB Toughbooks running GPS, radio stack, and CAD simultaneously.
+app.commandLine.appendSwitch('use-angle', 'd3d11');
+app.commandLine.appendSwitch('disable-gpu-sandbox');
+app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=2048');
+app.commandLine.appendSwitch('disable-gpu-vsync');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+
 // ─── Chromium Geolocation ────────────────────────────────────
 // Chromium's Network Location Provider requires a Google API key to resolve
 // WiFi/IP-based positions via navigator.geolocation. Set GOOGLE_API_KEY in
@@ -206,10 +229,14 @@ let appReady = false;
 let faceAuth = null; // initialized after localDb is ready
 let cameraScanner = null;
 
-// Rolling-window crash-recovery timestamps for the main window's renderer
-// and GPU-process crashes — see crashRecovery.js. Kept at module scope
-// (not per-window) so the cap holds across a window recreated mid-session.
+// Rolling-window crash-recovery timestamps — see crashRecovery.js. Kept at
+// module scope (not per-window) so the cap holds across a window recreated
+// mid-session. GPU and renderer get SEPARATE counters: the FZ-55's Intel
+// UHD 620 triggers frequent GPU process crashes under WebGL load (Mapbox
+// maps), and those were exhausting the shared recovery cap, leaving the
+// officer on a dead screen even though the renderer itself never crashed.
 let rendererRecoveryTimestamps = [];
+let gpuRecoveryTimestamps = [];
 
 // ─── Kiosk-shell auto-relaunch bookkeeping ────────────────────
 // See docs/superpowers/specs/2026-07-21-desktop-kiosk-shell-mode-design.md,
@@ -295,7 +322,10 @@ process.on('unhandledRejection', (reason) => {
   try {
     appendToLogFile(`Unhandled rejection: ${reason && reason.message}`, LOG_FILE_PATH, require('fs'));
   } catch { /* logging must never crash the crash handler */ }
-  throw reason;
+  // Node.js 15+ already terminates on unhandled rejections. The old
+  // synchronous `throw reason` converted this into an uncaughtException that
+  // re-threw via setImmediate, doubling the crash path and producing
+  // confusing stacked logs. Let Node's default handler terminate cleanly.
 });
 
 process.on('uncaughtException', (err) => {
@@ -2727,14 +2757,31 @@ function recoverMainWindow(source, reason) {
   });
 }
 
-// GPU process crashes are process-wide, not per-webContents, so this is an
-// app-level listener registered exactly once — but it drives the SAME
-// window/counter as the per-webContents `render-process-gone` listener in
-// createMainWindow, since a lost GPU process kills that window's rendering
-// too and both must share one recovery cap.
+// GPU process crashes are process-wide, not per-webContents. They now track
+// against a SEPARATE recovery counter (gpuRecoveryTimestamps) so that the
+// Intel UHD 620's frequent GPU resets on Toughbook FZ-55 hardware don't
+// exhaust the renderer's recovery budget and leave the officer on a dead
+// screen. The GPU counter has a higher cap (6 vs 3) since GPU resets are
+// more common but less severe — the renderer usually survives them.
 app.on('child-process-gone', (event, details) => {
   if (!details || details.type !== 'GPU') return;
-  recoverMainWindow('GPU process', details.reason);
+  console.error(`[APP] GPU process crash: reason=${details.reason}`);
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!isRecoverableCrashReason(details.reason)) return;
+
+  const now = Date.now();
+  if (!shouldAutoRecover(gpuRecoveryTimestamps, now, 6)) {
+    console.error('[APP] GPU: too many recoveries in rolling window — showing crash-loop screen');
+    mainWindow.loadURL(getCrashLoopHTML()).catch((err) => {
+      console.warn('[APP] GPU crash-loop page loadURL failed:', err && err.message);
+    });
+    return;
+  }
+  gpuRecoveryTimestamps = recordRecoveryAttempt(gpuRecoveryTimestamps, now);
+  console.warn('[APP] GPU process: reloading to recover');
+  mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+    console.warn('[APP] GPU recovery loadURL failed:', err && err.message);
+  });
 });
 
 // Only inject the window.print() override on macOS — the NSPrintPanel
@@ -4926,16 +4973,22 @@ guardedHandle('system:get-battery', async () => {
 });
 
 // ── System info: WiFi network (Windows only) ──
+// All WiFi handlers use async execFile instead of execSync to avoid blocking
+// the main process event loop for 3-8s per call. execSync was causing the
+// renderer to fire 'unresponsive' events on Toughbooks when multiple WiFi
+// handlers ran in sequence, cascading into forced reloads.
 guardedHandle('system:get-network', async () => {
   if (process.platform !== 'win32') return null;
   try {
-    const { execSync } = require('child_process');
-    const out = execSync(
-      'netsh wlan show interfaces',
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const out = await promisify(execFile)(
+      'netsh', ['wlan', 'show', 'interfaces'],
       { timeout: 3000, encoding: 'utf8', windowsHide: true }
     );
-    const ssidMatch = out.match(/^\s+SSID\s+:\s+(.+)/m);
-    const signalMatch = out.match(/^\s+Signal\s+:\s+(\d+)%/m);
+    const stdout = out.stdout || '';
+    const ssidMatch = stdout.match(/^\s+SSID\s+:\s+(.+)/m);
+    const signalMatch = stdout.match(/^\s+Signal\s+:\s+(\d+)%/m);
     return {
       ssid: ssidMatch ? ssidMatch[1].trim() : null,
       signal: signalMatch ? parseInt(signalMatch[1], 10) : null,
@@ -4946,16 +4999,19 @@ guardedHandle('system:get-network', async () => {
 // ── WiFi: deep detail (IP, gateway, DNS, channel, band, MAC, …) ──
 guardedHandle('wifi:get-detail', async () => {
   if (process.platform !== 'win32') return null;
-  const { execSync } = require('child_process');
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
   const os = require('os');
 
-  // --- netsh wlan show interfaces ---
   let wlanOut = '';
-  try { wlanOut = execSync('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8', windowsHide: true }); } catch { /* no adapter */ }
+  try {
+    const r = await execFileAsync('netsh', ['wlan', 'show', 'interfaces'], { timeout: 4000, encoding: 'utf8', windowsHide: true });
+    wlanOut = r.stdout || '';
+  } catch { /* no adapter */ }
 
   const parsed = parseNetshGetDetail(wlanOut) || {};
 
-  // --- IP info from os.networkInterfaces() matched by MAC ---
   let ip = null, ipv6 = null, subnet = null;
   const normalMac = parsed.mac ? parsed.mac.toLowerCase().replace(/-/g, ':') : null;
   if (normalMac) {
@@ -4973,17 +5029,17 @@ guardedHandle('wifi:get-detail', async () => {
     }
   }
 
-  // --- Gateway + DNS via PowerShell (quick, structured) ---
   let gateway = null, dns = [];
   try {
-    const psOut = execSync(
-      'powershell.exe -NoProfile -Command "' +
+    const r = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
         '$a=Get-NetIPConfiguration|Where-Object{$_.IPv4Address -ne $null}|Select-Object -First 1;' +
-        '[PSCustomObject]@{gw=$a.IPv4DefaultGateway.NextHop;dns=($a.DNSServer.ServerAddresses -join \",\")}|' +
-        'ConvertTo-Json -Compress"',
+        '[PSCustomObject]@{gw=$a.IPv4DefaultGateway.NextHop;dns=($a.DNSServer.ServerAddresses -join ",")}|' +
+        'ConvertTo-Json -Compress'],
       { timeout: 5000, encoding: 'utf8', windowsHide: true }
     );
-    const parsedPs = JSON.parse(psOut.trim());
+    const parsedPs = JSON.parse((r.stdout || '').trim());
     gateway = parsedPs.gw || null;
     dns = parsedPs.dns ? parsedPs.dns.split(',').filter(Boolean) : [];
   } catch { /* not critical */ }
@@ -4994,23 +5050,25 @@ guardedHandle('wifi:get-detail', async () => {
 // ── WiFi: scan available networks (Windows only) ──────────────
 guardedHandle('wifi:scan-networks', async () => {
   if (process.platform !== 'win32') return [];
-  const { execSync } = require('child_process');
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
   try {
-    const out = execSync(
-      'netsh wlan show networks mode=Bssid',
+    const r = await promisify(execFile)(
+      'netsh', ['wlan', 'show', 'networks', 'mode=Bssid'],
       { timeout: 8000, encoding: 'utf8', windowsHide: true }
     );
-    return parseNetshScanNetworks(out);
+    return parseNetshScanNetworks(r.stdout || '');
   } catch { return []; }
 });
 
 // ── WiFi: list saved profiles (Windows only) ──────────────────
 guardedHandle('wifi:list-profiles', async () => {
   if (process.platform !== 'win32') return [];
-  const { execSync } = require('child_process');
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
   try {
-    const out = execSync('netsh wlan show profiles', { timeout: 3000, encoding: 'utf8', windowsHide: true });
-    return parseNetshListProfiles(out);
+    const r = await promisify(execFile)('netsh', ['wlan', 'show', 'profiles'], { timeout: 3000, encoding: 'utf8', windowsHide: true });
+    return parseNetshListProfiles(r.stdout || '');
   } catch { return []; }
 });
 
@@ -5032,9 +5090,10 @@ guardedHandle('wifi:connect', async (_event, { profile }) => {
 // ── WiFi: disconnect (Windows only) ──────────────────────────
 guardedHandle('wifi:disconnect', async () => {
   if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
-  const { execSync } = require('child_process');
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
   try {
-    execSync('netsh wlan disconnect', { timeout: 4000, encoding: 'utf8', windowsHide: true });
+    await promisify(execFile)('netsh', ['wlan', 'disconnect'], { timeout: 4000, encoding: 'utf8', windowsHide: true });
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: err.message };
