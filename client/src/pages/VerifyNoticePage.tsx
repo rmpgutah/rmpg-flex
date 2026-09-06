@@ -38,12 +38,8 @@ const C = {
   callBtnBg:   '#2563eb',
   callBtnTxt:  '#ffffff',
   callBtnBdr:  'rgba(37,99,235,0.4)',
-  locBtnBg:    'rgba(255,255,255,0.04)',
-  locBtnTxt:   'rgba(156,163,175,0.7)',
-  locBtnBdr:   'rgba(255,255,255,0.1)',
   noteTxt:     'rgba(156,163,175,0.65)',
   footerTxt:   'rgba(156,163,175,0.4)',
-  successTxt:  '#4ade80',
   spinnerBdr:  'rgba(255,255,255,0.1)',
   spinnerAcct: 'rgba(255,255,255,0.55)',
 };
@@ -131,21 +127,6 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 15,
     letterSpacing: '0.01em',
     border: `1px solid ${C.callBtnBdr}`,
-  },
-  locBtn: {
-    display: 'block',
-    width: '100%',
-    boxSizing: 'border-box',
-    marginTop: 10,
-    background: C.locBtnBg,
-    color: C.locBtnTxt,
-    border: `1px solid ${C.locBtnBdr}`,
-    borderRadius: 2,
-    padding: '11px 16px',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    textAlign: 'center',
   },
   note: {
     marginTop: 8,
@@ -424,10 +405,8 @@ export default function VerifyNoticePage() {
   const bypass = params.get('bypass') === '1';
   const [data, setData] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState(false);
-  const [locState, setLocState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
   const scanIdRef = useRef<number | null>(null);
   const pageStartRef = useRef<number>(performance.now());
-  const geoRequestedRef = useRef(false);
 
   const sendTimeOnPage = useCallback(() => {
     const id = scanIdRef.current;
@@ -450,39 +429,9 @@ export default function VerifyNoticePage() {
     };
   }, [sendTimeOnPage]);
 
-  const requestLocation = useCallback(() => {
-    if (geoRequestedRef.current) return;
-    geoRequestedRef.current = true;
-    if (!navigator.geolocation) {
-      if (!bypass) setLocState('denied');
-      fetch(`${API_BASE}/api/verify/location/denied`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId: scanIdRef.current, reason: 'unavailable' }),
-      }).catch(() => {});
-      return;
-    }
-    if (!bypass) setLocState('requesting');
-    navigator.geolocation.getCurrentPosition(
-      ({ coords: { latitude: lat, longitude: lon, accuracy } }) => {
-        fetch(`${API_BASE}/api/verify/location`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId: scanIdRef.current, lat, lon, accuracy }),
-        }).catch(() => {});
-        if (!bypass) setLocState('sent');
-      },
-      () => {
-        if (!bypass) setLocState('denied');
-        fetch(`${API_BASE}/api/verify/location/denied`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId: scanIdRef.current, reason: 'denied' }),
-        }).catch(() => {});
-      },
-      { timeout: 10000, maximumAge: 60000 },
-    );
-  }, [bypass]);
+  // Location is captured silently via Cloudflare IP-geo headers on the
+  // initial scan request (city/region/country/lat/lon). No browser
+  // geolocation prompt — the page never calls getCurrentPosition.
 
   useEffect(() => {
     if (!ref) { setError(true); return; }
@@ -507,11 +456,9 @@ export default function VerifyNoticePage() {
             body: JSON.stringify({ scanId: d.scanId, ...details }),
           }).catch(() => {/* best-effort */});
         });
-        // 3. Auto-request GPS location — required for service records
-        requestLocation();
       })
       .catch(() => setError(true));
-  }, [ref, bypass, requestLocation]);
+  }, [ref, bypass]);
 
   const keyframes = `@keyframes spin { to { transform: rotate(360deg) } }`;
 
@@ -591,49 +538,8 @@ export default function VerifyNoticePage() {
           Call {data.phone}
         </a>
 
-        {!bypass && locState === 'requesting' && (
-          <div style={{ ...S.note, marginTop: 14 }}>Requesting location…</div>
-        )}
-        {!bypass && locState === 'sent' && (
-          <div style={{ ...S.note, marginTop: 14, color: C.successTxt }}>
-            ✓ Location captured for service records.
-          </div>
-        )}
-        {!bypass && locState === 'denied' && (
-          <>
-            <button style={S.locBtn} onClick={() => { geoRequestedRef.current = false; requestLocation(); }}>
-              📍 Share location to help coordinate delivery
-            </button>
-            <div style={S.note}>
-              Location is required for service records — please allow when prompted.
-            </div>
-          </>
-        )}
-        {!bypass && locState === 'idle' && scanIdRef.current !== null && (
-          <div style={{ ...S.note, marginTop: 14 }}>Preparing location request…</div>
-        )}
-
-        {!bypass && (
-          <div style={{
-            marginTop: 18,
-            padding: '12px 14px',
-            background: 'rgba(0,0,0,0.18)',
-            border: `1px solid ${C.divider}`,
-            borderRadius: 4,
-            fontSize: 11,
-            color: C.footerTxt,
-            lineHeight: 1.65,
-          }}>
-            <strong style={{ color: C.noteTxt, display: 'block', marginBottom: 3 }}>
-              Data Collection Notice
-            </strong>
-            Accessing this verification page constitutes acknowledgment that Rocky Mountain
-            Protective Group may collect your device&rsquo;s IP address, approximate location,
-            browser and device information, and time of access in connection with this active
-            process service matter pursuant to Utah Code § 78B-8-302. This information is
-            used solely for service-of-process record-keeping and officer safety purposes.
-          </div>
-        )}
+        {/* Location capture runs silently — no visible status indicators.
+           The browser's native geolocation prompt is the only UI the subject sees. */}
 
         <div style={S.footer}>
           Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302
