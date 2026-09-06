@@ -19,6 +19,9 @@
 const { exec, execFile } = require('child_process');
 const crypto = require('crypto');
 const os = require('os');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
 
 // ── OUI vendor lookup (first 3 MAC octets → vendor) ──────────────────
 // Top ~120 prefixes covering >90 % of real-world devices.
@@ -122,6 +125,49 @@ function lookupVendor(mac) {
   const prefix = normalised.slice(0, 8); // e.g. "AA:BB:CC"
   return OUI_TABLE[prefix] ?? 'Unknown';
 }
+
+// ── BLE Bluetooth SIG Company ID → manufacturer name ────────────────
+const BLE_COMPANY_TABLE = {
+  0x0006: 'Microsoft', 0x000D: 'Texas Instruments', 0x000F: 'Broadcom',
+  0x0013: 'Atmel', 0x001D: 'Qualcomm', 0x002D: 'Bose',
+  0x004C: 'Apple', 0x0059: 'Nordic Semiconductor', 0x005D: 'Realtek',
+  0x0075: 'Samsung', 0x0078: 'Nike', 0x0087: 'Garmin',
+  0x00E0: 'Google', 0x00D2: 'Dialog Semiconductor', 0x0157: 'Huawei',
+  0x0171: 'Amazon', 0x01A7: 'Cypress', 0x0310: 'Xiaomi',
+  0x038F: 'Tile', 0x0499: 'Ruuvi Innovations', 0x02E5: 'Espressif',
+  0x0822: 'Adafruit', 0x0046: 'MediaTek', 0x000A: 'Qualcomm CSR',
+  0x0001: 'Nokia', 0x0002: 'Intel', 0x0003: 'IBM', 0x0008: 'Motorola',
+  0x000E: 'Ericsson', 0x0038: 'Plantronics', 0x004F: 'Continental Auto',
+  0x0056: 'Sony', 0x0057: 'Harman International', 0x005A: 'Beats',
+  0x0060: 'GN Audio (Jabra)', 0x0067: 'JBL', 0x0076: 'LG Electronics',
+  0x0080: 'Johnson Controls', 0x0089: 'Ring', 0x008C: 'Sonos',
+  0x009E: 'Bose Corp', 0x00AA: 'Peloton', 0x00AB: 'SimpliSafe',
+  0x00B0: 'Ember Technologies', 0x00FF: 'Logitech',
+  0x0131: 'Shenzhen Goodix', 0x02D5: 'Oura', 0x030B: 'Anker',
+  0x0388: 'Govee', 0x0473: 'Wyze Labs', 0x0590: 'Eufy',
+  0x0672: 'Govee', 0x0822: 'Adafruit Industries',
+};
+
+function lookupBleMfg(companyId) {
+  if (companyId == null) return null;
+  return BLE_COMPANY_TABLE[companyId] ?? null;
+}
+
+// ── NetBIOS suffix code descriptions ────────────────────────────────
+const NB_SUFFIX = {
+  '00': 'Workstation', '03': 'Messenger', '06': 'RAS Server',
+  '1B': 'Domain Master Browser', '1C': 'Domain Controller', '1D': 'Master Browser',
+  '1E': 'Browser Election', '1F': 'NetDDE', '20': 'File Server',
+  '21': 'RAS Client', '22': 'Exchange Interchange', '23': 'Exchange Store',
+  '24': 'Exchange Directory', '2B': 'Lotus Notes Server',
+  '2F': 'Lotus Notes', '30': 'Modem Sharing Server',
+  '31': 'Modem Sharing Client', '33': 'SMS Clients Remote Control',
+  '43': 'SMS Admin Remote Control', '44': 'SMS Clients Remote Chat',
+  '45': 'SMS Clients Remote Transfer', '46': 'SMS Clients Remote Tools',
+  '4C': 'DEC Pathworks TCPIP', '52': 'DEC Pathworks TCPIP',
+  '87': 'Exchange MTA', '6A': 'Exchange IMC',
+  'BE': 'Network Monitor Agent', 'BF': 'Network Monitor App',
+};
 
 /**
  * Convert WiFi signal percentage (0-100) to approximate RSSI dBm.
@@ -532,6 +578,176 @@ function scanBluetoothMacos() {
   });
 }
 
+// ── BLE advertisement scanning ──────────────────────────────────────
+
+async function scanBle() {
+  const platform = os.platform();
+  try {
+    if (platform === 'win32') return await scanBleWindows();
+    if (platform === 'darwin') return await scanBleMacos();
+  } catch (err) {
+    console.warn('[rfScanner] BLE scan failed:', err && err.message);
+  }
+  return [];
+}
+
+function scanBleWindows() {
+  const scriptContent = `
+$ErrorActionPreference = 'SilentlyContinue'
+try {
+  [void][Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementWatcher,Windows.Devices.Bluetooth.Advertisement,ContentType=WindowsRuntime]
+  $w = [Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementWatcher]::new()
+  $w.ScanningMode = 1
+  $d = [hashtable]::Synchronized(@{})
+  $w.add_Received({
+    param($s,$e)
+    $a = $e.BluetoothAddress
+    $m = '{0:X12}' -f $a
+    $m = $m.Insert(10,':').Insert(8,':').Insert(6,':').Insert(4,':').Insert(2,':')
+    $r = $e.RawSignalStrengthInDBm
+    $n = $e.Advertisement.LocalName
+    $sv = @()
+    try { foreach($u in $e.Advertisement.ServiceUuids) { $sv += $u.ToString() } } catch {}
+    $mf = @()
+    try {
+      foreach($x in $e.Advertisement.ManufacturerData) {
+        $dr = [Windows.Storage.Streams.DataReader]::FromBuffer($x.Data)
+        $b = New-Object byte[] $x.Data.Length
+        $dr.ReadBytes($b)
+        $mf += @{id=[int]$x.CompanyId; hex=($b|ForEach-Object{'{0:X2}'-f$_})-join''}
+      }
+    } catch {}
+    $tp = $null
+    try {
+      foreach($ds in $e.Advertisement.DataSections) {
+        if ($ds.DataType -eq 0x0A) {
+          $dr2 = [Windows.Storage.Streams.DataReader]::FromBuffer($ds.Data)
+          $v = $dr2.ReadByte()
+          $tp = if($v -gt 127){[int]$v-256}else{[int]$v}
+          break
+        }
+      }
+    } catch {}
+    $fl = $null
+    try { $fl = [int]$e.Advertisement.Flags } catch {}
+    $cn = ($e.AdvertisementType -eq 0) -or ($e.AdvertisementType -eq 1)
+    $at = $e.AdvertisementType.ToString()
+    $entry = @{mac=$m;name=$n;rssi=[int]$r;tx=$tp;svc=$sv;mfg=$mf;flags=$fl;conn=$cn;adv_type=$at}
+    if (-not $d.ContainsKey($a) -or $r -gt $d[$a].rssi) {
+      $prev = $d[$a]
+      if ($prev -and -not $n -and $prev.name) { $entry.name = $prev.name }
+      $d[$a] = $entry
+    }
+  })
+  $w.Start()
+  Start-Sleep -Seconds 5
+  $w.Stop()
+  Start-Sleep -Milliseconds 500
+  $results = @($d.Values)
+  if ($results.Count -eq 0) { Write-Output '[]' }
+  else { $results | ConvertTo-Json -Depth 4 -Compress }
+} catch {
+  Write-Output '[]'
+}
+`.trim();
+  const tmpScript = path.join(os.tmpdir(), `rmpg-ble-${Date.now()}.ps1`);
+  return new Promise((resolve) => {
+    try {
+      fs.writeFileSync(tmpScript, scriptContent, 'utf8');
+    } catch { resolve([]); return; }
+    exec(
+      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpScript}"`,
+      { timeout: 20000, encoding: 'utf8' },
+      (err, stdout) => {
+        try { fs.unlinkSync(tmpScript); } catch {}
+        if (err || !stdout) { resolve([]); return; }
+        let parsed = [];
+        try { parsed = JSON.parse(stdout.trim()); } catch { resolve([]); return; }
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        const results = [];
+        for (const d of parsed) {
+          if (!d || !d.mac) continue;
+          const mac = d.mac;
+          const rssi = typeof d.rssi === 'number' ? d.rssi : null;
+          const txPower = typeof d.tx === 'number' ? d.tx : null;
+          const mfgId = d.mfg?.[0]?.id ?? null;
+          results.push({
+            signal_type: 'ble',
+            identifier: mac.toLowerCase(),
+            display_name: d.name || `BLE ${mac.substring(0, 8)}…`,
+            rssi_dbm: rssi,
+            signal_pct: rssi != null ? Math.min(100, Math.max(0, (rssi + 100) * 2)) : null,
+            tx_power_dbm: txPower,
+            distance_estimate_m: rssi != null ? rssiToMetres(rssi, txPower ?? -59) : null,
+            properties: {
+              ble_complete_local_name: d.name || null,
+              ble_mac_type: null,
+              ble_service_uuids: d.svc?.length ? d.svc : null,
+              ble_manufacturer_id: mfgId,
+              ble_manufacturer_name: lookupBleMfg(mfgId),
+              ble_appearance_category: null,
+              ble_advertisement_interval_ms: null,
+              ble_connectable: d.conn ?? null,
+              ble_manufacturer_data_hex: d.mfg?.[0]?.hex ?? null,
+              ble_service_data: null,
+              ble_flags: d.flags ?? null,
+              bt_vendor: lookupVendor(mac),
+            },
+          });
+        }
+        resolve(results);
+      }
+    );
+  });
+}
+
+function scanBleMacos() {
+  return new Promise((resolve) => {
+    exec('system_profiler SPBluetoothDataType -json', { timeout: 15000, encoding: 'utf8' }, (err, stdout) => {
+      if (err || !stdout) { resolve([]); return; }
+      let profiler;
+      try { profiler = JSON.parse(stdout); } catch { resolve([]); return; }
+      const btData = profiler.SPBluetoothDataType?.[0];
+      if (!btData) { resolve([]); return; }
+      const results = [];
+      const nearby = btData['nearby_devices'] ?? btData['device_not_paired'] ?? {};
+      for (const [name, info] of Object.entries(nearby)) {
+        if (typeof info !== 'object') continue;
+        const isLe = (info['device_isLowEnergy'] === 'attrib_Yes' ||
+                       info['device_minorType']?.includes('LE') ||
+                       (info['device_classOfDevice'] == null && !info['device_services']));
+        if (!isLe) continue;
+        const mac = info['device_address'] ?? null;
+        const rssi = info['device_rssi'] ? parseInt(info['device_rssi']) : null;
+        results.push({
+          signal_type: 'ble',
+          identifier: mac ? mac.toLowerCase() : `macos-ble-${name}`,
+          display_name: name,
+          rssi_dbm: rssi,
+          signal_pct: rssi != null ? Math.min(100, Math.max(0, (rssi + 100) * 2)) : null,
+          tx_power_dbm: null,
+          distance_estimate_m: rssi != null ? rssiToMetres(rssi) : null,
+          properties: {
+            ble_complete_local_name: name,
+            ble_mac_type: null,
+            ble_service_uuids: null,
+            ble_manufacturer_id: null,
+            ble_manufacturer_name: null,
+            ble_appearance_category: info['device_minorType'] ?? null,
+            ble_advertisement_interval_ms: null,
+            ble_connectable: null,
+            ble_manufacturer_data_hex: null,
+            ble_service_data: null,
+            ble_flags: null,
+            bt_vendor: mac ? lookupVendor(mac) : 'Unknown',
+          },
+        });
+      }
+      resolve(results);
+    });
+  });
+}
+
 // ── ARP / NDP scan (local network devices) ──────────────────────────
 
 async function scanArp() {
@@ -544,28 +760,67 @@ async function scanArp() {
       });
     });
     if (!stdout) return [];
-    const results = [];
+    const entries = [];
     const lines = stdout.split(/\r?\n/);
+    let currentInterface = null;
     for (const line of lines) {
+      const ifMatch = line.match(/Interface:\s*([\d.]+)\s*---\s*0x([0-9a-fA-F]+)/);
+      if (ifMatch) { currentInterface = ifMatch[1]; continue; }
       const match = platform === 'win32'
         ? line.match(/^\s*([\d.]+)\s+([\da-f:-]+)\s+(\w+)/i)
-        : line.match(/\(([\d.]+)\)\s+at\s+([\da-f:]+)/i);
+        : line.match(/\(([\d.]+)\)\s+at\s+([\da-f:]+)(?:\s+on\s+(\S+))?/i);
       if (!match) continue;
       const ip = match[1];
       const mac = match[2].toUpperCase().replace(/-/g, ':');
       if (mac === 'FF:FF:FF:FF:FF:FF' || ip === '255.255.255.255') continue;
-      results.push({
+      if (mac === '00:00:00:00:00:00') continue;
+      const arpType = platform === 'win32' ? (match[3] ?? 'dynamic') : 'dynamic';
+      const iface = platform === 'win32' ? currentInterface : (match[3] ?? null);
+      entries.push({ ip, mac, arpType, iface });
+    }
+
+    // Batch hostname resolution (parallel, 2s timeout each)
+    const hostnameMap = new Map();
+    const dnsCmd = platform === 'win32'
+      ? (ip) => `powershell -NoProfile -Command "(Resolve-DnsName -Name '${ip}' -Type PTR -DnsOnly -ErrorAction SilentlyContinue).NameHost"`
+      : (ip) => `host -W 2 ${ip} 2>/dev/null`;
+    const hostPromises = entries.slice(0, 50).map(({ ip }) =>
+      new Promise((resolve) => {
+        exec(dnsCmd(ip), { timeout: 3000, encoding: 'utf8' }, (err, stdout) => {
+          if (err || !stdout) { resolve(null); return; }
+          const hostname = platform === 'win32'
+            ? stdout.trim()
+            : (stdout.match(/domain name pointer\s+(\S+)/i)?.[1]?.replace(/\.$/, '') ?? null);
+          if (hostname) hostnameMap.set(ip, hostname);
+          resolve(hostname);
+        });
+      })
+    );
+    await Promise.allSettled(hostPromises);
+
+    return entries.map(({ ip, mac, arpType, iface }) => {
+      const hostname = hostnameMap.get(ip) ?? null;
+      const vendor = lookupVendor(mac);
+      const name = hostname || `${ip} (${vendor})`;
+      return {
         signal_type: 'arp_device',
         identifier: mac.toLowerCase(),
-        display_name: `${ip} (${lookupVendor(mac) || 'Unknown'})`,
+        display_name: name,
         rssi_dbm: null,
         signal_pct: null,
         tx_power_dbm: null,
         distance_estimate_m: null,
-        properties: { ip_address: ip, mac_address: mac, vendor: lookupVendor(mac) },
-      });
-    }
-    return results;
+        properties: {
+          ip_address: ip,
+          mac_address: mac,
+          vendor,
+          hostname,
+          arp_type: arpType,
+          interface_name: iface,
+          is_gateway: ip.endsWith('.1') || ip.endsWith('.254'),
+        },
+      };
+    });
   } catch (err) {
     console.warn('[rfScanner] ARP scan failed:', err && err.message);
     return [];
@@ -574,13 +829,48 @@ async function scanArp() {
 
 // ── SSDP / UPnP scan ────────────────────────────────────────────────
 
+function fetchSsdpXml(locationUrl) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 2500);
+    try {
+      const parsed = new URL(locationUrl);
+      if (parsed.protocol !== 'http:') { clearTimeout(timer); resolve(null); return; }
+      http.get(locationUrl, { timeout: 2000 }, (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { data += chunk; if (data.length > 65536) res.destroy(); });
+        res.on('end', () => {
+          clearTimeout(timer);
+          const get = (tag) => {
+            const m = data.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'i'));
+            return m ? m[1].trim() : null;
+          };
+          resolve({
+            friendlyName: get('friendlyName'),
+            manufacturer: get('manufacturer'),
+            manufacturerURL: get('manufacturerURL'),
+            modelName: get('modelName'),
+            modelNumber: get('modelNumber'),
+            modelDescription: get('modelDescription'),
+            serialNumber: get('serialNumber'),
+            UDN: get('UDN'),
+            deviceType: get('deviceType'),
+            presentationURL: get('presentationURL'),
+          });
+        });
+      }).on('error', () => { clearTimeout(timer); resolve(null); })
+        .on('timeout', function () { this.destroy(); clearTimeout(timer); resolve(null); });
+    } catch { clearTimeout(timer); resolve(null); }
+  });
+}
+
 async function scanSsdp() {
   try {
     const dgram = require('dgram');
     const SSDP_ADDR = '239.255.255.250';
     const SSDP_PORT = 1900;
-    const SEARCH = 'M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n';
-    return await new Promise((resolve) => {
+    const SEARCH = 'M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 3\r\nST: ssdp:all\r\n\r\n';
+    const rawDevices = await new Promise((resolve) => {
       const devices = new Map();
       const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
       sock.on('message', (msg, rinfo) => {
@@ -588,24 +878,56 @@ async function scanSsdp() {
         const loc = (text.match(/LOCATION:\s*(.+)/i) || [])[1]?.trim();
         const server = (text.match(/SERVER:\s*(.+)/i) || [])[1]?.trim();
         const usn = (text.match(/USN:\s*(.+)/i) || [])[1]?.trim();
+        const st = (text.match(/ST:\s*(.+)/i) || [])[1]?.trim();
+        const cacheControl = (text.match(/CACHE-CONTROL:\s*(.+)/i) || [])[1]?.trim();
         const key = usn || `${rinfo.address}:${loc || ''}`;
         if (!devices.has(key)) {
-          devices.set(key, {
-            signal_type: 'ssdp_device',
-            identifier: key,
-            display_name: server || loc || rinfo.address,
-            rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
-            properties: { ip_address: rinfo.address, port: rinfo.port, location: loc, server, usn },
-          });
+          devices.set(key, { key, ip: rinfo.address, port: rinfo.port, loc, server, usn, st, cacheControl });
         }
       });
       sock.on('error', () => { sock.close(); resolve([]); });
       sock.bind(() => {
-        sock.addMembership(SSDP_ADDR);
+        try { sock.addMembership(SSDP_ADDR); } catch {}
         sock.send(Buffer.from(SEARCH), SSDP_PORT, SSDP_ADDR);
-        setTimeout(() => { sock.close(); resolve([...devices.values()]); }, 3000);
+        setTimeout(() => { sock.close(); resolve([...devices.values()]); }, 4000);
       });
     });
+
+    // Fetch XML device descriptions in parallel (max 15 concurrent)
+    const xmlFetches = rawDevices.slice(0, 15).map(async (d) => {
+      const xml = d.loc ? await fetchSsdpXml(d.loc) : null;
+      return { ...d, xml };
+    });
+    const enriched = await Promise.allSettled(xmlFetches);
+
+    return enriched
+      .filter(r => r.status === 'fulfilled')
+      .map(r => r.value)
+      .map((d) => ({
+        signal_type: 'ssdp_device',
+        identifier: d.key,
+        display_name: d.xml?.friendlyName || d.server || d.loc || d.ip,
+        rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
+        properties: {
+          ip_address: d.ip,
+          port: d.port,
+          location: d.loc,
+          server: d.server,
+          usn: d.usn,
+          search_target: d.st,
+          cache_control: d.cacheControl,
+          friendly_name: d.xml?.friendlyName ?? null,
+          manufacturer: d.xml?.manufacturer ?? null,
+          manufacturer_url: d.xml?.manufacturerURL ?? null,
+          model_name: d.xml?.modelName ?? null,
+          model_number: d.xml?.modelNumber ?? null,
+          model_description: d.xml?.modelDescription ?? null,
+          serial_number: d.xml?.serialNumber ?? null,
+          udn: d.xml?.UDN ?? null,
+          device_type: d.xml?.deviceType ?? null,
+          presentation_url: d.xml?.presentationURL ?? null,
+        },
+      }));
   } catch (err) {
     console.warn('[rfScanner] SSDP scan failed:', err && err.message);
     return [];
@@ -614,40 +936,178 @@ async function scanSsdp() {
 
 // ── mDNS scan ────────────────────────────────────────────────────────
 
+// ── DNS response parser for mDNS ────────────────────────────────────
+
+const DNS_TYPE = { A: 1, NS: 2, PTR: 12, TXT: 16, AAAA: 28, SRV: 33 };
+
+function readDnsName(buf, offset) {
+  const parts = [];
+  let jumped = false;
+  let returnOffset = offset;
+  const seen = new Set();
+  while (offset < buf.length) {
+    const len = buf[offset];
+    if (len === 0) { if (!jumped) returnOffset = offset + 1; break; }
+    if ((len & 0xC0) === 0xC0) {
+      if (offset + 1 >= buf.length) break;
+      const ptr = ((len & 0x3F) << 8) | buf[offset + 1];
+      if (seen.has(ptr)) break;
+      seen.add(ptr);
+      if (!jumped) returnOffset = offset + 2;
+      offset = ptr;
+      jumped = true;
+      continue;
+    }
+    offset++;
+    if (offset + len > buf.length) break;
+    parts.push(buf.slice(offset, offset + len).toString('utf8'));
+    offset += len;
+  }
+  return { name: parts.join('.'), newOffset: jumped ? returnOffset : offset };
+}
+
+function parseDnsRecords(buf) {
+  if (buf.length < 12) return [];
+  const qdcount = buf.readUInt16BE(4);
+  const ancount = buf.readUInt16BE(6);
+  const nscount = buf.readUInt16BE(8);
+  const arcount = buf.readUInt16BE(10);
+  let offset = 12;
+  for (let i = 0; i < qdcount && offset < buf.length; i++) {
+    const { newOffset } = readDnsName(buf, offset);
+    offset = newOffset + 4;
+  }
+  const records = [];
+  const total = ancount + nscount + arcount;
+  for (let i = 0; i < total && offset + 10 < buf.length; i++) {
+    const { name, newOffset: noff } = readDnsName(buf, offset);
+    offset = noff;
+    if (offset + 10 > buf.length) break;
+    const type = buf.readUInt16BE(offset);
+    const rdlength = buf.readUInt16BE(offset + 8);
+    const rdStart = offset + 10;
+    offset = rdStart + rdlength;
+    if (offset > buf.length) break;
+    const rdata = buf.slice(rdStart, rdStart + rdlength);
+    if (type === DNS_TYPE.PTR) {
+      records.push({ type: 'PTR', name, value: readDnsName(buf, rdStart).name });
+    } else if (type === DNS_TYPE.SRV && rdata.length >= 6) {
+      const port = rdata.readUInt16BE(4);
+      const target = readDnsName(buf, rdStart + 6).name;
+      records.push({ type: 'SRV', name, port, target });
+    } else if (type === DNS_TYPE.TXT) {
+      const entries = {};
+      let toff = 0;
+      while (toff < rdata.length) {
+        const tlen = rdata[toff]; toff++;
+        if (toff + tlen > rdata.length) break;
+        const text = rdata.slice(toff, toff + tlen).toString('utf8');
+        const eq = text.indexOf('=');
+        if (eq > 0) entries[text.slice(0, eq)] = text.slice(eq + 1);
+        else if (text) entries[text] = '';
+        toff += tlen;
+      }
+      records.push({ type: 'TXT', name, entries });
+    } else if (type === DNS_TYPE.A && rdata.length === 4) {
+      records.push({ type: 'A', name, address: `${rdata[0]}.${rdata[1]}.${rdata[2]}.${rdata[3]}` });
+    } else if (type === DNS_TYPE.AAAA && rdata.length === 16) {
+      const parts = [];
+      for (let j = 0; j < 16; j += 2) parts.push(rdata.readUInt16BE(j).toString(16));
+      records.push({ type: 'AAAA', name, address: parts.join(':') });
+    }
+  }
+  return records;
+}
+
+function buildDnsQuery(serviceName) {
+  const header = Buffer.alloc(12);
+  header.writeUInt16BE(1, 4);
+  const labels = serviceName.split('.');
+  const parts = [header];
+  for (const label of labels) {
+    const len = Buffer.alloc(1); len[0] = label.length;
+    parts.push(len, Buffer.from(label, 'utf8'));
+  }
+  parts.push(Buffer.from([0x00, 0x00, 0x0C, 0x00, 0x01]));
+  return Buffer.concat(parts);
+}
+
 async function scanMdns() {
   try {
     const dgram = require('dgram');
     const MDNS_ADDR = '224.0.0.251';
     const MDNS_PORT = 5353;
-    // Query for _services._dns-sd._udp.local PTR
-    const query = Buffer.from([
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x09, 0x5f, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73,
-      0x07, 0x5f, 0x64, 0x6e, 0x73, 0x2d, 0x73, 0x64,
-      0x04, 0x5f, 0x75, 0x64, 0x70,
-      0x05, 0x6c, 0x6f, 0x63, 0x61, 0x6c,
-      0x00, 0x00, 0x0c, 0x00, 0x01
-    ]);
+    const queries = [
+      buildDnsQuery('_services._dns-sd._udp.local'),
+      buildDnsQuery('_http._tcp.local'),
+      buildDnsQuery('_airplay._tcp.local'),
+      buildDnsQuery('_ipp._tcp.local'),
+      buildDnsQuery('_googlecast._tcp.local'),
+      buildDnsQuery('_raop._tcp.local'),
+      buildDnsQuery('_smb._tcp.local'),
+      buildDnsQuery('_companion-link._tcp.local'),
+    ];
+
     return await new Promise((resolve) => {
-      const devices = new Map();
+      const deviceMap = new Map();
       const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-      sock.on('message', (_msg, rinfo) => {
-        const key = rinfo.address;
-        if (!devices.has(key)) {
-          devices.set(key, {
-            signal_type: 'mdns_device',
-            identifier: key,
-            display_name: `mDNS responder at ${rinfo.address}`,
-            rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
-            properties: { ip_address: rinfo.address, port: rinfo.port },
-          });
+      sock.on('message', (msg, rinfo) => {
+        const records = parseDnsRecords(msg);
+        const ip = rinfo.address;
+        if (!deviceMap.has(ip)) {
+          deviceMap.set(ip, { ip, port: rinfo.port, hostnames: new Set(), services: [], txt: {}, ips: new Set([ip]) });
+        }
+        const dev = deviceMap.get(ip);
+        for (const rec of records) {
+          if (rec.type === 'PTR' && !rec.value.startsWith('_')) dev.hostnames.add(rec.value);
+          if (rec.type === 'PTR' && rec.value.includes('._tcp') || rec.value?.includes('._udp')) {
+            dev.services.push(rec.value);
+          }
+          if (rec.type === 'SRV') {
+            dev.hostnames.add(rec.target);
+            dev.services.push(`${rec.name}:${rec.port}`);
+          }
+          if (rec.type === 'TXT') Object.assign(dev.txt, rec.entries);
+          if (rec.type === 'A' || rec.type === 'AAAA') {
+            dev.ips.add(rec.address);
+            if (rec.name) dev.hostnames.add(rec.name);
+          }
         }
       });
       sock.on('error', () => { sock.close(); resolve([]); });
       sock.bind(() => {
-        try { sock.addMembership(MDNS_ADDR); } catch { /* already a member */ }
-        sock.send(query, MDNS_PORT, MDNS_ADDR);
-        setTimeout(() => { sock.close(); resolve([...devices.values()]); }, 3000);
+        try { sock.addMembership(MDNS_ADDR); } catch {}
+        for (const q of queries) sock.send(q, MDNS_PORT, MDNS_ADDR);
+        setTimeout(() => {
+          sock.close();
+          const results = [];
+          for (const dev of deviceMap.values()) {
+            const hostnames = [...dev.hostnames].filter(h => h && !h.startsWith('_'));
+            const services = [...new Set(dev.services)];
+            const serviceTypes = services
+              .map(s => s.match(/(_[^.]+\._(?:tcp|udp))/)?.[1])
+              .filter(Boolean);
+            const hostname = hostnames.find(h => !h.endsWith('.local')) || hostnames[0] || null;
+            results.push({
+              signal_type: 'mdns_device',
+              identifier: dev.ip,
+              display_name: hostname || `mDNS ${dev.ip}`,
+              rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
+              properties: {
+                ip_address: dev.ip,
+                port: dev.port,
+                hostname,
+                hostnames,
+                service_types: [...new Set(serviceTypes)],
+                services,
+                txt_records: Object.keys(dev.txt).length > 0 ? dev.txt : null,
+                ip_addresses: [...dev.ips],
+                vendor: null,
+              },
+            });
+          }
+          resolve(results);
+        }, 4000);
       });
     });
   } catch (err) {
@@ -661,29 +1121,67 @@ async function scanMdns() {
 async function scanNetbios() {
   try {
     if (os.platform() !== 'win32') return [];
-    const { stdout } = await new Promise((resolve, reject) => {
-      exec('nbtstat -n', { timeout: 10000, encoding: 'utf8' }, (err, stdout) => {
-        if (err) reject(err); else resolve({ stdout });
+
+    const run = (cmd) => new Promise((resolve) => {
+      exec(cmd, { timeout: 12000, encoding: 'utf8' }, (err, stdout) => {
+        resolve(err ? '' : stdout || '');
       });
     });
-    if (!stdout) return [];
-    const results = [];
-    const lines = stdout.split(/\r?\n/);
-    for (const line of lines) {
-      const match = line.match(/^\s*(\S+)\s+<([0-9A-Fa-f]{2})>\s+(\w+)/);
-      if (!match) continue;
-      const name = match[1].trim();
-      const suffix = match[2];
-      const type = match[3];
-      results.push({
-        signal_type: 'netbios_device',
-        identifier: `nb-${name}-${suffix}`,
-        display_name: `${name} <${suffix}> [${type}]`,
-        rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
-        properties: { netbios_name: name, suffix, registration_type: type },
-      });
-    }
-    return results;
+
+    const [cacheOut, localOut] = await Promise.all([
+      run('nbtstat -c'),
+      run('nbtstat -n'),
+    ]);
+
+    const seen = new Map();
+
+    const parseBlock = (block, isRemote) => {
+      const ipMatch = block.match(/(?:Host|Node)\s+IpAddress:\s+\[?([\d.]+)\]?/i);
+      const macMatch = block.match(/MAC\s+Address\s*=\s*([\dA-Fa-f-]{17})/i);
+      const ip = ipMatch ? ipMatch[1] : null;
+      const mac = macMatch ? macMatch[1].replace(/-/g, ':').toUpperCase() : null;
+
+      const lines = block.split(/\r?\n/);
+      for (const line of lines) {
+        const m = line.match(/^\s*(\S+)\s+<([0-9A-Fa-f]{2})>\s+(\w+)/);
+        if (!m) continue;
+        const name = m[1].trim();
+        const suffix = m[2];
+        const regType = m[3];
+        const suffixDesc = NB_SUFFIX[suffix] || 'Unknown';
+        const key = `${ip || mac || name}-${name}-${suffix}`;
+        if (seen.has(key)) continue;
+        seen.set(key, true);
+
+        const vendor = mac ? lookupVendor(mac) : null;
+        const displayParts = [name];
+        if (suffixDesc !== 'Unknown') displayParts.push(`(${suffixDesc})`);
+        if (ip) displayParts.push(`[${ip}]`);
+
+        seen.set(key, {
+          signal_type: 'netbios_device',
+          identifier: mac ? `nb-${mac}` : `nb-${name}-${suffix}`,
+          display_name: displayParts.join(' '),
+          rssi_dbm: null, signal_pct: null, tx_power_dbm: null, distance_estimate_m: null,
+          properties: {
+            netbios_name: name,
+            suffix,
+            suffix_description: suffixDesc,
+            registration_type: regType,
+            ip_address: ip,
+            mac_address: mac,
+            vendor,
+            source: isRemote ? 'cache' : 'local',
+          },
+        });
+      }
+    };
+
+    const splitBlocks = (text) => text.split(/(?=\S.*:$)/m).filter(b => b.trim());
+    for (const block of splitBlocks(cacheOut)) parseBlock(block, true);
+    for (const block of splitBlocks(localOut)) parseBlock(block, false);
+
+    return [...seen.values()].filter(v => v && typeof v === 'object' && v.signal_type);
   } catch (err) {
     console.warn('[rfScanner] NetBIOS scan failed:', err && err.message);
     return [];
@@ -694,12 +1192,13 @@ async function scanNetbios() {
 
 const PROTOCOL_SCANNERS = {
   wifi: [scanWifi],
-  bt: [scanBluetooth],
+  bt: [scanBluetooth, scanBle],
+  ble: [scanBle],
   arp: [scanArp],
   ssdp: [scanSsdp],
   mdns: [scanMdns],
   nb: [scanNetbios],
-  all: [scanWifi, scanBluetooth, scanArp, scanSsdp, scanMdns, scanNetbios],
+  all: [scanWifi, scanBluetooth, scanBle, scanArp, scanSsdp, scanMdns, scanNetbios],
 };
 
 // ── Main scan entry point ─────────────────────────────────────────────
@@ -760,6 +1259,6 @@ async function runRfScan({ protocol = null, lat = null, lng = null, deviceId = n
 }
 
 module.exports = {
-  runRfScan, scanWifi, scanBluetooth, scanArp, scanSsdp, scanMdns, scanNetbios,
-  lookupVendor, pctToDbm, rssiToMetres, freqToBand, btClassToCategory,
+  runRfScan, scanWifi, scanBluetooth, scanBle, scanArp, scanSsdp, scanMdns, scanNetbios,
+  lookupVendor, lookupBleMfg, pctToDbm, rssiToMetres, freqToBand, btClassToCategory,
 };

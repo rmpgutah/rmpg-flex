@@ -222,6 +222,7 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const OsintPortalPage = lazyRetry(() => import('./pages/osint/OsintPortalPage'));
 const DeviceScannerPage = lazyRetry(() => import('./pages/DeviceScannerPage'));
+const SignalIntelligencePage = lazyRetry(() => import('./pages/SignalIntelligencePage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const OidcCallbackPage = lazyRetry(() => import('./pages/OidcCallbackPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
@@ -735,6 +736,7 @@ function AppRoutes() {
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/osint" element={<RouteErrorBoundary><OsintPortalPage /></RouteErrorBoundary>} />
             <Route path="/device-scanner" element={<AdminRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/signal-intelligence" element={<RouteErrorBoundary><SignalIntelligencePage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
