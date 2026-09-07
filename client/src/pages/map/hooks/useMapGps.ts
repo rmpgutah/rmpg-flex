@@ -99,12 +99,18 @@ export function useMapGps({
         ring.setAttribute('data-role', 'self-accuracy');
         const accPx =
           accM != null && accM > 0 ? Math.min(80, Math.max(12, accM / 1.5)) : 20;
+        // NOTE: uses var(--sev-info-rgb), never a literal blue hex/rgba, in this
+        // inline style — the app's global "BLUE-KILLSWITCH" CSS (index.css) forces
+        // any element whose raw style ATTRIBUTE TEXT contains a legacy blue
+        // hex/rgba substring (e.g. "#3b82f6", "rgba(59,130,246") to a near-black
+        // background with !important. A literal rgba() here silently turned this
+        // translucent accuracy ring into a solid opaque black circle.
         ring.style.cssText = `
           position:absolute;top:50%;left:50%;
           width:${accPx * 2}px;height:${accPx * 2}px;
           margin-left:-${accPx}px;margin-top:-${accPx}px;
-          border-radius:50%;background:rgba(59,130,246,0.10);
-          border:1.5px solid rgba(59,130,246,0.25);
+          border-radius:50%;background:rgb(var(--sev-info-rgb) / 0.10);
+          border:1.5px solid rgb(var(--sev-info-rgb) / 0.25);
           pointer-events:none;z-index:0;
           animation:rmpg-pulse-ring 3s ease-in-out infinite;
         `;
@@ -119,7 +125,10 @@ export function useMapGps({
         svg.setAttribute('height', '28');
         svg.style.transform = hasHeading ? `rotate(${heading}deg)` : 'rotate(0deg)';
         svg.style.transition = 'transform 0.4s ease-out';
-        svg.style.filter = 'drop-shadow(0 0 6px rgba(59,130,246,0.7))';
+        // See ring's note above re: BLUE-KILLSWITCH — literal rgba() here would
+        // let the killswitch grey out this filter (and the arrow's fill, via CSS
+        // cascade) since it's still text inside the style attribute.
+        svg.style.filter = 'drop-shadow(0 0 6px rgb(var(--sev-info-rgb) / 0.7))';
         svg.style.display = hasHeading ? 'block' : 'none';
         svg.style.position = 'relative';
         svg.style.zIndex = '2';
@@ -134,10 +143,12 @@ export function useMapGps({
         // Blue dot (shown when no heading available)
         const dot = document.createElement('div');
         dot.setAttribute('data-role', 'self-dot');
+        // See ring's BLUE-KILLSWITCH note above — var(--sev-info*) here, never a
+        // literal hex/rgba, or the killswitch forces this dot near-black.
         dot.style.cssText = `
           width:18px;height:18px;border-radius:50%;
-          background:${TACTICAL_INFO};border:3px solid ${TACTICAL_TEXT_PRIMARY};
-          box-shadow:0 0 10px rgba(59,130,246,0.5), 0 0 20px rgba(59,130,246,0.25);
+          background:var(--sev-info);border:3px solid var(--text-primary);
+          box-shadow:0 0 10px rgb(var(--sev-info-rgb) / 0.5), 0 0 20px rgb(var(--sev-info-rgb) / 0.25);
           animation:rmpg-pulse 2s ease-in-out infinite;
           position:relative;z-index:2;
         `;
@@ -147,10 +158,12 @@ export function useMapGps({
         // Speed readout label
         const speedEl = document.createElement('div');
         speedEl.setAttribute('data-role', 'self-speed');
+        // See ring's BLUE-KILLSWITCH note above — var(--sev-info*) here, never a
+        // literal hex/rgba, or the killswitch forces the border/text near-black.
         speedEl.style.cssText = `
-          background:rgb(0 0 0 / 0.75);border:1px solid rgba(59,130,246,0.5);
+          background:rgb(0 0 0 / 0.75);border:1px solid rgb(var(--sev-info-rgb) / 0.5);
           border-radius:2px;padding:0 4px;
-          font:700 9px/13px ui-monospace,monospace;color:${TACTICAL_INFO};
+          font:700 9px/13px ui-monospace,monospace;color:var(--sev-info);
           white-space:nowrap;position:relative;z-index:2;
         `;
         speedEl.textContent = speedMph != null && speedMph > 0 ? `${speedMph}` : '';
