@@ -139,6 +139,17 @@ const STATIC_LAYERS: MapLayerDef[] = [
 // the config's hex at runtime — that would put literal hex back into registry
 // data, which layerRegistry.test.ts forbids. Falls back to silver for any id
 // not listed here so a newly added GeoJSON layer still renders.
+//
+// `beat`: on the map itself, each individual beat renders in its own color
+// from the 32-entry BEAT_COLOR_PALETTE (getBeatColor(), keyed per beat_code —
+// see buildPerBeatColorExpression() in useGeoJsonLayers.ts), so no single
+// swatch can represent the layer's real appearance. `var(--sev-ok)` is a
+// deliberate flat placeholder rather than an error: it's the SAME green used
+// as GEO_LAYER_CONFIGS['beat'].style.fillColor (#22c55e), i.e. the base/
+// fallback color the per-beat match expression falls back to when a feature
+// carries no recognized beat_code — so the swatch isn't arbitrary, it's the
+// layer's documented default color. A flat swatch is an acceptable tradeoff
+// for a multi-color layer here; a 32-color sidebar dot would be noise.
 const GEO_LAYER_COLOR_VARS: Record<string, string> = {
   state_boundary: 'var(--text-primary)',
   county: 'var(--text-secondary)',
