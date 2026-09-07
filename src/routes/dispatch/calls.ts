@@ -24,18 +24,8 @@ import {
 } from '../../utils/psoServeCrosslink';
 import { stampCallWeather } from '../../utils/cfsWeatherStamp';
 import { parseWeatherSnapshot } from '../../utils/cfsWeather';
+import { currentCallNumberPrefix, nextCallNumber, withNextCallNumber } from '../../utils/callNumberSeq';
 const calls = new Hono<Env>();
-
-// ── Atomic call-number sequence (C2) ──────────────────────────────────────
-// The sequence table is created once per isolate (boot reconciler pattern used
-// throughout this codebase). INSERT INTO ... DEFAULT VALUES returns a unique,
-// monotonically increasing id under concurrent Workers — no SELECT MAX race.
-let callSeqEnsured = false;
-async function ensureCallNumberSeq(db: D1Database): Promise<void> {
-  if (callSeqEnsured) return;
-  await db.prepare(`CREATE TABLE IF NOT EXISTS call_number_seq (id INTEGER PRIMARY KEY AUTOINCREMENT)`).run();
-  callSeqEnsured = true;
-}
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
@@ -283,14 +273,17 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
     // co-exist; the LIKE here only scans the new format so we don't
     // collide with the old sequence.
-    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
-    const prefix = `CFS${year}-`;
-    // ── Atomic call-number generation (C2) ──
-    // INSERT into the sequence table — AUTOINCREMENT guarantees uniqueness
-    // under concurrent Workers without a MAX read-then-increment race.
-    await ensureCallNumberSeq(db);
-    const seqResult = await db.prepare("INSERT INTO call_number_seq DEFAULT VALUES").run();
-    let callNumber = `${prefix}${String(seqResult.meta.last_row_id).padStart(5, '0')}`;
+    // Generated from MAX(call_number)+1 via the shared helper (also used by
+    // panic.ts and the /split endpoint) — always continues from the highest
+    // existing number for the year rather than an unrelated counter. An
+    // AUTOINCREMENT `call_number_seq` table was used here previously; it
+    // tracked its own counter starting at 1 with no relation to existing
+    // calls_for_service rows, so newly-deployed isolates (or the table's
+    // first creation) restarted numbering at CFS{YY}-00001 even when
+    // higher-numbered calls already existed for the year, immediately
+    // colliding on the UNIQUE constraint.
+    const prefix = currentCallNumberPrefix();
+    let callNumber = await nextCallNumber(db, prefix);
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -417,8 +410,26 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     }
 
     try {
-      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
-      const callId = Number(result.meta.last_row_id);
+      // call_number carries a UNIQUE constraint. A collision here means a
+      // concurrent request grabbed the same MAX(call_number)+1 value —
+      // regenerate and retry rather than 500ing the create.
+      let result: Awaited<ReturnType<typeof execute>> | undefined;
+      const insertSql = `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          result = await execute(db, insertSql, ...bindParams);
+          break;
+        } catch (insertErr) {
+          const raw = String((insertErr as Error)?.message ?? insertErr);
+          if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raw) && /call_number/i.test(raw)) {
+            callNumber = await nextCallNumber(db, prefix);
+            bindParams[0] = callNumber;
+            continue;
+          }
+          throw insertErr;
+        }
+      }
+      const callId = Number(result!.meta.last_row_id);
 
       // Record which run card was applied — to ext (PSO/process-service home).
       // INSERT OR IGNORE then UPDATE matches the rest of the ext write flow.
@@ -2141,24 +2152,19 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     if (!Array.isArray(splits) || !splits.length) return c.json({ error: 'splits array required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const created: number[] = [];
-    // call_number is NOT NULL UNIQUE — generate a new number for each child
-    const splitYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
-    const splitPrefix = `CFS${splitYear}-`;
-    const nextSplitCallNumber = async () => {
-      const [{ max }] = await query<{ max: string | null }>(
-        db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?", `${splitPrefix}%`,
-      );
-      const seq = max ? String(parseInt(max.slice(splitPrefix.length), 10) + 1).padStart(5, '0') : '00001';
-      return `${splitPrefix}${seq}`;
-    };
+    // call_number is NOT NULL UNIQUE — generate a new number for each child.
+    // Shared helper (also used by manual create + panic) retries on a
+    // UNIQUE-constraint collision instead of failing the split.
+    const splitPrefix = currentCallNumberPrefix();
     for (const s of splits) {
-      const childCallNumber = await nextSplitCallNumber();
-      const result = await execute(db,
-        // No split_from_id on calls_for_service (and it's at the 100-column
-        // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
-        `INSERT INTO calls_for_service (call_number, incident_type, priority, status, location_address, latitude, longitude, description, dispatcher_id, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        childCallNumber, s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, userId ?? null);
+      const { result } = await withNextCallNumber(db, splitPrefix, (childCallNumber) =>
+        execute(db,
+          // No split_from_id on calls_for_service (and it's at the 100-column
+          // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
+          `INSERT INTO calls_for_service (call_number, incident_type, priority, status, location_address, latitude, longitude, description, dispatcher_id, created_at, updated_at)
+           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+          childCallNumber, s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, userId ?? null),
+      );
       const childId = Number(result.meta.last_row_id);
       await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', childId);
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, childId);
@@ -2293,14 +2299,8 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     // "Schedule Return Visit" button) can read the same MAX twice and collide
     // on insert. Recompute and retry a few times on that specific collision
     // rather than surfacing the generic SQLITE_CONSTRAINT 409 to the dispatcher.
-    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
-    const prefix = `CFS${year}-`;
-    const nextCallNumber = async () => {
-      const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);
-      const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
-      return `${prefix}${seq}`;
-    };
-    let newCallNumber = await nextCallNumber();
+    const prefix = currentCallNumberPrefix();
+    let newCallNumber = await nextCallNumber(db, prefix);
 
     // Carry parent notes forward (tagged so the client can badge them
     // "carried from prior visit") + append a system note marking the
@@ -2357,7 +2357,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err ?? '');
         if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raw) && /call_number/i.test(raw)) {
-          newCallNumber = await nextCallNumber();
+          newCallNumber = await nextCallNumber(db, prefix);
           continue;
         }
         throw err;
