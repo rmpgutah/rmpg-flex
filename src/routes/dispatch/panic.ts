@@ -19,6 +19,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { getDecrypted } from '../../utils/encryptedR2';
 import { log } from '../../utils/logger';
+import { currentCallNumberPrefix, withNextCallNumber } from '../../utils/callNumberSeq';
 
 const panic = new Hono<Env>();
 
@@ -166,22 +167,21 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   } else if (!targetCallId) {
     // Create new CAD call if none exists. Generate a CFS call number so the
     // panic call appears in number-based searches and exports.
-    const panicYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
-    const panicPrefix = `CFS${panicYear}-`;
-    const maxRows = await query<{ max: string | null }>(
-      db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${panicPrefix}%`,
+    // Uses the shared MAX(call_number)+1-with-retry helper (also used by
+    // the manual create route and /split) so panic-triggered calls always
+    // continue from the highest existing number for the year and never
+    // collide with a concurrently-created call under the UNIQUE constraint
+    // (a bare MAX read-then-increment with no retry was used here before).
+    const panicPrefix = currentCallNumberPrefix();
+    const { result: ins } = await withNextCallNumber(db, panicPrefix, (panicCallNumber) =>
+      insertPanicCfs(db, {
+        callNumber: panicCallNumber,
+        userId,
+        address: body.location_address ?? 'Panic location',
+        latitude: body.latitude ?? null,
+        longitude: body.longitude ?? null,
+      }),
     );
-    const panicMax = maxRows[0]?.max ?? null;
-    const panicSeq = panicMax ? String(parseInt(panicMax.slice(panicPrefix.length), 10) + 1).padStart(5, '0') : '00001';
-    const panicCallNumber = `${panicPrefix}${panicSeq}`;
-
-    const ins = await insertPanicCfs(db, {
-      callNumber: panicCallNumber,
-      userId,
-      address: body.location_address ?? 'Panic location',
-      latitude: body.latitude ?? null,
-      longitude: body.longitude ?? null,
-    });
     targetCallId = Number(ins.meta.last_row_id);
   }
 
