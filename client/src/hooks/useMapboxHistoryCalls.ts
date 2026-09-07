@@ -1,12 +1,12 @@
 // Historical Call Overlay — past dispatch call locations with time filters
 // Fetches from /api/dispatch/history-map and renders as color-coded dots on the map.
 // Essential for identifying call patterns, repeat locations, and response patterns.
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { parseTimestamp, formatDateTime } from '../utils/dateUtils';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { formatEnumValue } from '../utils/formatters';
@@ -28,8 +28,7 @@ interface HistoryCall {
 
 const CIRCLE_SOURCE_ID = 'rmpg-history-calls-source';
 const CIRCLE_LAYER_ID = 'rmpg-history-calls-layer';
-const LABEL_SOURCE_ID = 'rmpg-history-labels-source';
-const LABEL_LAYER_ID = 'rmpg-history-labels-layer';
+const LABEL_LAYER_ID = 'rmpg-history-calls-label';
 
 export interface HistoryOptions {
   days?: number;
@@ -37,8 +36,11 @@ export interface HistoryOptions {
   types?: string[];
   priority?: string[];
   limit?: number;
-  maxZoomLabels?: number;
+  /** Zoom at which the call-number label layer becomes visible. */
+  minZoomLabels?: number;
 }
+
+const DEFAULT_MIN_ZOOM_LABELS = 14;
 
 export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
   const [calls, setCalls] = useState<HistoryCall[]>([]);
@@ -47,6 +49,15 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
   const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  // Last-rendered calls + options, kept so a style.load re-attach (basemap
+  // switch) can redraw without re-fetching from the API.
+  const lastCallsRef = useRef<HistoryCall[]>([]);
+  const lastMinZoomLabelsRef = useRef(DEFAULT_MIN_ZOOM_LABELS);
+  // Click/hover handlers are bound to the map instance once, not once per
+  // fetchHistory() call — otherwise every filter change stacks another
+  // listener on CIRCLE_LAYER_ID and a click fires N duplicate popups. Same
+  // guard pattern as useGeoJsonLayers.ts / useDistrictHierarchyLayers.ts.
+  const handlersBoundRef = useRef(false);
 
   const clearFromMap = useCallback(() => {
     if (!map) return;
@@ -57,15 +68,23 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => {
         safeRemoveLayer(map, id);
       });
-      [CIRCLE_SOURCE_ID, LABEL_SOURCE_ID].forEach((id) => {
-        safeRemoveSource(map, id);
-      });
+      safeRemoveSource(map, CIRCLE_SOURCE_ID);
     } catch { /* ignore */ }
   }, [map]);
 
-  const renderOnMap = useCallback((historyCalls: HistoryCall[], m: mapboxgl.Map) => {
-    clearFromMap();
+  const renderOnMap = useCallback((historyCalls: HistoryCall[], m: mapboxgl.Map, minZoomLabels: number) => {
+    // Drop only the layers/source, not the click/hover bindings — those are
+    // bound once per map instance (handlersBoundRef) and read live data via
+    // the source, so they keep working across re-renders/refilters.
+    popupRef.current?.remove();
+    popupRef.current = null;
+    try {
+      [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => safeRemoveLayer(m, id));
+      safeRemoveSource(m, CIRCLE_SOURCE_ID);
+    } catch { /* ignore */ }
     visibleRef.current = true;
+    lastCallsRef.current = historyCalls;
+    lastMinZoomLabelsRef.current = minZoomLabels;
 
     const features: GeoJSON.Feature[] = historyCalls.map((c) => {
       const ageHours = (Date.now() - parseTimestamp(c.created_at).getTime()) / 3600000;
@@ -116,31 +135,58 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       },
     });
 
-    m.on('click', CIRCLE_LAYER_ID, (e) => {
-      const f = e.features?.[0];
-      if (!f || f.geometry.type !== 'Point') return;
-      const p = f.properties || {};
-      popupRef.current?.remove();
-      popupRef.current = new mapboxgl.Popup({ offset: 8, closeButton: true, className: 'mapbox-popup-dark' })
-        .setLngLat(f.geometry.coordinates as [number, number])
-        .setHTML(buildDetailPopupHtml(String(p.call_number || 'Historical Call'), [
-          ['Type', p.incident_type ? formatIncidentType(p.incident_type) : null],
-          ['Priority', p.priority],
-          ['Status', p.status ? formatEnumValue(p.status) : null],
-          ['Disposition', p.disposition],
-          ['Address', p.address],
-          ['Response Time', p.response_time != null ? `${p.response_time} min` : null],
-          ['Occurred', p.created_at ? formatDateTime(p.created_at) : null],
-        ]))
-        .addTo(m);
+    // Call-number label — only legible once zoomed in far enough that dots
+    // aren't overlapping; mirrors Beat's per-feature label pattern.
+    m.addLayer({
+      id: LABEL_LAYER_ID,
+      type: 'symbol',
+      source: CIRCLE_SOURCE_ID,
+      minzoom: minZoomLabels,
+      layout: {
+        'text-field': ['get', 'call_number'],
+        'text-size': 10,
+        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+        'text-offset': [0, 1.1],
+        'text-anchor': 'top',
+        'text-allow-overlap': false,
+        'text-ignore-placement': false,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#0a1525',
+        'text-halo-width': 1.2,
+        'text-opacity': 0.9,
+      },
     });
-    m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
-    m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
-  }, [clearFromMap]);
+
+    if (!handlersBoundRef.current) {
+      handlersBoundRef.current = true;
+      m.on('click', CIRCLE_LAYER_ID, (e) => {
+        const f = e.features?.[0];
+        if (!f || f.geometry.type !== 'Point') return;
+        const p = f.properties || {};
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({ offset: 8, closeButton: true, className: 'mapbox-popup-dark' })
+          .setLngLat(f.geometry.coordinates as [number, number])
+          .setHTML(buildDetailPopupHtml(String(p.call_number || 'Historical Call'), [
+            ['Type', p.incident_type ? formatIncidentType(p.incident_type) : null],
+            ['Priority', p.priority],
+            ['Status', p.status ? formatEnumValue(p.status) : null],
+            ['Disposition', p.disposition],
+            ['Address', p.address],
+            ['Response Time', p.response_time != null ? `${p.response_time} min` : null],
+            ['Occurred', p.created_at ? formatDateTime(p.created_at) : null],
+          ]))
+          .addTo(m);
+      });
+      m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
+    }
+  }, []);
 
   const fetchHistory = useCallback(async (options: HistoryOptions = {}) => {
     if (!map) return;
-    const { days = 30, status, types, priority, limit = 5000 } = options;
+    const { days = 30, status, types, priority, limit = 5000, minZoomLabels = DEFAULT_MIN_ZOOM_LABELS } = options;
     setLoading(true);
     setError(null);
     try {
@@ -155,7 +201,7 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       setTotal(calls.length);
 
       whenStyleReady(map, () => {
-        renderOnMap(calls, map);
+        renderOnMap(calls, map, minZoomLabels);
       });
     } catch (err) {
       console.warn('[useMapboxHistoryCalls] fetch failed:', err);
@@ -171,6 +217,28 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
     setTotal(0);
     setError(null);
   }, [clearFromMap]);
+
+  // Basemap-switch resilience — setStyle() wipes custom sources/layers, so
+  // re-add them once the new style finishes loading if the layer was showing
+  // when the switch happened. Redraws from the cached last fetch rather than
+  // re-hitting the API. Click/hover handlers are NOT rebound here (same
+  // reasoning as useDistrictHierarchyLayers.ts) — Mapbox retains delegated
+  // listeners across a style change, so rebinding would stack duplicates.
+  useEffect(() => {
+    if (!map) return;
+    const onStyleLoad = () => {
+      if (!visibleRef.current) return;
+      renderOnMap(lastCallsRef.current, map, lastMinZoomLabelsRef.current);
+    };
+    map.on('style.load', onStyleLoad);
+    return () => { map.off('style.load', onStyleLoad); };
+  }, [map, renderOnMap]);
+
+  // Reset per-map handler tracking when the map instance itself changes —
+  // a new map needs a fresh click/hover binding.
+  useEffect(() => {
+    handlersBoundRef.current = false;
+  }, [map]);
 
   return { calls, total, loading, error, fetchHistory, clear };
 }

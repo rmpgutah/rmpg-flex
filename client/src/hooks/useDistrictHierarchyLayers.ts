@@ -20,6 +20,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats } from '../pages/map/utils/districtGeoData';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { escapeHtml } from '../utils/sanitize';
 
 export type HierarchyLevelId = 'area' | 'sector' | 'zone';
 
@@ -49,8 +50,51 @@ const fillLayer = (id: string) => `dh-${id}-fill`;
 const outlineLayer = (id: string) => `dh-${id}-outline`;
 const labelLayer = (id: string) => `dh-${id}-label`;
 
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// Ancestor chain per level, for the popup breadcrumb — mirrors Beat's
+// Sector/Zone breadcrumb in useGeoJsonLayers.ts. Area has no ancestor;
+// Sector's ancestor is Area; Zone's ancestors are Sector then Area.
+const ANCESTORS: Record<HierarchyLevelId, HierarchyLevelId[]> = {
+  area: [],
+  sector: ['area'],
+  zone: ['sector', 'area'],
+};
+
+// Popup content for an Area/Sector/Zone fill click: a color-swatch header
+// (matching Beat's swatch + name header) followed by a breadcrumb of the
+// clicked level's ancestors (e.g. a Zone shows its Sector and Area), instead
+// of the previous flat Area/Sector/Zone/Beat dump on every level.
+function buildHierarchyPopupHtml(id: HierarchyLevelId, cfg: HierarchyLayerConfig, p: Record<string, any>): string {
+  const f = FIELD[id];
+  const color = String(p[f.color] || '#c3ccd6');
+  const name = String(p[f.name] || cfg.label);
+
+  let html = `<div style="font-family:system-ui,sans-serif;color:#d4d4d4;font-size:11px;min-width:160px;max-width:240px;">`;
+  html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;border-bottom:1px solid #333;padding-bottom:5px;">`;
+  html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${escapeHtml(color)};flex-shrink:0;"></span>`;
+  html += `<span style="font-weight:700;font-size:13px;color:#fff;letter-spacing:0.5px;">${escapeHtml(name)}</span>`;
+  html += `<span style="margin-left:auto;font-size:9px;font-weight:700;color:${escapeHtml(color)};letter-spacing:1px;text-transform:uppercase;">${escapeHtml(cfg.label)}</span>`;
+  html += `</div>`;
+
+  for (const ancestorId of ANCESTORS[id]) {
+    const af = FIELD[ancestorId];
+    const aColor = String(p[af.color] || '#a0adbd');
+    const aName = String(p[af.name] || '—');
+    const aLabel = HIERARCHY_CONFIGS.find((c) => c.id === ancestorId)?.label ?? ancestorId;
+    html += `<div style="font-size:10px;margin-top:3px;display:flex;gap:4px;align-items:baseline;">`;
+    html += `<span style="color:${escapeHtml(aColor)};font-weight:600;min-width:40px;">${escapeHtml(aLabel)}</span>`;
+    html += `<span style="color:#e0e0e0;">${escapeHtml(aName)}</span>`;
+    html += `</div>`;
+  }
+
+  if (p.beat_code || p.beat_id) {
+    html += `<div style="font-size:10px;margin-top:3px;display:flex;gap:4px;align-items:baseline;">`;
+    html += `<span style="color:#a0adbd;font-weight:600;min-width:40px;">Beat</span>`;
+    html += `<span style="color:#c3ccd6;">${escapeHtml(String(p.beat_code || p.beat_id))}</span>`;
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
 }
 
 export interface HierarchyLayerState { visible: boolean; loaded: boolean; }
@@ -179,9 +223,30 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
           });
         }
 
+        // Outline: dashed border keyed on the SAME shared beat geometry/color
+        // tags used for the fill — O(n), no dissolve. Matches Beat's dashed
+        // look (useGeoJsonLayers.ts) so A/S/Z reads consistently with Beat
+        // instead of as flat, borderless coverage.
+        if (!hasLayer(map, outlineLayer(id))) {
+          map.addLayer({
+            id: outlineLayer(id),
+            type: 'line',
+            source: SRC_FILL,
+            layout: { visibility: 'none' },
+            paint: {
+              'line-color': ['get', f.color] as any,
+              'line-opacity': 0.65,
+              'line-width': 1.2,
+              'line-dasharray': [4, 2],
+            },
+          });
+        }
+
         // Label: one symbol per level value, anchored on each group's largest
         // beat. This is O(n) now (was a ~1–2s @turf/dissolve that blocked the
-        // main thread), so it runs inline right after the fill.
+        // main thread), so it runs inline right after the fill. Style (halo,
+        // font, size) matches Beat's label layer (useGeoJsonLayers.ts) for
+        // visual consistency across the coverage hierarchy.
         // NOTE: A/S/Z/B render as color COVERAGE (fill) only — no boundary
         // outline of their own. The boundary/reference role is filled by the
         // County + Municipality outline-only overlays. The point source exists
@@ -199,10 +264,14 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
                 layout: {
                   visibility: 'none',
                   'text-field': ['get', '_name'] as any,
-                  'text-size': 11,
-                  'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+                  'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 12, 14, 14] as any,
+                  'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+                  'text-allow-overlap': false,
+                  'text-ignore-placement': false,
+                  'text-anchor': 'center',
+                  'text-max-width': 6,
                 },
-                paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 1.4 },
+                paint: { 'text-color': '#ffffff', 'text-halo-color': '#0a1525', 'text-halo-width': 1.5, 'text-opacity': 0.92 },
               });
             }
             const vis = statesRef.current[id]?.visible ? 'visible' : 'none';
@@ -218,16 +287,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
             const pop = popupRef.current;
             if (!pop || !e.features || e.features.length === 0) return;
             const p = e.features[0].properties || {};
-            const color = p[f.color] || '#d4a017';
-            const html = `<div style="font-family:'Arial, sans-serif';color:#d4d4d4;font-size:11px;min-width:150px;">`
-              + `<div style="font-weight:bold;font-size:12px;color:${color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${esc(String(p[f.name] || cfg.label))}</div>`
-              + `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${cfg.label}</div>`
-              + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Area:</span> ${esc(String(p._areaName || '—'))}</div>`
-              + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Sector:</span> ${esc(String(p._sectorName || '—'))}</div>`
-              + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> ${esc(String(p._zoneName || '—'))}</div>`
-              + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> ${esc(String(p.beat_code || p.beat_id || '—'))}</div>`
-              + `</div>`;
-            pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+            pop.setLngLat(e.lngLat).setHTML(buildHierarchyPopupHtml(id, cfg, p)).addTo(map);
           });
           map.on('mouseenter', fillLayer(id), () => { map.getCanvas().style.cursor = 'pointer'; });
           map.on('mouseleave', fillLayer(id), () => { map.getCanvas().style.cursor = ''; });

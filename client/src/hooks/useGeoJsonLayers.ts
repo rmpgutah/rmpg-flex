@@ -14,6 +14,7 @@ import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { getSectorColor, getZoneColor, getBeatColor, formatBeatLabel } from '../utils/geographyLabels';
 import { toDisplayLabel } from '../utils/formatters';
+import { escapeHtml as escapeForHtml } from '../utils/sanitize';
 
 // Tactical-dark fallback when a config color won't parse as a Mapbox color
 // (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
@@ -679,8 +680,4 @@ export function useGeoJsonLayers({
     ensureLayerLoaded,
     configs: GEO_LAYER_CONFIGS,
   };
-}
-
-function escapeForHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
