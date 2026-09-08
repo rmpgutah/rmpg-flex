@@ -168,7 +168,17 @@ jobs:
     # 2026-09-05: maxForks:2+14336 MB consistently takes ~90 min wall-clock and
     # hit the 90 min ceiling twice (runner loss at 82 min, timeout at 90 min).
     # Raised to 120 min to give the semi-serialized suite room to complete.
-    timeout-minutes: 120
+    # 2026-09-08: ROOT CAUSE FOUND — none of the above was runner growth or
+    # suite depth. DesktopRecycleBin refreshed its state from a dependency-less
+    # useEffect with a fresh array each call, so any test that mounted
+    # DesktopPage re-rendered forever under act() until V8 hit the heap limit
+    # (~8 GB, ~60 min) and vitest reported the file as neither passed nor
+    # failed (23/24 files "passed"). Fixed in the component
+    # (useSyncExternalStore) and pinned by DesktopRecycleBin.test.tsx; the
+    # `poolOptions.forks.maxForks` cap was also a no-op on Vitest 4 (removed
+    # option) and is now `maxWorkers: 2`. The suite takes ~30 s. Ceiling
+    # lowered to 30 min so a future hang reports in minutes, not hours.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
