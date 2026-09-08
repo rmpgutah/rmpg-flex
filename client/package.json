@@ -89,7 +89,7 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^0.577.0",
     "mapbox-gl": "^3.28.1",
-    "maplibre-gl": "^6.2.0",
+    "maplibre-gl": "^6.4.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",
     "pmtiles": "^4.4.1",
