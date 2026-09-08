@@ -241,10 +241,15 @@ jobs:
       # Raised 2026-09-04 from 466,000: merge commit on catch-any-cleanup PR
       # shuffled bundle module IDs by 1 B (466,001 vs 466,000). No new eager
       # imports; ceiling raised 1 KB to restore headroom.
+      # Raised 2026-09-08 from 467,000: the desktop Settings panel PR gave the
+      # lazy DesktopPage chunk its first stylesheet, so the entry's preload
+      # manifest gained one `DesktopPage-<hash>.css` filename (+36 B,
+      # 466,995 → 467,031). Module count unchanged at 109; no new eager
+      # imports. Ceiling raised 1 KB to restore headroom.
       # If a change legitimately needs more, raise this deliberately in the
       # same PR and say why; do not silently bump it. `node scripts/measure-entry.mjs`
       # (no flag) prints the top 25 eager modules, which is usually enough to
       # see what got pulled in.
       - name: Assert entry chunk under ceiling
         working-directory: client
-        run: node scripts/measure-entry.mjs --max-raw 467000
+        run: node scripts/measure-entry.mjs --max-raw 468000
