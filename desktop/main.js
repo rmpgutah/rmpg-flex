@@ -31,6 +31,7 @@ const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextB
 const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
 const { runRfScan } = require('./rfScanner');
 const { parseNetshScanNetworks, parseNetshListProfiles, parseNetshGetDetail } = require('./wifiInfo');
+const { registerWindowsBridgeExtended } = require('./windowsBridgeExtended');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -2944,6 +2945,28 @@ guardedHandle('screen:save', async (_event, dataUrl, filename) => {
     console.error('[SCREEN:SAVE]', err.message);
     return { ok: false, reason: err.message };
   }
+});
+
+// ─── Extended Windows bridge (Settings panel) ─────────────────
+// 29 `winext:*` channels backing the desktop Settings panel — display
+// modes/rotation, mute, system sounds, adapters, Bluetooth, ping,
+// processes, installed apps, drives, recent files, event log, scheduled
+// tasks, native toasts. Handlers live in windowsBridgeExtended.js; every
+// one is registered through guardedHandle so the sender-origin check
+// applies, and the process-spawning ones share the recon rate limiter.
+registerWindowsBridgeExtended({
+  guardedHandle,
+  execFileAsync: require('util').promisify(require('child_process').execFile),
+  electron: {
+    app,
+    shell,
+    clipboard,
+    Notification: require('electron').Notification,
+    desktopCapturer: require('electron').desktopCapturer,
+    screen,
+  },
+  getMainWindow: () => mainWindow,
+  checkRateLimit,
 });
 
 guardedHandle('screen:copy-to-clipboard', async (_event, dataUrl) => {

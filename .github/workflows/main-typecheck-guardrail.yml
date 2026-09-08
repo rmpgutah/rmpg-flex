@@ -316,13 +316,15 @@ jobs:
             });
 
   # Post-merge desktop-components suite, split out of client-tests above so the
-  # fast suites keep their 20-minute budget and this slow one gets the same
-  # budget it has in pr-tests.yml (2026-09-05 notes there: ~90 min wall-clock
-  # at maxForks:2 + 14336 MB; 120 min ceiling).
+  # fast suites keep their 20-minute budget. The "~90 min" this suite used to
+  # take was an unbounded render loop in DesktopRecycleBin, fixed 2026-09-08
+  # (see the 2026-09-08 note on client-desktop-tests in pr-tests.yml); the
+  # suite now runs in ~30 s. Ceiling matches pr-tests.yml so a regression of
+  # that hang reports in minutes.
   client-desktop-tests:
     name: Client desktop tests (post-merge)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

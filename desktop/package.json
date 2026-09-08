@@ -53,6 +53,7 @@
       "rfScanner.js",
       "cameraScanner.js",
       "faceAuth.js",
+      "windowsBridgeExtended.js",
       "originalCatalog.json",
       "security",
       "assets/login-bg.jpg",

@@ -468,4 +468,46 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('connectivity:failover', handler);
     return () => ipcRenderer.removeListener('connectivity:failover', handler);
   },
+
+  // ─── Extended Windows bridge (desktop Settings panel) ────────
+  // Grouped under `winExt` so the renderer hook (useWindowsBridge) can
+  // feature-detect the whole set at once. Every channel is guarded in
+  // main.js via windowsBridgeExtended.js.
+  winExt: {
+    // Display
+    getDisplayModes:     ()               => ipcRenderer.invoke('winext:display-modes'),
+    setResolution:       (width, height)  => ipcRenderer.invoke('winext:set-resolution', width, height),
+    rotateDisplay:       (degrees)        => ipcRenderer.invoke('winext:rotate-display', degrees),
+    getNightLightState:  ()               => ipcRenderer.invoke('winext:night-light-state'),
+    screenshotToPictures:()               => ipcRenderer.invoke('winext:screenshot-to-pictures'),
+    // Audio
+    getMute:             ()               => ipcRenderer.invoke('winext:get-mute'),
+    setMute:             (muted)          => ipcRenderer.invoke('winext:set-mute', muted),
+    playSystemSound:     (name)           => ipcRenderer.invoke('winext:play-system-sound', name),
+    getAudioDevices:     ()               => ipcRenderer.invoke('winext:audio-devices'),
+    setDefaultAudioDevice:(id)            => ipcRenderer.invoke('winext:set-default-audio-device', id),
+    // Network
+    getNetAdapters:      ()               => ipcRenderer.invoke('winext:net-adapters'),
+    toggleWifi:          (enabled)        => ipcRenderer.invoke('winext:toggle-wifi', enabled),
+    getBluetoothDevices: ()               => ipcRenderer.invoke('winext:bluetooth-devices'),
+    toggleBluetooth:     (enabled)        => ipcRenderer.invoke('winext:toggle-bluetooth', enabled),
+    ping:                (host)           => ipcRenderer.invoke('winext:ping', host),
+    // System
+    getProcesses:        ()               => ipcRenderer.invoke('winext:processes'),
+    killProcess:         (pid)            => ipcRenderer.invoke('winext:kill-process', pid),
+    launchApp:           (appId)          => ipcRenderer.invoke('winext:launch-app', appId),
+    getLaunchableApps:   ()               => ipcRenderer.invoke('winext:launchable-apps'),
+    getSystemPerformance:()               => ipcRenderer.invoke('winext:system-performance'),
+    getInstalledApps:    ()               => ipcRenderer.invoke('winext:installed-apps'),
+    setEnvVar:           (name, value)    => ipcRenderer.invoke('winext:set-env-var', name, value),
+    // Filesystem
+    getDrives:           ()               => ipcRenderer.invoke('winext:drives'),
+    openFolder:          (folder)         => ipcRenderer.invoke('winext:open-folder', folder),
+    getRecentFiles:      (limit)          => ipcRenderer.invoke('winext:recent-files', limit),
+    recycleItem:         (target)         => ipcRenderer.invoke('winext:recycle-item', target),
+    // Features
+    getEventLog:         (query)          => ipcRenderer.invoke('winext:event-log', query),
+    getScheduledTasks:   ()               => ipcRenderer.invoke('winext:scheduled-tasks'),
+    sendNativeToast:     (title, body)    => ipcRenderer.invoke('winext:native-toast', title, body),
+  },
 });
