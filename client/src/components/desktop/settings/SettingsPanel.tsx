@@ -209,7 +209,9 @@ function fmtUptime(sec: number | undefined): string {
 
 function fmtTime(iso: string | null): string {
   if (!iso) return '—';
-  const d = new Date(iso);
+  // Bridge timestamps are full ISO-8601 with a Z suffix (Date#toISOString /
+  // PowerShell ToString('o')), never naive server strings.
+  const d = new Date(iso); // new-date-ok
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
