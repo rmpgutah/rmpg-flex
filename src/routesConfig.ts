@@ -746,6 +746,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // when MAPBOX_ACCESS_TOKEN is unset. Mounted before the bare /api routers.
   { prefix: '/api/mapbox/optimization-v2', router: optimizationV2, auth: 'required',
     note: 'Mapbox Optimization V2 async engine. POST /submit builds + submits a V2 problem; GET /:jobId polls + writes back to serve_routes on completion; GET / lists jobs. Supervisor+ to submit; any authed role to poll. 200 {skipped:true} when token unset.' },
+  { prefix: '/api/mapbox-optimization', router: optimizationV2, auth: 'required',
+    note: 'Alias for /api/mapbox/optimization-v2' },
   { prefix: '/api/mapbox', router: mapbox, auth: 'required',
     note: 'Server-side Mapbox proxy; 503 when MAPBOX_ACCESS_TOKEN secret is unset' },
 
