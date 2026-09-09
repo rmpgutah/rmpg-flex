@@ -44,12 +44,12 @@
 //     on the Map page's shift planning overlay).
 // ============================================================
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
   ChevronRight, ChevronLeft, X, Shield, BarChart3, Save, AlertTriangle,
-  ArrowRightLeft, TrendingUp, Eye, FileText, LayoutTemplate, CalendarRange,
+  ArrowRightLeft, TrendingUp, Eye, FileText, LayoutTemplate, CalendarRange, Edit, Sparkles, Search,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
@@ -181,6 +181,111 @@ export default function ShiftPlansPage() {
   const [saveTemplateAs, setSaveTemplateAs] = useState(false);
   const [applyTemplateEndDate, setApplyTemplateEndDate] = useState('');
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
+
+  // ── Assignment Modal State & Search Filter ──
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [modalAreaLabel, setModalAreaLabel] = useState('');
+  const [modalAreaLayerId, setModalAreaLayerId] = useState<'beat' | 'zone' | 'sector'>('beat');
+  const [modalOfficerIds, setModalOfficerIds] = useState<string[]>([]);
+  const [modalUnitIds, setModalUnitIds] = useState<string[]>([]);
+  const [modalShiftStart, setModalShiftStart] = useState('');
+  const [modalShiftEnd, setModalShiftEnd] = useState('');
+  const [modalNotes, setModalNotes] = useState('');
+  const [modalColor, setModalColor] = useState('var(--brand-gold)');
+
+  const loadTemplates = useCallback(() => {
+    setTemplateLoading(true);
+    apiFetch<any>('/shift-plans/templates')
+      .then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? []))
+      .catch(() => setTemplates([]))
+      .finally(() => setTemplateLoading(false));
+  }, []);
+
+  const handleDeleteTemplate = async (templateId: string | number) => {
+    try {
+      await apiFetch(`/shift-plans/templates/${templateId}`, { method: 'DELETE' });
+      addToast('Template deleted', 'success');
+      loadTemplates();
+    } catch (err: any) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete template', 'error');
+    }
+  };
+
+  const openAddAssignmentModal = () => {
+    const defaultStart = sp.activePlan ? SHIFT_TYPES[sp.activePlan.shiftType]?.defaultStart || '06:00' : '06:00';
+    const defaultEnd = sp.activePlan ? SHIFT_TYPES[sp.activePlan.shiftType]?.defaultEnd || '14:00' : '14:00';
+    setEditingAssignmentId(null);
+    setModalAreaLabel('');
+    setModalAreaLayerId('beat');
+    setModalOfficerIds([]);
+    setModalUnitIds([]);
+    setModalShiftStart(defaultStart);
+    setModalShiftEnd(defaultEnd);
+    setModalNotes('');
+    setModalColor('var(--brand-gold)');
+    setShowAssignmentModal(true);
+  };
+
+  const openEditAssignmentModal = (a: AreaAssignment) => {
+    setEditingAssignmentId(a.id);
+    setModalAreaLabel(a.label);
+    setModalAreaLayerId((a.layerId as any) || 'beat');
+    setModalOfficerIds(a.officerIds ?? []);
+    setModalUnitIds(a.unitIds ?? []);
+    setModalShiftStart(a.shiftStart || '');
+    setModalShiftEnd(a.shiftEnd || '');
+    setModalNotes(a.notes || '');
+    setModalColor(a.color || 'var(--brand-gold)');
+    setShowAssignmentModal(true);
+  };
+
+  const handleSaveAssignment = () => {
+    if (!modalAreaLabel.trim()) {
+      addToast('Please enter an area name', 'warning');
+      return;
+    }
+    const officerNames = modalOfficerIds
+      .map(id => sp.officers.find(o => o.id === id)?.full_name)
+      .filter(Boolean) as string[];
+    const unitCallSigns = modalUnitIds
+      .map(id => sp.units.find(u => u.id === id)?.call_sign)
+      .filter(Boolean) as string[];
+
+    if (editingAssignmentId) {
+      sp.updateAssignment(editingAssignmentId, {
+        label: modalAreaLabel.trim(),
+        layerId: modalAreaLayerId,
+        officerIds: modalOfficerIds,
+        officerNames,
+        unitIds: modalUnitIds,
+        unitCallSigns,
+        shiftStart: modalShiftStart || undefined,
+        shiftEnd: modalShiftEnd || undefined,
+        notes: modalNotes.trim() || undefined,
+        color: modalColor,
+      });
+      addToast(`Updated assignment: ${modalAreaLabel.trim()}`, 'success');
+    } else {
+      sp.addAssignment({
+        label: modalAreaLabel.trim(),
+        layerId: modalAreaLayerId,
+        featureKey: `custom-${modalAreaLabel.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+        properties: { name: modalAreaLabel.trim() },
+        officerIds: modalOfficerIds,
+        officerNames,
+        unitIds: modalUnitIds,
+        unitCallSigns,
+        shiftStart: modalShiftStart || undefined,
+        shiftEnd: modalShiftEnd || undefined,
+        notes: modalNotes.trim() || undefined,
+        color: modalColor,
+      });
+      addToast(`Added assignment: ${modalAreaLabel.trim()}`, 'success');
+    }
+    setShowAssignmentModal(false);
+  };
 
   // ── Deep-link consume ────────────────────────────────────
   //
@@ -316,13 +421,37 @@ export default function ShiftPlansPage() {
     sp.duplicatePlan(planId, dateToLocalYMD(nextDay));
   };
 
+  const refreshStaffingMetrics = useCallback(() => {
+    apiFetch(`/staffing-levels?date=${selectedDate}`)
+      .then((r: any) => { if (r) setStaffingLevels(r); })
+      .catch(() => {});
+    apiFetch(`/shift-plans/conflicts/${selectedDate}`)
+      .then((r: any) => { if (r?.conflicts) setConflicts(r.conflicts); })
+      .catch(() => {});
+    apiFetch('/shift-notifications')
+      .then((r: any) => { if (r?.notifications) setShiftNotifs(r.notifications); })
+      .catch(() => {});
+  }, [selectedDate]);
+
   // ── Save to server ──
   const handleSave = async (planId: string) => {
     try {
       await sp.savePlanToServer(planId);
       addToast('Shift plan saved', 'success');
+      refreshStaffingMetrics();
     } catch {
       addToast('Failed to save shift plan', 'error');
+    }
+  };
+
+  const handleActivate = async (planId: string) => {
+    try {
+      sp.updatePlanStatus(planId, 'active');
+      await sp.savePlanToServer(planId);
+      addToast('Shift plan activated', 'success');
+      refreshStaffingMetrics();
+    } catch (err: any) {
+      addToast(err instanceof Error ? err.message : 'Failed to activate plan', 'error');
     }
   };
 
@@ -373,9 +502,9 @@ export default function ShiftPlansPage() {
   };
 
   // ── Court-ready supervisor briefing PDF (v1053) ──
-  const handleExportPdf = (plan: ShiftPlan) => {
+  const handleExportPdf = async (plan: ShiftPlan) => {
     try {
-      openShiftPlanPdf({
+      await openShiftPlanPdf({
         plan,
         stats: {
           assigned: (plan.assignments ?? []).length,
@@ -395,7 +524,7 @@ export default function ShiftPlansPage() {
   const buildPlanMenu = (plan: ShiftPlan): ContextMenuItem[] => [
     m.action('Open plan', () => sp.setActivePlanId(plan.id), { icon: <Eye size={12} /> }),
     ...(canManage && plan.status === 'draft'
-      ? [m.action('Activate', () => sp.updatePlanStatus(plan.id, 'active'), { icon: <Play size={12} /> })]
+      ? [m.action('Activate', () => handleActivate(plan.id), { icon: <Play size={12} /> })]
       : []),
     ...(canManage && plan.status === 'active'
       ? [m.action('Mark complete', () => sp.updatePlanStatus(plan.id, 'completed'), { icon: <CheckCircle size={12} /> })]
@@ -414,6 +543,10 @@ export default function ShiftPlansPage() {
 
   // ── Build an area-assignment row context menu ──
   const buildAssignmentMenu = (a: AreaAssignment): ContextMenuItem[] => [
+    ...(canManage ? [
+      m.action('Edit assignment', () => openEditAssignmentModal(a), { icon: <Edit size={12} /> }),
+      m.separator(),
+    ] : []),
     m.copy('Copy area', a.label),
     m.copyId(a.id),
     ...(canManage ? [
@@ -426,14 +559,6 @@ export default function ShiftPlansPage() {
   useEffect(() => { document.title = 'Shift Plans — RMPG Flex'; }, []);
 
   // Keyboard shortcuts (v1053):
-  //   Escape — smart-cascade (smallest-open-first). The previous
-  //   handler closed only the create form, leaving any other modal
-  //   state captive to its own close button. Order is: confirm
-  //   dialogs (the most recent decision) → create form (mid-stack
-  //   compose) → deselect plan (returns the panel to the empty state).
-  //
-  //   N → New Plan — typing-suppressed so a focused date input doesn't
-  //   swallow the letter. Matches Citations / Personnel / Comms / Dash.
   useEffect(() => {
     const isTypingTarget = (el: EventTarget | null): boolean => {
       if (!(el instanceof HTMLElement)) return false;
@@ -442,6 +567,9 @@ export default function ShiftPlansPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (showAssignmentModal) { e.stopPropagation(); setShowAssignmentModal(false); return; }
+        if (showTemplateModal) { e.stopPropagation(); setShowTemplateModal(false); return; }
+        if (showSwapModal) { e.stopPropagation(); setShowSwapModal(false); return; }
         if (clearAllConfirm) { e.stopPropagation(); setClearAllConfirm(false); return; }
         if (deletePlanTarget) { e.stopPropagation(); setDeletePlanTarget(null); return; }
         if (showCreateForm) { e.stopPropagation(); setShowCreateForm(false); return; }
@@ -458,7 +586,7 @@ export default function ShiftPlansPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [canManage, clearAllConfirm, deletePlanTarget, showCreateForm, sp]);
+  }, [canManage, clearAllConfirm, deletePlanTarget, showCreateForm, showAssignmentModal, showTemplateModal, showSwapModal, sp]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
@@ -540,6 +668,17 @@ export default function ShiftPlansPage() {
             }))))}
           >CSV</button>
           <ExportButton exportUrl="/api/shift-plans/export/csv" exportFilename="shift-plans.csv" />
+          <button type="button"
+            onClick={() => {
+              loadTemplates();
+              setShowTemplateModal(true);
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-fg-secondary border border-rmpg-600 hover:text-rmpg-100 hover:border-rmpg-400 transition-colors"
+            title="Shift plan templates"
+          >
+            <LayoutTemplate style={{ width: 10, height: 10 }} />
+            Templates
+          </button>
           {canManage && (
             <button type="button"
               onClick={() => setShowCreateForm(true)}
@@ -695,7 +834,7 @@ export default function ShiftPlansPage() {
                 <div className={`flex items-center gap-1 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
                   {canManage && sp.activePlan.status === 'draft' && (
                     <button type="button"
-                      onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'active')}
+                      onClick={() => handleActivate(sp.activePlan!.id)}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50"
                     >
                       <Play style={{ width: 9, height: 9 }} /> Activate
@@ -757,28 +896,90 @@ export default function ShiftPlansPage() {
 
               {/* Assignments table */}
               <div className="flex-1 overflow-auto">
-                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
+                <div className="text-[9px] text-fg-muted uppercase font-bold tracking-wider px-4 py-2 flex flex-wrap items-center justify-between gap-2"
                   style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-default)' }}
                 >
-                  <span>Area Assignments ({(sp.activePlan.assignments ?? []).length})</span>
-                  {canManage && (sp.activePlan.assignments ?? []).length > 0 && (
-                    <button type="button"
-                      onClick={() => setClearAllConfirm(true)}
-                      className="text-red-500 hover:text-red-400"
-                    >
-                      Clear All
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <span>Area Assignments ({(sp.activePlan.assignments ?? []).length})</span>
+                    {(sp.activePlan.assignments ?? []).length > 2 && (
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={assignmentSearch}
+                          onChange={(e) => setAssignmentSearch(e.target.value)}
+                          placeholder="Search assignments..."
+                          className="w-36 px-2 py-0.5 pl-5 text-[9px] bg-surface-base border border-rmpg-700 rounded text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-rmpg-500"
+                        />
+                        <Search className="w-2.5 h-2.5 text-fg-muted absolute left-1.5 top-1/2 -translate-y-1/2" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {canManage && (
+                      <>
+                        <button type="button"
+                          onClick={() => {
+                            sp.loadStandardBeats();
+                            addToast('Loaded standard patrol beats', 'success');
+                          }}
+                          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-surface-sunken/60 text-fg-secondary border border-border-default/60 hover:bg-surface-raised transition-colors"
+                          title="Auto-roster standard beats: Central, North, South, Interstate"
+                        >
+                          <Sparkles style={{ width: 9, height: 9 }} className="text-amber-400" />
+                          Load Standard Beats
+                        </button>
+                        <button type="button"
+                          onClick={openAddAssignmentModal}
+                          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-brand-900/40 text-brand-300 border border-brand-700/50 hover:bg-brand-800/50 transition-colors"
+                          title="Add new area assignment"
+                        >
+                          <Plus style={{ width: 9, height: 9 }} />
+                          Add Assignment
+                        </button>
+                      </>
+                    )}
+                    {canManage && (sp.activePlan.assignments ?? []).length > 0 && (
+                      <button type="button"
+                        onClick={() => setClearAllConfirm(true)}
+                        className="text-red-500 hover:text-red-400 ml-1 text-[9px]"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {(sp.activePlan.assignments ?? []).length === 0 ? (
-                  <div className="flex items-center justify-center py-16 text-rmpg-500 text-[10px]">
-                    <div className="text-center">
+                  <div className="flex items-center justify-center py-16 text-fg-muted text-[10px]">
+                    <div className="text-center max-w-sm px-4">
                       <div className="w-12 h-12 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-                        <MapPin className="w-6 h-6 text-rmpg-600" />
+                        <MapPin className="w-6 h-6 text-brand-400" />
                       </div>
-                      <p className="text-rmpg-400 font-medium">No area assignments yet</p>
-                      <p className="text-[9px] text-rmpg-600 mt-1">Use the Map page's shift planning overlay to select areas</p>
+                      <p className="text-rmpg-200 font-medium text-xs">No area assignments yet</p>
+                      <p className="text-[9px] text-fg-secondary mt-1">
+                        Add beats, zones, or sectors directly here, load standard patrol beats in one click, or select areas from the Map page overlay.
+                      </p>
+                      {canManage && (
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                          <button
+                            type="button"
+                            onClick={openAddAssignmentModal}
+                            className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-500/20 text-brand-300 border border-brand-500/40 hover:bg-brand-500/30 transition-colors rounded-sm"
+                          >
+                            <Plus className="w-3 h-3" /> Add Assignment
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sp.loadStandardBeats();
+                              addToast('Loaded standard patrol beats', 'success');
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-surface-sunken text-fg-secondary border border-border-default hover:bg-surface-raised transition-colors rounded-sm"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-400" /> Load Standard Beats
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -796,7 +997,16 @@ export default function ShiftPlansPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sp.activePlan.assignments.map((a) => (
+                      {(sp.activePlan.assignments ?? [])
+                        .filter(a => {
+                          if (!assignmentSearch.trim()) return true;
+                          const q = assignmentSearch.toLowerCase();
+                          return a.label.toLowerCase().includes(q)
+                            || (a.officerNames ?? []).some(n => n.toLowerCase().includes(q))
+                            || (a.unitCallSigns ?? []).some(u => u.toLowerCase().includes(q))
+                            || (a.notes ?? '').toLowerCase().includes(q);
+                        })
+                        .map((a) => (
                         <tr
                           key={a.id}
                           onContextMenu={(e) => openMenu(e, buildAssignmentMenu(a))}
@@ -841,14 +1051,24 @@ export default function ShiftPlansPage() {
                           <td className="px-4 py-2 text-rmpg-400 truncate max-w-[120px]">{a.notes || '—'}</td>
                           <td className="px-4 py-2 text-right">
                             {canManage && (
-                              <button type="button"
-                                onClick={() => sp.removeAssignment(a.id)}
-                                className="text-rmpg-600 hover:text-red-400 transition-colors"
-                                aria-label="Remove assignment"
-                                title="Remove assignment"
-                              >
-                                <X style={{ width: 10, height: 10 }} />
-                              </button>
+                              <div className="inline-flex items-center gap-1.5 justify-end">
+                                <button type="button"
+                                  onClick={() => openEditAssignmentModal(a)}
+                                  className="text-fg-secondary hover:text-rmpg-100 transition-colors p-0.5"
+                                  aria-label="Edit assignment"
+                                  title="Edit assignment"
+                                >
+                                  <Edit style={{ width: 11, height: 11 }} />
+                                </button>
+                                <button type="button"
+                                  onClick={() => sp.removeAssignment(a.id)}
+                                  className="text-fg-muted hover:text-red-400 transition-colors p-0.5"
+                                  aria-label="Remove assignment"
+                                  title="Remove assignment"
+                                >
+                                  <X style={{ width: 11, height: 11 }} />
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -1164,6 +1384,16 @@ export default function ShiftPlansPage() {
                           ) : (
                             <span className="text-[9px] text-rmpg-400">Applying…</span>
                           )}
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTemplate(t.id)}
+                              className="px-1.5 py-0.5 text-[9px] bg-red-900/40 text-red-400 border border-red-800/50 rounded-sm hover:bg-red-800/50"
+                              title="Delete template"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1316,6 +1546,245 @@ export default function ShiftPlansPage() {
         confirmLabel="Remove all"
         confirmVariant="danger"
       />
+
+      {/* ── Add / Edit Assignment Modal ── */}
+      {showAssignmentModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="assignment-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowAssignmentModal(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-700 rounded-sm w-[520px] max-w-[95vw] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-overlay">
+              <h2 id="assignment-modal-title" className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-brand-400" />
+                {editingAssignmentId ? 'Edit Area Assignment' : 'Add Area Assignment'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAssignmentModal(false)}
+                className="text-fg-secondary hover:text-rmpg-100 p-1"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
+              {/* Quick Preset Selector */}
+              {!editingAssignmentId && (
+                <div>
+                  <div className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    Quick Preset Beats
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'Central Metro Beat 1', layer: 'beat' as const, color: '#3b82f6' },
+                      { name: 'North Sector Beat 2', layer: 'beat' as const, color: '#10b981' },
+                      { name: 'South Valley Beat 3', layer: 'beat' as const, color: '#f59e0b' },
+                      { name: 'I-15 Corridor Beat 4', layer: 'beat' as const, color: '#ec4899' },
+                    ].map(p => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => {
+                          setModalAreaLabel(p.name);
+                          setModalAreaLayerId(p.layer);
+                          setModalColor(p.color);
+                        }}
+                        className="text-[9px] font-medium px-2 py-1 bg-surface-sunken hover:bg-surface-base border border-rmpg-700 text-rmpg-200 rounded transition-colors"
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Area Name and Layer */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1">
+                  <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">
+                    Area Name / Beat <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={modalAreaLabel}
+                    onChange={(e) => setModalAreaLabel(e.target.value)}
+                    placeholder="e.g. Beat 4 / Downtown / Sector A"
+                    className="w-full px-2.5 py-1.5 text-[11px] bg-surface-base border border-rmpg-600 rounded text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-rmpg-500"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">Layer Type</label>
+                  <select
+                    value={modalAreaLayerId}
+                    onChange={(e) => setModalAreaLayerId(e.target.value as any)}
+                    className="w-full px-2 py-1.5 text-[11px] bg-surface-base border border-rmpg-600 rounded text-rmpg-100 focus:outline-none focus:border-rmpg-500 capitalize"
+                  >
+                    <option value="beat">Beat</option>
+                    <option value="zone">Zone</option>
+                    <option value="sector">Sector</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Shift Hours */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">Start Time</label>
+                  <input
+                    type="time"
+                    value={modalShiftStart}
+                    onChange={(e) => setModalShiftStart(e.target.value)}
+                    className="w-full px-2 py-1 text-[11px] bg-surface-base border border-rmpg-600 rounded text-rmpg-100 focus:outline-none focus:border-rmpg-500 font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">End Time</label>
+                  <input
+                    type="time"
+                    value={modalShiftEnd}
+                    onChange={(e) => setModalShiftEnd(e.target.value)}
+                    className="w-full px-2 py-1 text-[11px] bg-surface-base border border-rmpg-600 rounded text-rmpg-100 focus:outline-none focus:border-rmpg-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Assign Officers */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">
+                    Assigned Officers ({modalOfficerIds.length})
+                  </label>
+                  {modalOfficerIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setModalOfficerIds([])}
+                      className="text-[9px] text-fg-muted hover:text-fg-secondary"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {sp.officers.length === 0 ? (
+                  <div className="text-[10px] text-fg-muted italic py-1">No officers found in roster</div>
+                ) : (
+                  <div className="max-h-28 overflow-y-auto p-1.5 bg-surface-base border border-rmpg-700 rounded grid grid-cols-2 gap-1">
+                    {sp.officers.map(o => {
+                      const selected = modalOfficerIds.includes(o.id);
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => {
+                            setModalOfficerIds(prev =>
+                              prev.includes(o.id) ? prev.filter(id => id !== o.id) : [...prev, o.id]
+                            );
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] text-left transition-colors ${
+                            selected
+                              ? 'bg-blue-950/60 border border-blue-600/60 text-blue-300 font-semibold'
+                              : 'hover:bg-surface-raised text-fg-secondary border border-transparent'
+                          }`}
+                        >
+                          <span className="font-mono text-[9px] text-fg-muted">#{o.badge_number || o.id}</span>
+                          <span className="truncate">{o.full_name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Assign Units */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">
+                    Assigned Units ({modalUnitIds.length})
+                  </label>
+                  {modalUnitIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setModalUnitIds([])}
+                      className="text-[9px] text-fg-muted hover:text-fg-secondary"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {sp.units.length === 0 ? (
+                  <div className="text-[10px] text-fg-muted italic py-1">No patrol units found in fleet</div>
+                ) : (
+                  <div className="max-h-24 overflow-y-auto p-1.5 bg-surface-base border border-rmpg-700 rounded grid grid-cols-2 gap-1">
+                    {sp.units.map(u => {
+                      const selected = modalUnitIds.includes(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => {
+                            setModalUnitIds(prev =>
+                              prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                            );
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] text-left transition-colors ${
+                            selected
+                              ? 'bg-emerald-950/60 border border-emerald-600/60 text-emerald-300 font-semibold'
+                              : 'hover:bg-surface-raised text-fg-secondary border border-transparent'
+                          }`}
+                        >
+                          <Shield className="w-2.5 h-2.5 text-fg-muted shrink-0" />
+                          <span className="font-mono font-bold text-[10px]">{u.call_sign}</span>
+                          {u.officer_name && (
+                            <span className="text-[9px] text-fg-muted truncate">({u.officer_name})</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-fg-secondary font-bold uppercase tracking-wider">Notes / Special Instructions</label>
+                <textarea
+                  value={modalNotes}
+                  onChange={(e) => setModalNotes(e.target.value)}
+                  placeholder="e.g. High visibility patrol, focus on retail corridor..."
+                  rows={2}
+                  className="w-full px-2.5 py-1.5 text-[11px] bg-surface-base border border-rmpg-600 rounded text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-rmpg-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-rmpg-700 bg-surface-overlay">
+              <button
+                type="button"
+                onClick={() => setShowAssignmentModal(false)}
+                className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-rmpg-600 text-fg-secondary hover:text-rmpg-200 rounded-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAssignment}
+                className="px-4 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-400 text-rmpg-950 hover:brightness-110 rounded-sm transition-all"
+              >
+                {editingAssignmentId ? 'Save Changes' : 'Add Assignment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

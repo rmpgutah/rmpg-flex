@@ -791,7 +791,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //   the fix before anyone triaged the issue. Verified scan of this tree: 10610.
   // 10610 -> 10604: Mapbox Optimization V2 panel & history card migrated to
   //   text-fg-secondary / text-fg-muted.
-  const PIN = 10604;
+  // 10604 -> 10598: ShiftPlansPage assignment builder & empty state migrated to
+  //   text-fg-secondary / text-fg-muted / placeholder-fg-muted.
+  const PIN = 10598;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
