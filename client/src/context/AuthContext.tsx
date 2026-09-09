@@ -1026,14 +1026,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
+      const currentToken = tempTokenRef.current || tempToken;
+      if (!currentToken) throw new Error('Password change session expired. Please sign in again.');
       const res = await fetchWithTimeout('/api/auth/login/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
-          Authorization: `Bearer ${tempToken}`,
+          Authorization: `Bearer ${currentToken}`,
         },
-        body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),
+        body: JSON.stringify({ newPassword, tempToken: currentToken, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (!res.ok) {

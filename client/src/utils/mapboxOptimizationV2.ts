@@ -59,7 +59,12 @@ export interface DispatchSubmitParams {
   objective?: OptimizationObjective;
 }
 
-export type SubmitParams = ServeRunSubmitParams | PatrolBeatSubmitParams | DispatchSubmitParams;
+export interface FleetSubmitParams {
+  job_type: 'fleet_route';
+  problem: import('../../../src/utils/mapboxOptimizationV2Types').V2ProblemDocument;
+}
+
+export type SubmitParams = ServeRunSubmitParams | PatrolBeatSubmitParams | DispatchSubmitParams | FleetSubmitParams;
 
 // ─── Response shapes ─────────────────────────────────────────────────────────
 

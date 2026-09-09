@@ -43,6 +43,7 @@ const auth = new Hono<Env>();
 // earlier handlers referenced those and 500'd on every login + refresh.
 const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
+const PASSWORD_CHANGE_TTL_SECONDS = 10 * 60;
 
 // Live `users` uses must_change_password / totp_enabled — NOT the
 // force_password_change / totp_enrolled names the earlier handlers queried
@@ -131,6 +132,11 @@ function signRefreshToken(secret: string, claims: Record<string, unknown>): Prom
   return sign({ ...claims, type: 'refresh', iat: now, exp: now + REFRESH_TTL_SECONDS }, secret);
 }
 
+function signPasswordChangeToken(secret: string, claims: Record<string, unknown>): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ ...claims, type: 'pwd_change', iat: now, exp: now + PASSWORD_CHANGE_TTL_SECONDS }, secret);
+}
+
 // Insert a session row using the live (legacy-owned) schema and return the new
 // session_id. is_active / created_at / last_used_at come from column defaults.
 // Device (parsed from User-Agent) and network geo (from Cloudflare's free
@@ -148,8 +154,8 @@ function unquoteChHeader(v: string | undefined | null): string | null {
   return v.replace(/^"|"$/g, '') || null;
 }
 
-async function createSession(c: any, db: any, userId: number, refreshToken: string, securityPolicy?: SecurityPolicy): Promise<string> {
-  const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
+async function createSession(c: any, db: any, userId: number, refreshToken: string, securityPolicy?: SecurityPolicy, providedSessionId?: string): Promise<string> {
+  const sessionId = providedSessionId || uuidv4(); // full dashed UUID → matches live session_id (36 chars)
   const refreshHash = await sha256Hex(refreshToken);
   const ua = c.req.header('user-agent') || '';
   const { browser, os, deviceType } = parseUserAgentDetails(ua);
@@ -224,6 +230,17 @@ function userPayload(user: any) {
     must_change_password: !!user.must_change_password,
     totp_enabled: !!user.totp_enabled,
   };
+}
+
+async function issuePasswordChangeStep(c: any, user: any): Promise<Response> {
+  const tempToken = await signPasswordChangeToken(c.env.JWT_SECRET, tokenClaims(user));
+  return c.json({
+    step: 'password_change',
+    tempToken,
+    requiresPasswordChange: true,
+    expiresIn: PASSWORD_CHANGE_TTL_SECONDS,
+    user: userPayload(user),
+  });
 }
 
 // Best-effort audit of every login outcome into `login_attempts` (the table the
@@ -459,9 +476,14 @@ auth.post('/login', async (c) => {
       });
     }
 
+    if (user.must_change_password) {
+      return issuePasswordChangeStep(c, user);
+    }
+
     const claims = tokenClaims(user);
-    const refreshToken = await signRefreshToken(secret, claims);
-    const sessionId = await createSession(c, db, user.id, refreshToken, securityPolicy);
+    const sessionId = uuidv4();
+    const refreshToken = await signRefreshToken(secret, { ...claims, sessionId });
+    await createSession(c, db, user.id, refreshToken, securityPolicy, sessionId);
     const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
     // Best-effort login counters — never let a counter error fail the login.
@@ -541,8 +563,9 @@ async function resolve2faPending(
 export async function mintLoginTokens(c: any, db: any, user: any) {
   const secret = c.env.JWT_SECRET;
   const claims = tokenClaims(user);
-  const refreshToken = await signRefreshToken(secret, claims);
-  const sessionId = await createSession(c, db, user.id, refreshToken);
+  const sessionId = uuidv4();
+  const refreshToken = await signRefreshToken(secret, { ...claims, sessionId });
+  await createSession(c, db, user.id, refreshToken, undefined, sessionId);
   const accessToken = await signAccessToken(secret, { ...claims, sessionId });
   try {
     await execute(
@@ -590,6 +613,9 @@ auth.post('/login/verify-2fa', async (c) => {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
     }
     await trustDeviceIfRequested(c, db, user.id, deviceFingerprint, trustDevice);
+    if (user.must_change_password) {
+      return issuePasswordChangeStep(c, user);
+    }
     return issueLoginTokens(c, db, user);
   } catch (err) {
     console.error('verify-2fa failed:', err);
@@ -619,6 +645,9 @@ auth.post('/login/verify-backup-code', async (c) => {
     }
     hashes.splice(idx, 1); // single use
     await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), user.id);
+    if (user.must_change_password) {
+      return issuePasswordChangeStep(c, user);
+    }
     return issueLoginTokens(c, db, user);
   } catch (err) {
     console.error('verify-backup-code failed:', err);
@@ -633,7 +662,7 @@ auth.post('/refresh', async (c) => {
     // `refresh_token`. Tolerating both mirrors the auth middleware's
     // user_id/userId handling and prevents a silent 401 → forced-logout
     // loop when the body key doesn't match.
-    const body = await c.req.json<{ refresh_token?: string; refreshToken?: string }>();
+    const body = await c.req.json<{ refresh_token?: string; refreshToken?: string; sessionId?: string }>();
     const refresh_token = body.refresh_token ?? body.refreshToken;
     if (!refresh_token) {
       return c.json({ error: 'Refresh token required' }, 400);
@@ -645,13 +674,36 @@ auth.post('/refresh', async (c) => {
     // not-expired session row is the authority; we read user_id from it.
     const db = getDb(c.env);
     const refreshHash = await sha256Hex(refresh_token);
+    const requestedSessionId = typeof body.sessionId === 'string' && body.sessionId.trim()
+      ? body.sessionId.trim()
+      : null;
     const session = await queryFirst<any>(
       db,
       `SELECT session_id, user_id FROM sessions
-       WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime(\'now\')`,
-      refreshHash
+       WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime(\'now\')
+         AND (? IS NULL OR session_id = ?)`,
+      refreshHash,
+      requestedSessionId,
+      requestedSessionId,
     );
     if (!session) {
+      return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    }
+
+    let refreshPayload: any;
+    try {
+      refreshPayload = await verifyJwt(refresh_token, c.env.JWT_SECRET, 'HS256');
+    } catch {
+      return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    }
+    if (refreshPayload?.type !== 'refresh') {
+      return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    }
+    const refreshUserId = refreshPayload.user_id ?? refreshPayload.userId;
+    if (refreshUserId !== session.user_id) {
+      return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    }
+    if (typeof refreshPayload.sessionId === 'string' && refreshPayload.sessionId !== session.session_id) {
       return c.json({ error: 'Invalid or expired refresh token' }, 401);
     }
 
@@ -670,7 +722,7 @@ auth.post('/refresh', async (c) => {
     const claims = tokenClaims(user);
     // Rotate the refresh token (matches legacy) and re-key the session by its
     // new hash, so a leaked old refresh token can't be replayed.
-    const newRefreshToken = await signRefreshToken(secret, claims);
+    const newRefreshToken = await signRefreshToken(secret, { ...claims, sessionId: session.session_id });
     const newRefreshHash = await sha256Hex(newRefreshToken);
     const newAccessToken = await signAccessToken(secret, { ...claims, sessionId: session.session_id });
 
@@ -834,20 +886,44 @@ auth.post('/change-password', authMiddleware, async (c) => {
 });
 
 // POST /auth/login/change-password — forced password change at login.
-// Triggered when the login response carries `must_change_password: true`.
-// The client holds a `tempToken` (the just-issued JWT) and sends only
-// the new password — current password is implicit (just authenticated).
-// Returns a fresh access token + user so the SPA can complete login.
-auth.post('/login/change-password', authMiddleware, async (c) => {
+// Triggered when login returns { step:'password_change', tempToken }. The
+// token is purpose-bound (`pwd_change`) and is NOT accepted by authMiddleware,
+// so a forced-rotation user cannot use it as a general API session.
+// Returns a fresh access+refresh token bundle so the SPA can complete login.
+auth.post('/login/change-password', async (c) => {
   try {
-    const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
+    const body = await c.req.json<{ newPassword?: string; new_password?: string; tempToken?: string }>();
+    const tempToken = body.tempToken
+      || (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '');
+    if (!tempToken) {
+      return c.json({ error: 'Password change session expired. Please sign in again.', code: 'PWD_CHANGE_EXPIRED' }, 401);
+    }
+    let payload: any;
+    try {
+      payload = await verifyJwt(tempToken, c.env.JWT_SECRET, 'HS256');
+    } catch {
+      return c.json({ error: 'Password change session expired. Please sign in again.', code: 'PWD_CHANGE_EXPIRED' }, 401);
+    }
+    if (payload?.type !== 'pwd_change' || payload?.userId == null) {
+      return c.json({ error: 'Password change session expired. Please sign in again.', code: 'PWD_CHANGE_EXPIRED' }, 401);
+    }
+
     const next = body.newPassword ?? body.new_password ?? '';
     const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
     const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
-    const userId = c.get('userId');
+    const userId = payload.userId;
     const db = getDb(c.env);
+    const before = await queryFirst<any>(
+      db,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ? AND status = 'active'`,
+      userId,
+    );
+    if (!before || !before.must_change_password) {
+      return c.json({ error: 'Password change is not required for this account.', code: 'PWD_CHANGE_NOT_REQUIRED' }, 400);
+    }
+
     const newHash = hashSync(next, 12);
     await execute(
       db,
@@ -868,8 +944,9 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
 
     const secret = c.env.JWT_SECRET;
     const claims = tokenClaims(user);
-    const refreshToken = await signRefreshToken(secret, claims);
-    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const sessionId = uuidv4();
+    const refreshToken = await signRefreshToken(secret, { ...claims, sessionId });
+    await createSession(c, db, user.id, refreshToken, undefined, sessionId);
     const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
     return c.json({
@@ -2137,6 +2214,9 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
     await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 
+    if (user.must_change_password) {
+      return issuePasswordChangeStep(c, user);
+    }
     return issueLoginTokens(c, db, user);
   } catch (err) {
     console.error('webauthn/authenticate-verify failed:', err);

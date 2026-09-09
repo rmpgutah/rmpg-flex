@@ -33,6 +33,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startMsRef = useRef<number>(0);
   const mountedRef = useRef(true);
+  const generationRef = useRef(0);
 
   const clearPolling = useCallback(() => {
     if (intervalRef.current != null) {
@@ -43,6 +44,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
 
   const reset = useCallback(() => {
     clearPolling();
+    generationRef.current += 1;
     jobIdRef.current = null;
     setStatus('idle');
     setSolution(null);
@@ -56,19 +58,29 @@ export function useOptimizationV2(): UseOptimizationV2 {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      generationRef.current += 1;
       clearPolling();
     };
   }, [clearPolling]);
 
   const startPolling = useCallback((jobId: string) => {
     startMsRef.current = Date.now();
+    const generation = generationRef.current;
+    let inFlight = false;
 
     intervalRef.current = setInterval(async () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || generation !== generationRef.current || inFlight) return;
+      if (Date.now() - startMsRef.current > 11 * 60_000) {
+        clearPolling();
+        setStatus('error');
+        setError('timed_out');
+        return;
+      }
+      inFlight = true;
       setElapsedMs(Date.now() - startMsRef.current);
       try {
         const result = await pollOptimizationJob(jobId);
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || generation !== generationRef.current) return;
         if (result.status === 'complete') {
           clearPolling();
           setSolution(result.solution ?? null);
@@ -83,15 +95,17 @@ export function useOptimizationV2(): UseOptimizationV2 {
         }
       } catch {
         // Transient network error — keep polling
-      }
+      } finally { inFlight = false; }
     }, POLL_INTERVAL_MS);
   }, [clearPolling]);
 
   const submit = useCallback(async (params: SubmitParams) => {
     reset();
     setStatus('pending');
+    const generation = generationRef.current;
     try {
       const resp = await submitOptimizationJob(params);
+      if (!mountedRef.current || generation !== generationRef.current) return;
       if (resp.skipped || !resp.job_id) {
         setError(resp.code ?? 'not_configured');
         setStatus('error');
@@ -101,6 +115,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
       setStatus('processing');
       startPolling(resp.job_id);
     } catch (err: unknown) {
+      if (!mountedRef.current || generation !== generationRef.current) return;
       setError(err instanceof Error ? err.message : 'Submit failed');
       setStatus('error');
     }

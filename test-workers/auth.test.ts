@@ -250,7 +250,7 @@ describe('POST /login — account lockout', () => {
       role TEXT NOT NULL DEFAULT 'officer', badge_number TEXT, phone TEXT, avatar_url TEXT,
       status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0,
       totp_enabled INTEGER NOT NULL DEFAULT 0, totp_exempt INTEGER DEFAULT 0,
-      login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT
+      login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT, password_changed_at TEXT
     )`);
     await execute(db, `CREATE TABLE IF NOT EXISTS login_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, ip_address TEXT,
@@ -419,6 +419,165 @@ describe('POST /login — account lockout', () => {
     // A not-yet-expired locked_until must remain set — never reset to NULL
     // by this statement.
     expect(row?.locked_until).not.toBeNull();
+  });
+});
+
+describe('auth token lifecycle — continuity and forced password rotation', () => {
+  const SECRET = 'test-jwt-secret-do-not-use-in-prod';
+  const TEST_PASSWORD = 'CorrectHorseBattery1!';
+  const TEST_PASSWORD_HASH = hashSync(TEST_PASSWORD, 4);
+
+  function loginEnv() {
+    return { ...(env as unknown as Record<string, unknown>), JWT_SECRET: SECRET };
+  }
+
+  async function ensureSchema() {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await execute(db, `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      full_name TEXT, first_name TEXT, last_name TEXT, email TEXT,
+      role TEXT NOT NULL DEFAULT 'officer', badge_number TEXT, phone TEXT, avatar_url TEXT,
+      status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0,
+      totp_enabled INTEGER NOT NULL DEFAULT 0, totp_exempt INTEGER DEFAULT 0,
+      login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT, password_changed_at TEXT
+    )`);
+    for (const [name, ddl] of [
+      ['password_changed_at', 'ALTER TABLE users ADD COLUMN password_changed_at TEXT'],
+      ['failed_login_count', 'ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0'],
+      ['locked_until', 'ALTER TABLE users ADD COLUMN locked_until TEXT'],
+    ] as const) {
+      if (!(await columnExists(db, 'users', name))) await execute(db, ddl);
+    }
+    await execute(db, `CREATE TABLE IF NOT EXISTS login_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, ip_address TEXT,
+      success INTEGER NOT NULL DEFAULT 0, failure_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      user_agent TEXT, device_type TEXT, browser TEXT, os TEXT,
+      country TEXT, region TEXT, city TEXT, postal_code TEXT, timezone TEXT,
+      latitude TEXT, longitude TEXT, asn TEXT, isp TEXT,
+      http_protocol TEXT, tls_version TEXT, tls_cipher TEXT, likely_vpn_or_hosting INTEGER,
+      device_platform TEXT, device_platform_version TEXT
+    )`);
+    await execute(db, `CREATE TABLE IF NOT EXISTS sessions (
+      session_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, refresh_token_hash TEXT NOT NULL,
+      ip_address TEXT, user_agent TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+      expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
+      device_type TEXT, browser TEXT, os TEXT,
+      country TEXT, region TEXT, city TEXT, postal_code TEXT, timezone TEXT,
+      latitude TEXT, longitude TEXT, asn TEXT, isp TEXT,
+      http_protocol TEXT, tls_version TEXT, tls_cipher TEXT, likely_vpn_or_hosting INTEGER,
+      device_platform TEXT, device_platform_version TEXT
+    )`);
+    await execute(db, `CREATE TABLE IF NOT EXISTS system_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      config_key TEXT NOT NULL,
+      config_value TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    await execute(db, `UPDATE system_config SET is_active = 0 WHERE category = 'security_settings' AND config_key = 'security_config'`);
+    return db;
+  }
+
+  async function seedUser(username: string, mustChange = 0): Promise<number> {
+    const db = await ensureSchema();
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status, must_change_password)
+       VALUES (?, ?, 'Lifecycle User', 'officer', 'active', ?)`,
+      username, TEST_PASSWORD_HASH, mustChange);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM users WHERE username = ?', username);
+    return row!.id;
+  }
+
+  async function login(username: string, password = TEST_PASSWORD) {
+    return authRouter.request('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '10.9.0.1' },
+      body: JSON.stringify({ username, password }),
+    }, loginEnv());
+  }
+
+  it('binds newly issued refresh tokens to unique session ids without invalidating normal login', async () => {
+    const username = 'refresh-bind-user';
+    await seedUser(username);
+    const [res1, res2] = await Promise.all([login(username), login(username)]);
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+
+    const body1 = await res1.json() as { refreshToken: string; sessionId: string };
+    const body2 = await res2.json() as { refreshToken: string; sessionId: string };
+    expect(body1.sessionId).not.toBe(body2.sessionId);
+    expect(body1.refreshToken).not.toBe(body2.refreshToken);
+
+    const refreshRes = await authRouter.request('/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: body1.refreshToken, refresh_token: body1.refreshToken, sessionId: body1.sessionId }),
+    }, loginEnv());
+    expect(refreshRes.status).toBe(200);
+
+    const wrongSessionRes = await authRouter.request('/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: body2.refreshToken, refresh_token: body2.refreshToken, sessionId: body1.sessionId }),
+    }, loginEnv());
+    expect(wrongSessionRes.status).toBe(401);
+  });
+
+  it('keeps legacy refresh callers working when no sessionId is supplied', async () => {
+    const username = 'refresh-legacy-user';
+    await seedUser(username);
+    const res = await login(username);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { refreshToken: string };
+
+    const refreshRes = await authRouter.request('/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refresh_token: body.refreshToken }),
+    }, loginEnv());
+    expect(refreshRes.status).toBe(200);
+  });
+
+  it('uses a purpose-bound password-change token before creating a session', async () => {
+    const userId = await seedUser('must-change-user', 1);
+    const db = getDb(env as unknown as { DB: D1Database });
+    const loginRes = await login('must-change-user');
+    expect(loginRes.status).toBe(200);
+    const pending = await loginRes.json() as { step: string; tempToken: string; token?: string; refreshToken?: string };
+    expect(pending.step).toBe('password_change');
+    expect(pending.token).toBeUndefined();
+    expect(pending.refreshToken).toBeUndefined();
+    expect(await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?', userId))
+      .toEqual({ n: 0 });
+
+    const protectedApp = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    protectedApp.use('*', authMiddleware);
+    protectedApp.get('/api/protected', (c) => c.json({ ok: true }));
+    const protectedRes = await protectedApp.request(
+      '/api/protected',
+      { headers: { Authorization: `Bearer ${pending.tempToken}` } },
+      loginEnv(),
+    );
+    expect(protectedRes.status).toBe(401);
+
+    const changeRes = await authRouter.request('/login/change-password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${pending.tempToken}` },
+      body: JSON.stringify({ tempToken: pending.tempToken, newPassword: 'NewValidPassword1!' }),
+    }, loginEnv());
+    expect(changeRes.status).toBe(200);
+    const complete = await changeRes.json() as { token?: string; refreshToken?: string; sessionId?: string; user?: { must_change_password?: boolean } };
+    expect(typeof complete.token).toBe('string');
+    expect(typeof complete.refreshToken).toBe('string');
+    expect(typeof complete.sessionId).toBe('string');
+    expect(complete.user?.must_change_password).toBe(false);
   });
 });
 

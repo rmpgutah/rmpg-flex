@@ -1,14 +1,7 @@
-/**
- * Fleet Route Optimizer hook.
- *
- * Uses a client-side nearest-neighbor + 2-opt algorithm (same approach as
- * src/utils/routeOptimizer.ts on the Worker) so it works without needing
- * fleet stops to exist in any D1 table.  Geocoding goes through the existing
- * GET /api/mapbox/geocode?q= proxy.
- */
-
-import { useState, useCallback } from 'react';
+/** Fleet routing backed by the asynchronous Mapbox Optimization V2 engine. */
+import { useCallback, useMemo, useRef } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useOptimizationV2 } from '../../../hooks/useOptimizationV2';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -75,154 +68,37 @@ export async function geocodeAddress(q: string): Promise<{ lat: number; lng: num
   }
 }
 
-// ─── Haversine distance (miles) ───────────────────────────────────────────────
-
-function haversineMi(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 3_958.8; // Earth radius in miles
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// ─── Nearest-neighbor + 2-opt ─────────────────────────────────────────────────
-
-interface Pt { id: number; lat: number; lng: number }
-
-function nearestNeighbor<T extends Pt>(origin: Pt, stops: T[]): T[] {
-  const remaining = [...stops];
-  const ordered: T[] = [];
-  let cur: Pt = origin;
-  while (remaining.length > 0) {
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const d = haversineMi(cur.lat, cur.lng, remaining[i].lat, remaining[i].lng);
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
-    }
-    cur = remaining[bestIdx];
-    ordered.push(remaining[bestIdx]);
-    remaining.splice(bestIdx, 1);
-  }
-  return ordered;
-}
-
-function routeDistance(origin: Pt, stops: Pt[]): number {
-  let d = 0;
-  let prev = origin;
-  for (const s of stops) {
-    d += haversineMi(prev.lat, prev.lng, s.lat, s.lng);
-    prev = s;
-  }
-  return d;
-}
-
-function twoOpt<T extends Pt>(origin: Pt, stops: T[]): T[] {
-  let best = [...stops];
-  let improved = true;
-  while (improved) {
-    improved = false;
-    for (let i = 0; i < best.length - 1; i++) {
-      for (let j = i + 1; j < best.length; j++) {
-        const candidate = [
-          ...best.slice(0, i),
-          ...best.slice(i, j + 1).reverse(),
-          ...best.slice(j + 1),
-        ];
-        if (routeDistance(origin, candidate) < routeDistance(origin, best)) {
-          best = candidate;
-          improved = true;
-        }
-      }
-    }
-  }
-  return best;
-}
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
-const AVG_SPEED_MPH = 30; // conservative urban estimate
-
 export function useFleetRouteOptimization(): UseFleetRouteOptimizationResult {
-  const [status, setStatus] = useState<UseFleetRouteOptimizationResult['status']>('idle');
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [optimizedRoute, setOptimizedRoute] = useState<FleetOptimizedRoute | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const reset = useCallback(() => {
-    setStatus('idle');
-    setElapsedMs(0);
-    setOptimizedRoute(null);
-    setError(null);
-  }, []);
-
+  const optimization = useOptimizationV2();
+  const stopsRef = useRef(new Map<number, FleetStop>());
   const startOptimization = useCallback(async (
-    vehicleCallSign: string,
-    originLat: number,
-    originLng: number,
-    stops: FleetStop[],
-    shiftStart: string,
-    _shiftEnd: string,
+    vehicleCallSign: string, originLat: number, originLng: number, stops: FleetStop[], shiftStart: string, shiftEnd: string,
   ) => {
-    reset();
-    setStatus('pending');
-    const t0 = Date.now();
-
-    try {
-      const origin: Pt = { id: -1, lat: originLat, lng: originLng };
-      const pts: (Pt & { stop: FleetStop })[] = stops.map((s) => ({
-        id: s.id, lat: s.lat, lng: s.lng, stop: s,
-      }));
-
-      // Optimize
-      const nn = nearestNeighbor(origin, pts);
-      const ordered = pts.length <= 10 ? twoOpt(origin, nn) : nn; // 2-opt expensive for large sets
-
-      // Build ETA chain from shiftStart
-      let cursor = new Date(shiftStart).getTime(); // new-date-ok: datetime-local input value (local wall-clock)
-      let odometerMi = 0;
-      let prevLat = originLat;
-      let prevLng = originLng;
-
-      const resultStops: FleetOptimizedStop[] = ordered.map((pt) => {
-        const legMi = haversineMi(prevLat, prevLng, pt.lat, pt.lng);
-        const legMs = (legMi / AVG_SPEED_MPH) * 3_600_000;
-        cursor += legMs;
-        odometerMi += legMi;
-        const eta = new Date(cursor).toISOString(); // new-date-ok: cursor is an epoch number (ms since Unix epoch)
-        const dur = (pt.stop.duration ?? 600) * 1000;
-        cursor += dur; // advance past on-site time
-        prevLat = pt.lat;
-        prevLng = pt.lng;
-        return {
-          stopId: pt.stop.id,
-          name: pt.stop.name,
-          eta,
-          waitSec: 0,
-          durationSec: pt.stop.duration ?? 600,
-          odometerMi: Math.round(odometerMi * 100) / 100,
-        };
-      });
-
-      const totalDistanceMi = Math.round(odometerMi * 100) / 100;
-
-      setOptimizedRoute({
-        vehicleCallSign,
-        stops: resultStops,
-        totalDistanceMi,
-        droppedStopIds: [],
-      });
-      setElapsedMs(Date.now() - t0);
-      setStatus('complete');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Optimization failed');
-      setStatus('error');
-    }
-  }, [reset]);
-
-  return { status, elapsedMs, optimizedRoute, error, startOptimization, reset };
+    stopsRef.current = new Map(stops.map(s => [s.id, s]));
+    await optimization.submit({
+      job_type: 'fleet_route',
+      problem: {
+        version: 1,
+        locations: [{ name: 'depot', coordinates: [originLng, originLat] }, ...stops.map(s => ({ name: String(s.id), coordinates: [s.lng, s.lat] as [number, number] }))],
+        vehicles: [{ name: vehicleCallSign, routing_profile: 'mapbox/driving-traffic', start_location: 'depot', earliest_start: new Date(shiftStart).toISOString(), latest_end: new Date(shiftEnd).toISOString() }],
+        services: stops.map(s => ({ name: String(s.id), location: String(s.id), duration: s.duration ?? 600 })),
+        options: { objectives: ['min-schedule-completion-time'] },
+      },
+    });
+  }, [optimization.submit]);
+  const optimizedRoute = useMemo<FleetOptimizedRoute | null>(() => {
+    const solution = optimization.solution;
+    const route = solution?.routes[0];
+    if (!solution || !route) return null;
+    return {
+      vehicleCallSign: route.vehicle,
+      totalDistanceMi: (route.distance ?? 0) / 1609.344,
+      droppedStopIds: solution.dropped.services.map(Number),
+      stops: route.stops.filter(s => s.type === 'service').flatMap(s => (s.services ?? [s.location]).map(id => ({
+        stopId: Number(id), name: stopsRef.current.get(Number(id))?.name ?? `Stop ${id}`, eta: s.eta, waitSec: s.wait ?? 0, durationSec: s.duration ?? 0, odometerMi: (s.odometer ?? 0) / 1609.344,
+      }))),
+    };
+  }, [optimization.solution]);
+  return { status: optimization.status === 'processing' ? 'pending' : optimization.status,
+    elapsedMs: optimization.elapsedMs, optimizedRoute, error: optimization.error, startOptimization, reset: optimization.reset };
 }

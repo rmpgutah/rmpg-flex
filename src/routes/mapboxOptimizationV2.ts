@@ -7,6 +7,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { optimizationSubmitSchema, validateOptimizationProblem } from '../utils/mapboxOptimizationV2Validation';
 import type { Env } from '../types';
 import { notConfigured } from '../utils/notConfigured';
 import { log } from '../utils/logger';
@@ -20,14 +21,13 @@ import {
   type UnitRow,
   type BeatRow,
   type CallRow,
-  type V2Solution,
+  type V2ProblemDocument,
 } from '../utils/mapboxOptimizationV2';
 
 const app = new Hono<Env>();
 
 const MB_V2 = 'https://api.mapbox.com/optimized-trips/v2';
 const TIMEOUT_MS = 12_000;
-const POLL_TIMEOUT_MIN = 5;
 
 const SUPERVISOR_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -65,20 +65,28 @@ app.post('/submit', async (c) => {
 
   const db = c.env.DB;
   let body: Record<string, unknown>;
-  try { body = await c.req.json(); } catch {
+  try { body = await c.req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid body'); } catch {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
+  const parsed = optimizationSubmitSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid optimization request', details: parsed.error.issues }, 400);
+  body = parsed.data;
+
   const { job_type } = body as { job_type: string };
-  if (!['serve_run', 'patrol_beat', 'multi_unit_dispatch'].includes(job_type)) {
+  if (!['serve_run', 'patrol_beat', 'multi_unit_dispatch', 'fleet_route'].includes(job_type)) {
     return c.json({ error: 'job_type must be serve_run, patrol_beat, or multi_unit_dispatch' }, 400);
   }
 
-  let problem: unknown;
+  let problem: V2ProblemDocument;
   let refId: number | null = null;
 
   try {
-    if (job_type === 'serve_run') {
+    if (parsed.data.job_type === 'fleet_route') {
+      if (!SUPERVISOR_ROLES.has(user.role)) return c.json({ error: 'Supervisor role required' }, 403);
+      problem = parsed.data.problem;
+    } else if (job_type === 'serve_run') {
       const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id, origin, circular, objective, requirements } = body as {
         serve_queue_ids: number[];
         officer_unit_id?: number;
@@ -98,6 +106,12 @@ app.post('/submit', async (c) => {
         serve_queue_ids,
         (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority, business_id, parsed_data->>'recipient_type' AS recipient_type FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
       );
+      if (stopRows.length !== serve_queue_ids.length) return c.json({ error: 'Every selected service must exist and have coordinates' }, 400);
+      if (ref_id) {
+        const savedRoute = await db.prepare('SELECT officer_id FROM serve_routes WHERE id = ?').bind(ref_id).first<{ officer_id: number }>();
+        if (!savedRoute) return c.json({ error: 'Saved route not found' }, 404);
+        if (savedRoute.officer_id !== user.id && !SUPERVISOR_ROLES.has(user.role)) return c.json({ error: 'Forbidden' }, 403);
+      }
       try {
         const slots = await queryInChunks<{ queue_id: number; window_start: string; window_end: string; scheduled_date: string }>(
           db,
@@ -107,7 +121,7 @@ app.post('/submit', async (c) => {
         const first = new Map<number, { window_start: string; window_end: string }>();
         const shiftDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(shift_start));
         for (const slot of slots) {
-          if (slot.scheduled_date < shiftDay) continue;
+          if (slot.scheduled_date !== shiftDay) continue;
           if (!first.has(slot.queue_id)) first.set(slot.queue_id, slot);
         }
         for (const row of stopRows) {
@@ -118,8 +132,8 @@ app.post('/submit', async (c) => {
       let officer: UnitRow | null = null;
       if (officer_unit_id) {
         const officerRow = await db
-          .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? OR officer_id = ? LIMIT 1')
-          .bind(officer_unit_id, officer_unit_id)
+          .prepare('SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id = ? LIMIT 1')
+          .bind(officer_unit_id)
           .first();
         if (officerRow) officer = officerRow as unknown as UnitRow;
       }
@@ -142,6 +156,9 @@ app.post('/submit', async (c) => {
       const { lookupOfficerFleetMpg } = await import('../utils/serveRouteOptimizer');
       const avgMpg = await lookupOfficerFleetMpg(db, officer_unit_id);
 
+      if (typeof officer.capabilities === 'string') {
+        try { officer.capabilities = JSON.parse(officer.capabilities); } catch { officer.capabilities = null; }
+      }
       problem = buildServeRunProblem(stopRows, officer, shift_start, shift_end, {
         circular: circular !== false,
         avgMpg,
@@ -175,6 +192,7 @@ app.post('/submit', async (c) => {
         unit_ids,
         (ph) => `SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id IN (${ph})`,
       );
+      if (beatRows.length !== beat_ids.length || unitRows.length !== unit_ids.length) return c.json({ error: 'Every selected beat and unit must exist and be active' }, 400);
       // Parse capabilities from JSON text column
       for (const u of unitRows) {
         if (typeof u.capabilities === 'string') {
@@ -205,7 +223,7 @@ app.post('/submit', async (c) => {
       const unitRows = await queryInChunks<UnitRow>(
         db,
         unit_ids,
-        (ph) => `SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id IN (${ph}) AND status IN ('available','on_scene')`,
+        (ph) => `SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id IN (${ph}) AND status = 'available'`,
       );
       // Parse capabilities from JSON text column
       for (const u of unitRows) {
@@ -213,21 +231,26 @@ app.post('/submit', async (c) => {
           try { u.capabilities = JSON.parse(u.capabilities as string); } catch { u.capabilities = null; }
         }
       }
+      if (callRows.length !== call_ids.length || unitRows.length !== unit_ids.length) return c.json({ error: 'Every selected call needs coordinates and every unit must be available' }, 400);
       problem = buildDispatchProblem(callRows, unitRows, { objective });
     }
     }
   } catch (err) {
     log.error('[optimization-v2] problem build failed', { job_type }, err as Error);
-    return c.json({ error: 'Failed to build optimization problem' }, 500);
+    return c.json({ error: err instanceof Error ? err.message : 'Invalid optimization problem' }, 400);
+  }
+
+  try { validateOptimizationProblem(problem); } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Invalid problem' }, 400);
   }
 
   // Submit to Mapbox V2
   let mapboxJobId: string;
   try {
-    const resp = await mbFetch(`${MB_V2}?access_token=${tk}`, {
+    const resp = await mbFetch(`${MB_V2}?access_token=${encodeURIComponent(tk)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(problem),
+      body: JSON.stringify({ ...problem, options: { objectives: problem.options?.objectives } }),
     }) as { id?: string };
     if (!resp?.id) throw new Error('No job ID in Mapbox response');
     mapboxJobId = resp.id;
@@ -264,110 +287,17 @@ app.get('/:jobId', async (c) => {
 
   if (!row) return c.json({ error: 'Job not found' }, 404);
 
-  // Cached terminal states — no Mapbox token needed
-  if (row.status === 'complete') {
-    let solution: unknown = null;
-    try { solution = JSON.parse(row.solution_json as string); } catch { solution = null; }
-    return c.json({ job_id: jobId, status: 'complete', solution });
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  if (row.created_by !== user.id && !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Forbidden' }, 403);
   }
-  if (row.status === 'error') {
-    return c.json({ job_id: jobId, status: 'error', error: row.error_message });
-  }
-
-  // Still in-flight — need the token to poll Mapbox
   const tk = getToken(c);
-  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN or MAPBOX_SECRET_TOKEN');
-
-  // Check timeout
-  const updatedAt = new Date((row.updated_at as string) + 'Z').getTime();
-  if (Date.now() - updatedAt > POLL_TIMEOUT_MIN * 60 * 1000 && row.status !== 'pending') {
-    await db
-      .prepare(`UPDATE mapbox_optimization_v2_jobs SET status = 'error', error_message = 'timed_out', updated_at = datetime('now') WHERE id = ?`)
-      .bind(jobId)
-      .run();
-    return c.json({ job_id: jobId, status: 'error', error: 'timed_out' });
+  if (!tk && !['complete', 'error'].includes(String(row.status))) {
+    return notConfigured(c, 'Mapbox Optimization V2 requires a configured token');
   }
-
-  // Poll Mapbox
-  let mapboxResp: unknown;
-  try {
-    mapboxResp = await mbFetch(`${MB_V2}/${jobId}?access_token=${tk}`);
-  } catch (err: unknown) {
-    const e = err as { status?: number };
-    if (e?.status === 202) {
-      await db
-        .prepare(`UPDATE mapbox_optimization_v2_jobs SET status = 'processing', updated_at = datetime('now') WHERE id = ?`)
-        .bind(jobId)
-        .run();
-      return c.json({ job_id: jobId, status: 'processing' });
-    }
-    log.error('[optimization-v2] poll failed', { jobId }, err as Error);
-    return c.json({ job_id: jobId, status: 'processing', error: 'poll_failed' });
-  }
-
-  const solution = mapboxResp as V2Solution;
-  await db
-    .prepare(`UPDATE mapbox_optimization_v2_jobs SET status = 'complete', solution_json = ?, updated_at = datetime('now') WHERE id = ?`)
-    .bind(JSON.stringify(solution), jobId)
-    .run();
-
-  // Write-back for serve_run
-  if (row.job_type === 'serve_run' && row.ref_id) {
-    try {
-      const route = solution.routes[0];
-      if (route) {
-        // Store plain IDs so the client reader (ServeRoutePlanner) can look
-        // them up in its job map. Previous version stored objects {id,eta,wait}
-        // which broke on reload because Map uses reference equality for objects.
-        const orderedIds = route.stops
-          .filter((s) => s.type === 'service')
-          .map((s) => Number(s.location));
-        // Compute total distance (meters) and duration (seconds) from the
-        // route-level summary that Mapbox V2 returns on each route object.
-        const routeAny = route as any;
-        const totalDistanceMiles = routeAny.distance
-          ? Math.round((routeAny.distance / 1609.34) * 10) / 10
-          : null;
-        const totalDurationMinutes = routeAny.duration
-          ? Math.round(routeAny.duration / 60)
-          : null;
-        await db
-          .prepare(
-            `UPDATE serve_routes
-             SET optimized_order_json = ?,
-                 total_distance_miles = COALESCE(?, total_distance_miles),
-                 total_time_minutes = COALESCE(?, total_time_minutes),
-                 updated_at = datetime('now')
-             WHERE id = ?`
-          )
-          .bind(
-            JSON.stringify(orderedIds),
-            totalDistanceMiles,
-            totalDurationMinutes,
-            row.ref_id,
-          )
-          .run();
-        log.info('[optimization-v2] serve_routes write-back complete', {
-          refId: row.ref_id,
-          stops: orderedIds.length,
-          totalDistanceMiles,
-          totalDurationMinutes,
-        });
-      }
-    } catch (err) {
-      log.error('[optimization-v2] serve_routes write-back failed', { refId: row.ref_id }, err as Error);
-    }
-  }
-
-  log.info('[optimization-v2] job complete', { jobId, routes: solution.routes.length, dropped: solution.dropped.services.length });
-  // Extract avg_mpg from the original problem (stored at submit time) so the
-  // client can display vehicle-specific fuel cost estimates.
-  let avgMpg: number | null = null;
-  try {
-    const problemDoc = JSON.parse(row.problem_json as string);
-    avgMpg = problemDoc?.options?.avg_mpg ?? null;
-  } catch { /* ignore */ }
-  return c.json({ job_id: jobId, status: 'complete', solution, avg_mpg: avgMpg });
+  const { pollOptimizationV2Job } = await import('../utils/mapboxOptimizationV2Jobs');
+  return c.json(await pollOptimizationV2Job(db, tk, row as unknown as import('../utils/mapboxOptimizationV2Jobs').OptimizationJob));
 });
 
 // ── GET / ─────────────────────────────────────────────────────────────────────
