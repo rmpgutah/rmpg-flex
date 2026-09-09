@@ -40,6 +40,19 @@ type TabCategory =
   | 'security'
   | 'utilities';
 
+const CATEGORY_NAV: ReadonlyArray<{ id: TabCategory; label: string; icon: React.ComponentType<{ className?: string }>; count: number }> = [
+  { id: 'hardware', label: 'FZ-55 Hardware & Sensors', icon: Cpu, count: 50 },
+  { id: 'kiosk', label: 'Kiosk Shell & MDM Guard', icon: Shield, count: 50 },
+  { id: 'radar360', label: 'Radar360 Signal Engine', icon: Radio, count: 50 },
+  { id: 'diagnostics', label: 'System Diagnostics & Telemetry', icon: Activity, count: 50 },
+  { id: 'cad_apps', label: 'CAD & Desktop App Suite', icon: Terminal, count: 50 },
+  { id: 'safety', label: 'Officer Safety & Welfare', icon: Siren, count: 50 },
+  { id: 'widgets', label: 'MDT Widgets Matrix', icon: Layers, count: 50 },
+  { id: 'environment', label: 'Optics & Visual Customization', icon: Eye, count: 50 },
+  { id: 'security', label: 'Security & Cryptographic Audit', icon: Key, count: 50 },
+  { id: 'utilities', label: 'Quick Field Utilities', icon: Wrench, count: 50 },
+];
+
 interface FeatureItem {
   id: string;
   name: string;
