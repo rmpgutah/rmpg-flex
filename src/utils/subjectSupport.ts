@@ -14,11 +14,17 @@ export const SUBJECT_SUPPORT = {
   dispatchPhoneRoute: 'press 1, then 1, then 3',
 } as const;
 
-/** AGENCY REF ID contract shared with rmpgutahps.us: JOB-<serve_queue.id>. */
-export const AGENCY_REF_RE = /^JOB-(\d{1,9})$/i;
+/** AGENCY REF ID contract shared with rmpgutahps.us: JOB-<serve_queue.id> (also tolerates JOB=<id> or raw ID). */
+export const AGENCY_REF_RE = /^JOB[-=](\d{1,9})$/i;
 
 export function parseAgencyRef(raw: string): { ref: string; jobId: number } | null {
-  const m = AGENCY_REF_RE.exec((raw || '').trim());
-  if (!m) return null;
-  return { ref: `JOB-${m[1]}`, jobId: parseInt(m[1], 10) };
+  const trimmed = (raw || '').trim();
+  const m = AGENCY_REF_RE.exec(trimmed);
+  if (m) {
+    return { ref: `JOB-${m[1]}`, jobId: parseInt(m[1], 10) };
+  }
+  if (/^\d{1,9}$/.test(trimmed)) {
+    return { ref: `JOB-${trimmed}`, jobId: parseInt(trimmed, 10) };
+  }
+  return null;
 }
