@@ -81,7 +81,7 @@ import serveBilling from './routes/serveBilling';
 import invoices from './routes/invoices';
 import useOfForce from './routes/useOfForce';
 import notificationsInbox from './routes/notificationsInbox';
-import community from './routes/community';
+import community, { communityReports } from './routes/community';
 import intel from './routes/intel';
 import intelAi from './routes/intelAi';
 import knowledge from './routes/knowledge';
@@ -628,6 +628,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Internal Affairs module: complaints, investigations, early intervention flags' },
   { prefix: '/api/alarms', router: alarms, auth: 'required',
     note: 'Alarm management: permit tracking, false alarm reduction, billing, verification' },
+  { prefix: '/api/alarm-tracking', router: alarms, auth: 'required',
+    note: 'Alarm tracking compatibility alias for AlarmTrackingPage' },
   { prefix: '/api/accreditation', router: accreditation, auth: 'required',
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
   { prefix: '/api/accreditations', router: accreditations, auth: 'required',
@@ -657,6 +659,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'InvoicesPage summary tile (/stats) over the invoices table. Full CRUD lives under /api/billing/invoices.' },
   { prefix: '/api/use-of-force', router: useOfForce, auth: 'required',
     note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
+  { prefix: '/api/community-reports', router: communityReports, auth: 'required',
+    note: 'Community reports / tips management for CommunityPortalPage (public_tips backing table)' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
   { prefix: '/api/knowledge', router: knowledge, auth: 'required',

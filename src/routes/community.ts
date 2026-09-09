@@ -277,4 +277,125 @@ community.get('/stats', async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// COMMUNITY REPORTS (Management API for CommunityPortalPage)
+// ═══════════════════════════════════════════════════════════════
+
+export const communityReports = new Hono<Env>();
+
+communityReports.get('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='public_tips'");
+    if (!tableCheck?.n) return c.json([]);
+
+    const q = c.req.query.bind(c.req);
+    const conditions: string[] = ['1=1'];
+    const params: unknown[] = [];
+
+    const status = q('status');
+    if (status) {
+      // Map frontend status to DB status if needed
+      if (status === 'submitted') {
+        conditions.push("(t.status = 'new' OR t.status = 'submitted')");
+      } else if (status === 'reviewing') {
+        conditions.push("(t.status = 'under_review' OR t.status = 'reviewing')");
+      } else {
+        conditions.push('t.status = ?');
+        params.push(status);
+      }
+    }
+
+    const reportType = q('type');
+    if (reportType) {
+      conditions.push('(t.category = ? OR (? = \'tip\' AND (t.category IS NULL OR t.category = \'tip\')))');
+      params.push(reportType, reportType);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT t.id,
+              t.tip_number AS tracking_number,
+              COALESCE(t.category, 'tip') AS report_type,
+              COALESCE(t.submitter_name, '') AS reporter_name,
+              COALESCE(t.submitter_contact, '') AS reporter_phone,
+              '' AS reporter_email,
+              CASE WHEN t.is_anonymous = 1 THEN 1 ELSE 0 END AS anonymous,
+              COALESCE(t.location, '') AS location,
+              NULL AS latitude,
+              NULL AS longitude,
+              t.tip_text AS description,
+              CASE
+                WHEN t.status = 'new' THEN 'submitted'
+                WHEN t.status = 'under_review' THEN 'reviewing'
+                WHEN t.status = 'actioned' THEN 'resolved'
+                ELSE COALESCE(t.status, 'submitted')
+              END AS status,
+              COALESCE(u.full_name, '') AS assigned_to,
+              t.assigned_to AS assigned_officer_id,
+              COALESCE(t.priority, 'normal') AS priority,
+              COALESCE(t.resolution, '') AS resolution_notes,
+              t.created_at,
+              COALESCE(t.updated_at, t.created_at) AS updated_at
+       FROM public_tips t
+       LEFT JOIN users u ON t.assigned_to = u.id
+       ${where}
+       ORDER BY t.created_at DESC LIMIT 500`,
+      ...params
+    );
+
+    const formatted = (rows || []).map((r) => ({
+      ...r,
+      anonymous: Boolean(r.anonymous),
+    }));
+
+    return c.json(formatted);
+  } catch (err) {
+    log.error('GET /api/community-reports failed', { src: 'src/routes/community.ts' }, err);
+    return c.json({ error: 'Failed to list community reports' }, 500);
+  }
+});
+
+communityReports.patch('/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const b = await c.req.json<Record<string, unknown>>();
+    const sets: string[] = ["updated_at = datetime('now')"];
+    const vals: unknown[] = [];
+
+    if ('status' in b && typeof b.status === 'string') {
+      let dbStatus = b.status;
+      if (dbStatus === 'submitted') dbStatus = 'new';
+      else if (dbStatus === 'reviewing') dbStatus = 'under_review';
+      else if (dbStatus === 'resolved') dbStatus = 'actioned';
+      sets.push('status = ?');
+      vals.push(dbStatus);
+    }
+
+    if ('assigned_officer_id' in b) {
+      sets.push('assigned_to = ?');
+      vals.push(b.assigned_officer_id !== null && b.assigned_officer_id !== undefined ? Number(b.assigned_officer_id) : null);
+    }
+
+    if ('resolution_notes' in b) {
+      sets.push('resolution = ?');
+      vals.push(typeof b.resolution_notes === 'string' ? b.resolution_notes : null);
+    }
+
+    vals.push(id);
+    await execute(db, `UPDATE public_tips SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM public_tips WHERE id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) {
+    log.error('PATCH /api/community-reports/:id failed', { src: 'src/routes/community.ts' }, err);
+    return c.json({ error: 'Failed to update community report' }, 500);
+  }
+});
+
 export default community;
+
