@@ -598,21 +598,24 @@ export default function VerifyNoticePage() {
       .then((d: VerifyResponse) => {
         setData(d);
         scanIdRef.current = d.scanId ?? null;
-        if (!d.scanId) return;
-        // 1. Passive telemetry — synchronous, no prompts
-        fetch(`${API_BASE}/api/verify/telemetry`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId: d.scanId, ...collectTelemetry() }),
-        }).catch(() => {/* best-effort */});
-        // 2. Rich async details — fire after Battery/WebRTC/Canvas resolve
-        collectRichDetails().then(details => {
-          fetch(`${API_BASE}/api/verify/details`, {
+        if (d.scanId) {
+          // 1. Passive telemetry — synchronous, no prompts
+          fetch(`${API_BASE}/api/verify/telemetry`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scanId: d.scanId, ...details }),
+            body: JSON.stringify({ scanId: d.scanId, ...collectTelemetry() }),
           }).catch(() => {/* best-effort */});
-        });
+          // 2. Rich async details — fire after Battery/WebRTC/Canvas resolve
+          collectRichDetails().then(details => {
+            fetch(`${API_BASE}/api/verify/details`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scanId: d.scanId, ...details }),
+            }).catch(() => {/* best-effort */});
+          });
+        }
+        // Seamlessly redirect to the outreach and information explainer page on rmpgutahps.us
+        window.location.replace(`https://rmpgutahps.us/notice-of-attempt?ref=${encodeURIComponent(ref)}`);
       })
       .catch(() => setError(true));
   }, [ref, bypass]);
