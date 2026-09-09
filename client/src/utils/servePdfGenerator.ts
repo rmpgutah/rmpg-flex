@@ -1582,6 +1582,8 @@ export async function generateNoticeOfAttempt(
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('Scan to verify', qrX + NOTICE_QR_SIZE_MM / 2, qrY + NOTICE_QR_SIZE_MM + 2, { align: 'center' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    // Make the QR code area clickable in PDF readers/viewers
+    doc.link(qrX, qrY, NOTICE_QR_SIZE_MM, NOTICE_QR_SIZE_MM + NOTICE_QR_LABEL_H_MM, { url: verifyUrl });
   } catch {
     // best-effort
   }

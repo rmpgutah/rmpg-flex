@@ -98,7 +98,7 @@ export function useShiftPlanning() {
   const assignedFeatures = useMemo(() => {
     const set = new Set<string>();
     if (activePlan) {
-      for (const a of activePlan.assignments) {
+      for (const a of (activePlan.assignments ?? [])) {
         set.add(`${a.layerId}::${a.featureKey}`);
       }
     }
@@ -290,15 +290,16 @@ export function useShiftPlanning() {
 
   const getCoverageStats = useCallback(() => {
     if (!activePlan) return { assigned: 0, total: 0, officers: 0, units: 0 };
+    const assignments = activePlan.assignments ?? [];
     const uniqueOfficers = new Set<string>();
     const uniqueUnits = new Set<string>();
-    for (const a of activePlan.assignments) {
+    for (const a of assignments) {
       if (Array.isArray(a.officerIds)) a.officerIds.forEach((id) => uniqueOfficers.add(id));
       if (Array.isArray(a.unitIds)) a.unitIds.forEach((id) => uniqueUnits.add(id));
     }
     return {
-      assigned: activePlan.assignments.length,
-      total: activePlan.assignments.length, // could compare to total features
+      assigned: assignments.length,
+      total: assignments.length, // could compare to total features
       officers: uniqueOfficers.size,
       units: uniqueUnits.size,
     };

@@ -378,9 +378,9 @@ export default function ShiftPlansPage() {
       openShiftPlanPdf({
         plan,
         stats: {
-          assigned: plan.assignments.length,
-          officers: new Set(plan.assignments.flatMap(a => a.officerIds)).size,
-          units: new Set(plan.assignments.flatMap(a => a.unitIds)).size,
+          assigned: (plan.assignments ?? []).length,
+          officers: new Set((plan.assignments ?? []).flatMap(a => a.officerIds ?? [])).size,
+          units: new Set((plan.assignments ?? []).flatMap(a => a.unitIds ?? [])).size,
         },
         notifications: shiftNotifs,
         conflicts,
@@ -653,7 +653,7 @@ export default function ShiftPlansPage() {
                     <div className="flex items-center gap-3 mt-1 text-[9px] text-rmpg-400">
                       <span style={{ color: shiftConfig?.color }}>{shiftConfig?.label}</span>
                       <span>{shiftConfig?.defaultStart} – {shiftConfig?.defaultEnd}</span>
-                      <span>{plan.assignments.length} assignments</span>
+                      <span>{(plan.assignments ?? []).length} assignments</span>
                     </div>
                   </div>
                 );
@@ -760,8 +760,8 @@ export default function ShiftPlansPage() {
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
                   style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-default)' }}
                 >
-                  <span>Area Assignments ({sp.activePlan.assignments.length})</span>
-                  {canManage && sp.activePlan.assignments.length > 0 && (
+                  <span>Area Assignments ({(sp.activePlan.assignments ?? []).length})</span>
+                  {canManage && (sp.activePlan.assignments ?? []).length > 0 && (
                     <button type="button"
                       onClick={() => setClearAllConfirm(true)}
                       className="text-red-500 hover:text-red-400"
@@ -771,7 +771,7 @@ export default function ShiftPlansPage() {
                   )}
                 </div>
 
-                {sp.activePlan.assignments.length === 0 ? (
+                {(sp.activePlan.assignments ?? []).length === 0 ? (
                   <div className="flex items-center justify-center py-16 text-rmpg-500 text-[10px]">
                     <div className="text-center">
                       <div className="w-12 h-12 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
@@ -810,9 +810,9 @@ export default function ShiftPlansPage() {
                           </td>
                           <td className="px-4 py-2 text-rmpg-400 capitalize">{a.layerId}</td>
                           <td className="px-4 py-2">
-                            {a.officerNames.length > 0 ? (
+                            {(a.officerNames ?? []).length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {a.officerNames.map((name) => (
+                                {(a.officerNames ?? []).map((name) => (
                                   <span key={name} className="text-[9px] font-mono px-1 py-px bg-surface-sunken/30 text-rmpg-400 border border-border-subtle/50">
                                     {name}
                                   </span>
@@ -823,9 +823,9 @@ export default function ShiftPlansPage() {
                             )}
                           </td>
                           <td className="px-4 py-2">
-                            {a.unitCallSigns.length > 0 ? (
+                            {(a.unitCallSigns ?? []).length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {a.unitCallSigns.map((cs) => (
+                                {(a.unitCallSigns ?? []).map((cs) => (
                                   <span key={cs} className="text-[9px] font-mono px-1 py-px bg-green-900/30 text-green-400 border border-green-800/50">
                                     {cs}
                                   </span>
@@ -859,7 +859,7 @@ export default function ShiftPlansPage() {
                 )}
 
                 {/* Summary panel */}
-                {sp.activePlan.assignments.length > 0 && (
+                {(sp.activePlan.assignments ?? []).length > 0 && (
                   <div className="px-4 py-3" style={{ background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-default)' }}>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
@@ -1025,11 +1025,11 @@ export default function ShiftPlansPage() {
                           body: JSON.stringify({
                             name: saveTemplateName.trim(),
                             shift_type: sp.activePlan.shiftType,
-                            pattern_json: JSON.stringify(sp.activePlan.assignments.map(a => ({
+                            pattern_json: JSON.stringify((sp.activePlan.assignments ?? []).map(a => ({
                               label: a.label,
                               layerId: a.layerId,
-                              officerIds: a.officerIds,
-                              unitIds: a.unitIds,
+                              officerIds: a.officerIds ?? [],
+                              unitIds: a.unitIds ?? [],
                               shiftStart: a.shiftStart,
                               shiftEnd: a.shiftEnd,
                               notes: a.notes,
@@ -1058,11 +1058,11 @@ export default function ShiftPlansPage() {
                             body: JSON.stringify({
                               name: saveTemplateName.trim(),
                               shift_type: sp.activePlan.shiftType,
-                              pattern_json: JSON.stringify(sp.activePlan.assignments.map(a => ({
+                              pattern_json: JSON.stringify((sp.activePlan.assignments ?? []).map(a => ({
                                 label: a.label,
                                 layerId: a.layerId,
-                                officerIds: a.officerIds,
-                                unitIds: a.unitIds,
+                                officerIds: a.officerIds ?? [],
+                                unitIds: a.unitIds ?? [],
                                 shiftStart: a.shiftStart,
                                 shiftEnd: a.shiftEnd,
                                 notes: a.notes,
@@ -1100,7 +1100,7 @@ export default function ShiftPlansPage() {
                 <div className="text-xs text-rmpg-500 py-4 text-center">
                   <LayoutTemplate className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
                   No templates saved yet.
-                  {sp.activePlan && sp.activePlan.assignments.length > 0 && (
+                  {sp.activePlan && (sp.activePlan.assignments ?? []).length > 0 && (
                     <button
                       type="button"
                       onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); }}
@@ -1112,7 +1112,7 @@ export default function ShiftPlansPage() {
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[320px] overflow-y-auto">
-                  {sp.activePlan && sp.activePlan.assignments.length > 0 && (
+                  {sp.activePlan && (sp.activePlan.assignments ?? []).length > 0 && (
                     <button
                       type="button"
                       onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); }}
@@ -1127,7 +1127,15 @@ export default function ShiftPlansPage() {
                         <div>
                           <div className="text-[11px] font-semibold text-rmpg-100">{t.name}</div>
                           <div className="text-[9px] text-fg-secondary mt-0.5">
-                            {t.shift_type} · {(typeof t.pattern_json === 'string' ? JSON.parse(t.pattern_json) : t.pattern_json || []).length} slots
+                            {t.shift_type} · {(() => {
+                              try {
+                                if (Array.isArray(t.pattern)) return t.pattern.length;
+                                const parsed = typeof t.pattern_json === 'string' ? JSON.parse(t.pattern_json) : (t.pattern_json ?? []);
+                                return (Array.isArray(parsed) ? parsed : []).length;
+                              } catch {
+                                return 0;
+                              }
+                            })()} slots
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -1274,8 +1282,8 @@ export default function ShiftPlansPage() {
               {' · '}
               {SHIFT_TYPES[deletePlanTarget.shiftType]?.label}
               {' · '}
-              {deletePlanTarget.assignments.length} assignment
-              {deletePlanTarget.assignments.length === 1 ? '' : 's'}
+              {(deletePlanTarget.assignments ?? []).length} assignment
+              {(deletePlanTarget.assignments ?? []).length === 1 ? '' : 's'}
             </div>
           </>
         )}
@@ -1296,8 +1304,8 @@ export default function ShiftPlansPage() {
           <>
             <div>{sp.activePlan.name}</div>
             <div>
-              {sp.activePlan.assignments.length} assignment
-              {sp.activePlan.assignments.length === 1 ? '' : 's'}
+              {(sp.activePlan.assignments ?? []).length} assignment
+              {(sp.activePlan.assignments ?? []).length === 1 ? '' : 's'}
               {' · '}
               {stats.officers} officer{stats.officers === 1 ? '' : 's'}
               {' · '}
