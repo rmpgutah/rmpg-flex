@@ -293,8 +293,8 @@ export function useShiftPlanning() {
     const uniqueOfficers = new Set<string>();
     const uniqueUnits = new Set<string>();
     for (const a of activePlan.assignments) {
-      a.officerIds.forEach((id) => uniqueOfficers.add(id));
-      a.unitIds.forEach((id) => uniqueUnits.add(id));
+      if (Array.isArray(a.officerIds)) a.officerIds.forEach((id) => uniqueOfficers.add(id));
+      if (Array.isArray(a.unitIds)) a.unitIds.forEach((id) => uniqueUnits.add(id));
     }
     return {
       assigned: activePlan.assignments.length,
