@@ -79,7 +79,7 @@ app.post('/submit', async (c) => {
 
   try {
     if (job_type === 'serve_run') {
-      const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id, origin, circular } = body as {
+      const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id, origin, circular, objective, requirements } = body as {
         serve_queue_ids: number[];
         officer_unit_id?: number;
         shift_start: string;
@@ -87,6 +87,8 @@ app.post('/submit', async (c) => {
         ref_id?: number | null;
         origin?: { lat: number; lng: number } | null;
         circular?: boolean;
+        objective?: 'min-schedule-completion-time' | 'min-total-travel-duration';
+        requirements?: string[];
       };
       if (!serve_queue_ids?.length || !shift_start || !shift_end) {
         return c.json({ error: 'serve_run requires serve_queue_ids, shift_start, shift_end' }, 400);
@@ -143,6 +145,8 @@ app.post('/submit', async (c) => {
       problem = buildServeRunProblem(stopRows, officer, shift_start, shift_end, {
         circular: circular !== false,
         avgMpg,
+        objective,
+        requirements: requirements?.length ? requirements : undefined,
       });
       refId = ref_id ?? null;
     } else {
@@ -150,11 +154,13 @@ app.post('/submit', async (c) => {
         return c.json({ error: 'Forbidden — supervisor role required' }, 403);
       }
       if (job_type === 'patrol_beat') {
-      const { beat_ids, unit_ids, shift_start, shift_end } = body as {
+      const { beat_ids, unit_ids, shift_start, shift_end, objective, circular } = body as {
         beat_ids: number[];
         unit_ids: number[];
         shift_start: string;
         shift_end: string;
+        objective?: 'min-schedule-completion-time' | 'min-total-travel-duration';
+        circular?: boolean;
       };
       if (!beat_ids?.length || !unit_ids?.length || !shift_start || !shift_end) {
         return c.json({ error: 'patrol_beat requires beat_ids, unit_ids, shift_start, shift_end' }, 400);
@@ -167,11 +173,21 @@ app.post('/submit', async (c) => {
       const unitRows = await queryInChunks<UnitRow>(
         db,
         unit_ids,
-        (ph) => `SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${ph})`,
+        (ph) => `SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id IN (${ph})`,
       );
-      problem = buildPatrolBeatProblem(beatRows, unitRows, shift_start, shift_end);
+      // Parse capabilities from JSON text column
+      for (const u of unitRows) {
+        if (typeof u.capabilities === 'string') {
+          try { u.capabilities = JSON.parse(u.capabilities as string); } catch { u.capabilities = null; }
+        }
+      }
+      problem = buildPatrolBeatProblem(beatRows, unitRows, shift_start, shift_end, { objective, circular });
     } else {
-      const { call_ids, unit_ids } = body as { call_ids: number[]; unit_ids: number[] };
+      const { call_ids, unit_ids, objective } = body as {
+        call_ids: number[];
+        unit_ids: number[];
+        objective?: 'min-schedule-completion-time' | 'min-total-travel-duration';
+      };
       if (!call_ids?.length || !unit_ids?.length) {
         return c.json({ error: 'multi_unit_dispatch requires call_ids and unit_ids' }, 400);
       }
@@ -180,12 +196,24 @@ app.post('/submit', async (c) => {
         call_ids,
         (ph) => `SELECT id, incident_number, latitude, longitude, priority FROM calls_for_service WHERE id IN (${ph}) AND latitude IS NOT NULL AND longitude IS NOT NULL`,
       );
+      // Parse requirements from JSON text column if present
+      for (const c of callRows) {
+        if (typeof (c as any).requirements === 'string') {
+          try { c.requirements = JSON.parse((c as any).requirements); } catch { c.requirements = null; }
+        }
+      }
       const unitRows = await queryInChunks<UnitRow>(
         db,
         unit_ids,
-        (ph) => `SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${ph}) AND status IN ('available','on_scene')`,
+        (ph) => `SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id IN (${ph}) AND status IN ('available','on_scene')`,
       );
-      problem = buildDispatchProblem(callRows, unitRows);
+      // Parse capabilities from JSON text column
+      for (const u of unitRows) {
+        if (typeof u.capabilities === 'string') {
+          try { u.capabilities = JSON.parse(u.capabilities as string); } catch { u.capabilities = null; }
+        }
+      }
+      problem = buildDispatchProblem(callRows, unitRows, { objective });
     }
     }
   } catch (err) {
@@ -352,14 +380,86 @@ app.get('/', async (c) => {
 
   const { results } = isAdminOrManager
     ? await db
-        .prepare('SELECT id, job_type, status, ref_id, created_by, created_at, updated_at, error_message FROM mapbox_optimization_v2_jobs ORDER BY created_at DESC LIMIT 100')
+        .prepare('SELECT id, job_type, status, ref_id, created_by, created_at, updated_at, error_message, problem_json, solution_json FROM mapbox_optimization_v2_jobs ORDER BY created_at DESC LIMIT 100')
         .all()
     : await db
-        .prepare('SELECT id, job_type, status, ref_id, created_by, created_at, updated_at, error_message FROM mapbox_optimization_v2_jobs WHERE created_by = ? ORDER BY created_at DESC LIMIT 50')
+        .prepare('SELECT id, job_type, status, ref_id, created_by, created_at, updated_at, error_message, problem_json, solution_json FROM mapbox_optimization_v2_jobs WHERE created_by = ? ORDER BY created_at DESC LIMIT 50')
         .bind(user.id)
         .all();
 
-  return c.json({ jobs: results ?? [] });
+  const jobs = (results ?? []).map((row: Record<string, unknown>) => {
+    const summary: Record<string, unknown> = {};
+
+    // Extract problem summary
+    try {
+      const problem = JSON.parse(row.problem_json as string);
+      if (problem) {
+        summary.service_count = problem.services?.length ?? 0;
+        summary.vehicle_count = problem.vehicles?.length ?? 0;
+        summary.objective = problem.options?.objectives?.[0] ?? null;
+        summary.avg_mpg = problem.options?.avg_mpg ?? null;
+
+        // Capabilities across all vehicles
+        const allCaps = new Set<string>();
+        for (const v of problem.vehicles ?? []) {
+          for (const cap of v.capabilities ?? []) allCaps.add(cap);
+        }
+        if (allCaps.size > 0) summary.capabilities = [...allCaps];
+
+        // Requirements across all services
+        const allReqs = new Set<string>();
+        for (const s of problem.services ?? []) {
+          for (const req of s.requirements ?? []) allReqs.add(req);
+        }
+        if (allReqs.size > 0) summary.requirements = [...allReqs];
+
+        // Break info
+        const firstVehicle = problem.vehicles?.[0];
+        if (firstVehicle?.breaks?.length) {
+          summary.has_break = true;
+          summary.break_duration = firstVehicle.breaks[0].duration ?? null;
+        }
+
+        // Shift window from first vehicle
+        if (firstVehicle?.earliest_start) summary.shift_start = firstVehicle.earliest_start;
+        if (firstVehicle?.latest_end) summary.shift_end = firstVehicle.latest_end;
+      }
+    } catch { /* problem_json missing or malformed — skip summary */ }
+
+    // Extract solution summary (only for complete jobs)
+    if (row.status === 'complete' && row.solution_json) {
+      try {
+        const solution = JSON.parse(row.solution_json as string);
+        if (solution) {
+          summary.route_count = solution.routes?.length ?? 0;
+          summary.dropped_count = solution.dropped?.services?.length ?? 0;
+
+          // Aggregate distance/duration across routes
+          let totalDistM = 0;
+          let totalDurS = 0;
+          for (const route of solution.routes ?? []) {
+            totalDistM += route.distance ?? 0;
+            totalDurS += route.duration ?? 0;
+          }
+          if (totalDistM > 0) summary.total_distance_mi = Math.round((totalDistM / 1609.34) * 10) / 10;
+          if (totalDurS > 0) summary.total_duration_min = Math.round(totalDurS / 60);
+
+          // Per-route summaries (vehicle name + distance)
+          summary.route_summaries = (solution.routes ?? []).map((route: { vehicle?: string; distance?: number; duration?: number; stops?: unknown[] }) => ({
+            vehicle: route.vehicle ?? null,
+            distance_mi: route.distance ? Math.round((route.distance / 1609.34) * 10) / 10 : null,
+            duration_min: route.duration ? Math.round(route.duration / 60) : null,
+            stop_count: route.stops?.length ?? 0,
+          }));
+        }
+      } catch { /* solution_json missing or malformed — skip summary */ }
+    }
+
+    const { problem_json: _pj, solution_json: _sj, ...base } = row;
+    return { ...base, summary };
+  });
+
+  return c.json({ jobs });
 });
 
 export default app;

@@ -191,9 +191,9 @@ describe('buildPatrolBeatProblem', () => {
     expect(doc.options?.objectives).toContain('min-total-travel-duration');
   });
 
-  it('routing profile is mapbox/driving (not traffic)', () => {
+  it('routing profile is mapbox/driving-traffic', () => {
     const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
-    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving');
+    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving-traffic');
   });
 });
 

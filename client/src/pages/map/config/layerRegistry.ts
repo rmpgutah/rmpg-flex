@@ -80,6 +80,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'incident-heatmap', label: 'Incident Heat', icon: Radar, group: 'Historical Analysis', colorVar: 'var(--sev-high)', description: 'Incident density last 24 hours' },
   { id: 'heatmap', label: 'Crime Heatmap', icon: Radar, group: 'Historical Analysis', colorVar: 'var(--sev-critical)', description: 'Incident density (H) — click label to switch Live/Historical' },
   { id: 'call-history', label: 'Call History', icon: History, group: 'Historical Analysis', colorVar: 'var(--sev-ok)', description: 'Past 30 days of calls' },
+  { id: 'cfs-address-pins', label: 'CFS Address Pins', icon: MapPin, group: 'Historical Analysis', colorVar: 'var(--sev-info)', description: 'Historical response locations with address labels' },
   { id: 'speed-heatmap', label: 'Speed Heatmap', icon: Gauge, group: 'Historical Analysis', colorVar: 'var(--sev-high)', description: 'GPS speed density' },
   { id: 'speed-violations', label: 'Speed Violations', icon: Zap, group: 'Historical Analysis', colorVar: 'var(--sev-critical)', description: 'Recent high-speed events — click a marker for the speed graph' },
   { id: 'pursuit-segments', label: 'Pursuit Tracks', icon: Route, group: 'Historical Analysis', colorVar: 'var(--sev-critical)', description: 'Recent vehicle/foot pursuit paths' },

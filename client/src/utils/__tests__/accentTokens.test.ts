@@ -789,7 +789,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //   post-merge guardrail on the PRECEDING commit (#4145, issue #4146) counted
   //   10614 > 10612 — the two PRs never saw each other's tree, and #4147 landed
   //   the fix before anyone triaged the issue. Verified scan of this tree: 10610.
-  const PIN = 10610;
+  // 10610 -> 10604: Mapbox Optimization V2 panel & history card migrated to
+  //   text-fg-secondary / text-fg-muted.
+  const PIN = 10604;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

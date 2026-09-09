@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Route } from 'lucide-react';
-import type { SubmitParams, V2Solution } from '../utils/mapboxOptimizationV2';
+import type { SubmitParams, V2Solution, V2Stop } from '../utils/mapboxOptimizationV2';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useOptimizationV2 } from '../hooks/useOptimizationV2';
 import OptimizationV2StatusBadge from './OptimizationV2StatusBadge';
@@ -28,6 +28,18 @@ function formatEtaTime(iso: string): string {
 
 function formatKm(meters: number): string {
   return (meters / 1000).toFixed(1) + 'km';
+}
+
+function formatMiles(meters: number): string {
+  return (meters / 1609.34).toFixed(1) + ' mi';
+}
+
+function estimateFuelCost(totalDistanceMeters: number, avgMpg: number | null, fuelPricePerGallon = 3.5): string | null {
+  if (!avgMpg || avgMpg <= 0 || totalDistanceMeters <= 0) return null;
+  const miles = totalDistanceMeters / 1609.34;
+  const gallons = miles / avgMpg;
+  const cost = gallons * fuelPricePerGallon;
+  return `$${cost.toFixed(2)}`;
 }
 
 export default function OptimizationV2Panel({
@@ -99,21 +111,32 @@ export default function OptimizationV2Panel({
   // ── Complete ─────────────────────────────────────────────────────────────
   if (hook.status === 'complete' && hook.solution) {
     const { routes, dropped } = hook.solution;
-    const stops = routes[0]?.stops ?? [];
-    const serviceStops = stops.filter((s) => s.type !== 'start' && s.type !== 'end');
-    const firstEta = serviceStops[0]?.eta;
-    const lastEta = serviceStops[serviceStops.length - 1]?.eta;
-    const lastOdometer = stops[stops.length - 1]?.odometer ?? 0;
+    const totalServiceStops = routes.reduce(
+      (acc, r) => acc + r.stops.filter((s) => s.type === 'service').length, 0,
+    );
+    const totalBreakStops = routes.reduce(
+      (acc, r) => acc + r.stops.filter((s) => s.type === 'break').length, 0,
+    );
+    const firstEta = routes[0]?.stops.find((s: V2Stop) => s.type === 'service')?.eta;
+    const lastRoute = routes[routes.length - 1];
+    const filteredStops = lastRoute?.stops.filter((s: V2Stop) => s.type !== 'start' && s.type !== 'end');
+    const lastStop = filteredStops?.[filteredStops.length - 1];
+    const lastEta = lastStop?.eta;
     const droppedCount = dropped.services.length + dropped.shipments.length;
+    const fuelCost = estimateFuelCost(hook.totalDistanceMeters, hook.avgMpg);
 
     return (
       <div className={`space-y-1.5 ${className}`}>
         <div className="flex items-center gap-2 flex-wrap">
           <OptimizationV2StatusBadge status="complete" />
           <span className="text-xs text-rmpg-300">
-            {serviceStops.length} stop{serviceStops.length !== 1 ? 's' : ''}
+            {totalServiceStops} stop{totalServiceStops !== 1 ? 's' : ''}
+            {totalBreakStops > 0 ? ` · ${totalBreakStops} break${totalBreakStops !== 1 ? 's' : ''}` : ''}
+            {hook.routeCount > 1 ? ` · ${hook.routeCount} routes` : ''}
             {firstEta && lastEta ? ` · ETA ${formatEtaTime(firstEta)}–${formatEtaTime(lastEta)}` : ''}
-            {lastOdometer > 0 ? ` · ${formatKm(lastOdometer)} total` : ''}
+            {hook.totalDistanceMeters > 0 ? ` · ${formatMiles(hook.totalDistanceMeters)} total` : ''}
+            {hook.totalDurationSeconds > 0 ? ` · ~${Math.round(hook.totalDurationSeconds / 60)}m` : ''}
+            {fuelCost ? ` · ~${fuelCost} fuel` : ''}
           </span>
         </div>
         {droppedCount > 0 && (

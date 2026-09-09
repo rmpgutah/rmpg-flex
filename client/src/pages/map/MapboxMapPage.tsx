@@ -72,6 +72,7 @@ import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
 import { useMapboxResponseTime } from '../../hooks/useMapboxResponseTime';
 import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
 import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
+import { useHistoricalCfsPins } from '../../hooks/useHistoricalCfsPins';
 import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
 import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapboxServeJobs } from '../../hooks/useMapboxServeJobs';
@@ -385,6 +386,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const responseTime = useMapboxResponseTime(mapLoaded ? mapRef.current : null);
   const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
   const historyCalls = useMapboxHistoryCalls(mapLoaded ? mapRef.current : null);
+  const cfsAddressPins = useHistoricalCfsPins(mapLoaded ? mapRef.current : null);
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
   const [identifyEnabled, setIdentifyEnabled] = useState(false);
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
@@ -441,6 +443,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [responseTimeEnabled, setResponseTimeEnabled] = useState(false);
   const [safetyZonesEnabled, setSafetyZonesEnabled] = useState(false);
   const [historyCallsEnabled, setHistoryCallsEnabled] = useState(false);
+  const [cfsAddressPinsEnabled, setCfsAddressPinsEnabled] = useState(false);
 
   useEffect(() => {
     if (incidentsEnabled) incidentsLayer.fetchIncidents();
@@ -517,6 +520,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (historyCallsEnabled) historyCalls.fetchHistory();
     else historyCalls.clear();
   }, [historyCallsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (cfsAddressPinsEnabled) cfsAddressPins.fetchPins();
+    else cfsAddressPins.clear();
+  }, [cfsAddressPinsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (repeatAddressesEnabled) repeatAddresses.fetchRepeats();
@@ -1310,6 +1318,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`,
     },
     'call-history': { active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), loading: historyCalls.loading, error: historyCalls.error },
+    'cfs-address-pins': { active: cfsAddressPinsEnabled, onToggle: () => setCfsAddressPinsEnabled((v) => !v), loading: cfsAddressPins.loading, error: cfsAddressPins.error },
     'speed-heatmap': { active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), loading: speedHeatmap.loading, error: speedHeatmap.error },
     'speed-violations': { active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), loading: speedViolationsLayer.loading, error: speedViolationsLayer.error },
     'pursuit-segments': { active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), loading: pursuitSegmentsLayer.loading, error: pursuitSegmentsLayer.error },
@@ -1432,7 +1441,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     optimRoutes.visible, optimRoutes.toggle, optimRoutes.loading, optimRoutes.error,
     incidentHeatmap, beatCoverage,
     heatmap, populateAndToggleHeatmap, heatmapMode,
-    historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
+    historyCallsEnabled, historyCalls.loading, historyCalls.error, cfsAddressPinsEnabled, cfsAddressPins.loading, cfsAddressPins.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
     speedViolationsLayer.error, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading,
     pursuitSegmentsLayer.error, responseTimeEnabled, responseTime.loading, responseTime.error,

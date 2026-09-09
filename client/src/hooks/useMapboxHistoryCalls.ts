@@ -29,6 +29,7 @@ interface HistoryCall {
 const CIRCLE_SOURCE_ID = 'rmpg-history-calls-source';
 const CIRCLE_LAYER_ID = 'rmpg-history-calls-layer';
 const LABEL_LAYER_ID = 'rmpg-history-calls-label';
+const ADDRESS_LAYER_ID = 'rmpg-history-calls-address';
 
 export interface HistoryOptions {
   days?: number;

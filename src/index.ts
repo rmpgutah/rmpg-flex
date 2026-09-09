@@ -837,8 +837,9 @@ export default {
       // write-back when the job is tied to a serve route.
       ctx.waitUntil(
         (async () => {
-          const token = (env as Record<string, unknown>).MAPBOX_ACCESS_TOKEN as string | undefined;
-          if (!token || token.startsWith('sk.')) return;
+          const { resolveOptimizationV2Token } = await import('./utils/mapboxOptimizationV2');
+          const token = resolveOptimizationV2Token(env as { MAPBOX_SECRET_TOKEN?: string; MAPBOX_ACCESS_TOKEN?: string });
+          if (!token) return;
 
           const db = env.DB;
           const { results: jobs } = await db
@@ -891,7 +892,7 @@ export default {
               }
 
               if (res.status === 200) {
-                const body = await res.json() as { routes?: Array<{ stops?: Array<{ type?: string; location?: number; eta?: string; wait?: number }> }> };
+                const body = await res.json() as { routes?: Array<{ stops?: Array<{ type?: string; location?: string; eta?: string; wait?: number }>; distance?: number; duration?: number }> };
                 const solutionJson = JSON.stringify(body);
 
                 await db
@@ -903,19 +904,40 @@ export default {
                   .bind(solutionJson, job.id)
                   .run();
 
-                // Serve-run write-back: ordered stops into serve_routes
+                // Serve-run write-back: ordered stop IDs into serve_routes.
+                // Must be plain numeric IDs — the client (ServePage,
+                // ServeRoutePlanner) reads optimized_order_json as number[]
+                // and looks up stops by id.
                 if (job.job_type === 'serve_run' && job.ref_id != null) {
                   const stops = body.routes?.[0]?.stops ?? [];
-                  const ordered = stops
-                    .filter((s) => s.type === 'service')
-                    .map((s) => ({ id: Number(s.location), eta: s.eta, wait: s.wait ?? 0 }));
+                  const orderedIds = stops
+                    .filter((s: { type?: string }) => s.type === 'service')
+                    .map((s: { location?: string }) => Number(s.location))
+                    .filter((n: number) => Number.isFinite(n));
+                  // Compute total distance/duration from route-level summary
+                  // (may be absent in V2 — fall back to null).
+                  const route = body.routes?.[0] as { distance?: number; duration?: number } | undefined;
+                  const totalDistanceMiles = route?.distance
+                    ? Math.round((route.distance / 1609.34) * 10) / 10
+                    : null;
+                  const totalDurationMinutes = route?.duration
+                    ? Math.round(route.duration / 60)
+                    : null;
                   await db
                     .prepare(
                       `UPDATE serve_routes
-                       SET optimized_order_json=?, updated_at=datetime('now')
+                       SET optimized_order_json = ?,
+                           total_distance_miles = COALESCE(?, total_distance_miles),
+                           total_time_minutes = COALESCE(?, total_time_minutes),
+                           updated_at = datetime('now')
                        WHERE id=?`,
                     )
-                    .bind(JSON.stringify(ordered), job.ref_id)
+                    .bind(
+                      JSON.stringify(orderedIds),
+                      totalDistanceMiles,
+                      totalDurationMinutes,
+                      job.ref_id,
+                    )
                     .run();
                 }
 

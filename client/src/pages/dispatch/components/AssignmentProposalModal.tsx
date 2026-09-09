@@ -11,6 +11,10 @@ export interface AssignmentProposal {
   currentAssignment: string | null;
   eta: string;               // ISO datetime
   changed: boolean;          // different from current assignment
+  /** Total distance for this unit's route in meters */
+  routeDistanceMeters?: number;
+  /** Total duration for this unit's route in seconds */
+  routeDurationSeconds?: number;
 }
 
 interface Props {
@@ -36,6 +40,16 @@ function formatEta(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function formatDistMeters(m: number | undefined): string {
+  if (!m || m <= 0) return '—';
+  return `${(m / 1609.34).toFixed(1)} mi`;
+}
+
+function formatDurSec(s: number | undefined): string {
+  if (!s || s <= 0) return '—';
+  return `${Math.round(s / 60)}m`;
 }
 
 const PRIORITY_STYLE: Record<string, string> = {
@@ -108,6 +122,8 @@ export default function AssignmentProposalModal({
                 <th className="text-left px-3 py-[3px] border-b border-rmpg-700">ADDRESS</th>
                 <th className="text-left px-3 py-[3px] border-b border-rmpg-700">SUGGESTED UNIT</th>
                 <th className="text-left px-3 py-[3px] border-b border-rmpg-700">ETA</th>
+                <th className="text-right px-3 py-[3px] border-b border-rmpg-700">DIST</th>
+                <th className="text-right px-3 py-[3px] border-b border-rmpg-700">TIME</th>
                 <th className="text-left px-3 py-[3px] border-b border-rmpg-700">STATUS</th>
               </tr>
             </thead>
@@ -133,6 +149,8 @@ export default function AssignmentProposalModal({
                     )}
                   </td>
                   <td className="px-3 py-[2px] text-rmpg-300">{formatEta(p.eta)}</td>
+                  <td className="px-3 py-[2px] text-right text-fg-muted font-mono">{formatDistMeters(p.routeDistanceMeters)}</td>
+                  <td className="px-3 py-[2px] text-right text-fg-muted font-mono">{formatDurSec(p.routeDurationSeconds)}</td>
                   <td className="px-3 py-[2px]">
                     {p.changed ? (
                       <label className="flex items-center gap-1.5 cursor-pointer">

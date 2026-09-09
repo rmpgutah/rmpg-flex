@@ -52,9 +52,19 @@ function buildProposals(
 ): AssignmentProposal[] {
   const proposals: AssignmentProposal[] = [];
 
+  // Build a map of unit call_sign → route distance/duration
+  const routeStatsByUnit = new Map<string, { distanceMeters: number; durationSeconds: number }>();
+  for (const route of solution.routes) {
+    routeStatsByUnit.set(route.vehicle, {
+      distanceMeters: route.distance ?? 0,
+      durationSeconds: route.duration ?? 0,
+    });
+  }
+
   for (const route of solution.routes) {
     const unitSign = route.vehicle;
     const unitId = unitsBySign.get(unitSign) ?? -1;
+    const stats = routeStatsByUnit.get(unitSign);
 
     for (const stop of route.stops) {
       if (stop.type !== 'service') continue;
@@ -82,6 +92,8 @@ function buildProposals(
         currentAssignment,
         eta: stop.eta,
         changed,
+        routeDistanceMeters: stats?.distanceMeters,
+        routeDurationSeconds: stats?.durationSeconds,
       });
     }
   }

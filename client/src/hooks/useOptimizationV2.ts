@@ -15,6 +15,10 @@ export interface UseOptimizationV2 {
   solution: V2Solution | null;
   elapsedMs: number;
   error: string | null;
+  avgMpg: number | null;
+  routeCount: number;
+  totalDistanceMeters: number;
+  totalDurationSeconds: number;
   reset(): void;
 }
 
@@ -23,6 +27,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
   const [solution, setSolution] = useState<V2Solution | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [avgMpg, setAvgMpg] = useState<number | null>(null);
 
   const jobIdRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -43,6 +48,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
     setSolution(null);
     setElapsedMs(0);
     setError(null);
+    setAvgMpg(null);
   }, [clearPolling]);
 
   // Clear interval and mark unmounted on cleanup
@@ -66,6 +72,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
         if (result.status === 'complete') {
           clearPolling();
           setSolution(result.solution ?? null);
+          setAvgMpg(result.avg_mpg ?? null);
           setStatus('complete');
         } else if (result.status === 'error') {
           clearPolling();
@@ -99,13 +106,27 @@ export function useOptimizationV2(): UseOptimizationV2 {
     }
   }, [reset, startPolling]);
 
+  // Memoize computed route summaries from solution
+  const routeCount = useMemo(() => solution?.routes.length ?? 0, [solution]);
+  const totalDistanceMeters = useMemo(
+    () => solution?.routes.reduce((acc, r) => {
+      const lastStop = r.stops[r.stops.length - 1];
+      return acc + (r.distance ?? lastStop?.odometer ?? 0);
+    }, 0) ?? 0,
+    [solution],
+  );
+  const totalDurationSeconds = useMemo(
+    () => solution?.routes.reduce((acc, r) => acc + (r.duration ?? 0), 0) ?? 0,
+    [solution],
+  );
+
   // Memoize the returned object so callers get a stable reference between
   // renders. Without this, every render creates a new object — any useCallback
   // that lists the whole object in its deps (e.g. handleOptimizeAssignments in
   // DispatchPage) is recreated every render, and any child component with that
   // callback in a useEffect dep re-runs the effect every render.
   return useMemo(
-    () => ({ submit, status, solution, elapsedMs, error, reset }),
-    [submit, status, solution, elapsedMs, error, reset],
+    () => ({ submit, status, solution, elapsedMs, error, avgMpg, routeCount, totalDistanceMeters, totalDurationSeconds, reset }),
+    [submit, status, solution, elapsedMs, error, avgMpg, routeCount, totalDistanceMeters, totalDurationSeconds, reset],
   );
 }

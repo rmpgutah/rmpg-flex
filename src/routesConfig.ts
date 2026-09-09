@@ -112,6 +112,7 @@ import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
 import incidentsRouter from './routes/incidents';
+import adasis from './routes/adasis';
 import audit from './routes/audit';
 import auditEmit from './routes/auditEmit';
 import auditByEntity from './routes/auditByEntity';
@@ -482,6 +483,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // all conflicted on this exact slot — that's how this rule got
   // codified. None of the prefixes here have ordering invariants
   // with each other (no shared trie roots), so alphabetical is safe.
+  // ── ADASIS v3 Electronic Horizon ──────────────────────────
+  { prefix: '/api/adasis', router: adasis, auth: 'required',
+    note: 'ADASIS v3 Electronic Horizon: Provider, Consumer, and Query endpoints for vehicle telematics and dispatch map' },
+
   { prefix: '/api/animal-control', router: animalControl, auth: 'required',
     note: 'AnimalControlPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/cases', router: cases, auth: 'required',
