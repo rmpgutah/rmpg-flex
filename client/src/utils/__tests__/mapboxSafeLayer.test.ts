@@ -99,10 +99,11 @@ describe('mapboxSafeLayer — teardown-race guards', () => {
 // layer. Guard at every config-to-mapbox boundary.
 // ============================================================
 describe('safeMapboxColor', () => {
-  it('rejects CSS variable strings and returns the fallback', () => {
-    expect(safeMapboxColor('var(--surface-base)', '#000')).toBe('#000');
-    expect(safeMapboxColor('  var(--anything)  ', '#000')).toBe('#000');
-    expect(safeMapboxColor('VAR(--upper)', '#000')).toBe('#000');
+  it('resolves known CSS variable strings and falls back to fallback if unknown', () => {
+    expect(safeMapboxColor('var(--sev-ok)', '#000')).toBe('#22c55e');
+    expect(safeMapboxColor('  var(--sev-ok)  ', '#000')).toBe('#22c55e');
+    expect(safeMapboxColor('var(--unknown-token)', '#000')).toBe('#000');
+    expect(safeMapboxColor('var(--unknown, #3b82f6)', '#000')).toBe('#3b82f6');
   });
 
   it('rejects empty/whitespace/non-string values and returns the fallback', () => {
