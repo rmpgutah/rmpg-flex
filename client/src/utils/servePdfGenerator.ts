@@ -1562,12 +1562,9 @@ export async function generateNoticeOfAttempt(
 
   // ── Subject-facing QR code ──
   try {
-    // Stays on rmpgutah.us/verify for now: that route logs the scan, captures
-    // geo/device telemetry and pushes the "Subject Engaged" alert to the
-    // officer. Retargeting to rmpgutahps.us is scoped in
-    // docs/superpowers/specs/2026-09-05-rmpgutahps-notice-integration-design.md
-    // and must land only once that site calls /api/verify itself.
-    const verifyUrl = `https://rmpgutah.us/verify?ref=${encodeURIComponent(headerRef)}`;
+    // Targets rmpgutahps.us/notice-of-attempt directly so scanning loads outreach,
+    // instructions, and information while capturing all legal data points and telemetry.
+    const verifyUrl = `${SUBJECT_SUPPORT.noticeInfoUrl}?ref=${encodeURIComponent(headerRef)}`;
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
       errorCorrectionLevel: 'M',
       margin: 1,

@@ -231,4 +231,35 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
 
     expect(pdf.getNumberOfPages()).toBe(1);
   });
+
+  it('encodes the QR code targeting rmpgutahps.us/notice-of-attempt with agency ref', async () => {
+    const QRCode = (await import('qrcode')).default;
+    const toDataURLSpy = vi.spyOn(QRCode, 'toDataURL');
+
+    await generateNoticeOfAttempt({
+      caseNumber: '26-583650',
+      agencyRefNumber: 'JOB-249',
+      noticeDate: '09/09/2026',
+      courtName: 'Third Judicial District Court',
+      jurisdiction: 'State of Utah',
+      serverName: 'Christopher Zamora',
+      serverBadge: '5172',
+      serverCompany: ORGANIZATION.name,
+      serverPhone: ORGANIZATION.phone,
+      recipientName: 'Camden Joseph Clark',
+      recipientAddress: '3506 South Blair Circle, South Salt Lake, UT 84115',
+      documentType: 'Small Claims Affidavit & Claim',
+      attempts: [
+        { number: 1, date: '09/06/2026', time: '18:56', result: 'PS/00.01', notes: 'AGENT ATTEMPTED CO... - GPS 40.6945, -111.8821', gpsLat: 40.6945, gpsLng: -111.8821 },
+      ],
+    }, { printTarget: 'mobile' });
+
+    expect(toDataURLSpy).toHaveBeenCalledWith(
+      'https://rmpgutahps.us/notice-of-attempt?ref=JOB-249',
+      expect.objectContaining({
+        errorCorrectionLevel: 'M',
+        margin: 1,
+      }),
+    );
+  });
 });
