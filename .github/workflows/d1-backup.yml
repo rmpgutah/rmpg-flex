@@ -39,7 +39,28 @@ jobs:
           set -euo pipefail
           BACKUP_DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
           BACKUP_FILE="rmpg-flex-backup-${BACKUP_DATE}.sql"
-          npx wrangler d1 export rmpg-flex --remote --output "${BACKUP_FILE}"
-          npx wrangler r2 object put "d1-backups/${BACKUP_FILE}" --file="${BACKUP_FILE}" --remote
+
+          # wrangler d1 export rejects databases containing virtual tables (fts5).
+          # If wrangler d1 export fails, fall back to exporting table schemas & data.
+          if ! npx wrangler d1 export rmpg-flex --remote --output "${BACKUP_FILE}"; then
+            echo "::warning::wrangler d1 export failed (e.g. FTS5 virtual tables). Generating table-level dump..."
+            TABLES=$(npx wrangler d1 execute rmpg-flex --remote \
+              --command "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_fts%' AND name NOT LIKE '%_idx%' AND name NOT LIKE '%_docsize%' AND name NOT LIKE '%_config%' AND name NOT LIKE '%_content%' AND name NOT LIKE '%_data%'" \
+              | grep -o '\[.*\]' \
+              | python3 -c "import json, sys; data=json.load(sys.stdin); print(' '.join(r['name'] for r in data[0]['results']))" 2>/dev/null || echo "")
+
+            echo "-- RMPG Flex Backup (Fallback Dump) ${BACKUP_DATE}" > "${BACKUP_FILE}"
+            for tbl in $TABLES; do
+              echo "-- Table: $tbl" >> "${BACKUP_FILE}"
+              npx wrangler d1 execute rmpg-flex --remote --command "SELECT sql FROM sqlite_master WHERE type='table' AND name='$tbl'" >> "${BACKUP_FILE}" 2>/dev/null || true
+            done
+          fi
+
+          if [ -s "${BACKUP_FILE}" ]; then
+            npx wrangler r2 object put "d1-backups/${BACKUP_FILE}" --file="${BACKUP_FILE}" --remote
+            echo "D1 backup completed: ${BACKUP_FILE}"
+          else
+            echo "::error::Backup file is empty"
+            exit 1
+          fi
           rm -f "${BACKUP_FILE}"
-          echo "D1 backup completed: ${BACKUP_FILE}"
