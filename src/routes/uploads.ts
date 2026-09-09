@@ -235,6 +235,12 @@ uploads.get('/:fileId/thumbnail', async (c) => {
     return c.body(data);
   } catch (err) {
     log.error('Thumbnail fetch failed', { fileId: c.req.param('fileId') }, err as Error);
+    if (err instanceof FileEncryptionError) {
+      return c.json({
+        error: 'File not available — storage key error. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
+    }
     return c.json({ error: 'Thumbnail failed', code: 'THUMBNAIL_FAILED' }, 500);
   }
 });
@@ -269,6 +275,12 @@ uploads.get('/:fileId/download', async (c) => {
     return c.body(data);
   } catch (err) {
     log.error('Download fetch failed', { fileId: c.req.param('fileId') }, err as Error);
+    if (err instanceof FileEncryptionError) {
+      return c.json({
+        error: 'File not available — storage key error. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
+    }
     return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
   }
 });
@@ -324,6 +336,12 @@ uploads.get('/:fileId', async (c) => {
     return c.body(data);
   } catch (err) {
     log.error('File fetch failed', { fileId: c.req.param('fileId') }, err as Error);
+    if (err instanceof FileEncryptionError) {
+      return c.json({
+        error: 'File not available — storage key error. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
+    }
     return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
   }
 });

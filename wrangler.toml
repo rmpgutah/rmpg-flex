@@ -258,13 +258,13 @@ bucket_name = "rmpg-flex-tesseract-training"
 # otherwise write into a stream with no sink, and the rows would be discarded
 # rather than landing in Iceberg — silent data loss that looks like success.
 #
-# [[pipelines]]
-# binding = "ANALYTICS"
-# stream  = "940a2ab71ee54ace9e534fd91e342f89"
+[[pipelines]]
+binding = "ANALYTICS"
+stream  = "940a2ab71ee54ace9e534fd91e342f89"
 #
-# [[pipelines]]
-# binding = "EVENTS"
-# stream  = "622585b17623479190bbecb141d606ce"
+[[pipelines]]
+binding = "EVENTS"
+stream  = "622585b17623479190bbecb141d606ce"
 
 # ─── PDF Tools Container (RE-ENABLED, retest 2026-08-08 v2) ─
 # Two real, now-resolved blockers were found and fixed for this container:

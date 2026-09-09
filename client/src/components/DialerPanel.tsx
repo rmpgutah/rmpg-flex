@@ -21,6 +21,10 @@ export const DIALER_PANEL_HEIGHT = `${DIALER_PANEL_HEIGHT_PX}px`;
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
 const TOAST_DURATION_MS = 7_000;
+/** Twilio Voice tokens last 1 h by default. Reload the iframe 5 min before
+ *  expiry so the fresh page fetch gets a new token and avoids error 20104.
+ *  If your Twilio token TTL is set shorter, reduce this value accordingly. */
+const TWILIO_TOKEN_LIFETIME_MS = 55 * 60 * 1_000;
 
 type DialConnectMessage =
   | { source: 'dial-connect'; type: 'call_status'; callSid: string; status: string; from?: string; to?: string; durationSeconds?: number; transcript?: string; recordingUrl?: string }
@@ -163,6 +167,9 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const iframeSrcRef = useRef(DIALER_APP_URL);
   const popupRef = useRef<Window | null>(null);
+  const connectedAtRef   = useRef(0);      // ms timestamp of first successful heartbeat this session
+  const activeCallRef    = useRef(false);  // true while a call is ringing / in-progress
+  const reloadPendingRef = useRef(false);  // reload deferred because a call was active at the expiry mark
 
   const onDialerPage = location.pathname === DIALER_CONNECT_PATH;
 
@@ -221,12 +228,35 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       flushSync(() => {
         setLastSeen(Date.now());
         setConnected(true);
+        if (connectedAtRef.current === 0) {
+          connectedAtRef.current = Date.now();
+        }
         if (message.type === 'call_status' && message.status === 'ringing') {
           addToast('ringing', `Inbound call from ${message.from ?? 'unknown number'}`);
         } else if (message.type === 'duress_alert') {
           addToast('duress', `Duress alert: ${message.dispatcherName}`);
         }
       });
+
+      // Track active-call state so we don't reload mid-call.
+      if (message.type === 'call_status') {
+        if (message.status === 'ringing' || message.status === 'in-progress') {
+          activeCallRef.current = true;
+        } else if (INGEST_STATUSES.has(message.status)) {
+          activeCallRef.current = false;
+          if (reloadPendingRef.current) {
+            // The call that was blocking the refresh just ended — reload now.
+            reloadPendingRef.current = false;
+            const frame = iframeRef.current;
+            if (frame) {
+              connectedAtRef.current = 0;
+              setConnected(false);
+              setLastSeen(0);
+              frame.src = `${DIALER_APP_URL}?_r=${Date.now()}`;
+            }
+          }
+        }
+      }
 
       if (message.type === 'call_status' && message.status === 'ringing') {
         if (!poppedOut) revealDialer();
@@ -298,6 +328,27 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     }, HEARTBEAT_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [lastSeen]);
+
+  // Proactive Twilio token refresh: reload the iframe ~5 min before the 1-hour token expires.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (connectedAtRef.current === 0) return;
+      if (Date.now() - connectedAtRef.current < TWILIO_TOKEN_LIFETIME_MS) return;
+      if (activeCallRef.current) {
+        // Queue the reload — it fires in handleMessage when the call ends.
+        reloadPendingRef.current = true;
+        return;
+      }
+      const frame = iframeRef.current;
+      if (!frame) return;
+      connectedAtRef.current = 0;
+      reloadPendingRef.current = false;
+      setConnected(false);
+      setLastSeen(0);
+      frame.src = `${DIALER_APP_URL}?_r=${Date.now()}`;
+    }, HEARTBEAT_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []); // intentional: refs are stable, state setters are stable
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
