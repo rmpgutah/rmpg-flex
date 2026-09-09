@@ -399,6 +399,11 @@ const TERRAIN_DEM_SOURCE = 'rmpg-mapbox-terrain-dem';
 export function addMapboxTerrain(map: mapboxgl.Map): void {
   if (!map || !map.style) return;
   try {
+    const proj = (map.getProjection && map.getProjection()?.name) || 'mercator';
+    if (proj !== 'mercator' && proj !== 'globe') {
+      // Mapbox GL JS only supports terrain with 'mercator' or 'globe' projections.
+      return;
+    }
     if (!hasSource(map, TERRAIN_DEM_SOURCE)) {
       map.addSource(TERRAIN_DEM_SOURCE, {
         type: 'raster-dem',

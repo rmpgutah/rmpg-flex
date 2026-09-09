@@ -532,12 +532,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cloudflare Insights is injected on both rmpgutah.us and dialer.rmpgutah.us.
+  // Cloudflare Insights and Dial Connect are third-party / separate origins.
   // Taking ownership (204 or fetch()) either fails SRI or rejects the
-  // FetchEvent when the beacon is blocked. Never respondWith these.
+  // FetchEvent when blocked or navigating. Never respondWith these.
   if (
     url.hostname === 'static.cloudflareinsights.com' ||
-    url.hostname.endsWith('.cloudflareinsights.com')
+    url.hostname.endsWith('.cloudflareinsights.com') ||
+    url.hostname === 'dialer.rmpgutah.us'
   ) {
     return;
   }

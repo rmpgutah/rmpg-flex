@@ -29,6 +29,10 @@ export function useMapProjection(
   const setProjection = useCallback((proj: MapProjection) => {
     if (!map || !mapLoaded) return;
     try {
+      if (proj !== 'mercator' && proj !== 'globe') {
+        // Mapbox GL JS throws/warns: "Terrain is not yet supported with alternate projections. Use mercator or globe to enable terrain."
+        try { map.setTerrain(null); } catch { /* ignore */ }
+      }
       map.setProjection(proj as any);
       setProjectionState(proj);
 

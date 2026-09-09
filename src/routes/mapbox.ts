@@ -98,8 +98,40 @@ mapbox.get('/reverse-geocode', async (c) => {
   const params = new URLSearchParams({ access_token: tk, limit: '1' });
   try {
     const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
-    return c.json({ features: data?.features ?? [] });
+    const features = data?.features ?? [];
+    const results = features.map((f: any) => ({
+      name: f.text || f.place_name || '',
+      full_address: f.place_name || '',
+      latitude: f.center?.[1] ?? 0,
+      longitude: f.center?.[0] ?? 0,
+      place_type: (f.place_type || [])[0] || '',
+      relevance: f.relevance ?? 0,
+    }));
+    return c.json({ features, results });
   } catch (err) { return fail(c, err, 'reverse-geocode'); }
+});
+
+// GET /api/mapbox/geocode/reverse alias for reverse-geocode
+mapbox.get('/geocode/reverse', async (c) => {
+  const tk = token(c);
+  if (!tk) return tokenMissing(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const limit = c.req.query('limit') || '1';
+  const params = new URLSearchParams({ access_token: tk, limit });
+  try {
+    const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
+    const features = data?.features ?? [];
+    const results = features.map((f: any) => ({
+      name: f.text || f.place_name || '',
+      full_address: f.place_name || '',
+      latitude: f.center?.[1] ?? 0,
+      longitude: f.center?.[0] ?? 0,
+      place_type: (f.place_type || [])[0] || '',
+      relevance: f.relevance ?? 0,
+    }));
+    return c.json({ features, results });
+  } catch (err) { return fail(c, err, 'geocode/reverse'); }
 });
 
 // ── Directions ─────────────────────────────────────────────
