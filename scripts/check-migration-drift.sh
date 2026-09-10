@@ -259,9 +259,10 @@ log "live snapshot: $LIVE_TABLE_COUNT tables"
 
 while IFS= read -r tname; do
   [ -z "$tname" ] && continue
-  # `*_new` tables are table-rebuild temporaries (CREATE x_new → copy →
-  # DROP x → RENAME x_new TO x) — they are supposed to be gone afterward.
-  case "$tname" in *_new) continue ;; esac
+  # `*_new` / `*_next` tables are table-rebuild temporaries
+  # (CREATE x_new → copy → DROP x → RENAME x_new TO x) — they are
+  # supposed to be gone after the migration runs.
+  case "$tname" in *_new|*_next) continue ;; esac
   if ! grep -qxF "$tname" "$LIVE_TABLES_FILE"; then
     err "MISSING TABLE: $tname (expected by $(table_source "$tname"))"
     MISSING_TABLES+=("$tname")
