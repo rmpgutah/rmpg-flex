@@ -331,6 +331,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [routeProgress, setRouteProgress] = useState<RouteProgress | null>(null);
   const [routeGeom, setRouteGeom] = useState<RouteGeom | null>(null);
   const [offRoute, setOffRoute] = useState(false);
+  const [arrived, setArrived] = useState(false);
   const [multiStopRoute, setMultiStopRoute] = useState<MultiStopRoute | null>(null);
   const [multiStopLoading, setMultiStopLoading] = useState(false);
 
@@ -570,6 +571,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     setRouteProgress(null);
     setRouteGeom(null);
     setOffRoute(false);
+    setArrived(false);
     geomRef.current = null;
     offRouteStreakRef.current = 0;
     lastOriginRef.current = null;
@@ -654,6 +656,18 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
       const progress = updateProgress(newLat, newLng);
 
+      // Arrival detection: auto-clear route when within ~50 m of destination.
+      if (progress && progress.fraction >= 0.97 && progress.remainingMeters < 80 && !arrived) {
+        setArrived(true);
+        setOffRoute(false);
+        clearRouteFromMap();
+        setActiveRoute(null);
+        setRouteProgress(null);
+        geomRef.current = null;
+        destRef.current = null;
+        return;
+      }
+
       // Feature 4: off-route detection + auto re-route.
       if (progress) {
         if (progress.offRouteMeters > CORRIDOR_METERS) {
@@ -677,7 +691,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       if (moved < REROUTE_DISTANCE_THRESHOLD) return;
       queryRoute({ lat: newLat, lng: newLng }, destRef.current);
     },
-    [queryRoute, updateProgress, travelState.paused, updatePosition],
+    [queryRoute, updateProgress, travelState.paused, updatePosition, arrived, clearRouteFromMap],
   );
 
   // ── Feature 5: closest unit by real drive time (Matrix API) ──
@@ -959,6 +973,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     routeProgress,
     routeGeom,
     offRoute,
+    arrived,
     showRoute,
     clearRoute,
     updateOrigin,

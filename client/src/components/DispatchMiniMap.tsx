@@ -146,7 +146,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const isAuthError = error != null;
 
   // Routing (auto-route when a single assigned unit has GPS)
-  const { activeRoute, showRoute, clearRoute, updateOrigin, routeProgress, offRoute } = useMapRouting({ map: mapReady ? mapRef.current : null });
+  const { activeRoute, showRoute, clearRoute, updateOrigin, routeProgress, offRoute, arrived } = useMapRouting({ map: mapReady ? mapRef.current : null });
   const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
   // Device's OWN live GPS (read-only — Layout owns the upload). Drives
@@ -468,23 +468,36 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     wasEnrouteRef.current = true;
     if (!activeRoute) return;
 
-    // Only follow if this device is the routing unit
-    const { latitude: lat, longitude: lng, unitCallSign } = devGps;
-    if (lat == null || lng == null) return;
-    if (!unitCallSign || unitCallSign !== activeRoute.unitCallSign) return;
+    const { latitude: devLat, longitude: devLng, unitCallSign } = devGps;
+    const isDevUnit = devLat != null && devLng != null && unitCallSign === activeRoute.unitCallSign;
 
-    const bearing = devGps.headingSmoothed ?? devGps.course ?? devGps.heading ?? 0;
-    map.easeTo({
-      center: [lng, lat] as [number, number],
-      bearing,
-      pitch: 45,
-      zoom: 16,
-      duration: 800,
-      easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
-    });
+    if (isDevUnit) {
+      // This device IS the enroute officer: driver-perspective pitch + heading.
+      const bearing = devGps.headingSmoothed ?? devGps.course ?? devGps.heading ?? 0;
+      map.easeTo({
+        center: [devLng!, devLat!] as [number, number],
+        bearing,
+        pitch: 45,
+        zoom: 16,
+        duration: 800,
+        easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
+      });
+    } else {
+      // Dispatcher view: follow the routed unit via server GPS — overhead, no heading.
+      const serverUnit = units.find((u) => u.call_sign === activeRoute.unitCallSign);
+      if (!serverUnit || serverUnit.latitude == null || serverUnit.longitude == null) return;
+      map.easeTo({
+        center: [serverUnit.longitude, serverUnit.latitude] as [number, number],
+        pitch: 0,
+        bearing: 0,
+        zoom: MINI_ZOOM,
+        duration: 1200,
+        easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
+      });
+    }
   }, [devGps.latitude, devGps.longitude, devGps.unitCallSign, devGps.headingSmoothed,
       devGps.course, devGps.heading, activeRoute, call?.status, call?.latitude,
-      call?.longitude, mapReady]);
+      call?.longitude, mapReady, units]);
 
   // Notify parent of route changes
   useEffect(() => {
@@ -687,8 +700,20 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             </div>
           )}
 
+          {/* Arrived banner */}
+          {arrived && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '2px 8px', background: 'var(--sev-ok)', color: '#000',
+            }}>
+              <span style={{ fontSize: 9, fontWeight: 900, fontFamily: "'Arial', sans-serif" }}>
+                ✓ ARRIVED ON SCENE
+              </span>
+            </div>
+          )}
+
           {/* Off-route warning */}
-          {offRoute && (
+          {!arrived && offRoute && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '2px 8px', background: 'var(--sev-warn)', color: '#000',
