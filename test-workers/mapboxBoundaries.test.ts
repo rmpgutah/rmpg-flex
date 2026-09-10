@@ -43,22 +43,26 @@ describe('GET /api/mapbox/boundaries', () => {
 
   it('falls back to reverse geocoding when Boundaries is not entitled', async () => {
     // The fix for the permanent "Jurisdiction unavailable" badge: Boundaries
-    // 403s on a standard token, but Geocoding v5 carries the same answer in
-    // `context` (district = county, place = municipality) for free.
+    // 403s on a standard token, but Geocoding v6 carries the same answer in
+    // `feature.properties.context` (district = county, place = municipality) for free.
     const fetchMock = vi.fn(async (url: unknown) => {
       if (String(url).includes('/boundaries/')) {
         return new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 });
       }
+      // v6 reverse geocoding response: context is an OBJECT keyed by feature_type
       return new Response(JSON.stringify({
         features: [{
-          id: 'address.123', text: '1015 East Murray Holladay Road',
-          context: [
-            { id: 'neighborhood.9', text: 'Canyon Rim' },
-            { id: 'postcode.8', text: '84117' },
-            { id: 'place.7', text: 'Millcreek' },
-            { id: 'district.6', text: 'Salt Lake County' },
-            { id: 'region.5', text: 'Utah' },
-          ],
+          properties: {
+            feature_type: 'address',
+            name: '1015 East Murray Holladay Road',
+            context: {
+              neighborhood: { name: 'Canyon Rim' },
+              postcode: { name: '84117' },
+              place: { name: 'Millcreek' },
+              district: { name: 'Salt Lake County' },
+              region: { name: 'Utah' },
+            },
+          },
         }],
       }), { status: 200 });
     });
@@ -75,15 +79,23 @@ describe('GET /api/mapbox/boundaries', () => {
   });
 
   it('matches context entries by id PREFIX, not exact equality', async () => {
-    // Mapbox types context entries as `district.1234` / `place.5678`. An
-    // exact-equality check against "district" matches nothing, which would
-    // silently reproduce the all-null response this fix exists to remove.
+    // v6 context is an object keyed by feature_type — direct key access,
+    // no prefix-matching needed. When the top-level feature IS the type we
+    // want (e.g. feature_type = 'place'), its name is used directly.
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).includes('/boundaries/')) {
         return new Response('{}', { status: 404 });
       }
       return new Response(JSON.stringify({
-        features: [{ id: 'place.42', text: 'Millcreek', context: [{ id: 'district.99', text: 'Salt Lake County' }] }],
+        features: [{
+          properties: {
+            feature_type: 'place',
+            name: 'Millcreek',
+            context: {
+              district: { name: 'Salt Lake County' },
+            },
+          },
+        }],
       }), { status: 200 });
     }));
     const withToken = { ...(env as Record<string, unknown>), MAPBOX_ACCESS_TOKEN: 'pk.test-token' };
