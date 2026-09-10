@@ -22,9 +22,13 @@ describe('extractZxingText', () => {
 });
 
 describe('live PDF417 crop', () => {
-  it('is a horizontal strip covering most of the frame width', () => {
-    expect(LIVE_PDF417_CROP.wFrac).toBeGreaterThan(0.8);
-    expect(LIVE_PDF417_CROP.hFrac).toBeLessThan(0.6);
-    expect(LIVE_PDF417_CROP.yFrac).toBeLessThan(0.2);
+  it('targets the BOTTOM half of the frame — where US DL barcodes actually are', () => {
+    // Primary crop must cover the lower portion of the camera frame.
+    // US DL PDF417 strip is in the lower ~35% of the card back; card is
+    // vertically centered in the viewfinder → barcode lands in the bottom half.
+    expect(LIVE_PDF417_CROP.wFrac).toBeGreaterThan(0.8);   // wide strip
+    expect(LIVE_PDF417_CROP.hFrac).toBeLessThan(0.6);       // not the full frame
+    expect(LIVE_PDF417_CROP.yFrac).toBeGreaterThan(0.35);   // starts in the bottom half
+    expect(LIVE_PDF417_CROP.yFrac + LIVE_PDF417_CROP.hFrac).toBeGreaterThan(0.85); // reaches near the bottom
   });
 });

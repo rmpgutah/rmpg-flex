@@ -51,10 +51,31 @@ export function cropImageData(src: ImageData, opts: CropFractions): ImageData {
   return out;
 }
 
-/** Default live-viewfinder crop: the PDF417 strip on the back of an ID-1 card. */
+/**
+ * Primary live-viewfinder crop: the PDF417 strip on the back of an ID-1 card.
+ * Most US states (incl. Utah) place the barcode in the lower ~35% of the card back.
+ * When the card is centered in the viewfinder the strip lands in the bottom half of
+ * the video frame — this crop targets that zone.
+ *
+ * GEOMETRY: card cutout ≈ 88% w × 55.5% h centered in frame → card top ≈ 22%, bottom ≈ 78%.
+ * PDF417 strip in lower third of card → approx 55%–78% of frame height.
+ * Cropping 45%–93% gives generous margin for cards held slightly high or low.
+ */
 export const LIVE_PDF417_CROP: CropFractions = {
-  xFrac: 0.05,
-  yFrac: 0.10,
-  wFrac: 0.90,
-  hFrac: 0.45,
+  xFrac: 0.02,
+  yFrac: 0.45,
+  wFrac: 0.96,
+  hFrac: 0.48,
+};
+
+/**
+ * Secondary live-viewfinder crop: the upper portion of the card frame.
+ * Some jurisdictions (and some card orientations) place the barcode higher.
+ * Tried after the primary crop fails on each polling tick.
+ */
+export const LIVE_PDF417_CROP_TOP: CropFractions = {
+  xFrac: 0.02,
+  yFrac: 0.05,
+  wFrac: 0.96,
+  hFrac: 0.42,
 };

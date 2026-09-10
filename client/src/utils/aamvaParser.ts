@@ -55,6 +55,10 @@ export interface AamvaResult {
   audit_info: string;
   /** Every raw element id → value, including jurisdiction (Z*) fields. */
   raw_elements: Record<string, string>;
+  /** The verbatim decoded barcode string — stored for audit replay. */
+  raw_aamva_text?: string;
+  /** Non-fatal issues accumulated during parsing (truncated fields, etc.). */
+  parse_errors?: string[];
 }
 
 // AAMVA D.12.5 element ids we map to named fields. Anything else
@@ -323,7 +327,11 @@ export function parseAamva(raw: string): AamvaResult {
 
   const flag = (v?: string): boolean | null => (v === undefined ? null : v.trim() === '1');
 
+  const parseErrors: string[] = [];
+
   const result: AamvaResult = {
+    raw_aamva_text: raw,
+    parse_errors: parseErrors,
     first_name: first,
     middle_name: middle,
     last_name: last,
@@ -374,6 +382,7 @@ export function parseAamva(raw: string): AamvaResult {
 
   return result;
 }
+
 
 // AAMVA Issuer Identification Numbers → jurisdiction code.
 // Source: AAMVA IIN registry (US states + DC + common territories/provinces).
@@ -638,6 +647,30 @@ export function assessAamva(r: AamvaResult, now: Date = new Date()): ScanAlert[]
   }
   if (r.is_real_id === false) {
     alerts.push({ level: 'info', code: 'NOT_REAL_ID', message: 'Not REAL ID compliant' });
+  }
+
+  // HazMat endorsement expiry
+  if (r.dl_endorsements && /[HX]/i.test(r.dl_endorsements) && r.dl_hazmat_expiry) {
+    const hm = r.dl_hazmat_expiry.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (hm) {
+      const hazExp = new Date(Number(hm[1]), Number(hm[2]) - 1, Number(hm[3]), 23, 59, 59); // new-date-ok: local civil date from numeric Y/M/D parts
+      if (hazExp.getTime() < now.getTime()) {
+        alerts.push({
+          level: 'warning',
+          code: 'HAZMAT_ENDORSEMENT_EXPIRED',
+          message: `HazMat endorsement expired ${r.dl_hazmat_expiry} — CDL may be in violation`,
+        });
+      }
+    }
+  }
+
+  // Non-resident document
+  if (r.non_resident_indicator === true) {
+    alerts.push({
+      level: 'info',
+      code: 'NON_RESIDENT',
+      message: 'Non-resident indicator — card issued to a non-resident of this jurisdiction',
+    });
   }
 
   return alerts;

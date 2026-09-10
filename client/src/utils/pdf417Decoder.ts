@@ -23,6 +23,7 @@ import {
   extractZxingText,
   cropImageData,
   LIVE_PDF417_CROP,
+  LIVE_PDF417_CROP_TOP,
 } from './pdf417Payload';
 
 let prepared: Promise<void> | null = null;
@@ -247,9 +248,15 @@ function downscaleIfNeeded(imageData: ImageData, maxWidth: number): ImageData {
 }
 
 /**
- * Fast-ish live-camera decode. Crops to the ID-back barcode strip and
- * runs tryHarder on the ROI — a full 1080p frame with tryHarder:false
- * is the combination that never hits on a real Utah DL in the field.
+ * Live-camera decode with multi-pass strategy for automatic capture.
+ *
+ * Pass order (stops at first hit):
+ * 0. Native BarcodeDetector (Chromium PDF417 — instant, zero WASM cost).
+ * 1. Bottom-half ROI, tryHarder:false — fast path for most US DLs
+ *    (barcode in lower ~35% of card back → lower half of frame).
+ * 2. Bottom-half ROI, tryHarder:true  — slower scan for harder cards.
+ * 3. Top-half ROI, tryHarder:true     — states that place barcode higher.
+ * 4. Full 1280px frame, tryHarder:true — last resort.
  */
 export async function decodePdf417Frame(imageData: ImageData): Promise<string | null> {
   const native = await tryBarcodeDetector(imageData as unknown as ImageBitmapSource);
@@ -261,12 +268,22 @@ export async function decodePdf417Frame(imageData: ImageData): Promise<string | 
     return null;
   }
 
-  const roi = downscaleIfNeeded(cropImageData(imageData, LIVE_PDF417_CROP), 1280);
-  const cropped = await tryNativeDecode(roi, 'LocalAverage', false, true);
-  if (cropped) return cropped;
+  // Primary ROI: bottom half of frame (corrected from the old top-45% crop).
+  const bottomRoi = downscaleIfNeeded(cropImageData(imageData, LIVE_PDF417_CROP), 1280);
+  const fastHit = await tryNativeDecode(bottomRoi, 'LocalAverage', false, false);
+  if (fastHit) return fastHit;
 
-  const scaled = downscaleIfNeeded(imageData, 1280);
-  return tryNativeDecode(scaled, 'LocalAverage', false, true);
+  const slowHit = await tryNativeDecode(bottomRoi, 'LocalAverage', false, true);
+  if (slowHit) return slowHit;
+
+  // Secondary ROI: top portion (some states, some card orientations).
+  const topRoi = downscaleIfNeeded(cropImageData(imageData, LIVE_PDF417_CROP_TOP), 1280);
+  const topHit = await tryNativeDecode(topRoi, 'LocalAverage', false, true);
+  if (topHit) return topHit;
+
+  // Full-frame fallback.
+  const full = downscaleIfNeeded(imageData, 1280);
+  return tryNativeDecode(full, 'LocalAverage', false, true);
 }
 
 /**
@@ -299,6 +316,8 @@ export async function decodeQrFrame(imageData: ImageData): Promise<string | null
 export interface Pdf417DecodeOutcome {
   text: string;
   passes: number;
+  /** Wall-clock milliseconds from start of decode to first hit. */
+  decodeMs: number;
 }
 
 const NATIVE_BINARIZERS: ZxingBinarizer[] = ['LocalAverage', 'GlobalHistogram', 'FixedThreshold'];
@@ -319,11 +338,27 @@ const NATIVE_BINARIZERS: ZxingBinarizer[] = ['LocalAverage', 'GlobalHistogram', 
  * glare, shadow, blur), load the image into a canvas and try our
  * custom preprocessing modes at multiple scales.
  */
+/** Rotate an image element onto a new canvas and return its ImageData. */
+function toRotatedImageData(img: HTMLImageElement, turns: 1 | 2 | 3, scale: number): ImageData {
+  const sw = Math.max(1, Math.round(img.naturalWidth * scale));
+  const sh = Math.max(1, Math.round(img.naturalHeight * scale));
+  const ow = turns % 2 === 0 ? sw : sh;
+  const oh = turns % 2 === 0 ? sh : sw;
+  const canvas = document.createElement('canvas');
+  canvas.width = ow; canvas.height = oh;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  ctx.translate(ow / 2, oh / 2);
+  ctx.rotate(turns * Math.PI / 2);
+  ctx.drawImage(img, -sw / 2, -sh / 2, sw, sh);
+  return ctx.getImageData(0, 0, ow, oh);
+}
+
 export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | null> {
+  const t0 = Date.now();
   let passes = 0;
 
   const platform = await tryBarcodeDetector(file);
-  if (platform) return { text: platform, passes: 0 };
+  if (platform) return { text: platform, passes: 0, decodeMs: Date.now() - t0 };
 
   try {
     await ensureModule();
@@ -331,11 +366,12 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
     return null;
   }
 
+  // Phase 1 — native ZXing on the raw JPEG blob (no canvas pipeline, no quality loss).
   for (const binarizer of NATIVE_BINARIZERS) {
     for (const denoise of [false, true]) {
       passes++;
       const text = await tryNativeDecode(file, binarizer, denoise, true);
-      if (text) return { text, passes };
+      if (text) return { text, passes, decodeMs: Date.now() - t0 };
     }
   }
 
@@ -343,6 +379,19 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
   const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
   if (!maxDim) return null;
 
+  // Phase 1.5 — rotation passes: handle photos taken with the phone in portrait
+  // when the DL is held landscape (90° / 180° / 270° rotation).
+  const baseScaleRot = Math.min(1, 2400 / maxDim);
+  for (const turns of [1, 3, 2] as const) {
+    passes++;
+    try {
+      const imageData = toRotatedImageData(img, turns, baseScaleRot);
+      const text = await tryNativeDecode(imageData, 'LocalAverage', false, true);
+      if (text) return { text, passes, decodeMs: Date.now() - t0 };
+    } catch { /* rotation error — try next */ }
+  }
+
+  // Phase 2 — canvas preprocessing at multiple scales.
   const baseScale = maxDim > 4800 ? 4800 / maxDim : 1;
   const scales: number[] = [
     baseScale,
@@ -359,7 +408,7 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
       try {
         const imageData = toImageData(img, scale, mode);
         const text = await tryNativeDecode(imageData, 'LocalAverage', false, true);
-        if (text) return { text, passes };
+        if (text) return { text, passes, decodeMs: Date.now() - t0 };
       } catch {
         // preprocessing or decode error — try next
       }
