@@ -256,10 +256,14 @@ jobs:
       # manifest gained one `DesktopPage-<hash>.css` filename (+36 B,
       # 466,995 → 467,031). Module count unchanged at 109; no new eager
       # imports. Ceiling raised 1 KB to restore headroom.
+      # 468,000 → 472,000: useMapRouting.ts (41.3 KB source, +~1.2 KB raw)
+      # pulled eagerly after the turn-by-turn nav HUD (#4205) added it to the
+      # App import graph. Module count now 110. No new split opportunities
+      # without restructuring the nav subsystem; ceiling raised to match.
       # If a change legitimately needs more, raise this deliberately in the
       # same PR and say why; do not silently bump it. `node scripts/measure-entry.mjs`
       # (no flag) prints the top 25 eager modules, which is usually enough to
       # see what got pulled in.
       - name: Assert entry chunk under ceiling
         working-directory: client
-        run: node scripts/measure-entry.mjs --max-raw 468000
+        run: node scripts/measure-entry.mjs --max-raw 472000
