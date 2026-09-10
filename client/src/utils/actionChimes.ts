@@ -23,10 +23,14 @@ import { playSoundAsset, startSoundAsset } from './soundAssets';
 export type ActionChimeKind = 'submit' | 'update' | 'delete';
 
 const TOGGLE_KEY = 'rmpg_action_chimes';
-const THROTTLE_MS = 400;
+const THROTTLE_MS = 800;
 
-// Mutations that are machine traffic, not operator actions — never chime.
-const BACKGROUND_PATHS = /\/(gps|heartbeat|activity|telemetry|live-sync|presence|ping|nav\/trip|trips\/breadcrumb|breadcrumbs|welfare|read-receipts?|seen|ack|token\/refresh|auth\/refresh|logs?\b)/i;
+// Mutations that are machine traffic or background auto-saves — never chime.
+// form-drafts: auto-save while typing (fires after every 2s pause)
+// settings: user-pref writes (silent background persistence)
+// notes/autosave: narrative auto-persist
+// read-receipts, seen, ack, welfare: silent keep-alive/heartbeat traffic
+const BACKGROUND_PATHS = /\/(gps|heartbeat|activity|telemetry|live-sync|presence|ping|nav\/trip|trips\/breadcrumb|breadcrumbs|welfare|read-receipts?|seen|ack|token\/refresh|auth\/refresh|logs?\b|form-drafts|settings(\/|$)|user-prefs|autosave|notes\/draft)/i;
 
 let lastChime = 0;
 
