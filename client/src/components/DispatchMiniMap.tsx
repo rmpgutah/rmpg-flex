@@ -146,7 +146,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const isAuthError = error != null;
 
   // Routing (auto-route when a single assigned unit has GPS)
-  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapReady ? mapRef.current : null });
+  const { activeRoute, showRoute, clearRoute, updateOrigin, routeProgress, offRoute } = useMapRouting({ map: mapReady ? mapRef.current : null });
   const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
   // Device's OWN live GPS (read-only — Layout owns the upload). Drives
@@ -436,6 +436,56 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     updateOrigin(lat, lng);
   }, [devGps.latitude, devGps.longitude, devGps.unitCallSign, activeRoute, updateOrigin]);
 
+
+  // Camera follow: while enroute and this device IS the routing unit, pitch +
+  // rotate the map toward the officer's heading so it renders as a driver-
+  // perspective view. When the call flips to 'onscene', immediately reset to
+  // the overhead tactical view so the dispatcher gets their standard overview back.
+  const wasEnrouteRef = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const isEnRoute = isNavGuidanceActive(call?.status);
+
+    if (!isEnRoute) {
+      // Transition: enroute → onscene (or cleared). Restore overhead view.
+      if (wasEnrouteRef.current) {
+        wasEnrouteRef.current = false;
+        map.easeTo({
+          pitch: 0,
+          bearing: 0,
+          zoom: MINI_ZOOM,
+          ...(call?.longitude != null && call?.latitude != null
+            ? { center: [call.longitude, call.latitude] as [number, number] }
+            : {}),
+          duration: 800,
+          easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
+        });
+      }
+      return;
+    }
+
+    wasEnrouteRef.current = true;
+    if (!activeRoute) return;
+
+    // Only follow if this device is the routing unit
+    const { latitude: lat, longitude: lng, unitCallSign } = devGps;
+    if (lat == null || lng == null) return;
+    if (!unitCallSign || unitCallSign !== activeRoute.unitCallSign) return;
+
+    const bearing = devGps.headingSmoothed ?? devGps.course ?? devGps.heading ?? 0;
+    map.easeTo({
+      center: [lng, lat] as [number, number],
+      bearing,
+      pitch: 45,
+      zoom: 16,
+      duration: 800,
+      easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
+    });
+  }, [devGps.latitude, devGps.longitude, devGps.unitCallSign, devGps.headingSmoothed,
+      devGps.course, devGps.heading, activeRoute, call?.status, call?.latitude,
+      call?.longitude, mapReady]);
+
   // Notify parent of route changes
   useEffect(() => {
     if (onRouteUpdate) {
@@ -620,24 +670,65 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {isNavGuidanceActive(call?.status) && activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
-          background: 'rgba(var(--surface-overlay-rgb) / 0.97)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
+          background: 'rgba(var(--surface-overlay-rgb) / 0.97)',
+          borderTop: '1px solid var(--border-default)',
+          pointerEvents: 'auto',
+          boxShadow: '0 -2px 12px rgba(0,0,0,0.45)',
         }}>
-          {/* ETA + miles, above */}
+          {/* Route progress bar */}
+          {routeProgress != null && routeProgress.fraction > 0 && (
+            <div style={{ height: 3, background: 'var(--surface-sunken)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.round(routeProgress.fraction * 100)}%`,
+                background: 'var(--sev-ok)',
+                transition: 'width 0.6s ease',
+              }} />
+            </div>
+          )}
+
+          {/* Off-route warning */}
+          {offRoute && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '2px 8px', background: 'var(--sev-warn)', color: '#000',
+            }}>
+              <span style={{ fontSize: 9, fontWeight: 900, fontFamily: "'Arial', sans-serif" }}>
+                ⚠ OFF ROUTE — RECALCULATING
+              </span>
+            </div>
+          )}
+
+          {/* Header row: unit→call, live ETA, live distance, speed */}
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-            padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '3px 8px', borderBottom: '1px solid var(--border-subtle)',
+            background: 'var(--surface-base)',
           }}>
-            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'Arial', sans-serif" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'Arial', sans-serif", whiteSpace: 'nowrap' }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
-            <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
-              {activeRoute.eta} <span style={{ fontSize: 8, color: 'var(--sev-ok)' }}>ETA</span>
+            {/* Congestion badge */}
+            {activeRoute.worstCongestion !== 'unknown' && activeRoute.worstCongestion !== 'low' && (
+              <span style={{
+                fontSize: 7, fontWeight: 900, fontFamily: "'Arial', sans-serif",
+                padding: '1px 4px', borderRadius: 2,
+                background: activeRoute.worstCongestion === 'severe' ? 'var(--sev-critical)'
+                  : activeRoute.worstCongestion === 'heavy' ? '#e55'
+                  : 'var(--sev-warn)',
+                color: activeRoute.worstCongestion === 'moderate' ? '#000' : '#fff',
+              }}>
+                {activeRoute.worstCongestion.toUpperCase()}
+              </span>
+            )}
+            <span style={{ fontSize: 14, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em', marginLeft: 'auto' }}>
+              {routeProgress?.remainingEta ?? activeRoute.eta}
+              <span style={{ fontSize: 8, color: 'var(--sev-ok)', marginLeft: 3 }}>ETA</span>
             </span>
-            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
+            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>
+              {routeProgress?.remainingDistance ?? activeRoute.distance}
+            </span>
             {(() => {
-              // Display-only speed context for the responding unit. Suppressed
-              // when the GPS fix is stale (see dispatchNavGate.speedComparison)
-              // so a paused reading never renders as a live fact.
               const assigned = units.find((u) => u.call_sign === activeRoute.unitCallSign);
               const cmp = speedComparison({
                 gpsSpeedMps: assigned?.gps_speed,
@@ -647,42 +738,58 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               });
               if (!cmp) {
                 if (activeRoute.postedLimitMph == null) return null;
-                return (
-                  <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 700 }}>
-                    {activeRoute.postedLimitMph} limit
-                  </span>
-                );
+                return <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontWeight: 700 }}>{activeRoute.postedLimitMph} limit</span>;
               }
               const over = cmp.speedMph > cmp.limitMph;
               return (
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 900,
-                    color: over ? 'var(--sev-warn)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {cmp.speedMph} in a {cmp.limitMph}
+                <span style={{ fontSize: 11, fontWeight: 900, color: over ? 'var(--sev-warn)' : 'var(--text-secondary)' }}>
+                  {cmp.speedMph} / {cmp.limitMph}
                 </span>
               );
             })()}
           </div>
-          {/* Current direction, one at a time */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
+
+          {/* Current maneuver — primary instruction */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: activeRoute.steps.length > 1 ? '1px solid var(--border-subtle)' : 'none' }}>
             <ManeuverArrow
               type={activeRoute.steps[0].maneuverType}
               modifier={activeRoute.steps[0].modifier}
-              size={28}
+              size={30}
             />
-            <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
-              {activeRoute.steps[0].instruction}
-            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.25 }}>
+                {activeRoute.steps[0].instruction}
+              </div>
+            </div>
             {activeRoute.steps[0].distanceMeters > 0 && (
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12, color: 'var(--sev-ok)', fontWeight: 900, whiteSpace: 'nowrap' }}>
                 {activeRoute.steps[0].distanceText}
               </span>
             )}
           </div>
+
+          {/* Upcoming steps preview (next 1–2 turns) */}
+          {activeRoute.steps.slice(1, 3).map((step, i) => step.instruction && step.instruction !== 'You have arrived at your destination' && (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px',
+              borderBottom: i === 0 && activeRoute.steps.length > 2 ? '1px solid rgba(var(--border-subtle-rgb)/0.5)' : 'none',
+              opacity: 0.7,
+            }}>
+              <ManeuverArrow
+                type={step.maneuverType}
+                modifier={step.modifier}
+                size={16}
+              />
+              <span style={{ fontSize: 10, color: 'var(--text-secondary)', flex: 1, lineHeight: 1.2 }}>
+                {step.instruction}
+              </span>
+              {step.distanceMeters > 0 && (
+                <span style={{ fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  {step.distanceText}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
