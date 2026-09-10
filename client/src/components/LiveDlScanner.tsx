@@ -115,8 +115,37 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
 
   // ── camera + continuous PDF417 read on the BACK step ──
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
+    let timerHandle: ReturnType<typeof setTimeout> | null = null;
+    let misses = 0;
+
+    // Laplacian mean-absolute-deviation blur score on the barcode strip ROI.
+    // Returns true when the frame is too blurry to decode reliably.
+    // Fast: samples every 6th pixel in the lower half of the frame.
+    function isBlurry(imageData: ImageData, threshold = 42): boolean {
+      const { data, width, height } = imageData;
+      const y0 = Math.floor(height * 0.45);
+      const y1 = Math.floor(height * 0.92);
+      const step = 6;
+      let lapSum = 0; let count = 0;
+      for (let y = y0 + 1; y < y1 - 1; y += step) {
+        for (let x = 1; x < width - 1; x += step) {
+          const ci = (y * width + x) * 4;
+          const lum = (data[ci] * 77 + data[ci+1] * 150 + data[ci+2] * 29) >> 8;
+          const ti = ((y-1) * width + x) * 4;
+          const bi = ((y+1) * width + x) * 4;
+          const li = (y * width + (x-1)) * 4;
+          const ri = (y * width + (x+1)) * 4;
+          const lap = Math.abs(4*lum
+            - ((data[ti]*77 + data[ti+1]*150 + data[ti+2]*29) >> 8)
+            - ((data[bi]*77 + data[bi+1]*150 + data[bi+2]*29) >> 8)
+            - ((data[li]*77 + data[li+1]*150 + data[li+2]*29) >> 8)
+            - ((data[ri]*77 + data[ri+1]*150 + data[ri+2]*29) >> 8));
+          lapSum += lap; count++;
+        }
+      }
+      return count > 0 && (lapSum / count) < threshold;
+    }
 
     (async () => {
       try {
@@ -136,11 +165,21 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
         if (caps?.torch) setTorchAvailable(true);
 
         const { decodePdf417Frame } = await importWithRetry(() => import('../utils/pdf417Decoder'));
-        interval = setInterval(async () => {
-          if (cancelled || doneRef.current || decodingRef.current) return;
-          if (stepRef.current !== 'back') return;     // only read on the back step
+
+        // Adaptive polling: 200ms while fresh, backs off to 600ms on repeated misses.
+        // setTimeout (not setInterval) ensures no two decodes ever overlap.
+        const scheduleNext = () => {
+          if (cancelled || doneRef.current) return;
+          const delay = misses < 16 ? 200 : misses < 26 ? 400 : 600;
+          timerHandle = setTimeout(poll, delay);
+        };
+
+        const poll = async () => {
+          if (cancelled || doneRef.current) return;
+          if (decodingRef.current || stepRef.current !== 'back') { scheduleNext(); return; }
           const v = videoRef.current;
-          if (!v || v.readyState < 2 || !v.videoWidth) return;
+          if (!v || v.readyState < 2 || !v.videoWidth) { scheduleNext(); return; }
+
           decodingRef.current = true;
           try {
             if (!decodeCanvasRef.current) decodeCanvasRef.current = document.createElement('canvas');
@@ -148,17 +187,31 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
             canvas.width = v.videoWidth; canvas.height = v.videoHeight;
             const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
             ctx.drawImage(v, 0, 0);
-            const text = await decodePdf417Frame(ctx.getImageData(0, 0, canvas.width, canvas.height));
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            if (isBlurry(imageData)) {
+              // Blurry frame — skip decode, still count as an attempt so hints escalate.
+              misses++;
+              setAttempts(a => a + 1);
+              return;
+            }
+
+            const text = await decodePdf417Frame(imageData);
             setAttempts(a => a + 1);
             if (text && !doneRef.current) {
               if (navigator.vibrate) navigator.vibrate(120);
-              const back = await captureStill();   // keep the back image too
+              const back = await captureStill();
               finish(text, back);
+              return; // done — don't reschedule
             }
+            misses++;
           } finally {
             decodingRef.current = false;
           }
-        }, 350);
+          scheduleNext();
+        };
+
+        scheduleNext(); // kick off first poll
       } catch (err) {
         if (!cancelled) {
           setStarting(false);
@@ -169,7 +222,7 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
       }
     })();
 
-    return () => { cancelled = true; if (interval) clearInterval(interval); stopStream(); };
+    return () => { cancelled = true; if (timerHandle) clearTimeout(timerHandle); stopStream(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -244,9 +297,10 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
                     </div>
                   </>
                 ) : (
-                  // Back template hint: PDF417 strip zone + scan line
+                  // Back template hint: PDF417 strip — bottom of card back (AAMVA spec).
+                  // Most US states place the barcode in the lower third of the card.
                   <>
-                    <div className="absolute inset-x-[6%] top-[14%] h-[34%] border border-dashed border-accent-silver-400/70 rounded-[3px] flex items-center justify-center overflow-hidden">
+                    <div className="absolute inset-x-[6%] bottom-[8%] h-[32%] border border-dashed border-accent-silver-400/70 rounded-[3px] flex items-center justify-center overflow-hidden">
                       <span className="text-[8px] font-mono uppercase tracking-wider text-accent-silver-400/80">PDF417 barcode here</span>
                       <div className="absolute inset-x-0 top-1/2 h-px bg-accent-silver-400/70 animate-pulse" />
                     </div>
@@ -275,7 +329,15 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
               ) : (
                 <>
                   <p className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider drop-shadow">Step 2 — BACK of the ID</p>
-                  <p className="text-[9px] text-rmpg-200 mt-0.5 drop-shadow">Align the PDF417 barcode — reads automatically{attempts > 10 ? ' · move closer or add light' : ''}</p>
+                  <p className="text-[9px] text-rmpg-200 mt-0.5 drop-shadow">
+                    {attempts === 0
+                      ? 'Hold card steady — reads automatically'
+                      : attempts < 16
+                      ? 'Align barcode strip to the highlighted zone'
+                      : attempts < 26
+                      ? 'Move closer and hold steady · add light if dim'
+                      : 'Try the Upload option if barcode is damaged'}
+                  </p>
                 </>
               )}
             </div>
