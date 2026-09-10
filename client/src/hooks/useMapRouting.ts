@@ -807,7 +807,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // Routed through /api/mapbox/optimization — see queryRoute above.
         const data = await apiFetch<{ code?: string; trips?: any[]; waypoints?: any[] }>(
           `/mapbox/optimization?coordinates=${encodeURIComponent(coordStr)}` +
-          `&profile=driving&source=first&roundtrip=true` +
+          `&profile=driving-traffic&source=first&roundtrip=true` +
           `&steps=true&annotations=duration,distance`,
         );
         if (data.code !== 'Ok' || !data.trips?.[0]) throw new Error(data.code || 'No trip');

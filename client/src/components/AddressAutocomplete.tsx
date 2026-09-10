@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useEffect, useId, useRef, useState, useCallback } from 'react';
+import { apiFetch } from '../hooks/useApi';
 import { MapPin } from 'lucide-react';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 
@@ -296,28 +297,18 @@ export default function AddressAutocomplete({
         return;
       }
 
-      const token = await getMapboxAccessToken();
-      if (!token) return;
-
       const resultTypes = types || (addressOnly ? 'address,place' : 'address,place,poi,neighborhood');
-      // Utah bias for Mapbox direct calls:
-      //   proximity = SLC center (-111.89, 40.76) — Mapbox ranks
-      //               results closer to this point higher
-      //   bbox      = Utah bounding box (west,south,east,north) —
-      //               soft constraint, not as strict as Nominatim's
-      //               `bounded=1`, but combined with proximity it
-      //               keeps Wasatch Front addresses on top
-      // Without this, "South 200 East" matches Indiana grid streets
-      // before SLC's identically-named arterial.
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=${country}&autocomplete=true&types=${resultTypes}&limit=5&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
-
-      const res = await fetch(url);
-      if (!res.ok) {
-        if (!isStale()) setUseNominatim(true);
-        return;
-      }
-
-      const mapData = await res.json();
+      // Route through the server proxy (/api/mapbox/geocode) so the pk.*
+      // token never appears in client-side URLs. Utah proximity + bbox bias
+      // preserved as server-side query params.
+      const params = new URLSearchParams({
+        q: query,
+        limit: '5',
+        types: resultTypes,
+        country,
+        proximity: '-111.89,40.76',
+      });
+      const mapData = await apiFetch<{ features: MapboxSuggestion[] }>(`/mapbox/geocode?${params}`);
       if (isStale()) return;
 
       const features: MapboxSuggestion[] = mapData.features || [];

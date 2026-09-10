@@ -1,3 +1,4 @@
+import { apiFetch } from '../hooks/useApi';
 // ============================================================
 // RMPG Flex — Cross-Street Derivation
 // ============================================================
@@ -30,19 +31,16 @@ export async function fetchNearbyRoads(
   radiusMeters = 60,
 ): Promise<NearbyRoad[]> {
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [];
-  const token = await getMapboxAccessToken().catch(() => '');
-  if (!token) return [];
-
-  // dedupe=false so we see every road segment hit; we collapse by name below
-  // (Tilequery's own dedupe is per-geometry, not per-name).
-  const url =
-    `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/` +
-    `${lng},${lat}.json?radius=${radiusMeters}&limit=50&dedupe=false&layers=road&access_token=${token}`;
-
+  // Route through the server proxy so the pk.* token never appears in client
+  // URLs. /api/mapbox/tilequery proxies to api.mapbox.com/v4/<tileset>/tilequery/.
   try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const data = await res.json();
+    const params = new URLSearchParams({
+      lng: String(lng), lat: String(lat),
+      radius: String(radiusMeters),
+      limit: '50',
+      layer: 'road',
+    });
+    const data = await apiFetch<{ features: any[] }>(`/mapbox/tilequery?${params}`);
     const features: any[] = data.features || [];
 
     // Collapse to the nearest hit per distinct road name.

@@ -137,7 +137,7 @@ export async function mapboxReverseGeocode(
 
 export async function mapboxIsochrone(
   lng: number, lat: number,
-  options?: { profile?: 'driving' | 'walking' | 'cycling'; minutes?: number[] }
+  options?: { profile?: 'driving' | 'driving-traffic' | 'walking' | 'cycling'; minutes?: number[] }
 ): Promise<MapboxIsochroneResponse> {
   const params = new URLSearchParams({ lng: String(lng), lat: String(lat) });
   if (options?.profile) params.set('profile', options.profile);

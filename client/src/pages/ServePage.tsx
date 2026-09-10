@@ -40,7 +40,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
 import { formatServerAssignLabel, type CorporateServer } from '../utils/corporateOpsClient';
-import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { toDisplayLabel, formatEnumValue } from '../utils/formatters';
@@ -827,6 +827,7 @@ export default function ServePage() {
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const serveMapResizeObserverRef = useRef<ResizeObserver | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   // Outlives re-renders/zoom changes so a cluster's on-screen position, once
   // computed for a given set of member job ids, never re-averages — see
@@ -1857,6 +1858,12 @@ export default function ServePage() {
       };
 
       mapRef.current = map;
+      registerMapInstance(map, MAPBOX_STYLE_DARK);
+      if (mapContainerRef.current) {
+        const ro = new ResizeObserver(() => map.resize());
+        ro.observe(mapContainerRef.current);
+        serveMapResizeObserverRef.current = ro;
+      }
       const jobPopup = new mapboxgl.Popup({ offset: 25, closeButton: false });
       // Attach on 'open' rather than at construction: the popup's container
       // element does not exist until it is added to the map.
@@ -1930,7 +1937,9 @@ export default function ServePage() {
     markersRef.current = [];
     try { popupRef.current?.remove(); } catch { /* gone */ }
     popupRef.current = null;
-    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+    serveMapResizeObserverRef.current?.disconnect();
+    serveMapResizeObserverRef.current = null;
+    if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
   }, []);
 
   // Update markers when jobs change or map becomes ready

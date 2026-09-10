@@ -4,7 +4,7 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
   Printer, RotateCcw, CalendarDays, AlertTriangle, Pin, Coffee, ExternalLink,
 } from 'lucide-react';
-import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { fetchMapboxDrivingRoute } from '../../utils/mapboxDepartAt';
@@ -1085,6 +1085,7 @@ export default function ServeRoutePlanner({
       });
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
+      registerMapInstance(map, MAPBOX_STYLE_DARK);
       setMapReady(true);
 
       // Rebuild in place if the GPU drops the context. The marker effect
@@ -1097,7 +1098,7 @@ export default function ServeRoutePlanner({
           if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
           markersRef.current = [];
-          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
           setMapReady(false);
           setRouteMapRecoverNonce((n) => n + 1);
         },
@@ -1139,7 +1140,7 @@ export default function ServeRoutePlanner({
       if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
       markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
       markersRef.current = [];
-      if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+      if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
     };
   }, [isOpen, routeMapRecoverNonce]);
 

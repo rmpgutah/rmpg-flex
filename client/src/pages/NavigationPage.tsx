@@ -62,7 +62,7 @@ import { getTaggedBeats } from './map/utils/districtGeoData';
 import { useCachedBasemap } from '../hooks/useCachedBasemap';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
-import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
@@ -1140,6 +1140,7 @@ export default function NavigationPage() {
         map.on('load', () => {
           if (cancelled) { map.remove(); return; }
           mapInstanceRef.current = map;
+          registerMapInstance(map, MAPBOX_STYLE_DARK);
           // Rebuild this map in place if the GPU drops its context.
           navRecoveryCleanupRef.current = installWebglContextRecovery(map, {
             label: 'NavigationPage.main',
@@ -1172,7 +1173,7 @@ export default function NavigationPage() {
       cancelled = true;
       if (navRecoveryCleanupRef.current) { navRecoveryCleanupRef.current(); navRecoveryCleanupRef.current = null; }
       const m = mapInstanceRef.current;
-      if (m) { try { m.remove(); } catch { /* already gone */ } mapInstanceRef.current = null; }
+      if (m) { unregisterMapInstance(m); try { m.remove(); } catch { /* already gone */ } mapInstanceRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navRecoverNonce]);
@@ -1201,6 +1202,7 @@ export default function NavigationPage() {
         m.on('load', () => {
           if (cancelled) { m.remove(); return; }
           insetMapRef.current = m;
+          registerMapInstance(m, MAPBOX_STYLE_DARK);
           // Rebuild the inset if its GPU context drops (it follows GPS, so it
           // re-centers on the next fix — no camera capture needed).
           insetRecoveryCleanupRef.current = installWebglContextRecovery(m, {
@@ -1226,7 +1228,7 @@ export default function NavigationPage() {
       cancelled = true;
       if (insetRecoveryCleanupRef.current) { insetRecoveryCleanupRef.current(); insetRecoveryCleanupRef.current = null; }
       const m = insetMapRef.current;
-      if (m) { try { m.remove(); } catch { /* gone */ } insetMapRef.current = null; }
+      if (m) { unregisterMapInstance(m); try { m.remove(); } catch { /* gone */ } insetMapRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, gps.latitude != null, insetRecoverNonce]);
