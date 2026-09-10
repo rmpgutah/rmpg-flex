@@ -8,6 +8,7 @@
 
 import type { Map as MapboxMap } from 'mapbox-gl';
 import type { V2Solution } from './mapboxOptimizationV2';
+import { apiFetch } from '../hooks/useApi';
 import { hasLayer, safeRemoveLayer, safeRemoveSource } from './mapboxSafeLayer';
 
 export const LAYER_PREFIX = 'optv2';
@@ -67,16 +68,14 @@ function stopsLabelLayerId(routeIndex: number): string {
  */
 async function fetchDirectionsPolyline(
   coords: Array<{ lng: number; lat: number }>,
-  token: string,
+  _token?: string,
 ): Promise<GeoJSON.Feature<GeoJSON.LineString> | null> {
   if (coords.length < 2) return null;
   // Mapbox Directions accepts at most 25 waypoints per request.
   const waypoints = coords.slice(0, 25).map((c) => `${c.lng},${c.lat}`).join(';');
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${waypoints}?geometries=geojson&overview=full&access_token=${token}`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { routes?: Array<{ geometry: GeoJSON.LineString }> };
+    const params = new URLSearchParams({ coordinates: waypoints, profile: 'driving-traffic', geometries: 'geojson', overview: 'full' });
+    const json = await apiFetch<{ routes?: Array<{ geometry: GeoJSON.LineString }> }>(`/mapbox/directions?${params}`);
     const geometry = json.routes?.[0]?.geometry;
     if (!geometry) return null;
     return { type: 'Feature', properties: {}, geometry };

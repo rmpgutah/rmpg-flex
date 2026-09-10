@@ -18,7 +18,7 @@ import { apiFetch } from '../hooks/useApi';
 import { WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
-import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
@@ -457,6 +457,7 @@ export default function DashCamDetailPage() {
     map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
     mapRef.current = map;
+    registerMapInstance(map, MAPBOX_STYLE_DARK);
 
     // Rebuild in place if the GPU drops the context. The load handler below
     // re-adds the marker + GPS-track layer, so a rebuild fully restores.
@@ -468,7 +469,7 @@ export default function DashCamDetailPage() {
         if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
         try { markerRef.current?.remove(); } catch { /* gone */ }
         markerRef.current = null;
-        if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+        if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
         setMapReady(false);
         setMapRecoverNonce((n) => n + 1);
       },
@@ -526,7 +527,7 @@ export default function DashCamDetailPage() {
     if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
     try { markerRef.current?.remove(); } catch { /* gone */ }
     markerRef.current = null;
-    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+    if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
   }, []);
 
   // Update marker position during playback

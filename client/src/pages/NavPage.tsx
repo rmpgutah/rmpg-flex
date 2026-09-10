@@ -9,7 +9,7 @@ import { Link, useSearchParams } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
 import { getMapboxToken } from '../utils/mapboxApiKey';
-import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { useMapHeatmap, type HeatmapPoint } from '../hooks/useMapHeatmap';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
@@ -1088,6 +1088,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
         map.on('load', () => { if (!cancelled) { onMapLoaded(map); setMapLoaded(true); } });
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error instanceof Error ? e.error.message : 'Map error'); });
         mapRef.current = map;
+        registerMapInstance(map, 'mapbox://styles/mapbox/dark-v11');
         webglRecoveryCleanupRef.current = attach(map, 'NavPage-RouteHeatmap');
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
@@ -1098,8 +1099,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
       cancelled = true;
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
-      mapRef.current?.remove();
-      mapRef.current = null;
+      if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       setMapLoaded(false);
     };
     // Map is created once per panel mount (and again after a WebGL
