@@ -21,6 +21,7 @@
  * the panel itself.
  */
 import { useMemo } from 'react';
+import { getDesktopRuntimeState, type DesktopRuntimeState } from '../utils/desktopRuntime';
 
 // ─── Result shapes (mirror desktop/windowsBridgeExtended.js) ─────
 
@@ -56,6 +57,11 @@ export interface SystemInfo {
   uptime_seconds: number; total_memory_mb: number; free_memory_mb: number; disk_free_gb: number | null; disk_free_bytes: number | null;
 }
 export interface KioskShellState { supported: boolean; enabled: boolean }
+export interface BridgeHealth {
+  ok: true; bridgeVersion: number; appVersion: string; platform: string; arch: string;
+  electronVersion: string | null; chromeVersion: string | null; nodeVersion: string | null;
+  kioskShell: boolean; processUptimeSeconds: number;
+}
 export type EventLogQuery = { logName?: 'System' | 'Application'; level?: 'all' | 'critical' | 'error' | 'warning' | 'information'; maxEvents?: number };
 
 // ─── Preload surface we rely on ──────────────────────────────
@@ -96,6 +102,7 @@ interface ElectronPreload {
   isElectron?: boolean;
   platform?: string;
   getVersion?: () => Promise<string>;
+  getBridgeHealth?: () => Promise<BridgeHealth>;
   getSystemInfo?: () => Promise<SystemInfo>;
   getCpuUsage?: () => Promise<number>;
   checkDiskSpace?: () => Promise<{ freeBytes: number | null; totalBytes: number | null; warn: boolean }>;
@@ -136,6 +143,17 @@ export function getElectronBridge(): ElectronPreload | undefined {
 }
 
 const NOT_ELECTRON: BridgeFail = { ok: false, error: 'not_electron' };
+const BRIDGE_TIMEOUT_MS = 30_000;
+
+function withBridgeTimeout<T>(operation: Promise<T>, method: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`FlexOS native operation timed out: ${method}`)), BRIDGE_TIMEOUT_MS);
+    operation.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 /** Wraps a preload method so a missing bridge resolves to a typed failure rather than throwing. */
 function ext<K extends keyof WinExtPreload>(name: K): WinExtPreload[K] {
@@ -143,7 +161,7 @@ function ext<K extends keyof WinExtPreload>(name: K): WinExtPreload[K] {
     const fn = getElectronBridge()?.winExt?.[name] as ((...a: unknown[]) => Promise<unknown>) | undefined;
     if (typeof fn !== 'function') return name === 'ping' ? { ...NOT_ELECTRON, host: String(args[0] ?? ''), sent: 0, received: 0, lost: 0, minMs: null, maxMs: null, avgMs: null } : NOT_ELECTRON;
     try {
-      return await fn(...args);
+      return await withBridgeTimeout(fn(...args), String(name));
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -151,13 +169,13 @@ function ext<K extends keyof WinExtPreload>(name: K): WinExtPreload[K] {
 }
 
 /** Wraps a legacy value-returning preload method; missing → null, throw → null. */
-function legacy<A extends unknown[], R>(pick: (b: ElectronPreload) => ((...a: A) => Promise<R>) | undefined): (...a: A) => Promise<R | null> {
+function legacy<A extends unknown[], R>(name: string, pick: (b: ElectronPreload) => ((...a: A) => Promise<R>) | undefined): (...a: A) => Promise<R | null> {
   return async (...args: A) => {
     const b = getElectronBridge();
     const fn = b ? pick(b) : undefined;
     if (typeof fn !== 'function') return null;
     try {
-      return await fn(...args);
+      return await withBridgeTimeout(fn(...args), name);
     } catch {
       return null;
     }
@@ -165,6 +183,9 @@ function legacy<A extends unknown[], R>(pick: (b: ElectronPreload) => ((...a: A)
 }
 
 export interface WindowsBridge extends WinExtPreload {
+  /** Distinguishes a browser from a FlexOS shell whose preload failed. */
+  runtimeState: DesktopRuntimeState;
+  shellDetected: boolean;
   /** window.electron exists — we're inside the desktop shell. */
   available: boolean;
   /** The extended `winExt` group is present (desktop build ≥ this PR). */
@@ -174,6 +195,7 @@ export interface WindowsBridge extends WinExtPreload {
 
   // ── Reused legacy surface (10) ──
   getVersion: () => Promise<string | null>;
+  getBridgeHealth: () => Promise<BridgeHealth | null>;
   getSystemInfo: () => Promise<SystemInfo | null>;
   getCpuUsage: () => Promise<number | null>;
   checkDiskSpace: () => Promise<{ freeBytes: number | null; totalBytes: number | null; warn: boolean } | null>;
@@ -210,45 +232,49 @@ export interface WindowsBridge extends WinExtPreload {
 /** Module-level singleton: the bridge surface never changes after preload runs. */
 export function createWindowsBridge(): WindowsBridge {
   const b = getElectronBridge();
+  const runtimeState = getDesktopRuntimeState(b);
   const platform = b?.platform ?? (typeof navigator !== 'undefined' && /Win/i.test(navigator.platform) ? 'win32' : 'unknown');
   const bridge: WindowsBridge = {
+    runtimeState,
+    shellDetected: runtimeState !== 'browser',
     available: Boolean(b?.isElectron),
     extendedAvailable: Boolean(b?.winExt && typeof b.winExt.getSystemPerformance === 'function'),
     isWindows: platform === 'win32',
     platform,
 
-    getVersion: legacy((e) => e.getVersion),
-    getSystemInfo: legacy((e) => e.getSystemInfo),
-    getCpuUsage: legacy((e) => e.getCpuUsage),
-    checkDiskSpace: legacy((e) => e.checkDiskSpace),
-    getBattery: legacy((e) => e.getBatteryStatus ?? e.getBattery),
-    getDisplays: legacy((e) => e.getDisplays),
-    setBrightness: legacy((e) => e.setBrightness),
-    getBrightness: legacy((e) => e.getBrightness),
-    setVolume: legacy((e) => e.setVolume),
-    getVolume: legacy((e) => e.getVolume),
-    wifiGetDetail: legacy((e) => e.wifiGetDetail),
-    wifiScanNetworks: legacy((e) => e.wifiScanNetworks),
-    wifiConnect: legacy((e) => e.wifiConnect),
-    wifiDisconnect: legacy((e) => e.wifiDisconnect),
-    getClipboardText: legacy((e) => e.getClipboardText),
-    setClipboardText: legacy((e) => e.setClipboardText),
-    showNotification: legacy((e) => e.showNotification),
-    captureScreen: legacy((e) => e.captureScreen),
-    saveScreenshot: legacy((e) => e.saveScreenshot),
-    restartApp: legacy((e) => e.restartApp),
-    shutdownOs: legacy((e) => e.shutdownOs),
-    restartOs: legacy((e) => e.restartOs),
-    getKioskShellState: legacy((e) => e.getKioskShellState),
-    setKioskShell: legacy((e) => e.setKioskShell),
+    getVersion: legacy('getVersion', (e) => e.getVersion),
+    getBridgeHealth: legacy('getBridgeHealth', (e) => e.getBridgeHealth),
+    getSystemInfo: legacy('getSystemInfo', (e) => e.getSystemInfo),
+    getCpuUsage: legacy('getCpuUsage', (e) => e.getCpuUsage),
+    checkDiskSpace: legacy('checkDiskSpace', (e) => e.checkDiskSpace),
+    getBattery: legacy('getBattery', (e) => e.getBatteryStatus ?? e.getBattery),
+    getDisplays: legacy('getDisplays', (e) => e.getDisplays),
+    setBrightness: legacy('setBrightness', (e) => e.setBrightness),
+    getBrightness: legacy('getBrightness', (e) => e.getBrightness),
+    setVolume: legacy('setVolume', (e) => e.setVolume),
+    getVolume: legacy('getVolume', (e) => e.getVolume),
+    wifiGetDetail: legacy('wifiGetDetail', (e) => e.wifiGetDetail),
+    wifiScanNetworks: legacy('wifiScanNetworks', (e) => e.wifiScanNetworks),
+    wifiConnect: legacy('wifiConnect', (e) => e.wifiConnect),
+    wifiDisconnect: legacy('wifiDisconnect', (e) => e.wifiDisconnect),
+    getClipboardText: legacy('getClipboardText', (e) => e.getClipboardText),
+    setClipboardText: legacy('setClipboardText', (e) => e.setClipboardText),
+    showNotification: legacy('showNotification', (e) => e.showNotification),
+    captureScreen: legacy('captureScreen', (e) => e.captureScreen),
+    saveScreenshot: legacy('saveScreenshot', (e) => e.saveScreenshot),
+    restartApp: legacy('restartApp', (e) => e.restartApp),
+    shutdownOs: legacy('shutdownOs', (e) => e.shutdownOs),
+    restartOs: legacy('restartOs', (e) => e.restartOs),
+    getKioskShellState: legacy('getKioskShellState', (e) => e.getKioskShellState),
+    setKioskShell: legacy('setKioskShell', (e) => e.setKioskShell),
     getAutoLaunchState: async () => {
-      const v = await legacy((e) => e.getAutoLaunchState)();
+      const v = await legacy('getAutoLaunchState', (e) => e.getAutoLaunchState)();
       return typeof v === 'boolean' ? v : Boolean(v && typeof v === 'object' && v.enabled);
     },
-    setAutoLaunch: legacy((e) => e.setAutoLaunch),
-    keepAwake: legacy((e) => e.keepAwake),
-    allowSleep: legacy((e) => e.allowSleep),
-    getIdleTime: legacy((e) => e.getIdleTime),
+    setAutoLaunch: legacy('setAutoLaunch', (e) => e.setAutoLaunch),
+    keepAwake: legacy('keepAwake', (e) => e.keepAwake),
+    allowSleep: legacy('allowSleep', (e) => e.allowSleep),
+    getIdleTime: legacy('getIdleTime', (e) => e.getIdleTime),
 
     getDisplayModes: ext('getDisplayModes'),
     setResolution: ext('setResolution'),

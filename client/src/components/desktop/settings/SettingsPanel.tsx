@@ -1033,6 +1033,7 @@ function KioskTab({ b, onRequestExitKiosk }: { b: WindowsBridge; onRequestExitKi
 function AboutTab({ b }: { b: WindowsBridge }) {
   const info = useLoader<SystemInfo | null>(() => b.getSystemInfo(), [b]);
   const version = useLoader(() => b.getVersion(), [b]);
+  const bridgeHealth = useLoader(() => b.getBridgeHealth(), [b]);
   const [perf, setPerf] = useState<SystemPerformance | null>(null);
   useEffect(() => {
     let alive = true;
@@ -1067,6 +1068,8 @@ function AboutTab({ b }: { b: WindowsBridge }) {
       </Section>
       <Section title="Device">
         <div className="about-specs">
+          {spec('FlexOS runtime', b.runtimeState === 'native' ? 'Native bridge connected' : b.runtimeState === 'bridge-unavailable' ? 'Detected — native bridge unavailable' : 'Web browser')}
+          {spec('Native bridge', bridgeHealth.data ? `v${bridgeHealth.data.bridgeVersion} · Electron ${bridgeHealth.data.electronVersion ?? '—'}${bridgeHealth.data.kioskShell ? ' · Kiosk shell' : ''}` : b.available ? 'Unavailable' : '—')}
           {spec('Hostname', i?.hostname ?? perf?.hostname ?? '—')}
           {spec('Processor', i?.cpu_model ?? perf?.cpuModel ?? '—')}
           {spec('Installed RAM', i ? `${(i.total_memory_mb / 1024).toFixed(1)} GB` : '—')}
@@ -1150,7 +1153,13 @@ export default function SettingsPanel({ initialTab = 'display', extraTabs = [], 
           <h2><ActiveIcon size={18} /> {active?.label}</h2>
         </header>
         <div className="settings-content-body">
-          {!b.available && <Msg kind="err">{NOT_ELECTRON_NOTE} Controls are shown read-only.</Msg>}
+          {!b.available && (
+            <Msg kind="err">
+              {b.shellDetected
+                ? 'FlexOS is running, but its native system bridge did not load. Restart FlexOS to restore Windows controls.'
+                : `${NOT_ELECTRON_NOTE} Controls are shown read-only.`}
+            </Msg>
+          )}
           {content}
         </div>
       </main>

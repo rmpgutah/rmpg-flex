@@ -3,6 +3,7 @@ import { Cpu, HardDrive, Wifi, Battery, Activity, RefreshCw, CheckCircle, AlertT
 import { apiFetch } from '../hooks/useApi';
 import { networkIfacesToCsv, downloadTextFile } from '../utils/rmsListExport';
 import { copyToClipboard } from '../utils/clipboard';
+import { getDesktopRuntimeState } from '../utils/desktopRuntime';
 
 interface SystemInfo {
   hostname: string;
@@ -152,9 +153,9 @@ function mbToGb(mb: number): number {
   return Math.round((mb / 1024) * 10) / 10;
 }
 
-const isElectron = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).electron;
-
 export default function DeviceHealthPage() {
+  const desktopRuntime = getDesktopRuntimeState();
+  const hasNativeBridge = desktopRuntime === 'native';
   const [state, setState] = useState<HealthState>({
     sysInfo: null,
     cpuUsage: null,
@@ -229,7 +230,7 @@ export default function DeviceHealthPage() {
 
   // Poll CPU every 5s
   useEffect(() => {
-    if (!isElectron) return;
+    if (!hasNativeBridge) return;
     const id = setInterval(async () => {
       try {
         const el = (window as unknown as Record<string, unknown>).electron as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined;
@@ -238,7 +239,7 @@ export default function DeviceHealthPage() {
       } catch {}
     }, 5000);
     return () => clearInterval(id);
-  }, []);
+  }, [hasNativeBridge]);
 
   // Poll API health every 30s
   useEffect(() => {
@@ -396,7 +397,7 @@ export default function DeviceHealthPage() {
         {/* Left column — hardware */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {!isElectron ? (
+          {!hasNativeBridge ? (
             <div
               style={{
                 background: 'var(--surface-raised)',
@@ -411,7 +412,9 @@ export default function DeviceHealthPage() {
               }}
             >
               <Monitor size={16} color="var(--field-label-color)" />
-              Hardware diagnostics available in the FlexOS desktop app only.
+              {desktopRuntime === 'bridge-unavailable'
+                ? 'FlexOS is running, but its native system bridge did not load. Restart FlexOS to restore hardware diagnostics.'
+                : 'Hardware diagnostics available in the FlexOS desktop app only.'}
             </div>
           ) : (
             <>
@@ -578,7 +581,7 @@ export default function DeviceHealthPage() {
           </div>
 
           {/* Network Interfaces — Electron only */}
-          {isElectron && (
+          {hasNativeBridge && (
             <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: 12 }}>
               <SectionHeader icon={Wifi} label="Network Interfaces" />
               {networks.length === 0 ? (

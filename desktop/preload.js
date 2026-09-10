@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
+  getBridgeHealth: () => ipcRenderer.invoke('app:bridge-health'),
 
   // ─── System & Diagnostics ───────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('sys:info'),

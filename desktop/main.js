@@ -1051,6 +1051,12 @@ async function createMainWindow() {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 12, y: 12 },
   });
+  // A preload failure removes every native FlexOS capability from the page.
+  // Surface the original exception in the persistent application log so field
+  // support can distinguish it from a browser session or a renderer crash.
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error(`[APP] FlexOS native bridge preload failed (${preloadPath}):`, error);
+  });
   if (useKioskChrome) Menu.setApplicationMenu(null);
 
   // ── Grant geolocation permission automatically ──────────
@@ -1586,6 +1592,18 @@ guardedHandle('clipboard:set', (event, text) => {
 });
 
 guardedHandle('app:version', () => app.getVersion());
+guardedHandle('app:bridge-health', () => ({
+  ok: true,
+  bridgeVersion: 2,
+  appVersion: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  electronVersion: process.versions.electron || null,
+  chromeVersion: process.versions.chrome || null,
+  nodeVersion: process.versions.node || null,
+  kioskShell: isRunningAsKioskShell,
+  processUptimeSeconds: Math.floor(process.uptime()),
+}));
 guardedHandle('sys:info', () => {
   const os = require('os');
   const fs = require('fs');
