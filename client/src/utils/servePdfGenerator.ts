@@ -17,6 +17,7 @@ import {
   addSignatureBlock,
   addTableWithShading,
   addWrappedText,
+  wordWrapText,
   setConfidentialWatermarkEnabled,
   addPageFooter,
   checkPageBreak,
@@ -840,6 +841,8 @@ interface NoticeCompressTier {
   omitWhatToDoNext?: boolean;
   /** Shorter numbered guidance when space is tight but Section IV remains. */
   useAbbreviatedSteps?: boolean;
+  /** Drop Article VI (Important Reminders) at tightest tiers — IV still shows. */
+  omitImportantReminders?: boolean;
 }
 
 const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
@@ -899,7 +902,8 @@ const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
     sectionPad: 1,
     disclaimerClearance: 2,
     stepGapScale: 0.45,
-    omitWhatToDoNext: true,
+    useAbbreviatedSteps: true,
+    omitImportantReminders: true,
   },
 ];
 
@@ -1015,6 +1019,49 @@ function estimateNoticeCompressTier(data: NoticeOfAttemptData): number {
   return 0;
 }
 
+/**
+ * Renders text with specific tokens in bold, all other text in normal weight.
+ * jsPDF has no native inline-bold; this splits the line on known tokens and
+ * draws each segment with the correct font style, tracking x position.
+ * Word-wrap uses normal-font metrics (bold is ~5% wider — imperceptible at
+ * the 6–9 pt sizes used here).
+ */
+function addBoldTokenText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  fontSize: number,
+  boldTokens: string[],
+): number {
+  if (!text) return y;
+  const sanitized = sanitizePdfText(text, { preserveCase: true });
+  // Matches getPdfTextLineHeight(fontSize, true) in pdfGenerator.ts
+  const lineH = fontSize * 0.44 + 0.35;
+  // Longest tokens first so "rmpgutahps.us/notice-of-attempt" matches before
+  // a hypothetical shorter prefix sharing the same host.
+  const sorted = [...boldTokens].sort((a, b) => b.length - a.length);
+  const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`(${escaped.join('|')})`, 'g');
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(fontSize);
+  const lines: string[] = wordWrapText(doc, sanitized, maxWidth - 1);
+  for (const line of lines) {
+    y = checkPageBreak(doc, y, lineH + SPACING.SM);
+    let cx = x;
+    for (const part of line.split(pattern)) {
+      if (!part) continue;
+      doc.setFont(PDF_VALUE_FONT, boldTokens.includes(part) ? 'bold' : 'normal');
+      doc.text(part, cx, y);
+      cx += doc.getTextWidth(part);
+    }
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    y += lineH;
+  }
+  return y;
+}
+
 /** Shorter Section IV copy for compressed tiers — same meaning, fewer lines. */
 function noticeGuidanceSteps(
   compress: NoticeCompressTier,
@@ -1025,17 +1072,17 @@ function noticeGuidanceSteps(
   if (compress.omitWhatToDoNext) return [];
   if (compress.useAbbreviatedSteps) {
     return [
-      `Reach us your way — call ${company} ${phoneCue}, email ${SUBJECT_SUPPORT.email}, or visit ${stripScheme(SUBJECT_SUPPORT.supportUrl)} to pick a delivery time that suits you.`,
-      `Have AGENCY REF ID ${headerRef || 'above'} handy — it lets us confirm this notice is genuine and find your file in seconds.`,
-      `Once delivered, read the documents promptly. This notice does not extend legal deadlines.`,
-      `Prefer to wait? Further attempts may then be made here or at other locations associated with you.`,
+      `Contact us — call ${company} ${phoneCue} or email ${SUBJECT_SUPPORT.email}. We will schedule delivery at a time and place convenient to you, including evenings and weekends.`,
+      `Have your AGENCY REF ID ${headerRef || 'handy'} — quote it when you call so we can confirm this notice is genuine and locate your file in seconds.`,
+      `Once delivered, read the documents promptly. This notice does not extend, waive, or alter any deadline set by the court or the underlying matter.`,
+      `If we do not hear from you, further attempts will follow — including early morning, evening, or weekend visits — and alternative service methods may be initiated without your cooperation.`,
     ];
   }
   return [
-    `Choose a time that works for you. Call ${company} ${phoneCue}, email ${SUBJECT_SUPPORT.email}, or visit ${stripScheme(SUBJECT_SUPPORT.supportUrl)}. We will gladly deliver at a time and place convenient to you — often more discreet than a visit to your workplace.`,
-    `Confirm this notice is genuine. Quote the AGENCY REF ID at the top when you reach out, or scan the QR code below. We will confirm the assigned server and the matter without asking for any personal information.`,
-    `Learn what this means. A plain-language explanation is available at ${stripScheme(SUBJECT_SUPPORT.noticeInfoUrl)}. Once delivered, please read the documents promptly — they may contain deadlines that this notice does not extend, waive, or otherwise affect.`,
-    `If we do not hear from you, further attempts may be made here — including early morning, evening, or weekend hours — or at other locations associated with you (residence, workplace, or a known third party).`,
+    `Contact us to choose a delivery time. Call ${company} ${phoneCue}, email ${SUBJECT_SUPPORT.email}, or visit ${stripScheme(SUBJECT_SUPPORT.supportUrl)}. We will schedule delivery at a time and location that works for you — evenings, weekends, and off-site locations are available — and we will keep your information strictly confidential.`,
+    `Confirm this notice is genuine before you call. Quote the AGENCY REF ID printed at the top of this form, or scan the QR code at the bottom. We will confirm the assigned server, the documents being served, and the nature of the matter — without asking for any personal information from you.`,
+    `Read the documents once delivered. A plain-language explanation of service of process is available at ${stripScheme(SUBJECT_SUPPORT.noticeInfoUrl)}. Once delivered, please review the documents promptly — they may contain response deadlines, court dates, or filing requirements that this notice does not extend, waive, or otherwise affect.`,
+    `Act now — do not wait. If we do not hear from you, additional attempts will be made at this address at all hours — early morning, evening, and weekends — and at any other address or location lawfully associated with you, including your workplace. Alternative methods of service under Utah law do not require your cooperation.`,
   ];
 }
 
@@ -1140,6 +1187,15 @@ export async function generateNoticeOfAttempt(
   // the court's case number.
   const headerRef = data.agencyRefNumber || data.caseNumber;
   setActiveCaseNumber(headerRef);
+  // Bold tokens rendered inline via addBoldTokenText throughout the notice.
+  const boldContactTokens = [
+    data.serverPhone || SUBJECT_SUPPORT.dispatchPhone,
+    SUBJECT_SUPPORT.email,
+    stripScheme(SUBJECT_SUPPORT.supportUrl),
+    stripScheme(SUBJECT_SUPPORT.noticeInfoUrl),
+    'AGENCY REF ID',
+    ...(headerRef ? [headerRef] : []),
+  ].filter(Boolean) as string[];
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
@@ -1387,23 +1443,41 @@ export async function generateNoticeOfAttempt(
     // last few pixels. 3mm clears the ascender with a hair of daylight left.
     y = bandY + bandH + compress.disclaimerClearance;
 
-    const NOTICE_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
-    const noticeText =
-      `${company} is a licensed private process service agency operating under Utah law. We have been ` +
-      'hired to deliver legal documents to you personally on behalf of the party identified above. ' +
-      'This notice is not from a court, law enforcement, or a collections agency — we have no authority ' +
+    const NOTICE_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset + 1;
+    const noticeLh = NOTICE_FONT * 0.44 + 0.35; // matches getPdfTextLineHeight readable
+
+    // Paragraph 1 — bold opener, then body
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(NOTICE_FONT);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const p1lead = `${company} is a licensed private process service agency operating under Utah law.`;
+    y = addWrappedText(doc, p1lead, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
+    y += noticeLh * 0.15;
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    const p1body =
+      'We have been hired to deliver legal documents to you personally on behalf of the party identified above. ' +
+      'This notice is NOT from a court, law enforcement, or a collections agency — we have no authority ' +
       'to arrest, cite, garnish, or seize anything. It does not create or alter any legal deadline or ' +
       'obligation on its own — those come from the underlying matter, which exists regardless of ' +
-      'whether or how delivery is completed. Ignoring this notice does not make the matter go away.' +
-      '\n\n' +
-      `We attempted delivery on the date(s) shown and were not able to reach you. Contact us${contact} ` +
-      'to schedule a time and location that works for you — we will work around your schedule and keep ' +
-      'your information confidential. If we cannot complete personal delivery, the hiring party will ' +
-      'pursue alternative methods of service authorized under Utah law, including substituted service ' +
-      'and service by publication. Those methods do not require your cooperation or your presence and ' +
-      'will result in additional procedural steps in the underlying matter. Contacting us now is the ' +
-      'simplest and most direct path to resolving this.';
-    y = addWrappedText(doc, noticeText, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
+      'whether or how delivery is completed. Ignoring this notice does not make the matter go away.';
+    y = addWrappedText(doc, p1body, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
+    y += noticeLh * 0.6;
+
+    // Paragraph 2 — bold opener, then body
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(NOTICE_FONT);
+    const p2lead = `We attempted delivery on the date(s) shown and were not able to reach you.`;
+    y = addWrappedText(doc, p2lead, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
+    y += noticeLh * 0.15;
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    const p2body =
+      `Contact us${contact} to schedule a time and location that works for you — we will work around ` +
+      'your schedule and keep your information confidential. If we cannot complete personal delivery, ' +
+      'the hiring party will pursue alternative methods of service authorized under Utah law, including ' +
+      'substituted service and service by publication. Those methods do not require your cooperation or ' +
+      'your presence and will result in additional procedural steps in the underlying matter. ' +
+      'Contacting us now is the simplest and most direct path to resolving this.';
+    y = addBoldTokenText(doc, p2body, lx, y, ffw, NOTICE_FONT, boldContactTokens);
     y += ng(SPACING.XS);
 
     if (data.nextAttemptNote) {
@@ -1470,7 +1544,7 @@ export async function generateNoticeOfAttempt(
       const phoneCue = data.serverPhone
         ? `at ${data.serverPhone}`
         : 'at the number printed on this notice';
-      const STEP_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
+      const STEP_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset + 1;
       const steps = noticeGuidanceSteps(compress, company, phoneCue, headerRef);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(STEP_FONT);
@@ -1481,11 +1555,36 @@ export async function generateNoticeOfAttempt(
         doc.text(numLabel, lx, y);
         const numW = doc.getTextWidth(numLabel) + 2;
         doc.setFont(PDF_VALUE_FONT, 'normal');
-        y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
+        y = addBoldTokenText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, boldContactTokens);
         y += ng(SPACING.XS) * compress.stepGapScale;
       });
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
+  }
+
+  // ── Article VI — Important Reminders (only when IV is also present) ──
+  if (!compress.omitImportantReminders) {
+    const sec = openAutoSection(doc, 'VI. Important Reminders', y);
+    y = sec.contentY + compress.sectionPad;
+    const STEP_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset + 1;
+    const viReminders = [
+      'This notice does not constitute service of process. Court deadlines run from the date delivery is actually completed — not from this notice. Do not use this document as a substitute for reviewing the materials once they are in hand.',
+      'Your information is protected. Rocky Mountain Protective Group does not share or sell recipient data. Any contact information you voluntarily provide is used solely to coordinate a delivery time.',
+      'You may ask questions before accepting delivery. You may request that the server identify themselves and confirm the nature of the documents. You are not required to sign anything, but refusal does not stop the underlying matter from proceeding.',
+    ];
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(STEP_FONT);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    viReminders.forEach((reminder, i) => {
+      const numLabel = `${i + 1}.`;
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.text(numLabel, lx, y);
+      const numW = doc.getTextWidth(numLabel) + 2;
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      y = addBoldTokenText(doc, reminder, lx + numW, y, ffw - numW, STEP_FONT, boldContactTokens);
+      y += ng(SPACING.XS) * compress.stepGapScale;
+    });
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
