@@ -709,14 +709,14 @@ export default function ServeReceiptPage() {
           <button
             type="button"
             onClick={() => downloadPdf(done.receiptId)}
-            className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-sm font-semibold"
+            className="w-full min-h-[44px] flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-sm font-semibold"
           >
             <Download size={16} /> Download my copy (PDF)
           </button>
           <button
             type="button"
             onClick={() => printPdf(done.receiptId)}
-            className="mt-2 w-full flex items-center justify-center gap-2 border border-gray-300 text-gray-600 py-3 rounded-sm font-semibold"
+            className="mt-2 w-full min-h-[44px] flex items-center justify-center gap-2 border border-gray-300 text-gray-600 py-3 rounded-sm font-semibold"
           >
             <Printer size={16} /> Print paper copy (mobile printer)
           </button>

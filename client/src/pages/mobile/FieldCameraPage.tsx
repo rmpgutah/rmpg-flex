@@ -455,7 +455,7 @@ export default function FieldCameraPage() {
       </div>
 
       {/* ── Mode bar — ALPR toggle + Patrol Scan + call context ── */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-surface-overlay border-b border-border-subtle">
+      <div className="flex items-center justify-between px-3 py-1 bg-surface-overlay border-b border-border-subtle">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -465,7 +465,7 @@ export default function FieldCameraPage() {
               return next;
             })}
             disabled={patrolRunning}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
+            className={`flex items-center gap-1.5 px-2 min-h-[44px] text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
               alprMode ? 'border-accent-silver-400 text-[color:var(--field-label-color)] bg-surface-sunken' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={alprMode}
@@ -480,7 +480,7 @@ export default function FieldCameraPage() {
               return next;
             })}
             disabled={patrolRunning}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
+            className={`flex items-center gap-1.5 px-2 min-h-[44px] text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
               idScanMode ? 'border-brand-400 text-brand-400 bg-surface-sunken' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={idScanMode}
@@ -490,7 +490,7 @@ export default function FieldCameraPage() {
           <button
             type="button"
             onClick={() => (patrolRunning ? patrol.stop() : patrol.start())}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border ${
+            className={`flex items-center gap-1.5 px-2 min-h-[44px] text-[10px] font-bold uppercase tracking-wider border ${
               patrolRunning ? 'border-red-600 text-red-300 bg-red-950 animate-pulse' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={patrolRunning}
@@ -547,7 +547,7 @@ export default function FieldCameraPage() {
         )}
         {/* ALPR scan result overlay */}
         {scan && (
-          <div className="absolute inset-0 z-10 bg-black/92 overflow-y-auto p-3 space-y-2">
+          <div className="absolute inset-0 z-10 bg-black/92 overflow-y-auto space-y-2" style={{ padding: 'max(0.75rem, env(safe-area-inset-top, 0.75rem)) 0.75rem 0.75rem' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)] flex items-center gap-1">

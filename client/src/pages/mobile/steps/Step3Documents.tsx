@@ -59,7 +59,7 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
                     onClick={() => adjust(title, -1)}
                     disabled={copies <= 1}
                     aria-label={`Decrease copies of ${title}`}
-                    className="w-7 h-7 flex items-center justify-center rounded-sm border border-gray-600 text-gray-300 disabled:opacity-30 active:opacity-60"
+                    className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-sm border border-gray-600 text-gray-300 disabled:opacity-30 active:opacity-60"
                   >
                     <Minus size={14} />
                   </button>
@@ -70,7 +70,7 @@ export default function Step3Documents({ docCopies, setDocCopies, documentType }
                     type="button"
                     onClick={() => adjust(title, 1)}
                     aria-label={`Increase copies of ${title}`}
-                    className="w-7 h-7 flex items-center justify-center rounded-sm border border-gray-600 text-gray-300 active:opacity-60"
+                    className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-sm border border-gray-600 text-gray-300 active:opacity-60"
                   >
                     <Plus size={14} />
                   </button>

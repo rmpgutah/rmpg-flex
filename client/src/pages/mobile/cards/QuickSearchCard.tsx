@@ -191,7 +191,7 @@ export default function QuickSearchCard() {
                   type="button"
                   onClick={() => handleRowClick(r)}
                   onContextMenu={(e) => openMenu(e, buildResultMenu(r))}
-                  className="py-2 border-b border-border-default text-rmpg-100 text-xs w-full text-left flex items-center"
+                  className="min-h-[44px] py-2 border-b border-border-default text-rmpg-100 text-xs w-full text-left flex items-center"
                 >
                   <span className="bg-surface-sunken border border-border-default text-[color:var(--field-label-color)] text-[9px] font-bold tracking-widest px-1.5 py-0.5 mr-2">
                     {type}

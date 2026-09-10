@@ -30,7 +30,7 @@ export interface Step5Props {
 
 const inputCls =
   'w-full bg-white border border-gray-600 rounded-sm px-3 py-2.5 ' +
-  'text-[15px] text-white placeholder:text-gray-500 focus:outline-none ' +
+  'text-base text-white placeholder:text-gray-500 focus:outline-none ' +
   'focus:border-blue-400';
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
@@ -91,7 +91,7 @@ export default function Step5SignSubmit({
                 { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
               );
             }}
-            className="w-full py-3 rounded-sm border border-gray-500 text-[14px] text-gray-300 font-medium active:opacity-60"
+            className="w-full min-h-[44px] py-3 rounded-sm border border-gray-500 text-[14px] text-gray-300 font-medium active:opacity-60"
           >
             Try again
           </button>
@@ -134,8 +134,7 @@ export default function Step5SignSubmit({
       <div>
         <FieldLabel required>Sign here</FieldLabel>
         <div
-          className="border-2 border-gray-500 rounded-sm overflow-hidden"
-          style={{ backgroundColor: '#ffffff' }}
+          className="border-2 border-gray-500 rounded-sm overflow-hidden bg-white"
         >
           <SignaturePad
             value={signature}

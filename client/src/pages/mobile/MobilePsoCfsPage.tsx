@@ -326,7 +326,7 @@ export default function MobilePsoCfsPage() {
             <div className="text-rmpg-100 text-lg font-mono">{call?.call_number}</div>
             <div className="text-xs text-rmpg-400 mt-0.5">Signed in as <span className="text-rmpg-200">{auth?.user.full_name} ({auth?.user.id})</span></div>
           </div>
-          <button onClick={signOut} className="text-[10px] text-rmpg-500 hover:text-red-400 uppercase">Sign Out</button>
+          <button type="button" onClick={signOut} className="min-h-[44px] px-2 text-[10px] text-rmpg-500 hover:text-red-400 uppercase">Sign Out</button>
         </div>
 
         <div className="bg-surface-base border border-border-default p-3">
@@ -345,7 +345,7 @@ export default function MobilePsoCfsPage() {
                 key={s}
                 disabled={statusBusy}
                 onClick={() => updateStatus(s)}
-                className="py-3 border border-border-subtle text-rmpg-100 text-[11px] font-bold uppercase tracking-wider hover:border-accent-silver-400 disabled:opacity-50"
+                className="min-h-[44px] py-2 border border-border-subtle text-rmpg-100 text-[11px] font-bold uppercase tracking-wider hover:border-accent-silver-400 disabled:opacity-50"
               >{statusLabel(s)}</button>
             ))}
           </div>
@@ -357,13 +357,13 @@ export default function MobilePsoCfsPage() {
             value={narrative}
             onChange={(e) => setNarrative(e.target.value)}
             rows={4}
-            className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-3 py-2 focus:border-accent-silver-400 outline-none"
+            className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-base px-3 py-2 focus:border-accent-silver-400 outline-none"
             placeholder="Record an observation, attempt outcome, or note…"
           />
           <button
             disabled={busy || !narrative.trim()}
             onClick={saveNarrative}
-            className="mt-2 w-full bg-rmpg-600 hover:bg-rmpg-500 text-rmpg-50 font-bold py-2 uppercase tracking-wider text-[11px] disabled:opacity-50"
+            className="mt-2 w-full min-h-[44px] bg-rmpg-600 hover:bg-rmpg-500 text-rmpg-50 font-bold py-2 uppercase tracking-wider text-[11px] disabled:opacity-50"
           >{busy ? 'Saving…' : narrativeSaved ? 'Saved ✓' : 'Append Narrative'}</button>
         </div>
 
@@ -393,7 +393,7 @@ export default function MobilePsoCfsPage() {
           <button
             disabled={busy}
             onClick={savePsoFields}
-            className="mt-2 w-full bg-rmpg-600 hover:bg-rmpg-500 text-rmpg-50 font-bold py-2 uppercase tracking-wider text-[11px] disabled:opacity-50"
+            className="mt-2 w-full min-h-[44px] bg-rmpg-600 hover:bg-rmpg-500 text-rmpg-50 font-bold py-2 uppercase tracking-wider text-[11px] disabled:opacity-50"
           >{busy ? 'Saving…' : psoSaved ? 'Saved ✓' : 'Update PSO Fields'}</button>
         </div>
 
@@ -417,7 +417,7 @@ function LabeledInput({ label, value, onChange, type = 'text', min, max }: { lab
   return (
     <div>
       <label htmlFor="ff-mobilepsocfspage-1" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
-      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} min={min} max={max} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-accent-silver-400 outline-none mt-1" />
+      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} min={min} max={max} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-base px-2 py-1.5 focus:border-accent-silver-400 outline-none mt-1" />
     </div>
   );
 }
@@ -425,7 +425,7 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
   return (
     <div>
       <label htmlFor="ff-mobilepsocfspage-2" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
-      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-accent-silver-400 outline-none mt-1">
+      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-base px-2 py-1.5 focus:border-accent-silver-400 outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
@@ -434,9 +434,9 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-surface-sunken text-rmpg-100">
+    <div className="min-h-[100dvh] bg-surface-sunken text-rmpg-100">
       <div className="max-w-md mx-auto">
-        <div className="bg-surface-overlay border-b border-border-default px-4 py-3 flex items-center gap-3">
+        <div className="bg-surface-overlay border-b border-border-default px-4 py-3 flex items-center gap-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))' }}>
           <img src="/rmpg-logo.png" alt="RMPG" className="w-8 h-8" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <div>
             <div className="text-[color:var(--panel-header-color)] text-xs font-bold tracking-[0.12em] uppercase">RMPG Flex</div>
