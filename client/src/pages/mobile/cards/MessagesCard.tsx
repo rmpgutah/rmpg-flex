@@ -174,18 +174,27 @@ export default function MessagesCard() {
             const bodyText = (m.text || m.body || '').toString();
             const preview = bodyText.length > 60 ? `${bodyText.slice(0, 60)}…` : bodyText;
             const rowClass = [
-              'py-2 border-b border-border-default last:border-b-0 text-rmpg-100 text-xs',
+              'min-h-[44px] py-2 w-full text-left border-b border-border-default last:border-b-0 text-rmpg-100 text-xs',
+              'flex flex-col justify-center',
               isUnread ? 'border-l-2 border-l-accent-silver-400 pl-2' : '',
             ].join(' ');
             return (
-              <li key={m.id} className={rowClass} onContextMenu={(e) => openMenu(e, buildMessageMenu(m))}>
-                <div className="flex items-baseline">
-                  <span className="font-bold">{m.from_name || m.sender_name || 'Unknown'}</span>
-                  <span className="text-rmpg-500 text-[11px] ml-2">
-                    {m.created_at ? relativeTime(m.created_at) : ''}
-                  </span>
-                </div>
-                <div className="text-rmpg-300 text-[11px] mt-0.5 line-clamp-1">{preview}</div>
+              <li key={m.id}>
+                <button
+                  type="button"
+                  className={rowClass}
+                  onClick={() => navigate('/communications?inbox=me')}
+                  onContextMenu={(e) => openMenu(e, buildMessageMenu(m))}
+                  aria-label={`Message from ${m.from_name || m.sender_name || 'Unknown'}`}
+                >
+                  <div className="flex items-baseline">
+                    <span className="font-bold">{m.from_name || m.sender_name || 'Unknown'}</span>
+                    <span className="text-rmpg-500 text-[11px] ml-2">
+                      {m.created_at ? relativeTime(m.created_at) : ''}
+                    </span>
+                  </div>
+                  <div className="text-rmpg-300 text-[11px] mt-0.5 line-clamp-1">{preview}</div>
+                </button>
               </li>
             );
           })}

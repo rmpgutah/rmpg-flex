@@ -226,7 +226,7 @@ export default function ActiveCallsCard() {
             onClick={() => setShowDistance((v) => !v)}
             aria-pressed={showDistance}
             className={[
-              'h-8 px-2 text-[10px] uppercase tracking-widest border',
+              'min-h-[44px] px-2 text-[10px] uppercase tracking-widest border',
               showDistance ? 'text-[color:var(--field-label-color)] border-accent-silver-400' : 'text-rmpg-400 border-border-default',
             ].join(' ')}
           >
