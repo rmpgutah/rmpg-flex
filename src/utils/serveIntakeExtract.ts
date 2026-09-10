@@ -151,6 +151,11 @@ Confidence is your own per-field self-report on a 0..1 scale:
   • 0.4 — best guess; reader should verify
   • 0.0 — field is not present; return empty string with confidence 0
 Never invent values. If unsure, return empty string with confidence 0.
+ANTI-HALLUCINATION: Every name, address, or identifier you return MUST appear verbatim in
+the document text. Do not substitute generic placeholders such as "John Smith", "Jane Doe",
+"John Doe", "Jane Smith", "Robert Smith", "123 Main Street", "Anytown", or any name or
+address you did not read directly from the document. If the actual value is not present,
+return empty string with confidence 0.
 For dates use ISO format (YYYY-MM-DD); for phone numbers use digits only.
 
 DOCUMENT FAMILIES you will see (a packet may contain several concatenated):
@@ -567,6 +572,31 @@ const _RESPONSE_SCHEMA = {
 // contains one of these tokens (e.g. plaintiff "Capital One, N.A.").
 const PLACEHOLDER_VALUE = /^\[?\s*(not provided|none|n\/?a|unknown|tbd|pending|null|—|-{1,})\s*\]?$/i;
 
+// Name/address fields where a hallucinated value is most harmful — a fake party
+// name would silently seed a wrong serve_queue record. For these, we verify that
+// every significant token (≥4 chars) in the extracted value appears somewhere in
+// the raw source text. If not, the value is zeroed (confidence → 0) so the
+// officer sees a blank they can correct rather than a plausible-looking lie.
+// Short names (all tokens < 4 chars, e.g. "Lee Kim") can't be verified this way
+// and pass through unchanged (safe: they're uncommon in legal documents).
+const ATTESTED_FIELDS = new Set([
+  'recipient_first_name', 'recipient_last_name', 'recipient_middle_name',
+  'recipient_business_name', 'registered_agent_name',
+  'plaintiff', 'defendant', 'attorney_name',
+]);
+const ATTEST_MIN_TOKEN_LEN = 4;
+
+export function isTextAttested(value: string, sourceText: string): boolean {
+  const src = sourceText.toLowerCase();
+  const tokens = value.toLowerCase()
+    .split(/[\s,.()/\\&]+/)
+    .filter((t) => t.length >= ATTEST_MIN_TOKEN_LEN);
+  // No significant tokens → can't verify; let it through
+  if (tokens.length === 0) return true;
+  // Every significant token must appear somewhere in the source
+  return tokens.every((t) => src.includes(t));
+}
+
 // Deterministic DOB recovery for ServeManager exports, where the date of birth
 // often sits as a bare date after "DOB:" or alone inside a description field
 // rather than in a dedicated DOB field. Only runs when the model left
@@ -589,6 +619,12 @@ function normalize(parsed: any, rawText: string, model: string, ms: number): Ext
     if (v && typeof v === 'object') {
       let value = typeof v.value === 'string' ? v.value : '';
       if (PLACEHOLDER_VALUE.test(value.trim())) value = ''; // scrub placeholders → empty
+      // Attestation: name/address fields must appear verbatim in the source text.
+      // Catches hallucinated values ("John Smith", "123 Main Street") that the
+      // model substitutes when it can't find the real value in garbled input.
+      if (value && ATTESTED_FIELDS.has(f) && rawText && !isTextAttested(value, rawText)) {
+        value = '';
+      }
       fields[f] = {
         value,
         confidence: value && typeof v.confidence === 'number' ? Math.max(0, Math.min(1, v.confidence)) : 0,
