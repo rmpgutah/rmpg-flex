@@ -276,10 +276,15 @@ function UploadForm({
     // after the handler returns); the async walk happens inside the util.
     extractFolderGroups(e.dataTransfer).then((groups) => {
       const allFiles = groups.flatMap((g) => g.files);
-      if (allFiles.length > 0) void submitFiles(allFiles);
+      if (allFiles.length > 0) {
+        void submitFiles(allFiles);
+      } else {
+        setErr('No uploadable files found in the dropped folder.');
+      }
     }).catch(() => {
       const fallback = Array.from(e.dataTransfer?.files ?? []);
       if (fallback.length > 0) void submitFiles(fallback);
+      else setErr('No uploadable files found in the dropped folder.');
     });
   }, [busy, submitFiles]);
 
