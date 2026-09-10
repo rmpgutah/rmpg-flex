@@ -1389,17 +1389,20 @@ export async function generateNoticeOfAttempt(
 
     const NOTICE_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
     const noticeText =
-      `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
-      'identified above to you in connection with the referenced case. As shown in the record of ' +
-      'attempt(s) above, delivery has not been completed. We would be glad to deliver the documents at a ' +
-      `date, time, and place that is convenient for you — simply contact our office${contact} or use any ` +
-      'of the options listed at the bottom of this page. You are not required to respond to this notice; ' +
-      'however, choosing a delivery time helps us avoid further visits to this address.' +
+      `${company} is a licensed private process service agency operating under Utah law. We have been ` +
+      'hired to deliver legal documents to you personally on behalf of the party identified above. ' +
+      'This notice is not from a court, law enforcement, or a collections agency — we have no authority ' +
+      'to arrest, cite, garnish, or seize anything. It does not create or alter any legal deadline or ' +
+      'obligation on its own — those come from the underlying matter, which exists regardless of ' +
+      'whether or how delivery is completed. Ignoring this notice does not make the matter go away.' +
       '\n\n' +
-      'This notice was prepared and delivered by a private process server, not by a court or ' +
-      'government agency. It does not create, waive, extend, or otherwise affect any deadline, ' +
-      'right, or obligation arising from the underlying legal matter. Process service is performed ' +
-      'pursuant to Utah Rule of Civil Procedure 4 and Utah Code § 78B-8-302.';
+      `We attempted delivery on the date(s) shown and were not able to reach you. Contact us${contact} ` +
+      'to schedule a time and location that works for you — we will work around your schedule and keep ' +
+      'your information confidential. If we cannot complete personal delivery, the hiring party will ' +
+      'pursue alternative methods of service authorized under Utah law, including substituted service ' +
+      'and service by publication. Those methods do not require your cooperation or your presence and ' +
+      'will result in additional procedural steps in the underlying matter. Contacting us now is the ' +
+      'simplest and most direct path to resolving this.';
     y = addWrappedText(doc, noticeText, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
     y += ng(SPACING.XS);
 
