@@ -14,7 +14,7 @@ import {
   type StopCoordinate,
 } from '../utils/mapboxOptimizationLayer';
 import type { V2Solution, JobPollResult } from '../utils/mapboxOptimizationV2';
-import { getMapboxAccessToken } from '../utils/mapboxRouting';
+import { getCachedMapboxAccessToken as getMapboxAccessToken } from '../utils/mapboxApiKey';
 
 interface RecentJobRow {
   job_id: string;
