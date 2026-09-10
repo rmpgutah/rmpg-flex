@@ -135,7 +135,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // Heard on every new dispatch assignment and call broadcast.
   caution: {
     type: 'sine',
-    gain: 0.25,
+    gain: 0.32,
     steps: [
       { freq: 853,  start: 0,    dur: 0.33 },
       { freq: 960,  start: 0.35, dur: 0.33 },
@@ -149,7 +149,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // Three full cycles for unmistakable urgency.
   warning: {
     type: 'sine',
-    gain: 0.28,
+    gain: 0.36,
     steps: [
       { freq: 1050, start: 0,    dur: 0.15 },
       { freq: 1450, start: 0.17, dur: 0.15 },
@@ -181,7 +181,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // hits, backup requests, and all-units advisories.
   alert: {
     type: 'sine',
-    gain: 0.30,
+    gain: 0.38,
     steps: [
       { freq: 880,  start: 0,    dur: 0.08 },
       { freq: 1047, start: 0.11, dur: 0.08 },
@@ -197,7 +197,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // button activation, pursuit alerts, and dispatch timer overdue.
   alarm: {
     type: 'sine',
-    gain: 0.32,
+    gain: 0.42,
     steps: [
       { freq: 800,  start: 0,    dur: 0.09 },
       { freq: 1000, start: 0.10, dur: 0.09 },
@@ -256,7 +256,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // sweep creating an unmistakable siren-like warble. Louder gain.
   p1_alert: {
     type: 'sine',
-    gain: 0.35,
+    gain: 0.44,
     steps: [
       { freq: 1200, start: 0,    dur: 0.10 },
       { freq: 800,  start: 0.12, dur: 0.10 },
@@ -316,7 +316,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // pursuit-speed (>= 100 mph) events. Gain matches alarm tier.
   pursuit_alert: {
     type: 'sine',
-    gain: 0.34,
+    gain: 0.44,
     steps: [
       { freq: 1200, start: 0,    dur: 0.10 },
       { freq: 1600, start: 0.11, dur: 0.10 },
@@ -390,7 +390,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // requested" urgency pattern distinct from pursuit or general alert.
   backup_request: {
     type: 'sine',
-    gain: 0.28,
+    gain: 0.36,
     steps: [
       { freq: 1000, start: 0,    dur: 0.10 },
       { freq: 0,    start: 0.10, dur: 0.06 },
@@ -448,7 +448,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // listen up" rather than "act now."
   all_call: {
     type: 'sine',
-    gain: 0.28,
+    gain: 0.36,
     steps: [
       { freq: 800,  start: 0.00, dur: 0.20 },
       { freq: 1200, start: 0.20, dur: 0.20 },
@@ -531,7 +531,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // Used exclusively for panic button activations.
   panic_continuous: {
     type: 'sine',
-    gain: 0.35,
+    gain: 0.48,
     steps: [
       { freq: 800,  start: 0,    dur: 0.09 },
       { freq: 1100, start: 0.10, dur: 0.09 },
@@ -648,7 +648,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // ── Knox Alert — rapid hi-lo attention warble ───────────────
   knox_alert: {
     type: 'sine',
-    gain: 0.28,
+    gain: 0.36,
     steps: [
       { freq: 1200, start: 0,    dur: 0.07 },
       { freq: 900,  start: 0.08, dur: 0.07 },
@@ -713,7 +713,7 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   // ── Emergency (Three) — three-cycle warble, shorter alarm ───
   emergency_three: {
     type: 'sine',
-    gain: 0.33,
+    gain: 0.42,
     steps: [
       { freq: 800,  start: 0,    dur: 0.09 },
       { freq: 1100, start: 0.10, dur: 0.09 },
