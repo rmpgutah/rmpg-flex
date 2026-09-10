@@ -24,6 +24,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 // (2026-07-02 perf fix).
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { getCachedMapboxAccessToken } from '../utils/mapboxApiKey';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
@@ -402,18 +403,29 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
       try {
         const coordStr = `${originLatLng.lng},${originLatLng.lat};${destinationLatLng.lng},${destinationLatLng.lat}`;
-        // Feature 1: live traffic-aware routing. driving-traffic factors in
-        // real-time speeds; annotations=congestion drives the colored line.
-        // Routed through the Worker's /api/mapbox/directions proxy (src/
-        // routes/mapbox.ts) instead of a direct api.mapbox.com call with an
-        // embedded public token — see useNavGuidanceEngine.ts for the
-        // sibling engine that made this same change first.
-        const data = await apiFetch<{ routes?: any[] }>(
-          `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
-          // maxspeed rides along with congestion — same request, and overview=full
-          // (already set) is Mapbox's precondition for any annotation.
-          `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed`,
-        );
+        const directionsParams = `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed`;
+
+        // Try Worker proxy first; fall back to direct Mapbox API when proxy
+        // returns MAPBOX_TOKEN_UNSET (Worker secret not configured). pk.* tokens
+        // are already public (in the JS bundle), so direct API calls are safe.
+        let data: { routes?: any[] };
+        try {
+          data = await apiFetch<{ routes?: any[] }>(
+            `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}${directionsParams}`,
+          );
+        } catch (proxyErr: any) {
+          if (proxyErr?.code === 'MAPBOX_TOKEN_UNSET' || proxyErr?.status === 503) {
+            const clientToken = getCachedMapboxAccessToken();
+            if (!clientToken) throw proxyErr;
+            const resp = await fetch(
+              `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${encodeURIComponent(coordStr)}?geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed&access_token=${clientToken}`,
+            );
+            if (!resp.ok) throw new Error(`Mapbox directions ${resp.status}`);
+            data = await resp.json();
+          } else {
+            throw proxyErr;
+          }
+        }
         const route = data.routes?.[0];
         if (!route) throw new Error('No route found');
 
