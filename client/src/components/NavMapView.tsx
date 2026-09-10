@@ -13,6 +13,7 @@ import {
 import {
   initMapbox, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_SATELLITE,
   MAPBOX_STYLE_STREETS, MAPBOX_STYLE_LIGHT, classifyMapboxError,
+  registerMapInstance, unregisterMapInstance,
 } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
@@ -297,6 +298,7 @@ export default function NavMapView({
           }
           mapRef.current = map;
           webglRecoveryCleanupRef.current = attach(map, 'NavMapView');
+          registerMapInstance(map, initialUrl);
           setMapReady(true);
         });
 
@@ -324,6 +326,7 @@ export default function NavMapView({
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
         mapRef.current.remove();
         mapRef.current = null;
       }
@@ -462,6 +465,7 @@ export default function NavMapView({
     if (!insetEnabled) {
       // Tear down any existing inset when toggled off.
       if (insetMapRef.current) {
+        unregisterMapInstance(insetMapRef.current);
         try { insetMapRef.current.remove(); } catch { /* ignore */ }
         insetMapRef.current = null;
       }
@@ -496,6 +500,7 @@ export default function NavMapView({
           try { applyNavTheme(inset as any, resolvedTheme); } catch { /* ignore */ }
         }
         insetMapRef.current = inset;
+        registerMapInstance(inset, insetUrl);
         setInsetReady(true);
       });
       inset.on('error', () => { /* swallow inset errors — it's decorative */ });
@@ -506,6 +511,7 @@ export default function NavMapView({
     return () => {
       cancelled = true;
       if (insetMapRef.current) {
+        unregisterMapInstance(insetMapRef.current);
         try { insetMapRef.current.remove(); } catch { /* ignore */ }
         insetMapRef.current = null;
       }
