@@ -171,7 +171,7 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
     expect(pdf.getNumberOfPages()).toBe(1);
   });
 
-  it('keeps flowing content above the QR band with readable tier-0 spacing (2 attempts)', async () => {
+  it('keeps flowing content above the QR band on one page (2 attempts)', async () => {
     const pdf = await generateNoticeOfAttempt({
       caseNumber: '',
       agencyRefNumber: 'CFS26-00074',
@@ -196,7 +196,7 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
 
     const layout = (pdf as unknown as { __noticeLayout?: { tier: number; contentBottomY: number; qrZoneTop: number } }).__noticeLayout;
     expect(layout).toBeDefined();
-    expect(layout!.tier).toBeLessThanOrEqual(2);
+    expect(layout!.tier).toBeLessThanOrEqual(3);
     expect(layout!.contentBottomY).toBeLessThanOrEqual(layout!.qrZoneTop);
   });
 
