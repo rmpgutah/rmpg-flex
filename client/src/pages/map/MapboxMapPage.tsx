@@ -206,6 +206,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [activeTab, setActiveTab]       = usePersistedTab('rmpg_mapbox_sidebar', 'units', ['units', 'calls'] as const);
   const [mapStyle, setMapStyleId]       = usePersistedState<MapStyleId>('rmpg_mapbox_style', 'dark');
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
+  const [compassFollow, setCompassFollow] = usePersistedState('rmpg_mapbox_compass_follow', false);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
   const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
   // showMeasureMenu / showDrawMenu drive the distance/area and polygon/polyline/circle
@@ -1250,8 +1251,25 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       addToast('GPS position not available', 'warning');
       return;
     }
-    map.flyTo({ center: [gps.longitude, gps.latitude], zoom: 16, duration: 800 });
-  }, [gps.latitude, gps.longitude, addToast]);
+    const heading = (gps as any).headingSmoothed ?? (gps as any).course ?? (gps as any).heading;
+    map.flyTo({
+      center: [gps.longitude, gps.latitude],
+      zoom: 16,
+      duration: 800,
+      ...(typeof heading === 'number' ? { bearing: heading } : {}),
+    });
+  }, [gps.latitude, gps.longitude, gps, addToast]);
+
+  // Compass-follow: continuously rotate the map to match GPS heading.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !compassFollow) return;
+    const heading = (gps as any).headingSmoothed ?? (gps as any).course ?? (gps as any).heading;
+    if (typeof heading !== 'number') return;
+    if (gps.latitude == null || gps.longitude == null) return;
+    map.easeTo({ bearing: heading, center: [gps.longitude, gps.latitude], duration: 500 });
+  }, [(gps as any).headingSmoothed, (gps as any).course, (gps as any).heading,
+      gps.latitude, gps.longitude, compassFollow, mapLoaded]);
 
   // ── Isochrone Overlay ── extracted to useMapIsochrone hook ─────────────────
 
@@ -1302,6 +1320,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     incidents: { active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), loading: incidentsLayer.loading, error: incidentsLayer.error },
     'repeat-addresses': { active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), loading: repeatAddresses.loading, error: repeatAddresses.error },
     selfpos: { active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v) },
+    'compass-follow': { active: compassFollow as boolean, onToggle: () => setCompassFollow((v: boolean) => !v) },
     'serve-jobs': { active: serveJobsEnabled, onToggle: () => setServeJobsEnabled((v) => !v), loading: serveJobs.loading, error: serveJobs.error },
     'optim-routes': { active: optimRoutes.visible, onToggle: optimRoutes.toggle, loading: optimRoutes.loading, error: optimRoutes.error },
 
