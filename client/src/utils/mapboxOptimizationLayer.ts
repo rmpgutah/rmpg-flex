@@ -72,7 +72,7 @@ async function fetchDirectionsPolyline(
   if (coords.length < 2) return null;
   // Mapbox Directions accepts at most 25 waypoints per request.
   const waypoints = coords.slice(0, 25).map((c) => `${c.lng},${c.lat}`).join(';');
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${waypoints}?geometries=geojson&overview=full&access_token=${token}`;
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${waypoints}?geometries=geojson&overview=full&access_token=${token}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
     if (!res.ok) return null;
