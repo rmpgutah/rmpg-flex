@@ -1,3 +1,4 @@
+import { localToday } from '../../utils/dateUtils';
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload, Cpu, Accessibility, Play, Trash2 } from 'lucide-react';
 import { getStartupWindows, setStartupWindows, type StartupWindow } from '../../utils/startupPreferences';
@@ -280,7 +281,7 @@ export default function DesktopSettingsApp({
       night_light_enabled: localStorage.getItem('rmpg_night_light_enabled') ?? null,
       auto_hide_taskbar: isTaskbarAutoHideEnabled(),
     };
-    const date = new Date().toISOString().slice(0, 10);
+    const date = localToday();
     const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -329,7 +330,7 @@ export default function DesktopSettingsApp({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `flexos-config-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `flexos-config-${localToday()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setSnapshotMsg('Snapshot downloaded.');

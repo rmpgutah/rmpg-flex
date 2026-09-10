@@ -2474,6 +2474,9 @@ export interface Department {
 // --- Notification Rules ---
 
 export type NotificationTrigger =
+  | 'optimization_completed'
+  | 'optimization_failed'
+  | 'optimization_stops_dropped'
   | 'call_created_p1'
   | 'call_created_p2'
   | 'warrant_created'

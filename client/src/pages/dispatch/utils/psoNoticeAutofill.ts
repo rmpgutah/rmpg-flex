@@ -1,3 +1,4 @@
+import { toDatetimeLocalValue } from '../../../utils/dateUtils';
 // ============================================================
 // PSO Notice of Communication — autofill mapper
 //
@@ -90,7 +91,8 @@ function deriveServiceType(
  */
 function splitStamp(ts?: string): { date: string; time: string } {
   if (!ts) return { date: '', time: '' };
-  const norm = ts.replace('T', ' ');
+  const norm = toDatetimeLocalValue(ts);
+  if (!norm) return { date: '', time: '' };
   const iso = norm.slice(0, 10);                       // "YYYY-MM-DD"
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   const date = m ? `${m[2]}/${m[3]}/${m[1]}` : iso;    // "MM/DD/YYYY"

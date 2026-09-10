@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { Camera, RotateCcw, Trash2, Plus } from 'lucide-react';
@@ -84,7 +85,7 @@ export default function SnapshotsPanel({
           <div key={s.id} className="group border border-border-default rounded-[2px] px-1.5 py-1 hover:border-rmpg-700">
             <div className="text-[11px] text-rmpg-200 truncate" title={s.name}>{s.name}</div>
             <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[9px] text-rmpg-600 tabular-nums">{new Date(s.createdAt).toLocaleString()}</span>
+              <span className="text-[9px] text-rmpg-600 tabular-nums">{parseTimestamp(s.createdAt).toLocaleString()}</span>
               <div className="flex items-center gap-0.5">
                 <IconButton aria-label={`Restore ${s.name}`} title="Restore" onClick={() => handleRestore(s)}
                   className="p-0.5 text-rmpg-400 hover:text-accent-silver-300">

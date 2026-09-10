@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 // ═══════════════════════════════════════════════════════════════
 // Tasks page — Spillman Flex Task Management surface.
 // ───────────────────────────────────────────────────────────────
@@ -408,7 +409,7 @@ export default function TasksPage() {
         },
         totalMatching: tasks.length,
       });
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = localToday();
       const slug = [
         filters.status, filters.priority, filters.overdue ? 'overdue' : '',
       ].filter(Boolean).join('-') || 'all';

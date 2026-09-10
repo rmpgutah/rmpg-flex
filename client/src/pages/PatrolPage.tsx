@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 import React, { useState, useEffect, useCallback, useId, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
@@ -412,7 +413,7 @@ const PatrolPage: React.FC = () => {
     let cancelled = false;
     const fetchOpenBreak = async () => {
       try {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localToday();
         const rows = await apiFetch<Array<{ break_start: string; break_end: string | null }>>(
           `/patrol/breaks?officer_id=${user.id}&date=${today}`,
         );

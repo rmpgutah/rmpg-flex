@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ============================================================
 // RMPG Flex — Crime Analysis & Intelligence (Spillman Flex Standard)
 // 10 crime analysis features: crime pattern analysis, link
@@ -91,7 +92,7 @@ export function detectCrimeSeries(cases:Array<{caseNumber:string;crimeType:strin
 /* FEATURE 7: Intelligence Bulletins */
 export interface IntelBulletin { id:string; title:string; classification:'unclassified'|'law_enforcement_sensitive'|'confidential'; date:string; summary:string; threatLevel:'low'|'moderate'|'elevated'|'high'|'critical'; affectedAreas:string[]; suspectInfo:string; vehicleInfo:string; modusOperandi:string; officerSafetyInfo:string; distribution:string[]; }
 export function generateIntelBulletin(pattern:CrimePattern, classification:'unclassified'|'law_enforcement_sensitive'|'confidential'): IntelBulletin {
-  return { id:`ib-${Date.now()}`, title:`INTELLIGENCE BULLETIN: ${pattern.crimeType}`, classification, date:new Date().toISOString().slice(0,10), summary:`${pattern.totalIncidents} incidents of ${pattern.crimeType} detected in the following areas: ${pattern.zones.join(', ')}.`, threatLevel:pattern.confidence>70?'elevated':'moderate', affectedAreas:pattern.zones, suspectInfo:pattern.suspectDescription||'Unknown', vehicleInfo:pattern.vehicleDescription||'Unknown', modusOperandi:pattern.moDetails, officerSafetyInfo:'Exercise standard precautions. Review pattern details before patrol.', distribution:[] };
+  return { id:`ib-${Date.now()}`, title:`INTELLIGENCE BULLETIN: ${pattern.crimeType}`, classification, date:localToday(), summary:`${pattern.totalIncidents} incidents of ${pattern.crimeType} detected in the following areas: ${pattern.zones.join(', ')}.`, threatLevel:pattern.confidence>70?'elevated':'moderate', affectedAreas:pattern.zones, suspectInfo:pattern.suspectDescription||'Unknown', vehicleInfo:pattern.vehicleDescription||'Unknown', modusOperandi:pattern.moDetails, officerSafetyInfo:'Exercise standard precautions. Review pattern details before patrol.', distribution:[] };
 }
 
 /* FEATURE 8: Threat Assessment */
@@ -113,5 +114,5 @@ export function calculateTrendChange(current:number,previous:number): {value:num
 /* FEATURE 10: COMPSTAT Reporting */
 export interface COMPSTATReport { date:string; period:string; commander:string; totalCalls:number; totalIncidents:number; violentCrime:number; propertyCrime:number; arrests:number; clearanceRate:number; responseTimeP1:number; overtimeHours:number; topIssues:string[]; actionPlan:string[]; }
 export function generateCOMPSTATSummary(data:{calls:number;incidents:number;violent:number;property:number;arrests:number;clearance:number;responseP1:number;overtime:number}): COMPSTATReport {
-  return { date:new Date().toISOString().slice(0,10), period:'Weekly', commander:'', totalCalls:data.calls, totalIncidents:data.incidents, violentCrime:data.violent, propertyCrime:data.property, arrests:data.arrests, clearanceRate:data.clearance, responseTimeP1:data.responseP1, overtimeHours:data.overtime, topIssues:[], actionPlan:[] };
+  return { date:localToday(), period:'Weekly', commander:'', totalCalls:data.calls, totalIncidents:data.incidents, violentCrime:data.violent, propertyCrime:data.property, arrests:data.arrests, clearanceRate:data.clearance, responseTimeP1:data.responseP1, overtimeHours:data.overtime, topIssues:[], actionPlan:[] };
 }

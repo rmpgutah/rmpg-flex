@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ⚠️ MOCK / SCAFFOLD ONLY — NOT WIRED INTO THE APP (no importers as of 2026-06-02).
 // These helpers fabricate warrant priority scores, batches, extradition/recall
 // outcomes and bond figures with NO backing data source. They must NEVER feed a
@@ -23,21 +24,21 @@ export function logSurveillance(warrantId:string,location:string,observations:st
 export interface NighttimeService { warrantId:string; judicialAuthorization:boolean; judgeName:string|null; authorizationDate:string|null; reason:string; }
 export function authorizeNighttimeService(warrantId:string,reason:string): NighttimeService { return{warrantId,judicialAuthorization:false,judgeName:null,authorizationDate:null,reason}; }
 export interface WarrantBriefing { warrantId:string; briefingDate:string; attendees:string[]; subjectPhoto:boolean; locationPhotos:boolean; knownHazards:string[]; contingencyPlan:string; }
-export function prepareWarrantBriefing(warrantId:string,hazards:string[]): WarrantBriefing { return{warrantId,briefingDate:new Date().toISOString().slice(0,10),attendees:[],subjectPhoto:false,locationPhotos:false,knownHazards:hazards,contingencyPlan:'Withdraw and contain if compromised. Request supervisor.'}; }
+export function prepareWarrantBriefing(warrantId:string,hazards:string[]): WarrantBriefing { return{warrantId,briefingDate:localToday(),attendees:[],subjectPhoto:false,locationPhotos:false,knownHazards:hazards,contingencyPlan:'Withdraw and contain if compromised. Request supervisor.'}; }
 export function rankWarrantServicePriority(warrants:Array<{charges:string[];extraditable:boolean;ageDays:number;officerSafety:boolean}>): typeof warrants { return[...warrants].sort((a,b)=>{const aScore=(a.charges.some(c=>c.includes('felony'))?3:1)+(a.extraditable?2:0)+(a.ageDays<30?1:0)+(a.officerSafety?3:0);const bScore=(b.charges.some(c=>c.includes('felony'))?3:1)+(b.extraditable?2:0)+(b.ageDays<30?1:0)+(b.officerSafety?3:0);return bScore-aScore;}); }
 export interface WarrantRecallRequest { warrantId:string; reason:string; supportingDoc:string|null; courtOrderNumber:string; status:string; }
 export function requestWarrantRecall(warrantId:string,reason:string,courtOrder:string): WarrantRecallRequest { return{warrantId,reason,supportingDoc:null,courtOrderNumber:courtOrder,status:'submitted'}; }
 export interface WarrantExtension { warrantId:string; originalExpiration:string; extendedTo:string; extensionReason:string; authorizedBy:string; }
 export function extendWarrant(warrantId:string,days:number,reason:string): WarrantExtension { const exp=new Date();exp.setDate(exp.getDate()+days); return{warrantId,originalExpiration:'',extendedTo:exp.toISOString().slice(0,10),extensionReason:reason,authorizedBy:''}; }
 export interface WarrantQuash { warrantId:string; quashReason:string; courtOrderNumber:string; quashDate:string; ncicRemoved:boolean; }
-export function quashWarrant(warrantId:string,courtOrder:string,reason:string): WarrantQuash { return{warrantId,quashReason:reason,courtOrderNumber:courtOrder,quashDate:new Date().toISOString().slice(0,10),ncicRemoved:false}; }
+export function quashWarrant(warrantId:string,courtOrder:string,reason:string): WarrantQuash { return{warrantId,quashReason:reason,courtOrderNumber:courtOrder,quashDate:localToday(),ncicRemoved:false}; }
 export interface WarrantAppeal { warrantId:string; appealGrounds:string; filedBy:string; filedDate:string; hearingDate:string|null; decision:string|null; }
-export function fileWarrantAppeal(warrantId:string,grounds:string,attorney:string): WarrantAppeal { return{warrantId,appealGrounds:grounds,filedBy:attorney,filedDate:new Date().toISOString().slice(0,10),hearingDate:null,decision:null}; }
+export function fileWarrantAppeal(warrantId:string,grounds:string,attorney:string): WarrantAppeal { return{warrantId,appealGrounds:grounds,filedBy:attorney,filedDate:localToday(),hearingDate:null,decision:null}; }
 export interface WarrantServiceReport { warrantId:string; serviceDate:string; servingOfficer:string; method:string; useOfForce:boolean; injuries:number; propertyDamage:string; }
-export function generateServiceReport(warrantId:string,officer:string,method:string): WarrantServiceReport { return{warrantId,serviceDate:new Date().toISOString().slice(0,10),servingOfficer:officer,method,useOfForce:false,injuries:0,propertyDamage:'None'}; }
+export function generateServiceReport(warrantId:string,officer:string,method:string): WarrantServiceReport { return{warrantId,serviceDate:localToday(),servingOfficer:officer,method,useOfForce:false,injuries:0,propertyDamage:'None'}; }
 export function validateWarrantForm(warrant:{subjectName:string;charges:string[];issuingCourt:string;judge:string}): {valid:boolean;errors:string[]} { const errors:string[]=[]; if(!warrant.subjectName)errors.push('Subject name required'); if(warrant.charges.length===0)errors.push('At least one charge required'); if(!warrant.issuingCourt)errors.push('Issuing court required'); if(!warrant.judge)errors.push('Judge name required'); return{valid:errors.length===0,errors}; }
 export interface WarrantNCICEntry { warrantId:string; nicNumber:string; entryDate:string; modifyingAgency:string; status:'entered'|'modified'|'cancelled'|'located'; }
-export function submitNCICEntry(warrantId:string): WarrantNCICEntry { return{warrantId,nicNumber:`NIC/W${Date.now()}`.slice(0,15),entryDate:new Date().toISOString().slice(0,10),modifyingAgency:'RMPG',status:'entered'}; }
+export function submitNCICEntry(warrantId:string): WarrantNCICEntry { return{warrantId,nicNumber:`NIC/W${Date.now()}`.slice(0,15),entryDate:localToday(),modifyingAgency:'RMPG',status:'entered'}; }
 export function calculateExtraditionDistance(issuingState:string,arrestState:string): {distance:number;extraditable:boolean;estimatedCost:number} { return{distance:500,extraditable:true,estimatedCost:2500}; }
 export interface WarrantSearchLog { id:string; searchDate:string; searchedBy:string; searchCriteria:Record<string,string>; resultsCount:number; }
 export function logWarrantSearch(searcher:string,criteria:Record<string,string>,results:number): WarrantSearchLog { return{id:`ws-${Date.now()}`,searchDate:new Date().toISOString(),searchedBy:searcher,searchCriteria:criteria,resultsCount:results}; }
@@ -49,9 +50,9 @@ export function compareWarrantVersions(v1:Record<string,any>,v2:Record<string,an
 export interface WarrantDispatch { warrantId:string; assignedTo:string; assignedAt:string; acceptedAt:string|null; status:string; }
 export function dispatchWarrant(warrantId:string,officerId:string): WarrantDispatch { return{warrantId,assignedTo:officerId,assignedAt:new Date().toISOString(),acceptedAt:null,status:'dispatched'}; }
 export interface WarrantClearance { warrantId:string; clearanceType:'served'|'recalled'|'quashed'|'dismissed'|'bond_posted'|'other'; clearanceDate:string; clearedBy:string; }
-export function clearWarrant(warrantId:string,type:string,officerId:string): WarrantClearance { return{warrantId,clearanceType:type as any,clearanceDate:new Date().toISOString().slice(0,10),clearedBy:officerId}; }
+export function clearWarrant(warrantId:string,type:string,officerId:string): WarrantClearance { return{warrantId,clearanceType:type as any,clearanceDate:localToday(),clearedBy:officerId}; }
 export interface WarrantLocate { warrantId:string; locateDate:string; locateMethod:string; location:string; subjectInCustody:boolean; }
-export function logWarrantLocate(warrantId:string,method:string,location:string): WarrantLocate { return{warrantId,locateDate:new Date().toISOString().slice(0,10),locateMethod:method,location,subjectInCustody:true}; }
+export function logWarrantLocate(warrantId:string,method:string,location:string): WarrantLocate { return{warrantId,locateDate:localToday(),locateMethod:method,location,subjectInCustody:true}; }
 export interface WarrantMemo { warrantId:string; memoType:string; content:string; author:string; createdAt:string; }
 export function addWarrantMemo(warrantId:string,type:string,content:string,author:string): WarrantMemo { return{warrantId,memoType:type,content,author,createdAt:new Date().toISOString()}; }
 export function getActiveWarrantCounts(warrants:Array<{status:string}>): {total:number;active:number;served:number;recalled:number} { return{total:warrants.length,active:warrants.filter(w=>w.status==='active').length,served:warrants.filter(w=>w.status==='served').length,recalled:warrants.filter(w=>w.status==='recalled').length}; }

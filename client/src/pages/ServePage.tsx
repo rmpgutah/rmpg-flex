@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Process Server Field Suite
 // Mobile-first page for managing serve jobs, route planning,
@@ -2764,7 +2765,7 @@ export default function ServePage() {
                       type="date"
                       value={bulkDeadlineDate}
                       onChange={(e) => setBulkDeadlineDate(e.target.value)}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={localToday()}
                       className="mt-1 block w-full px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-600 rounded-[2px] text-rmpg-100 focus:outline-none focus:ring-1 focus:ring-rmpg-400/50"
                     />
                   </label>

@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 import { useEffect, useRef, useState } from 'react';
 import { emailBlob } from '../utils/emailPdf';
 import type {
@@ -116,7 +117,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
   const handleCommit = async (action: CommitKind) => {
     try {
       if (action === 'download' && blobUrl) {
-        downloadBlob(blobUrl, `${schema.meta.formNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
+        downloadBlob(blobUrl, `${schema.meta.formNumber}_${localToday()}.pdf`);
         onCommit(data, action);
         return;
       }
@@ -143,7 +144,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
           schema.meta.revision,
           recordType,
           recordId,
-          `${schema.meta.title} — ${new Date().toISOString().split('T')[0]}`,
+          `${schema.meta.title} — ${localToday()}`,
         );
         setCommitStatus({ kind: 'ok', message: `Attached to ${recordType} #${recordId} (id ${result.id}).` });
         onCommit(data, action);

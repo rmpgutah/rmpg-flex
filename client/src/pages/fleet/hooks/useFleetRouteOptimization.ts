@@ -1,5 +1,6 @@
 /** Fleet routing backed by the asynchronous Mapbox Optimization V2 engine. */
 import { useCallback, useMemo, useRef } from 'react';
+import { mtDatetimeLocalToUtc } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
 import { useOptimizationV2 } from '../../../hooks/useOptimizationV2';
 
@@ -70,17 +71,19 @@ export async function geocodeAddress(q: string): Promise<{ lat: number; lng: num
 
 export function useFleetRouteOptimization(): UseFleetRouteOptimizationResult {
   const optimization = useOptimizationV2();
+  const callSignRef = useRef('Fleet');
   const stopsRef = useRef(new Map<number, FleetStop>());
   const startOptimization = useCallback(async (
     vehicleCallSign: string, originLat: number, originLng: number, stops: FleetStop[], shiftStart: string, shiftEnd: string,
   ) => {
+    callSignRef.current = vehicleCallSign;
     stopsRef.current = new Map(stops.map(s => [s.id, s]));
     await optimization.submit({
       job_type: 'fleet_route',
       problem: {
         version: 1,
         locations: [{ name: 'depot', coordinates: [originLng, originLat] }, ...stops.map(s => ({ name: String(s.id), coordinates: [s.lng, s.lat] as [number, number] }))],
-        vehicles: [{ name: vehicleCallSign, routing_profile: 'mapbox/driving-traffic', start_location: 'depot', earliest_start: new Date(shiftStart).toISOString(), latest_end: new Date(shiftEnd).toISOString() }],
+        vehicles: [{ name: vehicleCallSign, routing_profile: 'mapbox/driving-traffic', start_location: 'depot', earliest_start: `${mtDatetimeLocalToUtc(shiftStart).replace(' ', 'T')}Z`, latest_end: `${mtDatetimeLocalToUtc(shiftEnd).replace(' ', 'T')}Z` }],
         services: stops.map(s => ({ name: String(s.id), location: String(s.id), duration: s.duration ?? 600 })),
         options: { objectives: ['min-schedule-completion-time'] },
       },
@@ -89,12 +92,12 @@ export function useFleetRouteOptimization(): UseFleetRouteOptimizationResult {
   const optimizedRoute = useMemo<FleetOptimizedRoute | null>(() => {
     const solution = optimization.solution;
     const route = solution?.routes[0];
-    if (!solution || !route) return null;
+    if (!solution) return null;
     return {
-      vehicleCallSign: route.vehicle,
-      totalDistanceMi: (route.distance ?? 0) / 1609.344,
+      vehicleCallSign: route?.vehicle ?? callSignRef.current,
+      totalDistanceMi: Math.round(((route?.distance ?? 0) / 1609.344) * 100) / 100,
       droppedStopIds: solution.dropped.services.map(Number),
-      stops: route.stops.filter(s => s.type === 'service').flatMap(s => (s.services ?? [s.location]).map(id => ({
+      stops: (route?.stops ?? []).filter(s => s.type === 'service').flatMap(s => (s.services ?? [s.location]).map(id => ({
         stopId: Number(id), name: stopsRef.current.get(Number(id))?.name ?? `Stop ${id}`, eta: s.eta, waitSec: s.wait ?? 0, durationSec: s.duration ?? 0, odometerMi: (s.odometer ?? 0) / 1609.344,
       }))),
     };

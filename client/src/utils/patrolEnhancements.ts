@@ -1,10 +1,11 @@
+import { localToday } from './dateUtils';
 // 50 patrol enhancements
 export interface PatrolRoute { id:string; zone:string; checkpoints:Array<{order:number;location:string;lat:number;lng:number;durationMinutes:number}>; shift:string; assignedTo:string|null; }
 export function generatePatrolRoute(zone:string,checkpoints:Array<{location:string;lat:number;lng:number}>,duration:number): PatrolRoute { return{id:`pr-${Date.now()}`,zone,checkpoints:checkpoints.map((c,i)=>({order:i+1,...c,durationMinutes:Math.floor(duration/checkpoints.length)})),shift:'',assignedTo:null}; }
 export interface PatrolActivity { officerId:string; date:string; activityType:'traffic_stop'|'business_check'|'foot_patrol'|'school_zone'|'community_contact'|'directed_patrol'; location:string; startTime:string; endTime:string; notes:string; }
 export function analyzePatrolActivity(activities:PatrolActivity[]): {total:number;byType:Record<string,number>;byOfficer:Record<string,number>} { const byType:Record<string,number>={};const byOfficer:Record<string,number>={};for(const a of activities){byType[a.activityType]=(byType[a.activityType]||0)+1;byOfficer[a.officerId]=(byOfficer[a.officerId]||0)+1;} return{total:activities.length,byType,byOfficer}; }
 export interface PatrolBriefing { id:string; shift:string; date:string; supervisor:string; topics:string[]; attendance:string[]; }
-export function conductPatrolBriefing(shift:string,supervisor:string,topics:string[],attendees:string[]): PatrolBriefing { return{id:`pb-${Date.now()}`,shift,date:new Date().toISOString().slice(0,10),supervisor,topics,attendance:attendees}; }
+export function conductPatrolBriefing(shift:string,supervisor:string,topics:string[],attendees:string[]): PatrolBriefing { return{id:`pb-${Date.now()}`,shift,date:localToday(),supervisor,topics,attendance:attendees}; }
 export interface DirectedPatrolAssignment { officerId:string; zone:string; location:string; reason:string; startTime:string; endTime:string; completed:boolean; }
 export function assignDirectedPatrol(officerId:string,zone:string,location:string,reason:string,hours:number): DirectedPatrolAssignment { const end=new Date();end.setHours(end.getHours()+hours); return{officerId,zone,location,reason,startTime:new Date().toISOString(),endTime:end.toISOString(),completed:false}; }
 export interface PatrolCoverageMap { zone:string; coverageLevel:'full'|'partial'|'none'; unitsPresent:number; unitsRequired:number; gap:string|null; }
@@ -14,6 +15,6 @@ export function evaluateCheckpointEffectiveness(checkpoints:PatrolCheckpoint[]):
 export interface PatrolShift { officerId:string; shiftDate:string; shiftType:'day'|'swing'|'graveyard'; zone:string; startTime:string; endTime:string; hours:number; }
 export function assignPatrolShift(officerId:string,date:string,shift:string,zone:string): PatrolShift { const hours=12; return{officerId,shiftDate:date,shiftType:shift as any,zone,startTime:'07:00',endTime:'19:00',hours}; }
 export interface PatrolReport { officerId:string; date:string; shift:string; activities:number; miles:number; fuelUsed:number; notes:string; }
-export function generatePatrolReport(officerId:string,activities:number,miles:number): PatrolReport { return{officerId,date:new Date().toISOString().slice(0,10),shift:'',activities,miles,fuelUsed:0,notes:''}; }
+export function generatePatrolReport(officerId:string,activities:number,miles:number): PatrolReport { return{officerId,date:localToday(),shift:'',activities,miles,fuelUsed:0,notes:''}; }
 export interface PatrolDashboard { unitsOnPatrol:number; activitiesToday:number; checkpointsActive:number; directedPatrols:number; coverageGaps:number; incidentsPrevented:number; }
 export function compilePatrolDashboard(units:number,activities:number,checkpoints:number,patrols:number,gaps:number): PatrolDashboard { return{unitsOnPatrol:units,activitiesToday:activities,checkpointsActive:checkpoints,directedPatrols:patrols,coverageGaps:gaps,incidentsPrevented:0}; }

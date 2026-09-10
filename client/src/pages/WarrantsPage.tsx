@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { importWithRetry } from '../utils/importWithRetry';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
@@ -2112,7 +2113,7 @@ export default function WarrantsPage() {
                         // Single-subject packets get an operator-greppable
                         // filename (BOLO_TURLEY_2026-05-30.pdf); multi-subject
                         // packets stay generic.
-                        const date = new Date().toISOString().slice(0, 10);
+                        const date = localToday();
                         const safe = (s: string) => s.replace(/[^\w\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
                         const filename = subjects.length === 1 && subjects[0].last_name
                           ? `BOLO_${safe(subjects[0].last_name.toUpperCase())}_${date}.pdf`

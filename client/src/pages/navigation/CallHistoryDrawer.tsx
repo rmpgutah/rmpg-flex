@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../utils/dateUtils';
 // ============================================================
 // CALL HISTORY LOG drawer — the "LOG" overlay on the NAVIGATE screen.
 //
@@ -86,14 +87,14 @@ function callBelongsToUnit(c: RawCall, unitId: number | null, callSign: string |
 
 function fmtHM(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
+  const t = parseTimestamp(iso).getTime();
   if (!Number.isFinite(t)) return null;
   return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false }); // new-date-ok
 }
 
 function fmtDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
+  const t = parseTimestamp(iso).getTime();
   if (!Number.isFinite(t)) return '—';
   return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }); // new-date-ok
 }
@@ -115,7 +116,7 @@ function distMi(lat1: number, lng1: number, lat2: number, lng2: number): number 
 function responseSec(c: RawCall): number | null {
   if (c.response_time_seconds != null && c.response_time_seconds > 0) return c.response_time_seconds;
   if (c.dispatched_at && c.onscene_at) {
-    const d = (Date.parse(c.onscene_at) - Date.parse(c.dispatched_at)) / 1000;
+    const d = (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.dispatched_at).getTime()) / 1000;
     return Number.isFinite(d) && d > 0 ? d : null;
   }
   return null;
@@ -123,7 +124,7 @@ function responseSec(c: RawCall): number | null {
 function onsceneSec(c: RawCall): number | null {
   if (c.onscene_duration_seconds != null && c.onscene_duration_seconds > 0) return c.onscene_duration_seconds;
   if (c.onscene_at && c.cleared_at) {
-    const d = (Date.parse(c.cleared_at) - Date.parse(c.onscene_at)) / 1000;
+    const d = (parseTimestamp(c.cleared_at).getTime() - parseTimestamp(c.onscene_at).getTime()) / 1000;
     return Number.isFinite(d) && d > 0 ? d : null;
   }
   return null;
@@ -170,7 +171,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
   useEffect(() => { load(); }, [load]);
 
   const sorted = useMemo(() => {
-    const ts = (c: RawCall) => Date.parse(c.dispatched_at || c.created_at || c.received_at || '') || 0;
+    const ts = (c: RawCall) => parseTimestamp(c.dispatched_at || c.created_at || c.received_at || '').getTime() || 0;
     return [...calls].sort((a, b) => ts(b) - ts(a));
   }, [calls]);
 

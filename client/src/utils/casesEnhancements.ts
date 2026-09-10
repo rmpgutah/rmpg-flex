@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // 50 case management enhancements
 import { parseTimestamp } from './dateUtils';
 export function calculateCaseSolvability(factors:{hasSuspect:boolean;hasWitness:boolean;hasEvidence:boolean;hasVideo:boolean;daysSinceIncident:number}): {score:number;tier:string} { let score=20; if(factors.hasSuspect)score+=30; if(factors.hasWitness)score+=15; if(factors.hasEvidence)score+=20; if(factors.hasVideo)score+=15; if(factors.daysSinceIncident>30)score-=20; const tier=score>=70?'tier1':score>=50?'tier2':score>=30?'tier3':'tier4'; return{score,tier}; }
@@ -8,27 +9,27 @@ export function trackCaseActivity(caseId:string,type:string,desc:string,officer:
 export interface CaseEvidence { caseId:string; evidenceId:string; relevance:'critical'|'important'|'supporting'|'peripheral'; analysisStatus:string; }
 export function prioritizeEvidence(caseEv:CaseEvidence[]): CaseEvidence[] { return[...caseEv].sort((a,b)=>{const w={critical:4,important:3,supporting:2,peripheral:1};return(w[b.relevance]||0)-(w[a.relevance]||0);}); }
 export interface CaseTimeline { caseId:string; milestones:Array<{date:string;milestone:string;completed:boolean}>; }
-export function trackMilestones(caseId:string,milestones:string[]): CaseTimeline { return{caseId,milestones:milestones.map(m=>({date:new Date().toISOString().slice(0,10),milestone:m,completed:false}))}; }
+export function trackMilestones(caseId:string,milestones:string[]): CaseTimeline { return{caseId,milestones:milestones.map(m=>({date:localToday(),milestone:m,completed:false}))}; }
 export interface CaseLead { caseId:string; leadType:string; description:string; source:string; assignedTo:string; status:'new'|'investigating'|'exhausted'|'productive'; }
 export function prioritizeLeads(leads:CaseLead[]): CaseLead[] { return[...leads].sort((a,b)=>{const p:{[k:string]:number}={new:4,investigating:3,exhausted:1,productive:2};return(p[b.status]||0)-(p[a.status]||0);}); }
 export interface CaseMemo { caseId:string; memoType:string; content:string; author:string; createdAt:string; }
 export function addCaseMemo(caseId:string,type:string,content:string,author:string): CaseMemo { return{caseId,memoType:type,content,author,createdAt:new Date().toISOString()}; }
 export interface CaseReview { caseId:string; reviewerId:string; reviewDate:string; findings:string; recommendations:string; status:'pending'|'reviewed'; }
-export function scheduleCaseReview(caseId:string,reviewerId:string): CaseReview { return{caseId,reviewerId,reviewDate:new Date().toISOString().slice(0,10),findings:'',recommendations:'',status:'pending'}; }
+export function scheduleCaseReview(caseId:string,reviewerId:string): CaseReview { return{caseId,reviewerId,reviewDate:localToday(),findings:'',recommendations:'',status:'pending'}; }
 export interface CaseLink { caseA:string; caseB:string; linkType:string; strength:'strong'|'moderate'|'weak'; evidence:string; }
 export function suggestCaseLinks(openCases:Array<{id:string;crimeType:string;location:string;moDesc:string}>): CaseLink[] { const links:CaseLink[]=[]; for(let i=0;i<openCases.length;i++){for(let j=i+1;j<openCases.length;j++){if(openCases[i].crimeType===openCases[j].crimeType){links.push({caseA:openCases[i].id,caseB:openCases[j].id,linkType:'same_crime_type',strength:'weak',evidence:`Both are ${openCases[i].crimeType}`});}}} return links; }
 export interface CaseDisposition { caseId:string; dispositionType:string; dispositionDate:string; reason:string; chargesDisposed:string[]; }
-export function recordDisposition(caseId:string,type:string,reason:string,charges:string[]): CaseDisposition { return{caseId,dispositionType:type,dispositionDate:new Date().toISOString().slice(0,10),reason,chargesDisposed:charges}; }
+export function recordDisposition(caseId:string,type:string,reason:string,charges:string[]): CaseDisposition { return{caseId,dispositionType:type,dispositionDate:localToday(),reason,chargesDisposed:charges}; }
 export interface CaseProsecution { caseId:string; prosecutorName:string; filingDate:string; chargesFiled:string[]; pleaOffer:string|null; trialDate:string|null; }
-export function trackProsecution(caseId:string,prosecutor:string,charges:string[]): CaseProsecution { return{caseId,prosecutorName:prosecutor,filingDate:new Date().toISOString().slice(0,10),chargesFiled:charges,pleaOffer:null,trialDate:null}; }
+export function trackProsecution(caseId:string,prosecutor:string,charges:string[]): CaseProsecution { return{caseId,prosecutorName:prosecutor,filingDate:localToday(),chargesFiled:charges,pleaOffer:null,trialDate:null}; }
 export interface CaseCost { caseId:string; costType:string; amount:number; date:string; description:string; }
-export function trackCaseCosts(caseId:string,type:string,amount:number,desc:string): CaseCost { return{caseId,costType:type,amount,date:new Date().toISOString().slice(0,10),description:desc}; }
+export function trackCaseCosts(caseId:string,type:string,amount:number,desc:string): CaseCost { return{caseId,costType:type,amount,date:localToday(),description:desc}; }
 export function calculateCaseAge(openDate:string): {days:number;aging:string} { const days=Math.ceil((Date.now()-parseTimestamp(openDate).getTime())/86400000); return{days,aging:days<30?'fresh':days<90?'active':days<365?'aging':'cold'}; }
 export function getCaseStatusSummary(cases:Array<{status:string}>): Record<string,number> { const summary:Record<string,number>={}; for(const c of cases)summary[c.status]=(summary[c.status]||0)+1; return summary; }
 export function groupCasesByType(cases:Array<{crimeType:string}>): Record<string,number> { const groups:Record<string,number>={}; for(const c of cases)groups[c.crimeType]=(groups[c.crimeType]||0)+1; return groups; }
 export function findCasesByDateRange(cases:Array<{openedAt:string}>,start:string,end:string): typeof cases { return cases.filter(c=>c.openedAt>=start&&c.openedAt<=end); }
 export interface CaseClosure { caseId:string; closureType:'arrest'|'exceptionally_cleared'|'unfounded'|'administrative'; closureDate:string; closedBy:string; }
-export function closeCase(caseId:string,type:string,officer:string): CaseClosure { return{caseId,closureType:type as any,closureDate:new Date().toISOString().slice(0,10),closedBy:officer}; }
+export function closeCase(caseId:string,type:string,officer:string): CaseClosure { return{caseId,closureType:type as any,closureDate:localToday(),closedBy:officer}; }
 export interface CaseReopen { caseId:string; reopenedAt:string; reopenedBy:string; reason:string; }
 export function reopenCase(caseId:string,officer:string,reason:string): CaseReopen { return{caseId,reopenedAt:new Date().toISOString(),reopenedBy:officer,reason}; }
 export function calculateClearanceRate(cases:Array<{status:string;closedAt:string|null}>): {total:number;cleared:number;rate:number} { const cleared=cases.filter(c=>c.status==='closed'||c.status==='cleared'); return{total:cases.length,cleared:cleared.length,rate:cases.length>0?Math.round(cleared.length/cases.length*100):0}; }

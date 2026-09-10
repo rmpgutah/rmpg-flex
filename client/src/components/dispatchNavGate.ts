@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Dispatch nav-guidance lifecycle + speed readout
 // ============================================================
@@ -60,7 +61,7 @@ export function speedComparison(args: SpeedComparisonArgs): SpeedComparison | nu
   if (typeof gpsSpeedMps !== 'number' || !Number.isFinite(gpsSpeedMps) || gpsSpeedMps < 0) return null;
   if (!gpsUpdatedAt) return null;
 
-  const fixMs = Date.parse(gpsUpdatedAt);
+  const fixMs = parseTimestamp(gpsUpdatedAt).getTime();
   // An unparseable timestamp is indistinguishable from a missing one; assuming
   // "fresh" would defeat the staleness guard entirely.
   if (!Number.isFinite(fixMs)) return null;

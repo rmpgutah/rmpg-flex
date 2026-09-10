@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Skip Tracker 3.5 — Enhanced Dossier Builder
 // Three-panel: Navigation tabs (top) + Search/Results (left) + Dossier/Content (right)
@@ -1459,7 +1460,7 @@ export default function SkipTracerV2Page() {
                 )}
 
                 <div className="text-[9px] text-text-secondary border-t border-border-subtle/50 pt-1">
-                  Searched: {new Date(enrichResult.searched_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })} @ {new Date(enrichResult.searched_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                  Searched: {parseTimestamp(enrichResult.searched_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })} @ {parseTimestamp(enrichResult.searched_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
                   {enrichResult.cached ? ' (cached)' : ' (live)'}
                 </div>
               </div>

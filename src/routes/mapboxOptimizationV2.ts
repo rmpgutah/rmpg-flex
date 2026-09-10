@@ -132,8 +132,8 @@ app.post('/submit', async (c) => {
       let officer: UnitRow | null = null;
       if (officer_unit_id) {
         const officerRow = await db
-          .prepare('SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE id = ? LIMIT 1')
-          .bind(officer_unit_id)
+          .prepare('SELECT id, call_sign, latitude, longitude, capabilities FROM units WHERE officer_id = ? OR id = ? ORDER BY CASE WHEN officer_id = ? THEN 0 ELSE 1 END LIMIT 1')
+          .bind(officer_unit_id, officer_unit_id, officer_unit_id)
           .first();
         if (officerRow) officer = officerRow as unknown as UnitRow;
       }
@@ -325,6 +325,7 @@ app.get('/', async (c) => {
       const problem = JSON.parse(row.problem_json as string);
       if (problem) {
         summary.service_count = problem.services?.length ?? 0;
+        summary.shipment_count = problem.shipments?.length ?? 0;
         summary.vehicle_count = problem.vehicles?.length ?? 0;
         summary.objective = problem.options?.objectives?.[0] ?? null;
         summary.avg_mpg = problem.options?.avg_mpg ?? null;

@@ -1,3 +1,4 @@
+import { localToday } from '../../../utils/dateUtils';
 // Real, wired Document Writer features. Each function takes the TipTap editor
 // and performs a concrete insertion / mutation. No stubs.
 import type { Editor } from '@tiptap/core';
@@ -23,7 +24,7 @@ export const insertMilitary = (editor: EditorRef) => {
 };
 export const insertWeekday = (editor: EditorRef) => insertHtml(editor, new Date().toLocaleDateString('en-US', { weekday: 'long' }));
 export const insertEpoch = (editor: EditorRef) => insertHtml(editor, String(Math.floor(Date.now() / 1000)));
-export const insertCaseDate = (editor: EditorRef) => insertHtml(editor, new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+export const insertCaseDate = (editor: EditorRef) => insertHtml(editor, localToday().replace(/-/g, ''));
 
 // ────────── Signature ──────────
 export function insertSignatureFromFile(editor: EditorRef, file: File): Promise<void> {

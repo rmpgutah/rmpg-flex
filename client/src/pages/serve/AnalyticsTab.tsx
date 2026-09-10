@@ -1,3 +1,4 @@
+import { localToday } from '../../utils/dateUtils';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { BarChart3, RefreshCw, Target, TrendingUp, TrendingDown, Users } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
@@ -448,7 +449,7 @@ export default function AnalyticsTab() {
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.setAttribute('download', `serve_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `serve_export_${localToday()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

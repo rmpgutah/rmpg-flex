@@ -1,3 +1,4 @@
+import { parseTimestamp } from './dateUtils';
 // Form auto-save ("filler") utility — D1-backed via /api/form-drafts.
 //
 // Data-entry state is debounced-saved to D1 (cross-device, survives
@@ -47,7 +48,7 @@ export function createAutoSaver(formId: string, debounceMs = 2000, entityId?: st
           draftPath(formId, entityId)
         );
         if (res.data) {
-          return { data: res.data, savedAt: res.updatedAt ? Date.parse(res.updatedAt) : Date.now() };
+          return { data: res.data, savedAt: res.updatedAt ? parseTimestamp(res.updatedAt).getTime() : Date.now() };
         }
       } catch {
         // Fall through to local cache below

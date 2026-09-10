@@ -1,3 +1,4 @@
+import { parseTimestamp } from './dateUtils';
 // Mirrors the worker-side threshold in src/utils/fleetio/sync.ts's
 // isFleetioQueueUnhealthy — kept as a small, independently-testable
 // duplicate since client code can't import from src/ (Worker) code.
@@ -22,7 +23,7 @@ export function isFleetioSyncStatusUnhealthy(status: FleetioSyncStatus, nowMs: n
   if (status.outbound_failed_total >= UNHEALTHY_FAILED_THRESHOLD) return true;
   if (status.oldest_pending_created_at) {
     const raw = status.oldest_pending_created_at;
-    const parsed = Date.parse(raw.includes('T') ? raw : `${raw}Z`);
+    const parsed = parseTimestamp(raw).getTime();
     if (Number.isFinite(parsed) && nowMs - parsed > UNHEALTHY_PENDING_AGE_MS) return true;
   }
   return false;

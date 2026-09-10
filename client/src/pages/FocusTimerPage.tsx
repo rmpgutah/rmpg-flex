@@ -1,3 +1,4 @@
+import { formatShortTime } from '../utils/dateUtils';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Timer } from 'lucide-react';
 import {
@@ -162,7 +163,7 @@ export default function FocusTimerPage() {
       {log.length > 0 && (
         <div className="self-stretch text-[8px] text-fg-muted font-mono space-y-0.5 max-h-24 overflow-y-auto">
           {log.map((s, i) => (
-            <div key={`${s.endedAt}-${i}`}>{s.phase} · {s.minutes}m · {s.endedAt.slice(11, 16)}</div>
+            <div key={`${s.endedAt}-${i}`}>{s.phase} · {s.minutes}m · {formatShortTime(s.endedAt)}</div>
           ))}
         </div>
       )}

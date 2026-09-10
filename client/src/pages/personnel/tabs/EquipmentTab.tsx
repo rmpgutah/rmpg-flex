@@ -1,3 +1,4 @@
+import { localToday } from '../../../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Personnel: Equipment Tab (All Equipment)
 // ============================================================
@@ -184,7 +185,7 @@ export default function EquipmentTab({
       issued: e.issued_date || '',
       returned: e.returned_date || '',
     }));
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = localToday();
     exportToCsv(`equipment_${stamp}.csv`, rows, [
       { key: 'officer', label: 'Officer' },
       { key: 'type', label: 'Type' },

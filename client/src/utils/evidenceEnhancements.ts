@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // 50 evidence enhancements
 import { parseTimestamp } from './dateUtils';
 export interface EvidenceTransfer { evidenceId:string; fromCustodian:string; toCustodian:string; transferDate:string; reason:string; chainOfCustodyUpdated:boolean; }
@@ -13,7 +14,7 @@ export function packageEvidence(evidenceIds:string[],type:string,officer:string)
 export interface EvidencePhoto { evidenceId:string; photoUrl:string; photoType:'overview'|'close_up'|'with_scale'|'packaging'|'condition'; takenBy:string; takenAt:string; }
 export function documentEvidencePhotos(evidenceId:string,photos:EvidencePhoto[]): {total:number;hasScale:boolean;hasOverview:boolean} { return{total:photos.length,hasScale:photos.some(p=>p.photoType==='with_scale'),hasOverview:photos.some(p=>p.photoType==='overview')}; }
 export interface EvidenceDisposal { evidenceId:string; disposalMethod:string; disposalDate:string; authorizedBy:string; witnessBy:string; certificateNumber:string; }
-export function disposeEvidence(evidenceId:string,method:string,authorizer:string): EvidenceDisposal { return{evidenceId,disposalMethod:method,disposalDate:new Date().toISOString().slice(0,10),authorizedBy:authorizer,witnessBy:'',certificateNumber:`CERT-${Date.now()}`}; }
+export function disposeEvidence(evidenceId:string,method:string,authorizer:string): EvidenceDisposal { return{evidenceId,disposalMethod:method,disposalDate:localToday(),authorizedBy:authorizer,witnessBy:'',certificateNumber:`CERT-${Date.now()}`}; }
 export interface DigitalForensicImage { evidenceId:string; imageType:'dd'|'e01'|'aff4'; hashAlgorithm:'sha256'|'md5'|'sha1'; hashValue:string; imageSize:number; createdBy:string; }
 export function verifyForensicImage(image:DigitalForensicImage,expectedHash:string): {verified:boolean;tampered:boolean} { const verified=image.hashValue===expectedHash; return{verified,tampered:!verified}; }
 export interface EvidenceTemporaryStorage { evidenceId:string; location:string; storedAt:string; expiresAt:string; reason:string; }
@@ -25,6 +26,6 @@ export function prepareCourtEvidence(evidenceId:string,caseNumber:string,courtDa
 export interface EvidenceChainValidation { evidenceId:string; validatedAt:string; validatedBy:string; chainComplete:boolean; gaps:Array<{from:string;to:string;durationHours:number}>; }
 export function validateChainOfCustody(transfers:Array<{from:string;to:string;date:string}>): EvidenceChainValidation { const gaps:Array<{from:string;to:string;durationHours:number}>=[];for(let i=1;i<transfers.length;i++){const gap=(parseTimestamp(transfers[i].date).getTime()-parseTimestamp(transfers[i-1].date).getTime())/3600000;if(gap>48)gaps.push({from:transfers[i-1].to,to:transfers[i].from,durationHours:Math.round(gap)});} return{evidenceId:'',validatedAt:new Date().toISOString(),validatedBy:'',chainComplete:gaps.length===0,gaps}; }
 export interface EvidenceSubpoena { evidenceId:string; subpoenaId:string; responseDue:string; complied:boolean; complianceDate:string|null; }
-export function complyWithSubpoena(evidenceId:string,subpoenaId:string): EvidenceSubpoena { return{evidenceId,subpoenaId,responseDue:'',complied:true,complianceDate:new Date().toISOString().slice(0,10)}; }
+export function complyWithSubpoena(evidenceId:string,subpoenaId:string): EvidenceSubpoena { return{evidenceId,subpoenaId,responseDue:'',complied:true,complianceDate:localToday()}; }
 export interface EvidenceStats { totalItems:number; itemsInCustody:number; itemsCheckedOut:number; itemsDisposed:number; chainCompletePct:number; }
 export function compileEvidenceStats(items:Array<{status:string;chainComplete:boolean}>): EvidenceStats { return{totalItems:items.length,itemsInCustody:items.filter(i=>i.status==='in_custody').length,itemsCheckedOut:items.filter(i=>i.status==='checked_out').length,itemsDisposed:items.filter(i=>i.status==='disposed').length,chainCompletePct:items.length>0?Math.round(items.filter(i=>i.chainComplete).length/items.length*100):0}; }

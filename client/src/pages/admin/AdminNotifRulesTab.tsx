@@ -44,6 +44,9 @@ interface Props {
 // it are valid to configure but won't fire until their emitter is wired —
 // the form labels them "(not yet active)" so rules aren't created blind.
 const TRIGGER_EVENTS = [
+  { value: 'optimization_completed', label: 'Optimization Completed', desc: 'When Mapbox finishes planning all stops', live: true },
+  { value: 'optimization_failed', label: 'Optimization Failed', desc: 'When routing fails or times out', live: true },
+  { value: 'optimization_stops_dropped', label: 'Optimization Needs Review', desc: 'When service or shipment stops cannot be assigned', live: true },
   { value: 'call_created_p1', label: 'P1 Call Created', desc: 'When a Priority 1 call is created', live: true },
   { value: 'call_created_p2', label: 'P2 Call Created', desc: 'When a Priority 2 call is created', live: true },
   { value: 'unit_panic', label: 'Panic Button', desc: 'When a unit activates panic', live: true },

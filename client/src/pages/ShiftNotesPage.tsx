@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 import React, { useState, useEffect, useCallback } from 'react';
 import { NotebookPen, Plus, Trash2, Eye, EyeOff, Users, Tag, X, Download, Copy, Search } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -24,7 +25,7 @@ const QUICK_TAGS = [
 const SUPERVISOR_ROLES = ['admin', 'manager', 'supervisor'];
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localToday();
 }
 
 function formatTime(iso: string): string {

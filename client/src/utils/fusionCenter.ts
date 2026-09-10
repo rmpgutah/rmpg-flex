@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ============================================================
 // RMPG Flex — Intelligence Fusion Center (Spillman Flex Standard)
 // 10 fusion features: intelligence products, SAR reporting,
@@ -27,7 +28,7 @@ export function applyACH(hypotheses:Array<{hypothesis:string;evidence:Array<{con
 
 /* FEATURE 95: Privacy/Civil Liberties */
 export interface PrivacyReview { intelProductId:string; reviewer:string; reviewDate:string; privacyImpact:'none'|'minimal'|'moderate'|'significant'; civilLibertiesConcerns:string[]; approved:boolean; conditions:string[]; }
-export function conductPrivacyReview(): PrivacyReview { return { intelProductId:'', reviewer:'Privacy Officer', reviewDate:new Date().toISOString().slice(0,10), privacyImpact:'none', civilLibertiesConcerns:[], approved:true, conditions:[] }; }
+export function conductPrivacyReview(): PrivacyReview { return { intelProductId:'', reviewer:'Privacy Officer', reviewDate:localToday(), privacyImpact:'none', civilLibertiesConcerns:[], approved:true, conditions:[] }; }
 
 /* FEATURE 96: Secure Information Sharing */
 export interface ISETransaction { id:string; productId:string; sharedWith:string; sharingMechanism:'ISE'|'HSIN'|'N-DEx'|'LInX'|'RISSNET'|'eGuardian'; sharedAt:string; acknowledgedAt:string|null; }

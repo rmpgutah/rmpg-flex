@@ -1359,7 +1359,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 const totalPct = jobStatus.clips_requested > 0
                   ? Math.round((jobStatus.clips_ready / jobStatus.clips_requested) * 100)
                   : 0;
-                const elapsed = tickNow - Date.parse(jobStatus.created_at);
+                const elapsed = tickNow - parseTimestamp(jobStatus.created_at).getTime();
                 const rate = elapsed > 0 && jobStatus.clips_ready > 0
                   ? jobStatus.clips_ready / elapsed
                   : 0;

@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ============================================================
 // RMPG Flex — Records System Enhancements (Spillman Flex Standard)
 // 50 records improvements: person merge, alias management,
@@ -26,11 +27,11 @@ export function detectMergeConflicts(primary:Record<string,any>,secondary:Record
 /* 2: Alias Management */ export interface PersonAlias { personId:string; aliasName:string; aliasType:'AKA'|'maiden'|'nickname'|'street_name'|'legal_change'; verified:boolean; source:string; }
 export function searchByAlias(name:string,aliases:PersonAlias[]): string[] { return aliases.filter(a=>a.aliasName.toLowerCase().includes(name.toLowerCase())).map(a=>a.personId); }
 /* 3: Photo Lineup */ export interface PhotoLineup { id:string; caseNumber:string; suspectId:string; fillers:Array<{personId:string;photoUrl:string}>; administeredBy:string; date:string; result:'identified'|'not_identified'|'inconclusive'; }
-export function generateLineup(suspectId:string,fillers:string[]): PhotoLineup { return{id:`lu-${Date.now()}`,caseNumber:'',suspectId,fillers:fillers.map(f=>({personId:f,photoUrl:''})),administeredBy:'',date:new Date().toISOString().slice(0,10),result:'inconclusive'}; }
+export function generateLineup(suspectId:string,fillers:string[]): PhotoLineup { return{id:`lu-${Date.now()}`,caseNumber:'',suspectId,fillers:fillers.map(f=>({personId:f,photoUrl:''})),administeredBy:'',date:localToday(),result:'inconclusive'}; }
 /* 4: Master Name Index */ export interface NameIndexEntry { name:string; dob:string; personIds:string[]; lastUpdated:string; }
 export function searchNameIndex(name:string,dob:string|null,index:NameIndexEntry[]): NameIndexEntry[] { return index.filter(e=>e.name.toLowerCase().includes(name.toLowerCase())&&(!dob||e.dob===dob)); }
 /* 5: Vehicle BOLO */ export interface VehicleBOLO { plate:string; vin:string|null; make:string; model:string; color:string; reason:string; issuedDate:string; expiresDate:string; status:'active'|'expired'|'cancelled'; }
-export function createVehicleBOLO(plate:string,make:string,model:string,color:string,reason:string,days:number=7): VehicleBOLO { const expires=new Date();expires.setDate(expires.getDate()+days); return{plate,vin:null,make,model,color,reason,issuedDate:new Date().toISOString().slice(0,10),expiresDate:expires.toISOString().slice(0,10),status:'active'}; }
+export function createVehicleBOLO(plate:string,make:string,model:string,color:string,reason:string,days:number=7): VehicleBOLO { const expires=new Date();expires.setDate(expires.getDate()+days); return{plate,vin:null,make,model,color,reason,issuedDate:localToday(),expiresDate:expires.toISOString().slice(0,10),status:'active'}; }
 /* 6: Property Search */ export interface PropertySearch { query:string; category:string|null; serialNumber:string|null; dateRange:{start:string;end:string}|null; }
 export function searchPropertyRecords(query:string,records:Array<{description:string;serialNumber:string;category:string}>): typeof records { const q=query.toLowerCase(); return records.filter(r=>r.description.toLowerCase().includes(q)||r.serialNumber.toLowerCase().includes(q)); }
 /* 7: Cross-Reference */ export interface CrossReference { sourceType:string; sourceId:string; targetType:string; targetId:string; referenceType:string; createdBy:string; }
@@ -73,7 +74,7 @@ export function checkVehicleStatus(plate:string): VehicleRegistration { return{p
 export function verifyInsurance(plate:string,policy:string): InsuranceInfo { return{plate,insuranceCompany:'',policyNumber:policy,effectiveDate:'',expirationDate:'',verified:!!policy}; }
 /* 28: VIN Decoding */ export function decodeVIN(vin:string): {make:string;model:string;year:number;valid:boolean} { if(vin.length!==17)return{make:'',model:'',year:0,valid:false}; const yearChar=vin[9]; const year=yearChar>='A'?1980+yearChar.charCodeAt(0)-65:2000+parseInt(yearChar); return{make:'',model:'',year,valid:true}; }
 /* 29: Stolen Status */ export interface StolenVehicle { plate:string; vin:string; stolenDate:string; recoveredDate:string|null; ncicNumber:string; status:'stolen'|'recovered'|'cleared'; }
-export function reportStolenVehicle(plate:string,vin:string,ncicNumber:string): StolenVehicle { return{plate,vin,stolenDate:new Date().toISOString().slice(0,10),recoveredDate:null,ncicNumber,status:'stolen'}; }
+export function reportStolenVehicle(plate:string,vin:string,ncicNumber:string): StolenVehicle { return{plate,vin,stolenDate:localToday(),recoveredDate:null,ncicNumber,status:'stolen'}; }
 /* 30: Impound Tracking */ export interface ImpoundRecord { plate:string; vin:string; towDate:string; towCompany:string; lotAddress:string; dailyRate:number; releaseDate:string|null; }
 export function calculateImpoundFees(impoundDate:string,dailyRate:number): {days:number;totalFee:number} { const days=Math.max(1,Math.ceil((Date.now()-parseTimestamp(impoundDate).getTime())/86400000)); return{days,totalFee:days*dailyRate}; }
 /* 31: Property Serial Numbers */ export interface SerializedProperty { id:string; itemType:string; make:string; model:string; serialNumber:string; status:string; }

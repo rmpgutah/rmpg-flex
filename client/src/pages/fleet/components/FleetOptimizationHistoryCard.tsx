@@ -65,6 +65,7 @@ interface ListResponse {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtJobType(t: string): string {
+  if (t === 'fleet_route') return 'Fleet Route';
   if (t === 'serve_run') return 'Serve Run';
   if (t === 'patrol_beat') return 'Patrol Beat';
   if (t === 'multi_unit_dispatch') return 'Dispatch';

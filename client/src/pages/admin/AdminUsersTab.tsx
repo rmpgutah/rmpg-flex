@@ -1,3 +1,4 @@
+import { localToday } from '../../utils/dateUtils';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
@@ -566,7 +567,7 @@ export default function AdminUsersTab({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rmpg-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `rmpg-users-${localToday()}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();

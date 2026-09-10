@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 // ============================================================
 // Call PDF Autofill — fallback policy for blank fields on the
 // Call Record PDF. Returns a SHALLOW MERGE with the original
@@ -79,7 +80,7 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
   ) {
     const servedAt = (c as any).process_served_at ?? filled.process_served_at;
     if (servedAt) {
-      const d = new Date(servedAt);
+      const d = parseTimestamp(servedAt);
       const dateStr = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       filled.action_taken = filled.action_taken.trimEnd() + ` ${dateStr} AT ${timeStr}.`;

@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // 10 audit compliance features
 import { parseTimestamp } from './dateUtils';
 export interface AuditTrail { id:string; entityType:string; entityId:string; action:string; userId:string; timestamp:string; beforeValue:any; afterValue:any; }
@@ -7,7 +8,7 @@ export function analyzeDataChanges(changes:DataChange[]): {totalChanges:number;b
 export interface UserActivity { userId:string; logins:number; actions:number; lastActive:string; ipAddresses:string[]; }
 export function monitorUserActivity(users:UserActivity[]): {activeUsers:number;dormantUsers:UserActivity[]} { const now=Date.now(); return{activeUsers:users.filter(u=>now-parseTimestamp(u.lastActive).getTime()<30*86400000).length,dormantUsers:users.filter(u=>now-parseTimestamp(u.lastActive).getTime()>=30*86400000)}; }
 export interface AccessReview { id:string; reviewType:string; reviewedBy:string; reviewDate:string; usersReviewed:number; accessRemoved:number; }
-export function conductAccessReview(reviewer:string,users:number): AccessReview { return{id:`ar-${Date.now()}`,reviewType:'quarterly',reviewedBy:reviewer,reviewDate:new Date().toISOString().slice(0,10),usersReviewed:users,accessRemoved:0}; }
+export function conductAccessReview(reviewer:string,users:number): AccessReview { return{id:`ar-${Date.now()}`,reviewType:'quarterly',reviewedBy:reviewer,reviewDate:localToday(),usersReviewed:users,accessRemoved:0}; }
 export interface SecurityIncident { id:string; incidentType:string; severity:string; reportedAt:string; resolvedAt:string|null; description:string; }
 export function trackSecurityIncidents(incidents:SecurityIncident[]): {total:number;open:number;avgResolutionHours:number} { const open=incidents.filter(i=>!i.resolvedAt); const resolved=incidents.filter(i=>i.resolvedAt).map(i=>(parseTimestamp(i.resolvedAt!).getTime()-parseTimestamp(i.reportedAt).getTime())/3600000); return{total:incidents.length,open:open.length,avgResolutionHours:resolved.length>0?Math.round(resolved.reduce((s,v)=>s+v,0)/resolved.length):0}; }
 export interface PolicyViolation { id:string; policyName:string; violatedBy:string; violationDate:string; severity:string; correctiveAction:string; }

@@ -1,3 +1,4 @@
+import { localToday } from '../../../utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
@@ -48,7 +49,7 @@ export default function DesktopShiftPerfWidget() {
 
   async function load() {
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localToday();
       const endpoint = user?.id
         ? `/dispatch/calls?assigned_officer=${encodeURIComponent(String(user.id))}&date=${today}&limit=100`
         : `/dispatch/calls?date=${today}&limit=100`;

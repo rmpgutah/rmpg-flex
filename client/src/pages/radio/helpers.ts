@@ -1,3 +1,5 @@
+import { todayRange } from '../../utils/dateUtils';
+import { parseTimestamp } from '../../utils/dateUtils';
 // ──────────────────────────────────────────────────────────────────
 // RadioPage — pure helpers (no React, no DOM).
 // localStorage wrapper · audio beep generator · search/date predicates
@@ -34,10 +36,10 @@ export function playBeep(preset: string = 'chime', volume: number = 1) {
 // ── Date predicate for filter chips ──
 export const COMPARE_DATE = (entry: any, range: string): boolean => {
   if (range === 'all') return true;
-  const t = Date.parse(entry?.transmitted_at || '');
+  const t = parseTimestamp(entry?.transmitted_at || '').getTime();
   if (!t) return false;
   const now = Date.now();
-  if (range === 'today')  { const start = new Date(); start.setHours(0,0,0,0); return t >= start.getTime(); }
+  if (range === 'today')  { return t >= parseTimestamp(todayRange().start).getTime(); }
   if (range === 'h24')    return now - t <= 86400000;
   if (range === 'week')   return now - t <= 7 * 86400000;
   if (range === 'month')  return now - t <= 30 * 86400000;

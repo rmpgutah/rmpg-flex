@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Terminal, RefreshCw, Download, Trash2, ChevronDown, ChevronRight, Monitor } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -217,7 +218,7 @@ export default function SystemLogsPage() {
   };
 
   const handleExportCsv = () => {
-    downloadTextFile(`system-logs-${new Date().toISOString().slice(0, 10)}.csv`, errorLogsToCsv(filtered));
+    downloadTextFile(`system-logs-${localToday()}.csv`, errorLogsToCsv(filtered));
   };
 
   useEffect(() => {
@@ -238,7 +239,7 @@ export default function SystemLogsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `system-logs-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `system-logs-${localToday()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

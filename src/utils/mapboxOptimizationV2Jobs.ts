@@ -1,4 +1,5 @@
 import { resolveOptimizationV2Token, type V2Solution } from './mapboxOptimizationV2';
+import { evaluateNotificationRules } from '../routes/notificationEngine';
 import { log } from './logger';
 
 export interface OptimizationJob {
@@ -37,7 +38,8 @@ export async function pollOptimizationV2Job(db: D1Database, token: string | null
   if (job.status === 'complete') return { job_id: job.id, status: 'complete', solution: normalizeOptimizationSolution(JSON.parse(job.solution_json!)), avg_mpg: avgMpg };
   if (job.status === 'error') return { job_id: job.id, status: 'error', error: job.error_message };
   const fail = async (error: string) => {
-    await db.prepare("UPDATE mapbox_optimization_v2_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id=? AND status IN ('pending','processing')").bind(error, job.id).run();
+    const updated = await db.prepare("UPDATE mapbox_optimization_v2_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id=? AND status IN ('pending','processing')").bind(error, job.id).run();
+    if (updated.meta.changes === 1) await evaluateNotificationRules(db, 'optimization_failed', { job_id: job.id, job_type: job.job_type, title: 'Route optimization failed', message: error });
     return { job_id: job.id, status: 'error', error };
   };
   const created = Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(job.created_at) ? job.created_at : `${job.created_at.replace(' ', 'T')}Z`);
@@ -56,18 +58,26 @@ export async function pollOptimizationV2Job(db: D1Database, token: string | null
     const solution = normalizeOptimizationSolution(await response.json());
     const statements: D1PreparedStatement[] = [];
     const route = solution.routes[0];
-    if (job.job_type === 'serve_run' && job.ref_id != null && route) {
-      const ids = [...new Set(route.stops.filter(s => s.type === 'service').flatMap(s => s.services ?? [s.location]).map(Number))];
+    if (job.job_type === 'serve_run' && job.ref_id != null) {
+      const ids = [...new Set((route?.stops ?? []).filter(s => s.type === 'service').flatMap(s => s.services ?? [s.location]).map(Number))];
       if (ids.some(id => !Number.isSafeInteger(id) || id <= 0)) throw new Error('invalid_service_ids');
       // Completion and domain write-back commit together. A stale solve cannot
       // overwrite a newer optimization submitted for the same saved route.
       statements.push(db.prepare(`UPDATE serve_routes SET optimized_order_json=?, total_distance_miles=?, total_time_minutes=?, updated_at=datetime('now')
         WHERE id=? AND EXISTS (SELECT 1 FROM mapbox_optimization_v2_jobs WHERE id=? AND status IN ('pending','processing'))
         AND NOT EXISTS (SELECT 1 FROM mapbox_optimization_v2_jobs newer WHERE newer.ref_id=? AND newer.job_type='serve_run' AND newer.rowid > (SELECT rowid FROM mapbox_optimization_v2_jobs WHERE id=?))`)
-        .bind(JSON.stringify(ids), Math.round((route.distance! / 1609.344) * 10) / 10, Math.round(route.duration! / 60), job.ref_id, job.id, job.ref_id, job.id));
+        .bind(JSON.stringify(ids), Math.round(((route?.distance ?? 0) / 1609.344) * 10) / 10, Math.round((route?.duration ?? 0) / 60), job.ref_id, job.id, job.ref_id, job.id));
     }
     statements.push(db.prepare("UPDATE mapbox_optimization_v2_jobs SET status='complete', solution_json=?, error_message=NULL, updated_at=datetime('now') WHERE id=? AND status IN ('pending','processing')").bind(JSON.stringify(solution), job.id));
-    await db.batch(statements);
+    const committed = await db.batch(statements);
+    if (committed.at(-1)?.meta.changes === 1) {
+      const dropped = solution.dropped.services.length + solution.dropped.shipments.length;
+      await evaluateNotificationRules(db, dropped ? 'optimization_stops_dropped' : 'optimization_completed', {
+        job_id: job.id, job_type: job.job_type, dropped_count: dropped, route_count: solution.routes.length,
+        title: dropped ? 'Route optimization needs review' : 'Route optimization complete',
+        message: `${solution.routes.length} routes planned; ${dropped} unassigned stops.`,
+      });
+    }
     return { job_id: job.id, status: 'complete', solution, avg_mpg: avgMpg };
   } catch (error) {
     log.error('[optimization-v2] poll failed', { jobId: job.id }, error instanceof Error ? error : new Error(String(error)));
