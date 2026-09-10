@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, URL } from 'url';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { stampCfAsync } from './src/utils/rocketLoaderOptout';
+import { stampCfAsync } from './src/utils/rocketLoaderOptout.ts';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 

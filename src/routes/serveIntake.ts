@@ -90,7 +90,7 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
-import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../utils/encryptedR2';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -324,10 +324,13 @@ async function ocrImageWithTesseractGate(
   return ocrImage(env, bytes, mime);
 }
 
-async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
+function makeIntakeStorageKey(file: File, uploaderId: number | null): string {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
-  const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
+  return `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
+}
+
+async function storeToR2(env: Env['Bindings'], file: File, key: string): Promise<string> {
   await putEncrypted(env.UPLOADS, getDb(env), env, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
   });
@@ -546,6 +549,34 @@ si.post('/upload', async (c) => {
   await ensureQualityGateColumns(db);
   const allDates = new Set<string>();
 
+  // Persist every source document before starting OCR or creating business
+  // records. Promise.allSettled lets us wait for every concurrent write, so
+  // a partial multi-file failure can be rolled back deterministically rather
+  // than leaving encrypted objects (or encryption-key rows) orphaned.
+  const storageKeys = files.map((file) => makeIntakeStorageKey(file, user.id));
+  const storageResults = await Promise.allSettled(
+    files.map((file, index) => storeToR2(c.env, file, storageKeys[index])),
+  );
+  const storageFailures = storageResults.filter((result) => result.status === 'rejected');
+  if (storageFailures.length > 0) {
+    await Promise.allSettled(storageKeys.map(async (key) => {
+      await Promise.allSettled([
+        c.env.UPLOADS.delete(key),
+        deleteEncryptionKey(db, key),
+      ]);
+    }));
+    log.error('serve-intake: document storage failed; partial writes rolled back', {
+      traceId: c.get('traceId'),
+      files: files.map((file) => file.name),
+      failed: storageFailures.length,
+    }, storageFailures[0].reason);
+    return c.json({
+      success: false,
+      code: 'UPLOAD_STORAGE_FAILED',
+      error: 'Document storage failed. No intake records were created; retry the upload.',
+    }, 503);
+  }
+
   // ── Phase 1+2: per-file text acquisition + field extraction, IN PARALLEL ──
   // Each document is fully processed independently and concurrently:
   //   • acquire text (pdfjs client text / container OCR / Vision for images)
@@ -589,8 +620,8 @@ si.post('/upload', async (c) => {
     modelCalled: boolean;
   }
 
-  const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
-    const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
+  const collected = await Promise.all(files.map(async (file, index): Promise<Collected> => {
+    const r2Key = storageKeys[index];
     // Intake packets follow a fixed naming convention ("<job#> Field
     // Sheet.pdf" / "Court Docket.pdf" / "Information Form.pdf") — derive
     // the document family from the uploaded file's own name so the system

@@ -33,7 +33,7 @@ const good = {
 beforeAll(async () => {
   const db = env.DB as D1Database;
   await db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, full_name TEXT)`);
-  await db.exec(`CREATE TABLE IF NOT EXISTS serve_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER, recipient_name TEXT, next_attempt_note TEXT, updated_at TEXT)`);
+  await db.exec(`CREATE TABLE IF NOT EXISTS serve_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER, recipient_name TEXT, recipient_address TEXT, recipient_phone TEXT, recipient_email TEXT, case_number TEXT, court_name TEXT, document_type TEXT, next_attempt_note TEXT, updated_at TEXT)`);
   await db.exec(`CREATE TABLE IF NOT EXISTS serve_job_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, serve_queue_id INTEGER NOT NULL, author_id INTEGER, author_name TEXT NOT NULL DEFAULT 'System', author_role TEXT, body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), edited_at TEXT, is_system INTEGER NOT NULL DEFAULT 0, parent_id INTEGER)`);
   await db.exec(`CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, priority TEXT, title TEXT, message TEXT, entity_type TEXT, entity_id INTEGER, user_id INTEGER, is_read INTEGER, created_at TEXT)`);
   await db.exec(`CREATE TABLE IF NOT EXISTS serve_schedule_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, job_ref TEXT NOT NULL, job_id INTEGER, preferred_window TEXT NOT NULL, contact_method TEXT NOT NULL, contact_value TEXT NOT NULL, note TEXT, ip_address TEXT, user_agent TEXT, status TEXT NOT NULL DEFAULT 'pending', resolved_by INTEGER, resolved_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);

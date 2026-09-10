@@ -10,7 +10,8 @@ import { cloudflarePool, cloudflareTest } from '@cloudflare/vitest-pool-workers'
 const workerPoolOptions = {
   main: './test-workers/entry.ts',
   miniflare: {
-    compatibilityDate: '2025-05-01',
+    // Match production so integration tests exercise the deployed runtime.
+    compatibilityDate: '2026-05-01',
     compatibilityFlags: ['nodejs_compat'],
     d1Databases: { DB: 'alpr-test' },
     kvNamespaces: ['KV'],

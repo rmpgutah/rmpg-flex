@@ -203,6 +203,8 @@ import serveManagerRoutes, { serveManagerWebhookRouter } from './routes/serveMan
 import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
 import { serveQrScan } from './routes/serveQrScan';
 import stubs from './routes/stubs';
+import publicDiagnostics from './routes/publicDiagnostics';
+import publicUpdates from './routes/publicUpdates';
 import voicePersona from './routes/voicePersona';
 import mobileCfs, { cfsQr } from './routes/mobileCfs';
 import firecrawlTools from './routes/firecrawlTools';
@@ -876,7 +878,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },
-  { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
+  { prefix: '/api/diagnostics', router: publicDiagnostics, auth: 'public',
+    note: 'Narrow public UI-freeze telemetry endpoint; isolated so authenticated compatibility routes cannot acquire public aliases.' },
   // Dedicated empty-state router (not `stubs`) so its catch-all `*`
   // handlers can't leak onto the other prefixes `stubs` is mounted at.
   // Firecrawl is unprovisioned — every list returns [], mutations return
@@ -886,7 +889,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/mobile', router: mobileCfs, auth: 'public' },
   { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
   { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
-  { prefix: '/api/updates', router: stubs, auth: 'public' },
+  { prefix: '/api/updates', router: publicUpdates, auth: 'public',
+    note: 'Narrow public Android update check; isolated so authenticated compatibility routes cannot acquire public aliases.' },
   { prefix: '/api/voice-persona', router: voicePersona, auth: 'required' },
 
   // Officer Wallet ID — digital badge / QR-verifiable ID. Auth required on every

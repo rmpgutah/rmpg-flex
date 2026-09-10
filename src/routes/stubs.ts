@@ -359,7 +359,7 @@ stubs.post('/emergency-broadcast', async (c) => {
 // above. It now lives in src/routes/dispatch/extensions.ts.
 
 stubs.get('/messages/priority-stats', async (c) => {
-  // Same public-mount leak surface as the /bolos/* routes noted above.
+  // Defense in depth if this router is ever mounted incorrectly.
   if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const db = c.env.DB;
@@ -379,12 +379,8 @@ stubs.get('/messages/priority-stats', async (c) => {
 // useNavBadges (Nav Index toolbar badges). Was a hardcoded-zero stub, which
 // made those badges permanently show nothing regardless of real counts.
 stubs.get('/dashboard', async (c) => {
-  // Same public-mount leak surface as the /bolos/* and /messages/* routes:
-  // this router is ALSO mounted at '/api/diagnostics' and '/api/updates',
-  // both `auth: 'public'`, so every path it defines was reachable there with
-  // no token — publishing live open_cases / pending_serve / active_warrants
-  // counts to anyone. On the auth-required mounts (/api/stats,
-  // /api/dispatch/stats) userId is set, so this guard costs nothing there.
+  // Defense in depth: operational counts still require a populated session
+  // even though every current mount of this router is authenticated.
   if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const row = await c.env.DB.prepare(
@@ -419,9 +415,7 @@ stubs.get('/google-maps/client-key', (c) => c.json({}));
 // `stats.callsByPriority`; useNavBadges (Nav Index toolbar + the desktop
 // Live Ops widget) reads `active_warrants`. Real query returns all three.
 stubs.get('/', async (c) => {
-  // Public-mount guard: bare GET /api/diagnostics hit this handler with no
-  // token and returned live operational posture (active call count by
-  // priority, units currently on shift, active warrants).
+  // Defense in depth for live operational posture.
   if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const [activeRow, warrantsRow, priorityRows, unitsRow] = await Promise.all([
@@ -484,27 +478,6 @@ stubs.get('/export/csv', (c) => {
   return c.body('');
 });
 
-// ── Diagnostics (mounted at /api/diagnostics) ────
-// NOTE: /ui-trap is intentionally public and unauthenticated. A frozen or
-// logged-out client must still be able to report freeze state — gating on a JWT
-// defeats the whole point. Abuse surface is bounded by: (a) 60 KB body cap
-// enforced below, (b) 30-day KV TTL keeping storage bounded, and (c) the zone's
-// Cloudflare managed-challenge as the outermost gate (bots don't solve it).
-// No per-IP rate-limit today — acceptable for an internal ops crew of known size.
-stubs.post('/ui-trap', async (c) => {
-  try {
-    const raw = await c.req.text();
-    if (raw && raw.length <= 60000) {
-      const key = `uitrap:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-      // 30-day TTL; prefix `uitrap:` so captures are listable for analysis.
-      await c.env.KV.put(key, raw, { expirationTtl: 60 * 60 * 24 * 30 });
-    }
-  } catch {
-    // Never let diagnostics storage failure affect the (already-struggling) client.
-  }
-  return c.json({ received: true });
-});
-
 // ── Firecrawl tools moved to the dedicated firecrawlTools router
 //    (/api/firecrawl-tools) — see src/routes/firecrawlTools.ts.
 
@@ -513,9 +486,6 @@ stubs.post('/', async (c) => c.json({ id: null, error: 'PDF artifact storage not
 
 // ── PDF engine email (mounted at /api/pdf-engine) ────
 stubs.post('/email', async (c) => c.json({ sent: false, error: 'Email delivery not configured' }, 501));
-
-// ── Android update checker (mounted at /api/updates) ────
-stubs.get('/check', (c) => c.json({ updateAvailable: false, currentVersion: c.req.query('currentVersion') || '0.0.0' }));
 
 // ── Voice persona (mounted at /api/voice-persona) ────
 stubs.get('/', (c) => c.json({ persona: null }));

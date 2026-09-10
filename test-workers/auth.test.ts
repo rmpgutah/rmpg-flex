@@ -250,7 +250,8 @@ describe('POST /login — account lockout', () => {
       role TEXT NOT NULL DEFAULT 'officer', badge_number TEXT, phone TEXT, avatar_url TEXT,
       status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0,
       totp_enabled INTEGER NOT NULL DEFAULT 0, totp_exempt INTEGER DEFAULT 0,
-      login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT, password_changed_at TEXT
+      login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT, password_changed_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`);
     await execute(db, `CREATE TABLE IF NOT EXISTS login_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, ip_address TEXT,
@@ -447,6 +448,7 @@ describe('auth token lifecycle — continuity and forced password rotation', () 
       ['password_changed_at', 'ALTER TABLE users ADD COLUMN password_changed_at TEXT'],
       ['failed_login_count', 'ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0'],
       ['locked_until', 'ALTER TABLE users ADD COLUMN locked_until TEXT'],
+      ['updated_at', "ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))"],
     ] as const) {
       if (!(await columnExists(db, 'users', name))) await execute(db, ddl);
     }

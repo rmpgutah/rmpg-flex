@@ -872,8 +872,9 @@ export default function ServeIntakePage() {
   //
   // This replaces the legacy /intake path that POSTed in-browser pdfjs
   // text — that path could not handle scanned/image-only PDFs or phone
-  // photos of paperwork. Falls back to the legacy path on multipart
-  // failure (e.g. all files exceed the per-file 25 MB cap).
+  // photos of paperwork. The legacy path is used only when no File blobs are
+  // available; a failed multipart upload must fail visibly so Intake never
+  // creates a record without its source documents.
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
     if (detectedDefendants.length > 1 && selectedDefendants.length === 0) {

@@ -188,12 +188,6 @@ app.get("/", async (c) => {
   let jobId: number | null = null;
   let officerId: number | null = null;
   let recipientName: string | null = null;
-  let recipientAddress: string | null = null;
-  let recipientPhone: string | null = null;
-  let recipientEmail: string | null = null;
-  let caseNumber: string | null = null;
-  let courtName: string | null = null;
-  let documentType: string | null = null;
 
   const parsedRef = parseAgencyRef(ref);
   const refJobId = parsedRef ? parsedRef.jobId : null;
@@ -203,27 +197,15 @@ app.get("/", async (c) => {
       id: number;
       officer_id: number | null;
       recipient_name: string | null;
-      recipient_address: string | null;
-      recipient_phone: string | null;
-      recipient_email: string | null;
-      case_number: string | null;
-      court_name: string | null;
-      document_type: string | null;
     }>(
       db,
-      "SELECT id, officer_id, recipient_name, recipient_address, recipient_phone, recipient_email, case_number, court_name, document_type FROM serve_queue WHERE id = ?",
+      "SELECT id, officer_id, recipient_name FROM serve_queue WHERE id = ?",
       refJobId,
     );
     if (jobRow) {
       jobId = jobRow.id;
       officerId = jobRow.officer_id;
       recipientName = jobRow.recipient_name;
-      recipientAddress = jobRow.recipient_address;
-      recipientPhone = jobRow.recipient_phone;
-      recipientEmail = jobRow.recipient_email;
-      caseNumber = jobRow.case_number;
-      courtName = jobRow.court_name;
-      documentType = jobRow.document_type;
     } else {
       jobId = refJobId;
     }
@@ -365,18 +347,6 @@ app.get("/", async (c) => {
     support_url: SUBJECT_SUPPORT.supportUrl,
     notice_info_url: SUBJECT_SUPPORT.noticeInfoUrl,
     matched: jobId !== null,
-    subject: jobId !== null ? {
-      recipient_name: recipientName,
-      case_number: caseNumber,
-      court_name: courtName,
-      document_type: documentType,
-      phone: recipientPhone,
-      email: recipientEmail,
-    } : null,
-    recipient_name: recipientName,
-    case_number: caseNumber,
-    court_name: courtName,
-    document_type: documentType,
     message:
       "This notice was issued by Rocky Mountain Protective Group, a licensed private process server " +
       "operating in the State of Utah. To arrange a convenient delivery time or confirm this notice " +

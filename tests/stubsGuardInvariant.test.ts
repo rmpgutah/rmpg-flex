@@ -6,13 +6,9 @@
 // including routes added tomorrow, which no request-level test would know to
 // try.
 //
-// Why this file needs to exist at all: `stubs` is a single Hono router mounted
-// at eight prefixes, two of which (`/api/diagnostics`, `/api/updates`) are
-// `auth: 'public'` in src/routesConfig.ts. Hono registers every path under
-// every mount, so a new DB-backed stub route written for `/api/comms` is
-// simultaneously an unauthenticated endpoint on `/api/diagnostics` the moment
-// it is added. The author has to remember a guard the surrounding code does not
-// force them to write. This test is that force.
+// The shared compatibility router must only be mounted behind authenticated
+// prefixes. Public diagnostics and update discovery use dedicated narrow
+// routers so adding a compatibility handler cannot create a public alias.
 //
 // Source-level assertions are the established pattern here (see
 // scripts/check-column-cap.js and the Static guard checks CI job) precisely for
@@ -22,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = readFileSync(join(__dirname, '..', 'src', 'routes', 'stubs.ts'), 'utf8');
+const REGISTRY = readFileSync(join(__dirname, '..', 'src', 'routesConfig.ts'), 'utf8');
 
 /** Reads the DB directly, so its response is real data rather than a constant. */
 const TOUCHES_DB = /c\.env\.DB|getDb\(|\bdb\.prepare/;
@@ -40,16 +37,6 @@ const GUARDS_ON_USER = new RegExp(
   ].join('|'),
 );
 
-/**
- * Routes that are public BY DESIGN and must stay that way. Each needs a reason,
- * and none of them may touch the DB — an entry here is a deliberate exception,
- * not a place to park a route that failed the check.
- */
-const INTENTIONALLY_PUBLIC: Record<string, string> = {
-  'POST /ui-trap': 'a frozen or logged-out client must still be able to report freeze state',
-  'GET /check': 'update discovery runs before any session exists',
-};
-
 interface Route { method: string; path: string; key: string; body: string }
 
 function parseRoutes(src: string): Route[] {
@@ -64,7 +51,7 @@ function parseRoutes(src: string): Route[] {
 
 const ROUTES = parseRoutes(SRC);
 
-describe('stubs.ts — the shared router mounted on two PUBLIC prefixes', () => {
+describe('stubs.ts — authenticated shared compatibility router', () => {
   it('parses its routes (guards the parser itself, so a silent 0 cannot pass)', () => {
     expect(ROUTES.length).toBeGreaterThan(40);
   });
@@ -77,20 +64,13 @@ describe('stubs.ts — the shared router mounted on two PUBLIC prefixes', () => 
       .filter((r) => !GUARDS_ON_USER.test(r.body))
       .map((r) => r.key);
 
-    // A failure here means the route is live and unauthenticated at
-    // /api/diagnostics<path> and /api/updates<path>. Add the guard:
+    // Retain per-handler defense in depth in addition to mount-level auth:
     //   if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
     expect(unguarded).toEqual([]);
   });
 
-  it('keeps the intentionally-public exceptions free of DB access', () => {
-    // If one of these ever needs the DB it stops being safe to leave open, and
-    // the exception has to be re-argued rather than silently inherited.
-    const violations = ROUTES.filter(
-      (r) => r.key in INTENTIONALLY_PUBLIC && TOUCHES_DB.test(r.body),
-    ).map((r) => r.key);
-
-    expect(violations).toEqual([]);
+  it('is never mounted at a public prefix', () => {
+    expect(REGISTRY).not.toMatch(/router:\s*stubs,\s*auth:\s*'public'/);
   });
 
   it('has not lost the guards the leak tests depend on', () => {

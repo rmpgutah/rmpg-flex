@@ -35,11 +35,15 @@ jobs:
       - name: Install root deps
         run: npm ci
 
-      - name: Typecheck (Worker — src/)
-        run: npx tsc --noEmit
+      - name: Typecheck (Worker + test contracts)
+        run: npm run typecheck
 
       - name: Worker unit tests
         run: npx vitest run
+        timeout-minutes: 15
+
+      - name: Worker runtime integration tests
+        run: npm run test:worker
         timeout-minutes: 15
 
       - name: Install client deps
@@ -78,20 +82,6 @@ jobs:
       - name: Install root deps
         run: npm ci
 
-      # Schema drift check — verifies every CREATE TABLE and ALTER TABLE from
-      # migration files exists on live D1. Catches the continue-on-error trap:
-      # if a migration's DDL never actually landed (wrangler swallowed the
-      # error), this step fails loudly. Override with SKIP_DRIFT_CHECK=1 for
-      # emergency hotfixes where schema drift is intentional.
-      - name: Schema drift check (remote D1)
-        if: ${{ vars.SKIP_DRIFT_CHECK != '1' }}
-        continue-on-error: true
-        timeout-minutes: 3
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: DB_MODE=remote scripts/check-migration-drift.sh
-
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
       #
       # Do NOT use a single `wrangler d1 migrations apply`: it stops the whole
@@ -104,17 +94,26 @@ jobs:
       # ignores duplicate-column / already-exists, and never executes
       # remote-unsafe table rebuilds (DROP TABLE calls_for_service).
       #
-      # continue-on-error: true remains so a genuine later-file failure cannot
-      # block Worker + Pages. The blocking schema verification step below catches
-      # any critical table that failed to land. Always verify with
-      # pragma_table_info after merge.
+      # A genuine statement failure exits non-zero and blocks deployment. This
+      # prevents shipping code against an incomplete schema.
       - name: Apply D1 migrations (remote)
-        continue-on-error: true
         timeout-minutes: 8
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types scripts/d1PendingMigrations.ts --remote
+
+      # Verify the complete expected schema only AFTER pending migrations have
+      # been applied. Running this before the apply step would deadlock every
+      # legitimate new migration by reporting its not-yet-created schema as
+      # drift. Override only for a documented emergency hotfix.
+      - name: Schema drift check (remote D1, post-migration)
+        if: ${{ vars.SKIP_DRIFT_CHECK != '1' }}
+        timeout-minutes: 3
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: DB_MODE=remote scripts/check-migration-drift.sh
 
       # Blocking schema verification — confirms that tables which are required
       # for live CAD/RMS operations actually exist on D1 before the Worker
