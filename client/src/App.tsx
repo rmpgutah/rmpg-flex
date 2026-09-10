@@ -595,6 +595,11 @@ function AppRoutes() {
             <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
             <Route path="/desktop" element={<RouteErrorBoundary><DesktopPage /></RouteErrorBoundary>} />
 
+            {/* Mobile-first pages — full-screen, no desktop chrome. Rendered
+                edge-to-edge so the mobile shell owns its own header/nav bar. */}
+            <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
+            <Route path="/field-camera" element={<RouteErrorBoundary><FieldCameraPage /></RouteErrorBoundary>} />
+
             {/* Protected routes with Layout */}
             <Route element={<Layout />}>
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
@@ -633,8 +638,6 @@ function AppRoutes() {
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
             <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
-            <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
-            <Route path="/field-camera" element={<RouteErrorBoundary><FieldCameraPage /></RouteErrorBoundary>} />
             <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
             <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />
