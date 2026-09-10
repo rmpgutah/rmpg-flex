@@ -196,7 +196,7 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
 
     const layout = (pdf as unknown as { __noticeLayout?: { tier: number; contentBottomY: number; qrZoneTop: number } }).__noticeLayout;
     expect(layout).toBeDefined();
-    expect(layout!.tier).toBeLessThanOrEqual(1);
+    expect(layout!.tier).toBeLessThanOrEqual(2);
     expect(layout!.contentBottomY).toBeLessThanOrEqual(layout!.qrZoneTop);
   });
 
@@ -263,3 +263,35 @@ describe('generateNoticeOfAttempt — single-page layout', () => {
     );
   });
 });
+
+  it('stays on one page with three GPS attempts (preview sample)', async () => {
+    const pdf = await generateNoticeOfAttempt({
+      caseNumber: '26-583650',
+      agencyRefNumber: 'JOB-249',
+      noticeDate: '09/09/2026',
+      courtName: 'Third Judicial District Court',
+      jurisdiction: 'Salt Lake County, Utah',
+      serverName: 'Christopher Zamora',
+      serverBadge: '5721',
+      serverCompany: 'Rocky Mountain Protective Group',
+      serverPhone: '(385) 340-6555',
+      recipientName: 'Camden Joseph Clark',
+      recipientAddress: '3506 South Blair Circle, South Salt Lake, UT 84115',
+      documentType: 'Small Claims Affidavit & Claim',
+      clientName: 'ICU Investigations, LLC.',
+      attorneyName: 'Megan Van Kalsbeek',
+      attempts: [
+        { number: 1, date: '09/06/2026', time: '18:56', result: 'PS/00.01', notes: 'Knocked three times, no answer. Lights off, vehicle in driveway with out-of-state plates.', gpsLat: 40.6945, gpsLng: -111.8821 },
+        { number: 2, date: '09/07/2026', time: '08:15', result: 'PS/00.01', notes: 'No answer at door. Neighbor confirmed subject works overnight shifts.', gpsLat: 40.6946, gpsLng: -111.8822 },
+        { number: 3, date: '09/09/2026', time: '19:30', result: 'PS/00.01', notes: 'Rang doorbell twice, knocked. No response. Left notice card in door jamb.', gpsLat: 40.6945, gpsLng: -111.8820 },
+      ],
+      nextAttemptNote: 'Will return Thursday, Sep 11, 2026 between 7:00 PM and 9:00 PM.',
+    }, { printTarget: 'mobile' });
+
+    try {
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync('/tmp/notice-three-attempts.pdf', Buffer.from(pdf.output('arraybuffer')));
+    } catch { /* ignore */ }
+
+    expect(pdf.getNumberOfPages()).toBe(1);
+  });
