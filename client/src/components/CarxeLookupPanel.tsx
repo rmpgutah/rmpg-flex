@@ -54,7 +54,10 @@ export default function CarxeLookupPanel(props: PlateProps | VinProps) {
       const body = kind === 'plate'
         ? { plate: (props as PlateProps).plate, state: (props as PlateProps).state }
         : { vin: effectiveVin, ...plateCtx };
-      const resp = await apiFetch<CarxeResponse<any>>(`/carxe/${kind}`, {
+      // Server uses 'plate-lookup' not 'plate' — map locally so the rest of the
+      // component can continue to use 'plate' as the discriminator value.
+      const endpoint = kind === 'plate' ? 'plate-lookup' : kind;
+      const resp = await apiFetch<CarxeResponse<any>>(`/carxe/${endpoint}`, {
         method: 'POST',
         body: JSON.stringify(body),
       });
