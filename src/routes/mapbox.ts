@@ -234,7 +234,7 @@ mapbox.get('/isochrone', async (c) => {
   if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
-  const profile = c.req.query('profile') || 'driving';
+  const profile = c.req.query('profile') || 'driving-traffic';
   const minutes = c.req.query('minutes') || '5,10';
   const params = new URLSearchParams({ access_token: tk, contours_minutes: minutes, polygons: c.req.query('polygons') || 'true' });
   try {
@@ -250,7 +250,7 @@ mapbox.get('/matrix', async (c) => {
   if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
-  const profile = c.req.query('profile') || 'driving';
+  const profile = c.req.query('profile') || 'driving-traffic';
   const params = new URLSearchParams({ access_token: tk, annotations: c.req.query('annotations') || 'duration,distance' });
   const sources = c.req.query('sources'); const destinations = c.req.query('destinations');
   if (sources) params.set('sources', sources);
@@ -268,7 +268,7 @@ mapbox.get('/optimization', async (c) => {
   if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
-  const profile = c.req.query('profile') || 'driving';
+  const profile = c.req.query('profile') || 'driving-traffic';
   const params = new URLSearchParams({
     access_token: tk,
     source: c.req.query('source') || 'any',
@@ -298,7 +298,7 @@ mapbox.post('/map-matching', async (c) => {
   try { body = await c.req.json(); } catch { return c.json({ error: 'invalid JSON body' }, 400); }
   const coords = Array.isArray(body?.coordinates) ? body.coordinates : [];
   if (coords.length < 2) return c.json({ error: 'at least 2 coordinates are required' }, 400);
-  const profile = body?.profile || 'driving';
+  const profile = body?.profile || 'driving-traffic';
   const coordStr = coords.map((p: number[]) => `${p[0]},${p[1]}`).join(';');
   const params = new URLSearchParams({ access_token: tk, geometries: 'geojson', overview: 'full' });
   try {

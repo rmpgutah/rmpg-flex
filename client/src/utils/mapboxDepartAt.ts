@@ -1,3 +1,4 @@
+import { apiFetch } from '../hooks/useApi';
 /**
  * Mapbox driving-traffic rejects `depart_at` more than ~30 minutes in the past
  * (HTTP 422). Shift start is often 08:00; optimizing at 17:00 must send "now".
@@ -21,11 +22,14 @@ export interface MapboxDirectionsRoute {
  * traffic without depart_at, then the non-traffic driving profile.
  */
 export async function fetchMapboxDrivingRoute(
-  token: string,
+  _token: string,
   coordStr: string,
   departAtIso: string,
 ): Promise<MapboxDirectionsRoute | null> {
-  if (!token || !coordStr.includes(';')) return null;
+  // Route through the server proxy (/api/mapbox/directions) so the pk.* token
+  // never appears in client-side URLs. The token arg is kept for call-site
+  // compat but is no longer used — the server supplies it.
+  if (!coordStr.includes(';')) return null;
   const clamped = clampDepartAtForMapbox(departAtIso);
   const attempts: Array<{ profile: 'driving-traffic' | 'driving'; depart: boolean }> = [
     { profile: 'driving-traffic', depart: true },
@@ -33,16 +37,17 @@ export async function fetchMapboxDrivingRoute(
     { profile: 'driving', depart: false },
   ];
   for (const attempt of attempts) {
-    const url = new URL(`https://api.mapbox.com/directions/v5/mapbox/${attempt.profile}/${coordStr}`);
-    url.searchParams.set('access_token', token);
-    url.searchParams.set('geometries', 'geojson');
-    url.searchParams.set('steps', 'false');
-    url.searchParams.set('overview', 'full');
-    if (attempt.depart) url.searchParams.set('depart_at', clamped);
     try {
-      const res = await fetch(url.toString());
-      if (!res.ok) continue;
-      const data = await res.json() as { routes?: MapboxDirectionsRoute[] };
+      const params = new URLSearchParams({
+        coordinates: coordStr,
+        profile: attempt.profile,
+        geometries: 'geojson',
+        steps: 'false',
+        overview: 'full',
+        alternatives: 'false',
+      });
+      if (attempt.depart) params.set('depart_at', clamped);
+      const data = await apiFetch<{ routes?: MapboxDirectionsRoute[] }>(`/mapbox/directions?${params}`);
       const route = data.routes?.[0];
       if (route) return route;
     } catch {

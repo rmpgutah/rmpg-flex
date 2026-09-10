@@ -48,6 +48,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   // Markers indexed by sighting id so we can in-place move them on every
   // refresh instead of removing-then-recreating all of them (the prior
   // pattern caused visible jitter on live ALPR feeds and pushed the WebGL
@@ -83,6 +84,11 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
         map.on('load', () => { if (!cancelled) onMapLoaded(map); });
         mapRef.current = map;
         registerMapInstance(map);
+        if (containerRef.current) {
+          const ro = new ResizeObserver(() => map.resize());
+          ro.observe(containerRef.current);
+          resizeObserverRef.current = ro;
+        }
         webglRecoveryCleanupRef.current = attach(map, 'SightingsMap');
         setLoaded(true);
       } catch (err) {
@@ -95,7 +101,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       markersRef.current.clear();
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
-      if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      if (mapRef.current) { resizeObserverRef.current?.disconnect(); resizeObserverRef.current = null; unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
