@@ -239,18 +239,10 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
     }
     setRegeocoding(true);
     try {
-      const tokenRes = await apiFetch<{ configured: boolean; accessToken?: string }>(
-        '/integrations/mapbox/client-token',
+      const params = new URLSearchParams({ q: address, types: 'address', limit: '1', country: 'us' });
+      const data = await apiFetch<{ features?: Array<{ center?: [number, number] }> }>(
+        `/mapbox/geocode?${params}`
       );
-      if (!tokenRes.configured || !tokenRes.accessToken) {
-        addToast('Mapbox is not configured — cannot re-geocode.', 'error');
-        return;
-      }
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json`
-        + `?access_token=${encodeURIComponent(tokenRes.accessToken)}&types=address&limit=1&country=us`;
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`Mapbox geocoding failed (${resp.status})`);
-      const data = await resp.json() as { features?: Array<{ center?: [number, number] }> };
       const center = data.features?.[0]?.center;
       if (!center || center.length !== 2) {
         addToast('Mapbox found no match for this address.', 'error');

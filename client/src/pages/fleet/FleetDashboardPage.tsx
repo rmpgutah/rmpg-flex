@@ -25,7 +25,7 @@ import PanelTitleBar from '../../components/PanelTitleBar';
 import StatsCard from '../../components/StatsCard';
 import IconButton from '../../components/IconButton';
 import { getMapboxToken } from '../../utils/mapboxApiKey';
-import { injectMapboxStyles } from '../../utils/mapboxLoader';
+import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -292,6 +292,7 @@ export default function FleetDashboardPage() {
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setMapError(e.error instanceof Error ? e.error.message : 'Map error'); });
         mapRef.current = map;
+        registerMapInstance(map, 'mapbox://styles/mapbox/dark-v11');
         webglRecoveryCleanupRef.current = attach(map, 'FleetDashboardPage');
       } catch (err) {
         if (!cancelled) setMapError(err instanceof Error ? err.message : 'Failed to load map');
@@ -301,8 +302,7 @@ export default function FleetDashboardPage() {
       cancelled = true;
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
-      mapRef.current?.remove();
-      mapRef.current = null;
+      if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       setMapLoaded(false);
     };
   }, [rebuildNonce]);

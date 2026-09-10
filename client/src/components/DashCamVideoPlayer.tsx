@@ -9,6 +9,7 @@
 // ============================================================
 
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { apiFetch } from '../hooks/useApi';
 import { X, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import { mapboxgl } from '../utils/mapboxLoader';
@@ -139,11 +140,9 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
     const key = cacheKey(lat, lng);
     const cached = geocodeCache.get(key);
     if (cached) { setLiveAddress(cached); lastGeocodedPos.current = { lat, lng }; return; }
-    const token = (mapboxgl as any)?.accessToken || '';
-    if (!token) return;
-    fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=address&limit=1`)
-      .then(res => { if (!res.ok) throw new Error(`Geocode HTTP ${res.status}`); return res.json(); })
-      .then(data => {
+    apiFetch<{ features: Array<{ place_name?: string; text?: string; context?: Array<{ id?: string; text?: string }> }> }>(
+      `/mapbox/reverse-geocode?lng=${lng}&lat=${lat}`
+    ).then(data => {
         const feature = data.features?.[0];
         if (feature) {
           const addr = feature.place_name || feature.text || '';
