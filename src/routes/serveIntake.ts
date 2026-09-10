@@ -1387,6 +1387,35 @@ si.post('/intake', async (c) => {
     });
   }
   const normalized = intakeValidation.adjusted;
+
+  // Keep the browser-text fallback semantically identical to /upload. A
+  // File handle can disappear between review and submit (for example when a
+  // cloud-synced source is moved), at which point the client intentionally
+  // falls back to this JSON route. Previously that fallback silently dropped
+  // the operator's reviewed field edits, client selection, and multi-party
+  // picks even though the normal multipart route preserves all three.
+  const DATE_OVERRIDE_FIELDS = new Set([
+    'service_deadline', 'hearing_date', 'filing_date', 'attempt_start_not_before', 'recipient_dob',
+  ]);
+  const overrides = body.field_overrides;
+  if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+    for (const [key, value] of Object.entries(overrides)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const raw = value.trim();
+      normalized[key] = {
+        value: DATE_OVERRIDE_FIELDS.has(key) ? (toIsoDate(raw) || raw) : raw,
+        confidence: 1.0,
+      };
+    }
+  }
+  const clientId = (typeof body.client_id === 'number' && Number.isSafeInteger(body.client_id) && body.client_id > 0)
+    ? body.client_id
+    : (typeof body.client_id === 'string' && /^\d+$/.test(body.client_id.trim()) ? Number(body.client_id.trim()) : null);
+  let defendantsSelected: string[] | null = null;
+  if (Array.isArray(body.defendants_selected) && body.defendants_selected.every((value: unknown) => typeof value === 'string')) {
+    const selected = body.defendants_selected.map((value: string) => value.trim()).filter(Boolean);
+    defendantsSelected = selected.length > 0 ? selected : null;
+  }
   const row = fieldsToQueueRow(normalized);
 
   let commit: CommitResult = {
@@ -1404,6 +1433,8 @@ si.post('/intake', async (c) => {
       userId: user.id,
       documentSummary: buildCallDescription(row, normalized, docs.length),
       docCount: docs.length,
+      clientId,
+      defendantsSelected,
       env: c.env,
       // R9: these were computed and logged two lines above but never passed,
       // so the row persisted `validation_issues: []` while the log said

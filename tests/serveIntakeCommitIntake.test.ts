@@ -12,10 +12,14 @@ function makeDbStub() {
     persons: [], properties: [], calls_for_service: [], serve_queue: [],
     case_files: [], case_persons: [],
   };
+  const queries: Array<{ sql: string; args: any[] }> = [];
   let lastId = 1000;
   const prepare = (sql: string) => {
     const stmt = {
-      bind: (..._args: any[]) => stmt,
+      bind: (...args: any[]) => {
+        queries.push({ sql, args });
+        return stmt;
+      },
       first: async () => null,
       all: async () => ({ results: [] }),
       run: async () => {
@@ -28,7 +32,7 @@ function makeDbStub() {
     };
     return stmt;
   };
-  return { prepare, _rows: rows };
+  return { prepare, _rows: rows, _queries: queries };
 }
 
 describe('commitIntake with defendantsSelected', () => {
@@ -70,6 +74,20 @@ describe('commitIntake with defendantsSelected', () => {
       env: {} as any,
     });
     expect(db._rows.serve_queue.length).toBe(1);
+  });
+
+  it('writes an operator-selected client to the created queue entry', async () => {
+    const db: any = makeDbStub();
+    await commitIntake(db, {
+      fields: { recipient_first_name: { value: 'John', confidence: 0.9 },
+                recipient_last_name: { value: 'Smith', confidence: 0.9 } },
+      queueRow: { recipient_name: 'John Smith', recipient_address: '1 Main St' } as any,
+      userId: 1, documentSummary: '', docCount: 1,
+      clientId: 77,
+      env: {} as any,
+    });
+    const queueInsert = db._queries.find(({ sql }: { sql: string }) => /INSERT INTO serve_queue/i.test(sql));
+    expect(queueInsert?.args).toContain(77);
   });
 
   it('all defendants share the same case_file_id (forcedCaseId mechanism)', async () => {

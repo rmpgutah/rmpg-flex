@@ -17,7 +17,11 @@ R2_KEY="rmpg-flex-tesseract-training/models/latest/tesseract.traineddata"
 
 mkdir -p "$DEST_DIR"
 
-if npx wrangler r2 object get "$R2_KEY" --file="$DEST_FILE" --remote 2>/dev/null; then
+# Explicitly select the project's Worker config. Without it, recent Wrangler
+# versions can start framework auto-configuration and scan the user home
+# directory before the R2 request, which prevents the model bootstrap from
+# running on developer machines with protected macOS folders.
+if npx wrangler r2 object get "$R2_KEY" --file="$DEST_FILE" --remote --config ./wrangler.toml 2>/dev/null; then
   echo "Fetched custom fine-tuned model from R2."
 else
   echo "No custom model found in R2 yet — falling back to stock English tessdata."
