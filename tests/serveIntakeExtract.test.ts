@@ -18,6 +18,7 @@ import {
   encodePsoServiceWindows, mapIntakeServeType, mapRecipientType, parseFeeAmount,
   mapTimeWindow,
   buildFamilyPrompt, needsCriticPass, familyFromFileName, buildExtractionMessages,
+  isTextAttested, SYSTEM_PROMPT,
   type ExtractedField, type TargetField,
 } from '../src/utils/serveIntakeExtract';
 
@@ -505,5 +506,45 @@ describe('extraction prompt — service_deadline and priority are taught', () =>
 
   it('the info_page family prompt names the JOB-header due date as the deadline', () => {
     expect(buildFamilyPrompt('info_page')).toMatch(/service_deadline/);
+  });
+});
+
+describe('isTextAttested — hallucination guard', () => {
+  const FIELD_SHEET = [
+    'ICU Investigations, LLC Job: 16815024 Due: 09/15/2026',
+    'Party to Serve: Live Nite Events LLC d/b/a LNE Presents',
+    'Agent for Service: Albert Vaughn Carrick',
+    'Server: Christopher Zamora',
+    'Case: 269920641, Court: THIRD JUDICIAL DISTRICT COURT - SALT LAKE COUNTY',
+    'Plaintiff: RF SERVICING MANAGER CORPORATION d/b/a RF SERVICING LLC',
+    'Defendant: LIVE NITE EVENTS LLC d/b/a LNE PRESENTS, and ALBERT VAUGHN CARRICK',
+    'Business Address: 30 E. Broadway, Salt Lake City, UT 84111',
+  ].join('\n');
+
+  it('passes when all significant tokens appear in the source', () => {
+    expect(isTextAttested('Albert Vaughn Carrick', FIELD_SHEET)).toBe(true);
+    expect(isTextAttested('Live Nite Events LLC', FIELD_SHEET)).toBe(true);
+    expect(isTextAttested('Christopher Zamora', FIELD_SHEET)).toBe(true);
+  });
+
+  it('rejects hallucinated generic names not present in source', () => {
+    expect(isTextAttested('John Smith', FIELD_SHEET)).toBe(false);
+    expect(isTextAttested('Jane Doe', FIELD_SHEET)).toBe(false);
+    expect(isTextAttested('123 Main Street', FIELD_SHEET)).toBe(false);
+    expect(isTextAttested('John Doe', FIELD_SHEET)).toBe(false);
+  });
+
+  it('passes short names (all tokens < 4 chars) that cannot be verified', () => {
+    expect(isTextAttested('Lee Kim', FIELD_SHEET)).toBe(true);
+    expect(isTextAttested('Al Wu', FIELD_SHEET)).toBe(true);
+  });
+
+  it('passes empty value without checking source', () => {
+    expect(isTextAttested('', FIELD_SHEET)).toBe(true);
+  });
+
+  it('system prompt contains ANTI-HALLUCINATION instruction', () => {
+    expect(SYSTEM_PROMPT).toContain('ANTI-HALLUCINATION');
+    expect(SYSTEM_PROMPT).toContain('John Smith');
   });
 });
