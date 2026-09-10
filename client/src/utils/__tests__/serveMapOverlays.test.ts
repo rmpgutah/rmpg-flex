@@ -58,9 +58,10 @@ describe('urgencyTierForDeadline', () => {
     expect(urgencyTierForDeadline('2026-07-30 18:00:00', now)).toBe('warning');
   });
 
-  it('returns "critical" for unparseable deadline formats (fallback to current time)', () => {
-    // parseTimestamp falls back to new Date() for invalid strings, making them urgent
-    expect(urgencyTierForDeadline('not-a-date', now)).toBe('critical');
+  it('returns "none" for unparseable deadline formats (NaN is not treated as now)', () => {
+    // parseTimestamp intentionally passes NaN through for invalid strings so a
+    // bad deadline cannot be mistaken for "urgently due right now".
+    expect(urgencyTierForDeadline('not-a-date', now)).toBe('none');
   });
 
   it('returns "none" when deadline is an empty string', () => {
