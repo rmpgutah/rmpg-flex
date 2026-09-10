@@ -14,6 +14,7 @@ import {
   type ServeDocumentType,
   type ServeFileKind,
 } from '../../utils/serveAttemptFileMeta';
+import { extractFolderGroups } from '../../utils/dropFolders';
 import ConfirmDialog from '../ConfirmDialog';
 import InlineAudioPlayer from './InlineAudioPlayer';
 
@@ -222,22 +223,38 @@ function UploadForm({
   const [documentType, setDocumentType] = useState('');
   const [copies, setCopies] = useState('1');
   const [busy, setBusy] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const submit = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
+  // Maximum files the server accepts per POST (mirrors src/routes/serveAttemptFiles.ts MAX_FILES).
+  const MAX_BATCH = 20;
+
+  // Submit a list of File objects. Each file gets its kind inferred by the
+  // server (we omit the shared 'kind' override so photos and documents in the
+  // same drop are classified correctly rather than all stamped with the first
+  // file's kind). Large drops are automatically split into MAX_BATCH-sized
+  // chunks so the server's per-request file cap is never exceeded.
+  const submitFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
     setBusy(true);
     setErr(null);
     try {
-      const fd = new FormData();
-      Array.from(fileList).forEach((f) => fd.append('files', f));
-      if (title.trim()) fd.append('title', title.trim());
-      if (description.trim()) fd.append('description', description.trim());
-      if (documentType) fd.append('document_type', documentType);
-      if (copies) fd.append('copies', copies);
-      const first = fileList[0];
-      fd.append('kind', inferServeFileKind(first.type, first.name));
-      await apiPostForm(`/process-server/${queueId}/attempts/${attemptId}/files`, fd);
+      const chunks: File[][] = [];
+      for (let i = 0; i < files.length; i += MAX_BATCH) {
+        chunks.push(files.slice(i, i + MAX_BATCH));
+      }
+      for (const chunk of chunks) {
+        const fd = new FormData();
+        chunk.forEach((f) => fd.append('files', f));
+        if (title.trim()) fd.append('title', title.trim());
+        if (description.trim()) fd.append('description', description.trim());
+        if (documentType) fd.append('document_type', documentType);
+        if (copies) fd.append('copies', copies);
+        // Intentionally omit 'kind' — the server infers it per-file via
+        // inferServeFileKind so a mixed drop (photos + documents) is classified
+        // correctly rather than stamped with the first file's kind.
+        await apiPostForm(`/process-server/${queueId}/attempts/${attemptId}/files`, fd);
+      }
       setTitle('');
       setDescription('');
       onUploaded();
@@ -247,10 +264,44 @@ function UploadForm({
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
     }
-  };
+  }, [queueId, attemptId, title, description, documentType, copies, onUploaded]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (busy) return;
+    // Use extractFolderGroups so dropped folders are traversed recursively.
+    // DataTransfer item list must be captured synchronously (it's invalidated
+    // after the handler returns); the async walk happens inside the util.
+    extractFolderGroups(e.dataTransfer).then((groups) => {
+      const allFiles = groups.flatMap((g) => g.files);
+      if (allFiles.length > 0) void submitFiles(allFiles);
+    }).catch(() => {
+      const fallback = Array.from(e.dataTransfer?.files ?? []);
+      if (fallback.length > 0) void submitFiles(fallback);
+    });
+  }, [busy, submitFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragActive) setDragActive(true);
+  }, [dragActive]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  }, []);
 
   return (
-    <div className="border border-dashed border-border-subtle p-2 space-y-2 bg-surface-sunken">
+    <div
+      className={`border border-dashed p-2 space-y-2 bg-surface-sunken transition-colors ${dragActive ? 'border-brand-400 bg-surface-raised' : 'border-border-subtle'}`}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
       <div className="grid grid-cols-2 gap-2">
         <label className="col-span-2 flex flex-col gap-0.5">
           <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>Title</span>
@@ -276,7 +327,7 @@ function UploadForm({
       </div>
       <label className={`flex items-center justify-center gap-2 px-3 py-2 border border-dashed cursor-pointer text-[11px] ${busy ? 'opacity-50' : 'hover:border-brand-400 text-text-secondary'}`}>
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-        {busy ? 'Uploading…' : 'Upload documents, photos, or MP3'}
+        {busy ? 'Uploading…' : 'Drop a folder or click to upload documents, photos, or MP3'}
         <input
           ref={inputRef}
           type="file"
@@ -284,7 +335,7 @@ function UploadForm({
           accept={SERVE_ATTEMPT_FILE_ACCEPT}
           disabled={busy}
           className="hidden"
-          onChange={(e) => submit(e.target.files)}
+          onChange={(e) => { if (e.target.files) void submitFiles(Array.from(e.target.files)); }}
         />
       </label>
       {err && <div className="text-[10px] text-red-400">{err}</div>}
