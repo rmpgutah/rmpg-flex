@@ -1542,7 +1542,8 @@ si.get('/documents/:docId/file', async (c) => {
     'SELECT r2_key, file_type, file_name FROM serve_intake_documents WHERE id = ?',
     docId,
   );
-  if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
+  if (!doc) return c.json({ error: 'Not found' }, 404);
+  if (!doc.r2_key) return c.json({ error: 'Document file is unavailable — the upload was interrupted before storage completed. Re-upload the packet to recover.', code: 'FILE_UNAVAILABLE' }, 410);
   try {
     const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
     if (decrypted) {
