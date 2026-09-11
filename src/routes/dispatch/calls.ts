@@ -794,6 +794,88 @@ calls.get('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'mana
   }
 });
 
+// GET /dispatch/calls/batch?ids=1,2,3 - Lightweight multi-call fetch for serve route planner.
+// Returns only the fields used by ServeJobLinkedCall (not the full call detail with activity
+// log, incidents, units, etc.). Must be registered before /:id or "batch" matches the param.
+calls.get('/batch', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rawIds = (c.req.query('ids') ?? '').split(',').map(Number).filter(Number.isFinite);
+    if (rawIds.length === 0) return c.json([]);
+    // Cap at 100 — D1's bound-parameter limit; callers should chunk if needed.
+    const ids = rawIds.slice(0, 100);
+
+    const calls = await queryInChunks<{
+      id: number; call_number: string; status: string; priority: string;
+      assigned_unit_ids: string | null; pso_requestor_name: string | null;
+      contract_id: string | null; pso_service_windows: string | null;
+      pso_attempt_number: number | null;
+    }>(
+      db, ids,
+      (ph) => `SELECT c.id, c.call_number, c.status, c.priority,
+                      c.assigned_unit_ids, c.pso_requestor_name, c.contract_id,
+                      c.pso_service_windows, c.pso_attempt_number
+               FROM calls_for_service c WHERE c.id IN (${ph})`,
+    );
+
+    // Fetch parent_call_id from the ext table for each call.
+    const extRows = await queryInChunks<{ id: number; parent_call_id: number | null }>(
+      db, ids,
+      (ph) => `SELECT id, parent_call_id FROM calls_for_service_ext WHERE id IN (${ph})`,
+    );
+    const extMap = new Map(extRows.map((r) => [r.id, r.parent_call_id ?? null]));
+
+    // Collect all parent ids and child ids we need to resolve.
+    const parentIds = [...new Set(extRows.map((r) => r.parent_call_id).filter((x): x is number => x != null))];
+    const parentRows = parentIds.length
+      ? await queryInChunks<{ id: number; call_number: string; status: string; pso_attempt_number: number | null }>(
+          db, parentIds,
+          (ph) => `SELECT id, call_number, status, pso_attempt_number FROM calls_for_service WHERE id IN (${ph})`,
+        )
+      : [];
+    const parentMap = new Map(parentRows.map((r) => [r.id, r]));
+
+    // Children are siblings sharing the same parent (return-visit chain).
+    const chainRootIds = [...new Set([...parentIds, ...ids.filter((id) => !extMap.get(id))])];
+    const childRows = chainRootIds.length
+      ? await queryInChunks<{ id: number; call_number: string; status: string; pso_attempt_number: number | null; parent_call_id: number | null }>(
+          db, chainRootIds,
+          (ph) => `SELECT c.id, c.call_number, c.status, c.pso_attempt_number,
+                          ext.parent_call_id
+                   FROM calls_for_service c
+                   LEFT JOIN calls_for_service_ext ext ON ext.id = c.id
+                   WHERE (c.id IN (${ph}) OR ext.parent_call_id IN (${ph}))`,
+        )
+      : [];
+
+    // Build a child list per root call id (grouped by parent or root itself).
+    const childrenByRoot = new Map<number, typeof childRows>();
+    for (const r of childRows) {
+      const root = r.parent_call_id ?? r.id;
+      if (!childrenByRoot.has(root)) childrenByRoot.set(root, []);
+      childrenByRoot.get(root)!.push(r);
+    }
+
+    const result = calls.map((call) => {
+      const parentCallId = extMap.get(call.id) ?? null;
+      const parentCall = parentCallId ? (parentMap.get(parentCallId) ?? null) : null;
+      const root = parentCallId ?? call.id;
+      const siblings = (childrenByRoot.get(root) ?? []).filter((r) => r.id !== call.id);
+      return {
+        ...call,
+        parent_call_id: parentCallId,
+        parent_call: parentCall,
+        child_calls: siblings.map(({ id, call_number, status, pso_attempt_number }) => ({ id, call_number, status, pso_attempt_number })),
+      };
+    });
+
+    return c.json(result);
+  } catch (err) {
+    log.error('GET /dispatch/calls/batch failed', {}, err as Error);
+    return c.json([]);
+  }
+});
+
 // GET /dispatch/calls/:id - Single call
 // Split into multiple narrow queries instead of one wide JOIN because D1
 // caps result sets at 100 columns. calls_for_service is ~93 columns; adding
