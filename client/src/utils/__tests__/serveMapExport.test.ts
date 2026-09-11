@@ -21,6 +21,7 @@ vi.mock('jspdf', () => ({
       setLineWidth: vi.fn(),
       text: vi.fn(),
       rect: vi.fn(),
+      roundedRect: vi.fn(),
       line: vi.fn(),
       addPage: vi.fn(),
       getTextWidth: vi.fn((t: string) => t.length * 2),
