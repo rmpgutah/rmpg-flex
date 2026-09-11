@@ -5,8 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Two concurrency groups:
+# - cf-deploy-<ref>: serialises parallel deploys from the same branch.
+# - rmpg-flex-d1-ops: shared with d1-backup.yml so a wrangler d1 export (exclusive
+#   lock) cannot overlap with the Apply D1 migrations step in this workflow.
+#   GitHub Actions doesn't support step-level concurrency, so both workflows join
+#   the same group at the job level.
 concurrency:
-  group: cf-deploy-${{ github.ref }}
+  group: rmpg-flex-d1-ops
   cancel-in-progress: false
 
 # Least-privilege GITHUB_TOKEN (CWE-275). Deploys run against Cloudflare using
@@ -281,8 +287,11 @@ jobs:
       # Post-deploy verification — smoke-test the Worker health endpoint.
       # This catches deploy failures that return a non-2xx Wrangler exit code
       # but still "succeed" because the old Worker version keeps serving traffic.
+      # Must use success() (not always()) — the old Worker answers /api/health fine
+      # even after a failed deploy, so running on always() gives a false green when
+      # the Worker deploy step itself failed.
       - name: Verify Worker health
-        if: always() && vars.SKIP_VERIFY != '1'
+        if: success() && vars.SKIP_VERIFY != '1'
         run: |
           set -euo pipefail
           echo "Verifying Worker health..."

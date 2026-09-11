@@ -19,14 +19,12 @@ on:
         required: true
         type: string
         default: 0270_tesseract_box_page_number.sql
-  # First-merge bootstrap: opening/updating a PR that adds this workflow
-  # applies 0270 so we do not wait for a second dispatch after it lands on main.
-  pull_request:
-    paths:
-      - '.github/workflows/apply-d1-migration.yml'
+  # pull_request trigger intentionally removed: this workflow writes directly to
+  # live production D1 via wrangler d1 execute --remote, so it must only run on
+  # explicit workflow_dispatch — never automatically on a PR open/update.
 
 concurrency:
-  group: apply-d1-${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
+  group: apply-d1-${{ github.event.inputs.filename }}
   cancel-in-progress: false
 
 permissions:
@@ -34,7 +32,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -52,7 +50,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          FILENAME: ${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
+          FILENAME: ${{ github.event.inputs.filename }}
         run: |
           set -euo pipefail
           case "$FILENAME" in
@@ -85,6 +83,6 @@ jobs:
           echo "Tracking $FILENAME in d1_migrations..."
           npx wrangler d1 execute rmpg-flex --remote \
             --command "INSERT OR IGNORE INTO d1_migrations (name, applied_at) VALUES ('${FILENAME}', datetime('now'))"
-          echo "Verifying tesseract_box_annotations.page_number..."
+          echo "Verifying $FILENAME is tracked in d1_migrations..."
           npx wrangler d1 execute rmpg-flex --remote \
-            --command "SELECT cid, name, type, dflt_value FROM pragma_table_info('tesseract_box_annotations') WHERE name = 'page_number'"
+            --command "SELECT name, applied_at FROM d1_migrations WHERE name = '${FILENAME}'"

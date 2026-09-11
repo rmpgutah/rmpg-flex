@@ -1246,13 +1246,28 @@ export default function ServePage() {
   }, [refreshJobs, fetchSavedRoute, selectedDate]);
 
   // ── Optimization V2 ───────────────────────────────────────────────────
-  const pendingJobIds = useMemo(
-    () => jobs.filter(j => j.status !== 'served' && j.status !== 'archived' && j.status !== 'failed').map(j => j.id),
+  const pendingJobs = useMemo(
+    () => jobs.filter(j => j.status !== 'served' && j.status !== 'archived' && j.status !== 'failed'),
     [jobs],
+  );
+  // Server requires every job to have geocoords — split before submitting
+  const pendingJobIds = useMemo(
+    () => pendingJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null).map(j => j.id),
+    [pendingJobs],
+  );
+  const missingCoordsCount = useMemo(
+    () => pendingJobs.filter(j => j.recipient_lat == null || j.recipient_lng == null).length,
+    [pendingJobs],
   );
 
   const handleOptimizeRouteV2 = useCallback(async () => {
     if (!user?.id || !savedRoute?.id || !pendingJobIds.length) return;
+    if (missingCoordsCount > 0) {
+      addToast(
+        `${missingCoordsCount} job${missingCoordsCount > 1 ? 's' : ''} skipped — no GPS coordinates (geocode the address first)`,
+        'warning',
+      );
+    }
     const now = new Date(); // new-date-ok — wall-clock shift window
     const shiftStart = now.toISOString();
     const shiftEnd = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(); // new-date-ok — 8h shift window
@@ -1264,7 +1279,7 @@ export default function ServePage() {
       shift_end: shiftEnd,
       ref_id: savedRoute?.id ?? null,
     });
-  }, [user?.id, savedRoute?.id, pendingJobIds, optimization]);
+  }, [user?.id, savedRoute?.id, pendingJobIds, missingCoordsCount, optimization, addToast]);
 
   useEffect(() => {
     if (optimization.status === 'complete') {
@@ -3251,6 +3266,7 @@ export default function ServePage() {
                       type="button"
                       onClick={handleOptimizeRouteV2}
                       disabled={optimization.status === 'pending' || optimization.status === 'processing' || !pendingJobIds.length || !savedRoute?.id}
+                      title={missingCoordsCount > 0 ? `${missingCoordsCount} job${missingCoordsCount > 1 ? 's' : ''} without coordinates will be skipped` : undefined}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Optimize Route with Mapbox V2"
                     >
