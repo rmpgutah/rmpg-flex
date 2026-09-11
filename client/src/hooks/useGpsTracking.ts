@@ -1264,11 +1264,20 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';
+            // Watch is still alive (error ≠ silent death) — reset so the
+            // heartbeat doesn't treat this as a stale-watch restart.
+            lastCallbackTimeRef.current = Date.now();
             // On desktop Electron without GPS hardware, start IP fallback
             startIpFallbackPoller();
             break;
           case err.TIMEOUT:
             msg = 'Location request timed out. Retrying...';
+            // TIMEOUT means the browser's geolocation subsystem responded — it
+            // just couldn't deliver a fix in time (normal on weak cellular
+            // signal). Reset the heartbeat clock so the watchdog knows the
+            // watch is still live and doesn't immediately restart it, which
+            // would cause the recurring "No position callback in Xs" warnings.
+            lastCallbackTimeRef.current = Date.now();
             // On desktop Electron, start IP fallback in case GPS never resolves
             startIpFallbackPoller();
             break;
