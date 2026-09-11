@@ -900,18 +900,23 @@ export default function ServePage() {
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
-      // Fetch linked dispatch calls for jobs that have call_id
-      const jobsWithCalls = fetchedJobs.filter((j: any) => j.call_id);
-      if (jobsWithCalls.length > 0) {
+      // Batch-fetch linked dispatch calls — one request regardless of job count.
+      const callIds = [...new Set(fetchedJobs.filter((j: any) => j.call_id).map((j: any) => j.call_id as number))];
+      if (callIds.length > 0) {
         const callMap: Record<number, any> = {};
-        await Promise.all(
-          jobsWithCalls.map(async (j: any) => {
-            try {
-              const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
-              if (call) callMap[j.id] = call;
-            } catch { /* linked call not found */ }
-          })
-        );
+        try {
+          // D1 bound-param cap is 100; chunk if the queue is unusually large.
+          const CHUNK = 90;
+          const callById = new Map<number, any>();
+          for (let i = 0; i < callIds.length; i += CHUNK) {
+            const chunk = callIds.slice(i, i + CHUNK);
+            const batch = await apiFetch<any[]>(`/dispatch/calls/batch?ids=${chunk.join(',')}`);
+            (batch ?? []).forEach((c: any) => callById.set(c.id, c));
+          }
+          fetchedJobs.forEach((j: any) => {
+            if (j.call_id && callById.has(j.call_id)) callMap[j.id] = callById.get(j.call_id);
+          });
+        } catch { /* linked calls non-critical */ }
         setLinkedCalls(callMap);
       } else {
         setLinkedCalls({});
