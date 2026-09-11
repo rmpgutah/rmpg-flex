@@ -1373,29 +1373,51 @@ export async function checkTrafficDegradation(
 
 /**
  * Look up an officer's fleet vehicle MPG.
- * Tries: officer → unit → fleet_vehicle chain first.
- * Falls back to fleet-wide average when the chain has no match.
+ * Resolution order (most accurate first):
+ *   1. Stored avg_mpg on fleet_vehicles (Fleet.io-synced, fast)
+ *   2. Computed from actual fleet_fuel_log entries for the officer's vehicle
+ *      (same source the Fleet Management UI uses — always up-to-date even
+ *      when Fleet.io hasn't pushed a webhook yet)
+ *   3. Fleet-wide average of stored avg_mpg values (last resort)
  */
 export async function lookupOfficerFleetMpg(
   db: D1Database,
   officerId: number | undefined | null,
 ): Promise<number | null> {
   if (!officerId) return null;
+
+  // 1. Stored avg_mpg (Fleet.io-synced column)
   try {
-    const specific = await db
+    const stored = await db
       .prepare(
-        `SELECT fv.avg_mpg
+        `SELECT fv.id AS fv_id, fv.avg_mpg
          FROM fleet_vehicles fv
          JOIN units u ON fv.assigned_unit_id = u.id
-         WHERE u.officer_id = ? AND fv.avg_mpg IS NOT NULL AND fv.avg_mpg > 0
+         WHERE u.officer_id = ?
          LIMIT 1`,
       )
       .bind(officerId)
-      .first<{ avg_mpg: number }>();
-    if (specific?.avg_mpg) return specific.avg_mpg;
+      .first<{ fv_id: number; avg_mpg: number | null }>();
+    if (stored?.avg_mpg && stored.avg_mpg > 0) return stored.avg_mpg;
+
+    // 2. Compute from fuel log entries for this vehicle (same source as Fleet UI).
+    //    Formula: lifetime odometer span ÷ total gallons, identical to
+    //    the per-vehicle MPG card in fleet.ts computeSummary().
+    if (stored?.fv_id) {
+      const computed = await db
+        .prepare(
+          `SELECT ROUND((MAX(odometer) - MIN(odometer)) * 1.0 / NULLIF(SUM(gallons), 0), 1) AS avg_mpg
+           FROM fleet_fuel_log
+           WHERE vehicle_id = ? AND odometer IS NOT NULL AND gallons > 0
+           HAVING COUNT(*) >= 2 AND (MAX(odometer) - MIN(odometer)) > 0`,
+        )
+        .bind(stored.fv_id)
+        .first<{ avg_mpg: number | null }>();
+      if (computed?.avg_mpg && computed.avg_mpg > 0) return computed.avg_mpg;
+    }
   } catch { /* tables may not exist */ }
 
-  // Fallback: fleet-wide average of active vehicles with data
+  // 3. Fleet-wide average of active vehicles with stored data
   try {
     const fallback = await db
       .prepare(
