@@ -85,6 +85,8 @@ function playPriorityChime(priority: string | undefined): void {
   // Respect the global sound mute (the same 'rmpg-sound' key the voice-alert
   // layer + edgeTTS honor) — the chime used to fire even when alerts were muted.
   try { if (localStorage.getItem('rmpg-sound') === 'false') return; } catch { /* no storage */ }
+  // Respect per-category mute from the Alert Sounds admin panel.
+  if (!isAlertSoundEnabled(priority === 'P1' ? 'p1_call' : 'p2_call')) return;
   const ctx = getChimeCtx();
   if (!ctx) return;
   try {
