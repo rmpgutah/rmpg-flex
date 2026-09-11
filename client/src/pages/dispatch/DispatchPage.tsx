@@ -4751,6 +4751,24 @@ export default function DispatchPage() {
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
                     )}
+                    {/* Navigate — launch turn-by-turn nav HUD to the call's geocoded location */}
+                    {!isEditing && selectedCall.latitude != null && selectedCall.longitude != null && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        title="Navigate to call location"
+                        style={{ color: 'var(--sev-ok)' }}
+                        onClick={() => {
+                          const params = new URLSearchParams({
+                            lat: String(selectedCall.latitude),
+                            lng: String(selectedCall.longitude),
+                            destination: selectedCall.location || selectedCall.call_number || 'Call',
+                          });
+                          navigate(`/navigation?${params.toString()}`);
+                        }}
+                      >
+                        <Navigation style={{ width: 10, height: 10 }} /> Navigate
+                      </button>
+                    )}
                     {/* Route Builder — navigate to multi-stop CFS route planner for assigned units */}
                     {!isEditing && (selectedCall.assigned_units || []).length > 0 && (
                       <button type="button"
@@ -7546,6 +7564,19 @@ export default function DispatchPage() {
             <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setIsEditing(true); setContextMenu(null); }}>
               <Pencil style={{ width: 12, height: 12 }} /> Edit Call
             </button>
+            {contextMenu.call.latitude != null && contextMenu.call.longitude != null && (
+              <button type="button" className="context-menu-item" style={{ color: 'var(--sev-ok)' }} onClick={() => {
+                const params = new URLSearchParams({
+                  lat: String(contextMenu.call.latitude),
+                  lng: String(contextMenu.call.longitude),
+                  destination: contextMenu.call.location || contextMenu.call.call_number || 'Call',
+                });
+                navigate(`/navigation?${params.toString()}`);
+                setContextMenu(null);
+              }}>
+                <Navigation style={{ width: 12, height: 12 }} /> Navigate to Call
+              </button>
+            )}
             <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
               Copy Call Number
             </button>
