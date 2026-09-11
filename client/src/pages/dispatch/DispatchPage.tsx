@@ -2780,27 +2780,28 @@ export default function DispatchPage() {
     if (newStatus === 'onscene') {
       const call = calls.find((c) => c.id === callId) ?? selectedCall;
       const startMi = call?.starting_mileage ? Number(call.starting_mileage) : null;
-      // Auto-calculate ending mileage from GPS → call location (no popup — "without interference")
-      if (startMi != null && startMi > 0 && call?.latitude && call?.longitude) {
+      // Derive ending mileage from the fleet vehicle's live odometer, which the
+      // GPS trip engine accrues with every fix. This is the authoritative running
+      // odometer at the moment the officer arrives on-scene. The previous approach
+      // computed Haversine(officerPos, callLocation), which is always ~0 miles
+      // when the officer IS on-scene — producing ending_mileage ≈ starting_mileage.
+      if (startMi != null && startMi > 0) {
         try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000, maximumAge: 30000 }),
-          );
-          const toRad = (d: number) => (d * Math.PI) / 180;
-          const R = 3958.8; // Earth radius in miles
-          const dLat = toRad(Number(call.latitude) - pos.coords.latitude);
-          const dLon = toRad(Number(call.longitude) - pos.coords.longitude);
-          const a =
-            Math.sin(dLat / 2) ** 2 +
-            Math.cos(toRad(pos.coords.latitude)) *
-              Math.cos(toRad(Number(call.latitude))) *
-              Math.sin(dLon / 2) ** 2;
-          const distMiles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const endingMileage = Math.round((startMi + distMiles) * 10) / 10;
-          await handleStatusChange(callId, newStatus, { ...extraBody, ending_mileage: endingMileage });
-          return;
+          const firstUnitId = call?.assigned_units?.[0] ?? selectedCall?.assigned_units?.[0];
+          if (firstUnitId) {
+            const res = await apiFetch<{ data?: Array<{ current_mileage?: number | null }> } | Array<{ current_mileage?: number | null }>>(
+              `/fleet?assigned_unit_id=${firstUnitId}`
+            ).catch(() => null);
+            const arr = Array.isArray(res) ? res : ((res as { data?: Array<{ current_mileage?: number | null }> })?.data ?? []);
+            const veh = Array.isArray(arr) ? arr[0] : null;
+            const odo = veh?.current_mileage != null ? Number(veh.current_mileage) : null;
+            if (odo != null && Number.isFinite(odo) && odo > 0 && odo >= startMi) {
+              await handleStatusChange(callId, newStatus, { ...extraBody, ending_mileage: Math.round(odo * 10) / 10 });
+              return;
+            }
+          }
         } catch {
-          // GPS unavailable — proceed without ending mileage
+          // Fleet lookup failed — proceed without ending mileage
         }
       }
     }
@@ -4748,6 +4749,24 @@ export default function DispatchPage() {
                         style={{ color: 'var(--sev-ok)' }}
                       >
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
+                      </button>
+                    )}
+                    {/* Navigate — launch turn-by-turn nav HUD to the call's geocoded location */}
+                    {!isEditing && selectedCall.latitude != null && selectedCall.longitude != null && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        title="Navigate to call location"
+                        style={{ color: 'var(--sev-ok)' }}
+                        onClick={() => {
+                          const params = new URLSearchParams({
+                            lat: String(selectedCall.latitude),
+                            lng: String(selectedCall.longitude),
+                            destination: selectedCall.location || selectedCall.call_number || 'Call',
+                          });
+                          navigate(`/navigation?${params.toString()}`);
+                        }}
+                      >
+                        <Navigation style={{ width: 10, height: 10 }} /> Navigate
                       </button>
                     )}
                     {/* Route Builder — navigate to multi-stop CFS route planner for assigned units */}
@@ -7494,12 +7513,12 @@ export default function DispatchPage() {
               </>
             )}
             {contextMenu.call.status === 'dispatched' && (
-              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { triggerStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
                 <Navigation style={{ width: 12, height: 12 }} /> En Route
               </button>
             )}
             {contextMenu.call.status === 'enroute' && (
-              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { triggerStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
                 <Eye style={{ width: 12, height: 12 }} /> On Scene
               </button>
             )}
@@ -7545,6 +7564,19 @@ export default function DispatchPage() {
             <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setIsEditing(true); setContextMenu(null); }}>
               <Pencil style={{ width: 12, height: 12 }} /> Edit Call
             </button>
+            {contextMenu.call.latitude != null && contextMenu.call.longitude != null && (
+              <button type="button" className="context-menu-item" style={{ color: 'var(--sev-ok)' }} onClick={() => {
+                const params = new URLSearchParams({
+                  lat: String(contextMenu.call.latitude),
+                  lng: String(contextMenu.call.longitude),
+                  destination: contextMenu.call.location || contextMenu.call.call_number || 'Call',
+                });
+                navigate(`/navigation?${params.toString()}`);
+                setContextMenu(null);
+              }}>
+                <Navigation style={{ width: 12, height: 12 }} /> Navigate to Call
+              </button>
+            )}
             <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
               Copy Call Number
             </button>

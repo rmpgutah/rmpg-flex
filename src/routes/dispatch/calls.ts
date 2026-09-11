@@ -1307,16 +1307,55 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     let mileageSql = '';
     const extraParams: unknown[] = [];
 
-    const parsedStartMi = starting_mileage != null && Number(starting_mileage) > 0 ? Math.round(Number(starting_mileage) * 10) / 10 : null;
+    let parsedStartMi = starting_mileage != null && Number(starting_mileage) > 0 ? Math.round(Number(starting_mileage) * 10) / 10 : null;
     const parsedEndMi = ending_mileage != null && Number(ending_mileage) > 0 ? Math.round(Number(ending_mileage) * 10) / 10 : null;
 
+    // Server-side safety net: when enroute fires without a starting_mileage (e.g.
+    // the modal was skipped or a direct API call omitted the field), auto-capture
+    // the assigned unit's fleet vehicle live odometer. This keeps the mileage chain
+    // continuous even when the client-side modal is bypassed.
+    if (parsedStartMi == null && status === 'enroute') {
+      try {
+        const { vehicleOdometerForUnit } = await import('../../utils/fleetOdometer');
+        const assignedRow = await queryFirst<{ assigned_unit_ids: string | null }>(
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id,
+        );
+        const unitIds: number[] = JSON.parse(assignedRow?.assigned_unit_ids || '[]');
+        if (unitIds.length > 0) {
+          const odo = await vehicleOdometerForUnit(db, unitIds[0]);
+          if (odo != null) parsedStartMi = odo;
+        }
+      } catch { /* non-fatal */ }
+    }
+
     if (parsedStartMi != null) {
-      mileageSql += ', starting_mileage = ?';
+      // COALESCE: only write if not already set — don't overwrite an officer's
+      // explicit enroute mileage if a second enroute transition fires somehow.
+      mileageSql += ', starting_mileage = COALESCE(starting_mileage, ?)';
       extraParams.push(parsedStartMi);
     }
-    if (parsedEndMi != null) {
+    // Server-side safety net for onscene: if no ending_mileage was passed, derive
+    // it from the fleet vehicle's live odometer (accrued by GPS trip engine).
+    // Only set if the call already has a starting_mileage to derive from.
+    let resolvedEndMi = parsedEndMi;
+    if (resolvedEndMi == null && status === 'onscene') {
+      try {
+        const { vehicleOdometerForUnit } = await import('../../utils/fleetOdometer');
+        const callRow = await queryFirst<{ assigned_unit_ids: string | null; starting_mileage: number | null }>(
+          db, 'SELECT assigned_unit_ids, starting_mileage FROM calls_for_service WHERE id = ?', id,
+        );
+        const unitIds: number[] = JSON.parse(callRow?.assigned_unit_ids || '[]');
+        if (unitIds.length > 0 && callRow?.starting_mileage != null && callRow.starting_mileage > 0) {
+          const odo = await vehicleOdometerForUnit(db, unitIds[0]);
+          if (odo != null && odo > callRow.starting_mileage) {
+            resolvedEndMi = Math.round(odo * 10) / 10;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+    if (resolvedEndMi != null) {
       mileageSql += ', ending_mileage = ?';
-      extraParams.push(parsedEndMi);
+      extraParams.push(resolvedEndMi);
     }
 
     const params: unknown[] = [status];
