@@ -254,7 +254,9 @@ jobs:
       # signal at all — no issue opened on failure, no green on success.
 
       - name: Open issue on failure
-        if: failure() && steps.client-tests.conclusion == 'failure'
+        # failure() is sufficient — the job has three test steps (main, PDF, map),
+        # and narrowing to steps.client-tests.conclusion missed PDF/map failures.
+        if: failure()
         uses: actions/github-script@v7
         env:
           COMMIT_SHA: ${{ github.sha }}
