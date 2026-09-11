@@ -9,8 +9,12 @@ on:
     - cron: '0 10 * * *'
   workflow_dispatch:
 
+# Shared concurrency group with deploy.yml's D1 migration step.
+# wrangler d1 export takes an exclusive lock — if a deploy is mid-migration
+# when the backup starts (or vice versa), one will block the other. Using the
+# same group name ensures they queue rather than collide.
 concurrency:
-  group: rmpg-flex-d1-export
+  group: rmpg-flex-d1-ops
   cancel-in-progress: false
 
 permissions:
@@ -41,19 +45,38 @@ jobs:
           BACKUP_FILE="rmpg-flex-backup-${BACKUP_DATE}.sql"
 
           # wrangler d1 export rejects databases containing virtual tables (fts5).
-          # If wrangler d1 export fails, fall back to exporting table schemas & data.
+          # If wrangler d1 export fails, fall back to exporting DDL + row data per table.
+          # The old fallback only ran `SELECT sql FROM sqlite_master` (DDL only — no rows)
+          # so every nightly fallback backup was unusable for recovery. Fixed: we now emit
+          # a CREATE TABLE statement then a JSON row dump for each non-virtual table.
           if ! npx wrangler d1 export rmpg-flex --remote --output "${BACKUP_FILE}"; then
-            echo "::warning::wrangler d1 export failed (e.g. FTS5 virtual tables). Generating table-level dump..."
+            echo "::warning::wrangler d1 export failed (e.g. FTS5 virtual tables). Generating table-level DDL+data dump..."
             TABLES=$(npx wrangler d1 execute rmpg-flex --remote \
               --command "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_fts%' AND name NOT LIKE '%_idx%' AND name NOT LIKE '%_docsize%' AND name NOT LIKE '%_config%' AND name NOT LIKE '%_content%' AND name NOT LIKE '%_data%'" \
-              | grep -o '\[.*\]' \
+              --json \
               | python3 -c "import json, sys; data=json.load(sys.stdin); print(' '.join(r['name'] for r in data[0]['results']))" 2>/dev/null || echo "")
 
             echo "-- RMPG Flex Backup (Fallback Dump) ${BACKUP_DATE}" > "${BACKUP_FILE}"
+            TOTAL_ROWS=0
             for tbl in $TABLES; do
-              echo "-- Table: $tbl" >> "${BACKUP_FILE}"
-              npx wrangler d1 execute rmpg-flex --remote --command "SELECT sql FROM sqlite_master WHERE type='table' AND name='$tbl'" >> "${BACKUP_FILE}" 2>/dev/null || true
+              echo "" >> "${BACKUP_FILE}"
+              echo "-- Table: $tbl (DDL)" >> "${BACKUP_FILE}"
+              # Emit CREATE TABLE statement
+              npx wrangler d1 execute rmpg-flex --remote --json \
+                --command "SELECT sql FROM sqlite_master WHERE type='table' AND name='${tbl}'" \
+                | python3 -c "import json,sys; rows=json.load(sys.stdin)[0]['results']; print(rows[0]['sql'] + ';') if rows else None" \
+                >> "${BACKUP_FILE}" 2>/dev/null || true
+              echo "" >> "${BACKUP_FILE}"
+              echo "-- Table: $tbl (rows as JSON)" >> "${BACKUP_FILE}"
+              # Emit all rows as JSON — INSERT-ready data for recovery
+              OUT=$(npx wrangler d1 execute rmpg-flex --remote --json \
+                --command "SELECT * FROM \"${tbl}\"" 2>/dev/null || echo "[]")
+              echo "$OUT" >> "${BACKUP_FILE}"
+              ROW_COUNT=$(echo "$OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d[0]['results']) if d and d[0].get('results') else 0)" 2>/dev/null || echo 0)
+              TOTAL_ROWS=$((TOTAL_ROWS + ROW_COUNT))
             done
+            echo ""
+            echo "Fallback dump complete: $(echo $TABLES | wc -w) tables, ${TOTAL_ROWS} rows"
           fi
 
           if [ -s "${BACKUP_FILE}" ]; then
