@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../hooks/useApi';
 import DesktopEmergencyAccessModal from './DesktopEmergencyAccessModal';
 import { verifyOfflinePin, storeOfflinePin } from '../../utils/DesktopOfflineAuthVault';
+import { formatEnumValue } from '../../utils/formatters';
 
 const AGENCY_NAME = 'Rocky Mountain Protective Group';
 const AGENCY_SHORT = 'RMPG';
@@ -34,7 +35,7 @@ function makeInitials(u: UserCard): string {
 }
 
 function roleLabel(role: string): string {
-  return role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return formatEnumValue(role);
 }
 
 const AVATAR_BLUES = ['#2d5a8c', '#3e74a8', '#1e4a72', '#4a6fa5', '#25527a', '#365e8c', '#2a4f7c'];

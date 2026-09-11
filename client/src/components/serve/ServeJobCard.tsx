@@ -374,12 +374,12 @@ export default React.memo(function ServeJobCard({
           </span>
           {opsMeta.venue && opsMeta.venue !== 'none' && (
             <span className="text-[8px] font-bold uppercase font-mono px-1 py-0 border rounded-[2px] text-brand-200 border-brand-700/40 bg-brand-900/20">
-              {(opsMeta.venueLabel || opsMeta.venue).replace(/_/g, ' ')}
+              {opsMeta.venueLabel || formatEnumValue(opsMeta.venue)}
             </span>
           )}
           {opsMeta.addressClass && opsMeta.addressClass !== 'unknown' && (
             <span className="text-[8px] font-mono px-1 py-0 rounded-[2px] border border-rmpg-600/40 text-rmpg-300">
-              {opsMeta.addressClass.replace(/_/g, ' ')}
+              {formatEnumValue(opsMeta.addressClass)}
             </span>
           )}
           {opsMeta.ops?.no_sunday && (

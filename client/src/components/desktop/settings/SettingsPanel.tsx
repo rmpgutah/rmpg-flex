@@ -33,6 +33,7 @@ import { useOptionalDesktopSystem } from '../../../context/DesktopSystemContext'
 import type { FocusAssistLevel } from '../../../context/DesktopSystemContext';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../hooks/useApi';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // ─── Tab model ───────────────────────────────────────────────
 
@@ -931,7 +932,7 @@ function AccountTab() {
           <div>
             <div className="account-name">{user?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'Not signed in'}</div>
             <div className="account-badge">{user?.badge_number ? `Badge ${user.badge_number} · ` : ''}{user?.username ?? ''}</div>
-            {user?.role && <span className="account-role">{user.role.replace(/_/g, ' ')}</span>}
+            {user?.role && <span className="account-role">{formatEnumValue(user.role)}</span>}
           </div>
         </div>
       </Section>
@@ -1129,7 +1130,7 @@ export default function SettingsPanel({ initialTab = 'display', extraTabs = [], 
           <div className="settings-user-avatar" aria-hidden="true">{initials}</div>
           <div className="settings-user-info">
             <span className="settings-user-name">{user?.full_name || user?.username || 'Not signed in'}</span>
-            <span className="settings-user-badge">{user?.badge_number ? `Badge ${user.badge_number}` : user?.role?.replace(/_/g, ' ') ?? ''}</span>
+            <span className="settings-user-badge">{user?.badge_number ? `Badge ${user.badge_number}` : formatEnumValue(user?.role) ?? ''}</span>
           </div>
         </div>
         <nav className="settings-nav" aria-label="Settings sections">

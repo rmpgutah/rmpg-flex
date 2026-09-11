@@ -12,6 +12,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { formatEnumValue } from '../../../utils/formatters';
 
 interface DashboardData {
   total_active: number;
@@ -339,7 +340,7 @@ function ManagerDashboard({
                     <div className="text-xs text-rmpg-500 truncate">{rec.incident_type}</div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div className="text-xs text-rmpg-400 capitalize">{rec.status.replace(/_/g, ' ')}</div>
+                    <div className="text-xs text-rmpg-400">{formatEnumValue(rec.status)}</div>
                     <div className="text-xs text-rmpg-500">{formatRelativeTime(rec.created_at)}</div>
                   </div>
                 </div>

@@ -625,7 +625,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       {enrichResult.match_tier} MATCH
                     </span>
                     {enrichResult.sources.map((s: SourceResult) => {
-                      const label = s.source.replace(/_/g, ' ').toUpperCase();
+                      const label = formatEnumValue(s.source);
                       const status = !s.ok
                         ? s.error === 'not_configured'
                           ? <span className="text-text-secondary">(not configured)</span>
@@ -666,7 +666,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                             return (
                               <tr key={i} className="border-b border-border-subtle/50 last:border-0">
                                 <td className="py-[2px] pr-3 text-fg-muted whitespace-nowrap">
-                                  {rec.source.replace(/_/g, ' ').toUpperCase()}
+                                  {formatEnumValue(rec.source)}
                                 </td>
                                 <td className="py-[2px] pr-3 text-text-primary">{rec.name ?? '—'}</td>
                                 <td className="py-[2px] pr-3 text-text-secondary font-mono">{rec.dob ?? '—'}</td>

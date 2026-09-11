@@ -1,6 +1,7 @@
 import React from 'react';
 import { Building2, Clock, AlertTriangle, KeyRound, Shield } from 'lucide-react';
 import { EMPTY_SERVE_JOB_OPS, type ServeJobMeta } from '../../utils/serveJobIntake';
+import { formatEnumValue } from '../../utils/formatters';
 
 export default function ServeJobOpsPanel({
   meta,
@@ -12,8 +13,8 @@ export default function ServeJobOpsPanel({
   note?: string | null;
 }) {
   const ops = meta.ops ?? EMPTY_SERVE_JOB_OPS;
-  const classLabel = meta.addressClass === 'unknown' ? null : meta.addressClass.replace(/_/g, ' ');
-  const venue = meta.venue && meta.venue !== 'none' ? (meta.venueLabel || meta.venue.replace(/_/g, ' ')) : null;
+  const classLabel = meta.addressClass === 'unknown' ? null : formatEnumValue(meta.addressClass);
+  const venue = meta.venue && meta.venue !== 'none' ? (meta.venueLabel || formatEnumValue(meta.venue)) : null;
   const windows = meta.windows || [];
   const firedIds = meta.firedIds || [];
   if (!classLabel && !venue && !windows.length && !firedIds.length && !ops.gate_code) {
