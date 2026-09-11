@@ -1,5 +1,4 @@
 import { parseTimestamp } from '../../utils/dateUtils';
-import { formatEnumValue } from '../../utils/formatters';
 // ============================================================
 // RMPG Flex — Skip Tracker 3.5 — Enhanced Dossier Builder
 // Three-panel: Navigation tabs (top) + Search/Results (left) + Dossier/Content (right)
