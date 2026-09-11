@@ -1427,7 +1427,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Drawing & Tracking ──
     draw: { active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu((v) => !v) },
     'gl-draw': { active: glDraw.enabled, onToggle: () => glDraw.toggle() },
-    'draw-geofence': { active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence') },
+    'draw-geofence': { active: activeFloatingTool === 'draw-geofence', onToggle: () => {
+      // Only one MapboxDraw instance can exist per map (both register 'mapbox-gl-draw-cold').
+      // Disable the gl-draw hook before the geofence tool mounts its own draw control.
+      if (activeFloatingTool !== 'draw-geofence') glDraw.disable();
+      setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence');
+    } },
     'gps-replay': { active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay') },
     'speed-analytics': { active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), loading: speedZoneStats.loading },
 
