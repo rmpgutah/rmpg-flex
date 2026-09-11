@@ -1317,7 +1317,7 @@ export default function DispatchPage() {
     // so dispatchers and officers 403'd and never saw custom codes.
     apiFetch('/dispatch/disposition-codes').then((cfg: any) => {
       if (cancelled) return;
-      const disps = (cfg.dispositions || [])
+      const disps = ((cfg && cfg.dispositions) || [])
         .filter((d: any) => d.is_active)
         .map((d: any) => {
           try { return JSON.parse(d.config_value); } catch { return null; }
@@ -1688,7 +1688,7 @@ export default function DispatchPage() {
     // Listen for serve queue events — update gold serve status panel in real time
     const unsubServeCreated = subscribe('serve:created', (msg: any) => {
       const data = msg.data || msg;
-      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+      if (data?.call_id && String(selectedCallRef.current?.id) === String(data.call_id)) {
         setServeLink(data);
       }
       // Voice alert: announce return visit scheduled
@@ -1698,7 +1698,7 @@ export default function DispatchPage() {
     });
     const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
       const data = msg.data || msg;
-      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+      if (data?.call_id && String(selectedCallRef.current?.id) === String(data.call_id)) {
         // Refresh serve link to get updated attempt count + status
         const callId = selectedCallRef.current!.id;
         apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
@@ -1789,8 +1789,8 @@ export default function DispatchPage() {
         addToast(`Serve completed${who}`, 'success', 6000);
         // If the linked CFS call is selected, update its status in-place.
         if (data.call_id) {
-          setCalls((prev) => prev.map((c) => c.id === data.call_id ? { ...c, status: 'cleared' as const } : c));
-          setSelectedCall((prev) => (prev && prev.id === data.call_id) ? ({ ...prev, status: 'cleared' as CallForService['status'] }) : prev);
+          setCalls((prev) => prev.map((c) => String(c.id) === String(data.call_id) ? { ...c, status: 'cleared' as const } : c));
+          setSelectedCall((prev) => (prev && String(prev.id) === String(data.call_id)) ? ({ ...prev, status: 'cleared' as CallForService['status'] }) : prev);
         }
       } else if (data.action === 'unit_status_changed' && data.officer_id && data.status) {
         // [F3] PSO officer unit status update keyed by officer_id (not unit id).
@@ -6364,10 +6364,10 @@ export default function DispatchPage() {
                     className="mt-3 rounded-sm shadow-sm"
                     style={{
                       border: selectedCall?.status === 'cleared'
-                        ? '1px solid rgba(34,197,94,0.45)'
+                        ? '1px solid color-mix(in srgb, var(--sev-ok) 45%, transparent)'
                         : '1px solid var(--spm-border)',
                       background: selectedCall?.status === 'cleared'
-                        ? 'color-mix(in srgb, var(--surface-raised) 92%, rgba(34,197,94,0.12))'
+                        ? 'color-mix(in srgb, var(--surface-raised) 92%, var(--sev-ok) 8%)'
                         : 'var(--surface-raised)',
                     }}
                   >
@@ -6376,7 +6376,7 @@ export default function DispatchPage() {
                       className="flex items-center justify-between px-3 py-2 border-b"
                       style={{
                         borderColor: selectedCall?.status === 'cleared'
-                          ? 'rgba(34,197,94,0.3)'
+                          ? 'color-mix(in srgb, var(--sev-ok) 30%, transparent)'
                           : 'var(--spm-border)',
                         background: 'var(--surface-deep)',
                       }}
@@ -6404,7 +6404,7 @@ export default function DispatchPage() {
                             disabled={!callNarrative.trim() || submittingNarrative}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-sm transition-colors shadow-xs"
                             style={{
-                              background: callNarrative.trim() ? 'rgb(22 163 74)' : 'rgba(22,163,74,0.3)',
+                              background: callNarrative.trim() ? 'var(--sev-ok)' : 'color-mix(in srgb, var(--sev-ok) 30%, transparent)',
                               color: 'var(--text-primary)',
                               opacity: submittingNarrative ? 0.5 : 1,
                             }}
@@ -6419,7 +6419,7 @@ export default function DispatchPage() {
 
                     {/* Cleared-state call-to-action strip */}
                     {selectedCall?.status === 'cleared' && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-medium text-green-300" style={{ background: 'rgba(34,197,94,0.07)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}>
+                      <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-medium" style={{ color: 'var(--sev-ok)', background: 'color-mix(in srgb, var(--sev-ok) 7%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--sev-ok) 20%, transparent)' }}>
                         <CheckCircle style={{ width: 10, height: 10 }} />
                         CFS Cleared — complete the narrative below and click Submit Narrative to close this call and queue it for archiving.
                       </div>
