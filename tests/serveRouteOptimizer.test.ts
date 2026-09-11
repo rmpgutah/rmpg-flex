@@ -68,16 +68,34 @@ describe('buildCostMatrix', () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
-  it('falls back per-pair to haversine when a Directions call fails', async () => {
+  it('uses haversine per-pair but does NOT set fallback for a single failure out of 6', async () => {
+    // 3 stops = 6 pairs. 1 failure = 17% < 50% threshold → fallback stays false.
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 429 } as unknown as Response)  // pair 0→1 fails
       .mockResolvedValue({ ok: true, json: async () => ({ routes: [{ duration: 120 }] }) } as unknown as Response);
     global.fetch = fetchMock;
 
     const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
-    expect(result.fallback).toBe(true);    // at least one pair used haversine
+    expect(result.fallback).toBe(false);   // minority failure — no banner
     expect(result.matrix[0][1]).toBeGreaterThan(0);  // haversine fallback is non-zero
     expect(result.matrix[0][2]).toBe(120); // other pairs still got real durations
+  });
+
+  it('sets fallback when majority of Directions calls fail', async () => {
+    // 3 stops = 6 pairs. Fail 4 of 6 (67% > 50%) → fallback: true.
+    const failResp = { ok: false, status: 500 } as unknown as Response;
+    const okResp = { ok: true, json: async () => ({ routes: [{ duration: 120 }] }) } as unknown as Response;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(failResp)
+      .mockResolvedValueOnce(failResp)
+      .mockResolvedValueOnce(failResp)
+      .mockResolvedValueOnce(failResp)
+      .mockResolvedValue(okResp);
+    global.fetch = fetchMock;
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(true);
+    expect(result.reason).toMatch(/4 of 6/);
   });
 
   it('falls back to haversine with reason when token is empty string', async () => {

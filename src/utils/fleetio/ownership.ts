@@ -49,6 +49,7 @@ export const VEHICLE_OWNERSHIP: Record<string, OwnershipClass> = {
   next_service_date:     'fleetio',
   warranty_expiry_date:  'fleetio',
   watch_list:            'fleetio',
+  avg_mpg:               'fleetio',  // Fleet.io computes from fuel entries; RMPG reads for route cost
 
   // — Shared (last-write-wins by updated_at, 60-s unresolved window) —
   vin:                   'shared',
