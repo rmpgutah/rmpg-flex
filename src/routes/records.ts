@@ -2680,10 +2680,8 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          // The SELECT above is LIMIT 500, so this IN-list can carry up to 500
-          // bound parameters — five times D1's 100-parameter cap, which throws
-          // at BIND time before the statement runs. Retention enforcement would
-          // 500 and dispose nothing the moment 100+ rows aged out.
+          // SELECT is LIMIT 500; executeInChunks splits into ≤100-id batches
+          // to stay within D1's 100-bound-parameter cap.
           count = await executeInChunks(db, ids,
             (ps) => `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`);
         }
@@ -2693,7 +2691,6 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          // Same LIMIT 500 vs 100-parameter-cap mismatch as the evidence branch.
           count = await executeInChunks(db, ids,
             (ps) => `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`);
         }
