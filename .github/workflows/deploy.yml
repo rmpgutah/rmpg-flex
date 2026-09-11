@@ -207,10 +207,32 @@ jobs:
           }
           tar -xzf "${TURSO_ARCHIVE}" turso
           chmod +x turso
+
+          # Bootstrap the migration tracker on Turso if it doesn't exist yet.
+          echo "CREATE TABLE IF NOT EXISTS d1_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')));" \
+            | ./turso db shell rmpg-flex-secondary || true
+
+          # Fetch names already tracked so we only apply pending files.
+          APPLIED=$(echo "SELECT name FROM d1_migrations;" \
+            | ./turso db shell rmpg-flex-secondary 2>/dev/null || echo "")
+
+          APPLIED_COUNT=0
+          SKIPPED_COUNT=0
           for f in migrations/*.sql; do
-            ./turso db shell rmpg-flex-secondary < "$f" || \
-              echo "::warning::Migration $f failed on Turso secondary (non-blocking)"
+            name=$(basename "$f")
+            if echo "$APPLIED" | grep -qF "$name"; then
+              SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+              continue
+            fi
+            if ./turso db shell rmpg-flex-secondary < "$f" 2>/dev/null; then
+              echo "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${name}');" \
+                | ./turso db shell rmpg-flex-secondary || true
+              APPLIED_COUNT=$((APPLIED_COUNT + 1))
+            else
+              echo "::warning::Turso secondary: migration $name failed (non-blocking)"
+            fi
           done
+          echo "Turso secondary: applied ${APPLIED_COUNT} new migration(s), skipped ${SKIPPED_COUNT} already-tracked."
 
       - name: Fetch Tesseract model
         continue-on-error: true
