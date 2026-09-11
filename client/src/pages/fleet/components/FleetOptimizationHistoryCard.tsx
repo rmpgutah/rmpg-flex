@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ function fmtJobType(t: string): string {
   if (t === 'serve_run') return 'Serve Run';
   if (t === 'patrol_beat') return 'Patrol Beat';
   if (t === 'multi_unit_dispatch') return 'Dispatch';
-  return t.replace(/_/g, ' ');
+  return formatEnumValue(t);
 }
 
 function fmtDate(iso: string): string {

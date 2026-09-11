@@ -2,6 +2,7 @@ import mapboxgl from 'mapbox-gl';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from './mapboxSafeLayer';
 import { escapeHtml } from './sanitize';
 import { parseTimestamp } from './dateUtils';
+import { formatEnumValue } from './formatters';
 
 // Priority colors use hex literals for DOM markers (HTMLElement inline styles).
 // CSS custom properties resolve via the browser cascade, but test environments
@@ -104,7 +105,7 @@ export function serveJobPopupHTML(job: ServeMapEntry, opts?: { showAddToRoute?: 
   const rows = [
     job.case_number && `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">CASE #</td><td style="font-size:10px">${esc(job.case_number)}</td></tr>`,
     job.client_name && `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">CLIENT</td><td style="font-size:10px">${esc(job.client_name)}</td></tr>`,
-    job.document_type && `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">DOC</td><td style="font-size:10px">${esc(job.document_type.replace(/_/g, ' '))}</td></tr>`,
+    job.document_type && `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">DOC</td><td style="font-size:10px">${esc(formatEnumValue(job.document_type))}</td></tr>`,
     job.recipient_address && `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">ADDR</td><td style="font-size:10px">${esc(job.recipient_address)}</td></tr>`,
     `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">STATUS</td><td style="font-size:10px;text-transform:uppercase;font-weight:600">${esc(job.status)}</td></tr>`,
     deadlineStr && `<tr><td style="color:#9ca3af;padding:1px 6px 1px 0;font-size:9px">DEADLINE</td><td style="font-size:10px;${isOverdue ? 'color:#ef4444;font-weight:700' : ''}">${esc(deadlineStr)}${isOverdue ? ' ⚠' : ''}</td></tr>`,

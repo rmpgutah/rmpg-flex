@@ -6241,7 +6241,7 @@ export default function DispatchPage() {
                     {involvedPersons.map((p: any) => (
                       <div key={p.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
                         <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{formatEnumValue(p.role)}</span>
                           <span className="font-medium truncate">{p.name}</span>
                           {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
                           {p.id_number && <span className="text-rmpg-400 shrink-0">ID {p.id_number}</span>}
@@ -6338,7 +6338,7 @@ export default function DispatchPage() {
                     {involvedVehicles.map((v: any) => (
                       <div key={v.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
                         <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{formatEnumValue(v.role)}</span>
                           <span className="font-medium truncate">
                             {[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}
                           </span>
