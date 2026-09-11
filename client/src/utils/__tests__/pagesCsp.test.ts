@@ -27,10 +27,10 @@ describe('Pages CSP is not the Observatory starter policy', () => {
   //   connect-src 'none'
   // That is Cloudflare Observatory's report-only template, not FULL_CSP.
   // Guard the CAD policy so we never ship that starter string ourselves.
-  it('index.html meta script-src includes self and Cloudflare challenges, not Insights', () => {
+  it('index.html meta script-src includes self, Cloudflare challenges, and Insights', () => {
     const src = scriptSrc(INDEX_HTML, 'index.html');
     expect(src).toContain("'self'");
-    expect(src).not.toContain('https://static.cloudflareinsights.com');
+    expect(src).toContain('https://static.cloudflareinsights.com');
     expect(src).toContain('https://challenges.cloudflare.com');
     // Chrome 109+ gates WebAssembly compile on this token separately from
     // 'unsafe-eval'. Without it, zxing-wasm never instantiates and every
@@ -48,7 +48,7 @@ describe('Pages CSP is not the Observatory starter policy', () => {
     const policyBlock = MIDDLEWARE.slice(MIDDLEWARE.indexOf('const FULL_CSP'));
     expect(policyBlock).toMatch(/script-src 'self'/);
     expect(policyBlock).toContain("'wasm-unsafe-eval'");
-    expect(policyBlock).not.toContain('https://static.cloudflareinsights.com');
+    expect(policyBlock).toContain('https://static.cloudflareinsights.com');
     expect(policyBlock).toContain('https://challenges.cloudflare.com');
     expect(policyBlock).toContain('https://dialer.rmpgutah.us');
     expect(policyBlock).toMatch(/connect-src \$\{ALLOWED_CONNECT\}/);
