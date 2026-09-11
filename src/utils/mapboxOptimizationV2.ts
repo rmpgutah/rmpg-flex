@@ -218,7 +218,10 @@ export function buildServeRunProblem(
           }
         }
       } else {
-        serviceTimes.push({ earliest: shiftStart, latest: s.deadline, type: 'soft_end' });
+        const dlMs = Date.parse(s.deadline);
+        if (Number.isFinite(dlMs)) {
+          serviceTimes.push({ earliest: shiftStart, latest: new Date(dlMs).toISOString(), type: 'soft_end' });
+        }
       }
     }
     if (serviceTimes.length > 0) svc.service_times = serviceTimes;

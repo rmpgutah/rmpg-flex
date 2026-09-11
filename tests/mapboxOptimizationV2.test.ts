@@ -58,7 +58,7 @@ describe('buildServeRunProblem', () => {
   it('sets service_times from deadline when no time_window', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
     const svc12 = doc.services.find((s) => s.name === '12');
-    expect(svc12?.service_times![0].latest).toBe('2026-08-17T16:00:00Z');
+    expect(svc12?.service_times![0].latest).toBe('2026-08-17T16:00:00.000Z');
     expect(svc12?.service_times![0].type).toBe('soft_end');
   });
 

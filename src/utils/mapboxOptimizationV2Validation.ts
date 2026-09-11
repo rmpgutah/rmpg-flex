@@ -55,8 +55,10 @@ export function validateOptimizationProblem(problem: V2ProblemDocument): void {
           (vehicle.latest_end && Date.parse(b.latest_end) > Date.parse(vehicle.latest_end))) throw new Error('Break must fit inside vehicle shift');
     }
   }
+  const datetimeRe = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)$/;
   for (const service of problem.services) {
     for (const window of service.service_times ?? []) {
+      if (!datetimeRe.test(window.earliest) || !datetimeRe.test(window.latest)) throw new Error(`Invalid time window for ${service.name}: timestamps must be ISO 8601 with timezone`);
       if (!Number.isFinite(Date.parse(window.earliest)) || !Number.isFinite(Date.parse(window.latest)) || Date.parse(window.earliest) >= Date.parse(window.latest)) throw new Error(`Invalid time window for ${service.name}`);
     }
   }
