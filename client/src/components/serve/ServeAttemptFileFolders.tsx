@@ -53,6 +53,7 @@ interface IntakeDoc {
   doc_type: string | null;
   status: string | null;
   created_at: string | null;
+  has_file: number;
 }
 
 interface FoldersResponse {
@@ -423,17 +424,29 @@ export default function ServeAttemptFileFolders({
               <div className="text-[11px] text-text-secondary">No intake packet files on this job.</div>
             )}
             {data?.intake.map((doc) => (
-              <a
-                key={doc.id}
-                href={authedImageUrl(`/api/serve-intake/documents/${doc.id}/file`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-2 py-1.5 border border-border-subtle hover:border-brand-400 text-[11px] text-text-primary"
-              >
-                <FileText size={12} className="text-text-secondary" />
-                <span className="truncate flex-1">{doc.file_name || `Document ${doc.id}`}</span>
-                <span className="text-[9px] text-text-secondary">{doc.doc_type ? formatEnumValue(doc.doc_type) : ''}{doc.page_count ? ` · ${doc.page_count}p` : ''}</span>
-              </a>
+              doc.has_file ? (
+                <a
+                  key={doc.id}
+                  href={authedImageUrl(`/api/serve-intake/documents/${doc.id}/file`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-2 py-1.5 border border-border-subtle hover:border-brand-400 text-[11px] text-text-primary"
+                >
+                  <FileText size={12} className="text-text-secondary" />
+                  <span className="truncate flex-1">{doc.file_name || `Document ${doc.id}`}</span>
+                  <span className="text-[9px] text-text-secondary">{doc.doc_type ? formatEnumValue(doc.doc_type) : ''}{doc.page_count ? ` · ${doc.page_count}p` : ''}</span>
+                </a>
+              ) : (
+                <div
+                  key={doc.id}
+                  title="Document upload failed — no file stored. Re-upload the packet to recover."
+                  className="flex items-center gap-2 px-2 py-1.5 border border-border-subtle text-[11px] text-text-secondary opacity-50 cursor-not-allowed"
+                >
+                  <FileText size={12} />
+                  <span className="truncate flex-1">{doc.file_name || `Document ${doc.id}`}</span>
+                  <span className="text-[9px]">unavailable</span>
+                </div>
+              )
             ))}
           </div>
         )}
