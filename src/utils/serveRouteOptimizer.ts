@@ -174,7 +174,6 @@ export async function buildCostMatrix(
     }
   }
 
-  let anyFailed = false;
   const departAtIso = clampDepartAtForMapbox(departAt);
 
   const results = await Promise.all(
@@ -203,19 +202,24 @@ export async function buildCostMatrix(
     })
   );
 
+  let failedCount = 0;
   for (const { i, j, duration } of results) {
     if (duration !== null) {
       matrix[i][j] = duration;
     } else {
       matrix[i][j] = haversineDurationSeconds(stops[i], stops[j]);
-      anyFailed = true;
+      failedCount++;
     }
   }
 
+  // Only declare a fallback when the majority of calls failed — a small number
+  // of transient network errors still leaves the matrix well-grounded in live
+  // traffic data and should not trigger the "unavailable" banner.
+  const fallback = failedCount > pairs.length / 2;
   return {
     matrix,
-    fallback: anyFailed,
-    reason: anyFailed ? 'some directions calls failed' : undefined,
+    fallback,
+    reason: fallback ? `${failedCount} of ${pairs.length} directions calls failed` : undefined,
   };
 }
 

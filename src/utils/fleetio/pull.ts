@@ -62,9 +62,13 @@ export function matchLocalVehicle(
 /** Returns null when the Fleet.io vehicle has no usable name to seed a new row with. */
 export function buildLocalInsertFromFleetio(
   fioVehicle: FleetioVehicle,
-): Omit<RmpgFleetVehicleRow, 'id'> & { status: string } | null {
+): Omit<RmpgFleetVehicleRow, 'id'> & { status: string; avg_mpg: number | null } | null {
   const name = (fioVehicle.name ?? '').trim();
   if (!name) return null;
+  // Fleet.io exposes fuel economy as `reported_fuel_economy` (MPG computed from
+  // fuel entries). Map it to the RMPG column name on the way in.
+  const rawMpg = fioVehicle.reported_fuel_economy ?? null;
+  const avgMpg = typeof rawMpg === 'number' && rawMpg > 0 ? rawMpg : null;
   return {
     vehicle_name: name,
     vehicle_number: name,
@@ -75,6 +79,7 @@ export function buildLocalInsertFromFleetio(
     model: fioVehicle.model || null,
     color: fioVehicle.color || null,
     status: 'in_service',
+    avg_mpg: avgMpg,
   };
 }
 
