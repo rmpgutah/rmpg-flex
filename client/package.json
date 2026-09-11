@@ -50,7 +50,7 @@
     "@tiptap/extension-horizontal-rule": "^3.31.0",
     "@tiptap/extension-image": "^3.31.0",
     "@tiptap/extension-italic": "^3.31.0",
-    "@tiptap/extension-link": "^3.31.0",
+    "@tiptap/extension-link": "^3.31.2",
     "@tiptap/extension-list": "^3.30.5",
     "@tiptap/extensions": "^3.31.0",
     "@tiptap/extension-paragraph": "^3.31.0",
