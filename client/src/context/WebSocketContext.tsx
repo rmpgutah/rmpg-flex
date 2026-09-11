@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
-import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import { handleDispatchEvent, startBrainTimer, setCurrentUser } from '../utils/dispatcherBrain';
 import { apiWsBase } from '../utils/apiOrigin';
 import {
   announceGpsGap,
@@ -16,17 +16,23 @@ import { trackCriticalAlert, alertKey } from '../utils/alertEscalation';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
 import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
+import { SAFETY_RULES } from '../utils/dispatcherRules/safety';
+import { OPERATIONAL_RULES } from '../utils/dispatcherRules/operational';
 
-// Register the Dispatcher Brain rule catalog once at module load.
-// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants,
-//   evidence, arrests, HR).
-// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony
-//   backup, MH protocol, geofence breach, overdue-status timer).
-// Registry is a module-level array that only grows at boot; duplicates
-// from hot-reload are harmless because ruleId+entityKey cooldown in
-// speakQueue dedupes them.
+// Register the full Dispatcher Brain rule catalog once at module load.
+// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants, evidence, arrests, HR).
+// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony backup, MH protocol,
+//   geofence breach, overdue-status timer).
+// - SAFETY_RULES: Phase 4 safety checks (weapons-staging, pursuit-protocol, hazmat, P1
+//   single-unit, traffic stop, juvenile, barricade, medical, gang, repeat offender).
+// - OPERATIONAL_RULES: Phase 4 timer rules (shift-end-reminder, coverage-gap,
+//   high-call-volume, long-hold-warning, radio-silence, handoff-reminder, mutual-aid).
+// Registry is a module-level array that only grows at boot; duplicates from hot-reload are
+// harmless because ruleId+entityKey cooldown in speakQueue dedupes them.
 registerRules(EVENT_RULES);
 registerRules(COACHING_RULES);
+registerRules(SAFETY_RULES);
+registerRules(OPERATIONAL_RULES);
 
 // Start the Dispatcher Brain 30s tick so timer-triggered rules
 // (e.g. overdue-status-check) have a pulse. tickTimers() is itself
@@ -116,7 +122,7 @@ function playPriorityChime(priority: string | undefined): void {
 }
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, user } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const subscribersRef = useRef<Map<WSMessageType, Set<MessageHandler>>>(new Map());
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,6 +137,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const offlineGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
+
+  // Keep the Dispatcher Brain's currentUserCallSign in sync with the logged-in
+  // user's unit assignment so the overdue-status-check timer rule can match.
+  useEffect(() => {
+    setCurrentUser(user?.unit_call_sign ?? undefined);
+  }, [user?.unit_call_sign]);
 
   // Stable refs so connect/connectAlerts don't recreate on token changes
   const tokenRef = useRef(token);
