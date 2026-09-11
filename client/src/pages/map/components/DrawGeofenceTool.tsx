@@ -48,13 +48,18 @@ export default function DrawGeofenceTool({ map, onClose }: Props) {
         },
       ],
     });
-    // Guard: mapbox-gl-draw-cold exists when another MapboxDraw is already registered.
-    // The parent should have disabled its draw hook first, but handle the race defensively.
-    if (map.getSource('mapbox-gl-draw-cold')) {
-      console.warn('[DrawGeofenceTool] MapboxDraw source already present — skipping addControl');
-      return;
+    // Guard: only one MapboxDraw can be registered per map (both share the
+    // 'mapbox-gl-draw-cold' source). The parent disables glDraw before mounting
+    // this tool, but catch the race in case it hasn't cleaned up yet.
+    try {
+      map.addControl(draw as any);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message.includes('already a source')) {
+        console.warn('[DrawGeofenceTool] MapboxDraw already registered — skipping');
+        return;
+      }
+      throw e;
     }
-    map.addControl(draw as any);
     drawRef.current = draw;
     draw.changeMode('draw_polygon');
     return () => {
