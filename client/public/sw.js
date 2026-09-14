@@ -538,9 +538,9 @@ self.addEventListener('fetch', (event) => {
   if (
     url.hostname === 'static.cloudflareinsights.com' ||
     url.hostname.endsWith('.cloudflareinsights.com') ||
-    // /dialer/* is now same-origin but served by a Cloudflare Worker, not
-    // Cloudflare Pages — the service worker cannot cache these resources.
-    url.pathname.startsWith('/dialer/')
+    // /dialer and /dialer/* are same-origin but served by a Cloudflare Worker,
+    // not Cloudflare Pages — the service worker cannot cache these resources.
+    url.pathname === '/dialer' || url.pathname.startsWith('/dialer/')
   ) {
     return;
   }
