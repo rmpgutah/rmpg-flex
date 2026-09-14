@@ -616,10 +616,10 @@ sd.post('/export', async (c) => {
     where.push('q.status = ?');
     args.push(body.status);
   }
-  if (body.startDate) {
-    where.push('q.created_at >= ?');
-    args.push(body.startDate);
-  }
+  const defaultFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const effectiveStart = /^\d{4}-\d{2}-\d{2}/.test(body.startDate ?? '') ? body.startDate! : defaultFrom;
+  where.push('q.created_at >= ?');
+  args.push(effectiveStart);
   if (body.endDate) {
     where.push('q.created_at <= ?');
     args.push(body.endDate + ' 23:59:59');

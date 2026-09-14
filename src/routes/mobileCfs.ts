@@ -235,8 +235,8 @@ mobileCfs.post('/cfs/:id/status', async (c) => {
       `UPDATE calls_for_service SET status = ?, ${col} = COALESCE(${col}, datetime('now')), updated_at = datetime('now') WHERE id = ?`,
       status, auth.callId);
     const updated = await queryFirst<Record<string, unknown>>(db,
-      `SELECT id, call_number, incident_type, status, location_address, location_city,
-              priority, officer_id, unit_id, notes,
+      `SELECT id, call_number, incident_type, status, location_address,
+              priority, reporting_officer_id, assigned_unit_ids, notes,
               dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
               created_at, updated_at
        FROM calls_for_service WHERE id = ?`, auth.callId);
@@ -315,8 +315,8 @@ mobileCfs.post('/cfs/:id/pso', async (c) => {
     // column cap) — merge it in, or the response's `call` never reflects
     // what was just saved and the mobile UI has nothing to redisplay.
     const updatedBase = await queryFirst<Record<string, unknown>>(db,
-      `SELECT id, call_number, incident_type, status, location_address, location_city,
-              priority, officer_id, unit_id, notes,
+      `SELECT id, call_number, incident_type, status, location_address,
+              priority, reporting_officer_id, assigned_unit_ids, notes,
               dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
               created_at, updated_at
        FROM calls_for_service WHERE id = ?`, auth.callId);

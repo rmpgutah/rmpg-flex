@@ -183,7 +183,7 @@ links.post('/calls/:id/persons', requireRole('officer', 'dispatcher', 'superviso
     }>(
       db,
       `SELECT id AS warrant_id,
-              COALESCE(charge_description, offense_description, offense) AS charge,
+              charge_description AS charge,
               status, issued_date
        FROM warrants
        WHERE subject_person_id = ? AND LOWER(COALESCE(status,'')) IN ('active','outstanding')

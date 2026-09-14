@@ -39,7 +39,7 @@ jobs:
           cache: npm
 
       - name: Install root deps
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Typecheck (Worker + test contracts)
         run: npm run typecheck
@@ -86,7 +86,7 @@ jobs:
 
       # Worker source lives at /src/ with root package.json.
       - name: Install root deps
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
       #

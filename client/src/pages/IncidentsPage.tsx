@@ -1982,6 +1982,8 @@ export default function IncidentsPage() {
                 notes={narrativeRef.current?.value || selectedIncident.narrative || ''}
                 incidentType={selectedIncident.type}
                 locationAddress={selectedIncident.location || ''}
+                mode="incident"
+                existingText={narrativeRef.current?.value || selectedIncident.narrative || ''}
                 onAccept={(narrative) => {
                   if (narrativeRef.current) narrativeRef.current.value = narrative;
                 }}
