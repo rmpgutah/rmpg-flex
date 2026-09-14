@@ -938,6 +938,13 @@ export default function ServePage() {
     }
   }, [selectedDate]);
 
+  // Reset the status filter when the user navigates to a different date so
+  // that a "served" or "in_progress" filter from the previous day doesn't
+  // silently hide all jobs on the new day.
+  useEffect(() => {
+    setStatusFilter('all');
+  }, [selectedDate]);
+
   const refreshJobs = useCallback(() => {
     fetchJobs();
     fetchStats();
@@ -2460,14 +2467,14 @@ export default function ServePage() {
       } as ContextMenuItem] : []),
       m.action('Print Job Sheet (PS-300)', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
       m.action('Print Leave-Behind (PS-314)', () => handleLeaveBehind(job.id), { icon: <ScrollText size={12} /> }),
-      ...(job.attempt_count > 0 && job.status !== 'served' ? [
+      ...(job.attempt_count > 0 && !isClosed ? [
         m.action('Preview Notice of Attempt', () => setNoticePreviewJobId(job.id), { icon: <FileWarning size={12} /> }),
         m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
       ] : []),
       ...(job.status === 'served' ? [
         m.action('Affidavit of Service', () => handleAffidavitOfService(job.id), { icon: <FileSignature size={12} /> }),
       ] : []),
-      ...(job.attempt_count > 0 && job.status !== 'served' ? [
+      ...(job.attempt_count > 0 && !isClosed ? [
         m.action('Affidavit of Non-Service', () => handleAffidavitOfNonService(job.id), { icon: <ScrollText size={12} /> }),
       ] : []),
       // Manage Attempts submenu — edit or delete individual attempts
