@@ -173,7 +173,7 @@ export function generateClearedSummaryPdf(input: ClearedSummaryInput): jsPDF {
     { key: 'duration',     label: 'DURATION',    width: 50 },
     { key: 'cleared_at',   label: 'CLEARED',     width: 48 },
     { key: 'disposition',  label: 'DISPOSITION', width: 78 },
-    { key: 'location',     label: 'LOCATION',    width: 134 },
+    { key: 'location',     label: 'LOCATION',    width: 132 },
   ] as const;
 
   doc.setFillColor('#e6e6e6');
