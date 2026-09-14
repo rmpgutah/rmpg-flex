@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
-import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/DialerPanel';
+import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/dialerConnect';
 import { dialerApi, type DialerApiError } from './dialerApi';
 import { isIframeDialerForced } from './dialerFlags';
 import { createLeaderElection, isPopoutWindow } from './leaderElection';

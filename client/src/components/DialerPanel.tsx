@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { DIALER_CONNECT_PATH, DIALER_HOST_ID, DIALER_PLACE_CALL_EVENT, normalizeDialTarget } from './dialerConnect';
 import { isIframeDialerForced } from '../dialer/dialerFlags';
 
 // Dial Connect is now served at rmpgutah.us/dialer (same origin as the
@@ -13,7 +13,9 @@ export const DIALER_ORIGIN = 'https://rmpgutah.us';
 /** Authenticated Dial Connect at its new same-origin path. */
 export const DIALER_APP_URL = `${DIALER_ORIGIN}/dialer`;
 export const DIALER_WINDOW_NAME = 'rmpg-dial-connect';
-export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
+// Defined in ./dialerConnect (plain constants module) so the native softphone
+// can import them without pulling in — or being blocked by mocks of — this panel.
+export { DIALER_PLACE_CALL_EVENT, normalizeDialTarget } from './dialerConnect';
 export const DIALER_CHROME_EVENT = 'rmpg-flex:dialer-chrome';
 export const DIALER_IFRAME_ALLOW = 'microphone *; autoplay *; clipboard-write';
 export const DIALER_PANEL_WIDTH_PX = 900;
@@ -99,15 +101,6 @@ export function dialerIframeParkStyle(): CSSProperties {
     zIndex: 0,
     pointerEvents: 'none',
   };
-}
-
-export function normalizeDialTarget(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
-  const digits = trimmed.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (digits.length === 10) return `+1${digits}`;
-  return digits ? `+${digits}` : '';
 }
 
 let dialerWindow: Window | null = null;
