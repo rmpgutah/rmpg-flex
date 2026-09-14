@@ -1443,7 +1443,7 @@ export default function ServePage() {
         });
         // Optimistically update the job in place so it stays visible during the
         // background refresh and doesn't disappear if the sort order changes.
-        setJobs(prev => prev.map(j => j.id === editJob.id ? { ...j, ...formData, serve_date: formData.serve_date || selectedDate } : j));
+        setJobs(prev => prev.map(j => j.id === editJob.id ? { ...j, ...formData, serve_date: formData.serve_date || selectedDate } as ServeJob : j));
       } else {
         await apiFetch('/process-server', {
           method: 'POST',
