@@ -3350,16 +3350,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // "AWAITING DISPOSITION" rather than "N/A", which read as missing data on
     // a call that simply hasn't been resolved.
     const dispVal = formatEnumValue(data.disposition) || (lifecycle.open ? 'PENDING' : 'N/A');
-    const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
     // Row 1: Responding officer + disposition + cleared timestamp (3-column)
     y = addThreeColumnFields(doc, [
       { label: 'Responding Officer', value: data.responding_officer || (lifecycle.open ? 'UNASSIGNED' : 'N/A') },
       { label: 'Disposition', value: dispVal },
       { label: 'Cleared At', value: fmtTimestamp(data.cleared_at) || (lifecycle.open ? 'PENDING' : '—') },
     ], y);
-    // Row 2: Action taken — full-width (may contain extended narrative)
-    y = addFieldPair(doc, 'Action Taken', actionVal, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  // Action Taken rendered separately with page-break-aware addNarrativeSection so
+  // AI-generated or detailed narratives are never truncated at the bottom of a page.
+  { const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
+    y = addNarrativeSection(doc, 'Action Taken', actionVal, y, data.priority as string | undefined);
   }
 
   // ═══════════════════════════════════════════════════════════
