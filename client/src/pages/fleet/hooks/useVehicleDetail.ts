@@ -74,6 +74,7 @@ export function useVehicleDetail(
   selectedId: string | number | null,
   onCostsReset: () => void,
   onLazyLoad?: (tab: DetailTab, id: string | number) => void,
+  opts?: { activeTab?: DetailTab; setActiveTab?: (t: DetailTab) => void },
 ): VehicleDetailResult {
   const { addToast } = useToast();
   const [detail, setDetail] = useState<FleetVehicle | null>(null);
@@ -88,7 +89,10 @@ export function useVehicleDetail(
   const [personnelLoading, setPersonnelLoading] = useState(false);
   const [gpsMileage, setGpsMileage] = useState<unknown>(null);
   const [gpsMileageLoading, setGpsMileageLoading] = useState(false);
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, DETAIL_TABS);
+  const [persistedTab, setPersistedTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, DETAIL_TABS);
+  // Prefer controlled activeTab from caller (e.g. URL param) over localStorage.
+  const activeTab = opts?.activeTab ?? persistedTab;
+  const setActiveTab = opts?.setActiveTab ?? setPersistedTab;
 
   // The reset-on-vehicle-change effect must not run on mount, or it
   // clobbers the tab usePersistedTab just restored — which made that
