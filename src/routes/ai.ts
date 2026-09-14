@@ -581,7 +581,8 @@ ai.post('/analyze', requireRole(...READ_ROLES), async (c) => {
 });
 
 // ─── POST /ai/narrative ─────────────────────────────────────
-// Body: { notes, incident_type?, location_address? }
+// Body: { notes, incident_type?, location_address?, context_type? }
+// context_type: 'serve_attempt' | 'dispatch_narrative' | 'incident' (default)
 // Returns a plain-text narrative paragraph drafted from the caller's
 // notes + context. Powers the NarrativeAssist client component.
 ai.post('/narrative', requireRole(...READ_ROLES), async (c) => {
@@ -590,11 +591,13 @@ ai.post('/narrative', requireRole(...READ_ROLES), async (c) => {
     if (!body.notes || typeof body.notes !== 'string' || body.notes.trim().length < 10) {
       return c.json({ error: 'At least 10 characters of notes required', code: 'NARR_SHORT' }, 400);
     }
+    const contextType = typeof body.context_type === 'string' ? body.context_type : 'incident';
     const result = await narrativeAssist(
       c.env.AI,
       body.notes,
       body.incident_type,
       body.location_address,
+      contextType as 'serve_attempt' | 'dispatch_narrative' | 'incident',
     );
     return c.json({
       narrative: result.narrative,
