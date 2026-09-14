@@ -130,6 +130,45 @@ export const invoiceFixtures: PdfFixture<InvoicePdfData>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      invoice_number: 'INV-2026-0417',
+      status: 'sent',
+      client_name: 'Wasatch Retail Holdings, LLC',
+      client_address: '250 Main St, Sandy, UT 84070',
+      contact_name: 'Dana Whitlock',
+      contact_email: 'dana.whitlock@example-client.test',
+      contact_phone: '(801) 555-0142',
+      client_code: 'WRH-001',
+      tax_id: '87-1234567',
+      period_start: '2026-06-01',
+      period_end: '2026-06-30',
+      issue_date: '2026-07-01',
+      due_date: '2026-07-31',
+      payment_terms: 'Net 30',
+      billing_email: 'ap@example-client.test',
+      billing_address: '250 Main St, Sandy, UT 84070',
+      subtotal: 4500,
+      discount_amount: 0,
+      tax_amount: 317.5,
+      late_fee_amount: 0,
+      total: 4817.5,
+      amount_paid: 2000,
+      balance_due: 2817.5,
+      notes: 'Remit payment to Rocky Mountain Protective Group, 1400 S State St, Salt Lake City, UT 84115.',
+      created_by_name: 'Marcus Reyes',
+      line_items: [
+        { line_type: 'service', description: 'Uniformed patrol — Riverton retail corridor', quantity: 60, unit_price: 62.5, amount: 3750 },
+        { line_type: 'service', description: 'ALPR-equipped vehicle rate', quantity: 30, unit_price: 25, amount: 750 },
+      ],
+      payments: [
+        { payment_date: '2026-07-05', amount: 2000, payment_method: 'ACH', reference_number: 'ACH-88213', recorded_by_name: 'Dana Whitlock' },
+      ],
+    },
+  },
+
 ];
 
 // ── Document Intake (documentIntakePdf.ts) ────────────────────
@@ -194,6 +233,27 @@ export const documentIntakeFixtures: PdfFixture<IntakePdfInput>[] = [
       courtCategory: 'civil',
       state: 'UT',
       exportedBy: MAXIMAL_NAME,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      filename: 'warrant-2026-004417.pdf',
+      kind: 'court_warrant',
+      tier: 'implemented',
+      confidence: 0.87,
+      pageCount: 3,
+      usedOcr: true,
+      fields: [
+        { key: 'case_number', value: '2026-004417', confidence: 0.95, matchedAnchor: 'Case No.', originalValue: '2026-004417' },
+        { key: 'subject_name', value: 'Dana Whitlock', confidence: 0.9, matchedAnchor: 'Defendant', originalValue: 'Dana Whitlock' },
+        { key: 'court_name', value: 'Third District Court', confidence: 0.62, matchedAnchor: 'Court', originalValue: '3rd Dist Court' },
+      ],
+      rawTextPreview: 'STATE OF UTAH, COUNTY OF SALT LAKE — WARRANT OF ARREST, Case No. 2026-004417...',
+      courtCategory: 'criminal',
+      state: 'UT',
+      exportedBy: 'Marcus Reyes',
     },
   },
 ];
@@ -274,6 +334,37 @@ export const trainingCertificateFixtures: PdfFixture<TrainingCertificatePdfInput
       preparedBy: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      record: {
+        id: 601,
+        officer_id: 42,
+        officer_name: 'Marcus Reyes',
+        officer_badge: '4417',
+        course_name: 'Utah Private Security Officer Certification',
+        category: 'certification',
+        provider: 'Utah Bureau of Criminal Identification',
+        completed_date: '2026-06-01',
+        expiry_date: '2028-06-01',
+        score: 92,
+        hours: 40,
+        certificate_number: 'UT-PSO-4417',
+        status: 'completed',
+      },
+      requirement: {
+        id: 12,
+        course_name: 'Utah Private Security Officer Certification',
+        category: 'certification',
+        required_for_roles: ['officer', 'supervisor'],
+        renewal_period_months: 24,
+        minimum_hours: 40,
+        is_mandatory: true,
+      },
+      preparedBy: 'Dana Whitlock',
+    },
+  },
 ];
 
 // ── Skip Tracer Report (skipTracerReportPdf.ts) ───────────────
@@ -343,6 +434,29 @@ export const skipTracerReportFixtures: PdfFixture<SkipTracerFixtureInput>[] = [
         officerName: MAXIMAL_NAME,
         badgeNumber: '4419',
         caseNumber: '2026-004419',
+      },
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      subject: {
+        name: 'Dana Whitlock',
+        personId: 'PID-4417',
+        age: '36',
+        livesIn: 'Salt Lake City, UT',
+        phones: ['(801) 555-0142'],
+        emails: ['dana.whitlock@example-subject.test'],
+        addresses: ['1400 S State St, Salt Lake City, UT 84115'],
+        related: [{ name: 'Alex Kim', relationship: 'associate' }],
+      },
+      ctx: {
+        query: 'Dana Whitlock',
+        mode: 'name',
+        officerName: 'Marcus Reyes',
+        badgeNumber: '4417',
+        caseNumber: '2026-004417',
       },
     },
   },
@@ -428,4 +542,30 @@ export const proposalFixtures: PdfFixture<ProposalFixtureInput>[] = [
       },
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      proposal: {
+        proposal_number: 'PROP-2026-0417',
+        stage: 'sent',
+        valid_until: '2026-07-31',
+        created_at: '2026-07-01',
+        title: 'Retail Corridor Patrol Services Proposal',
+        client_name: 'Wasatch Retail Holdings, LLC',
+        scope_of_work:
+          'Rocky Mountain Protective Group will provide uniformed patrol coverage of the Riverton retail ' +
+          'corridor, State of Utah, County of Salt Lake, per the schedule described herein.',
+        total_value: 4817.5,
+        terms: 'This proposal is valid for 30 days from the date of issue. Net 30 payment terms apply upon acceptance.',
+      },
+      client: {
+        name: 'Wasatch Retail Holdings, LLC',
+        address: '250 Main St, Sandy, UT 84070',
+        contact_name: 'Dana Whitlock',
+        email: 'dana.whitlock@example-client.test',
+      },
+    },
+  },
 ];
+

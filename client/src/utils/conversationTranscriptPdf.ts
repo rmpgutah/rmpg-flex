@@ -195,7 +195,8 @@ export function generateConversationTranscriptPdf(input: ConversationTranscriptI
     doc.setFont('Arial', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(TEXT_DARK);
-    const headerLeft = `${i + 1}. ${msg.from_user_name || 'Unknown'}${msg.to_user_name ? ` → ${msg.to_user_name}` : (msg.is_broadcast ? ' → All Units' : '')}`;
+    const headerLeftFull = `${i + 1}. ${msg.from_user_name || 'Unknown'}${msg.to_user_name ? ` → ${msg.to_user_name}` : (msg.is_broadcast ? ' → All Units' : '')}`;
+    const headerLeft = headerLeftFull.length > 55 ? headerLeftFull.slice(0, 54) + '…' : headerLeftFull;
     doc.text(headerLeft, M, y);
     doc.setFont('Arial', 'normal');
     doc.setTextColor(TEXT_MUTED);

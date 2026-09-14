@@ -127,6 +127,31 @@ export const callFixtures: PdfFixture<CallPdfData>[] = [
       assigned_units: rows(40, (i) => `Unit-${i}`),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {
+      call_number: '2026-004417',
+      incident_type: 'Disturbance',
+      priority: 'P2',
+      status: 'cleared',
+      description: 'Loud verbal argument reported between two occupants of unit 14B.',
+      disposition: 'Resolved on scene — parties separated, no citations issued.',
+      caller_name: 'Dana Whitlock',
+      caller_phone: '(801) 555-0142',
+      location: '1400 S State St, Salt Lake City, UT 84115',
+      zone_beat: 'B-14',
+      responding_officer: 'Marcus Reyes',
+      created_at: '2026-07-15T20:12:00Z',
+      dispatched_at: '2026-07-15T20:13:10Z',
+      onscene_at: '2026-07-15T20:21:44Z',
+      cleared_at: '2026-07-15T20:48:02Z',
+      notes: [
+        { id: 'n1', author: 'Dispatch', content: 'Caller reports raised voices, no weapons mentioned.', created_at: '2026-07-15T20:12:30Z' },
+      ],
+    },
+  },
+
 ];
 
 // ── person (FORM PS-202) — dispatch-patrol ────────────────────────────
@@ -171,6 +196,121 @@ export const personFixtures: PdfFixture<PersonPdfData>[] = [
       last_name: 'Doe',
       linked_persons: [{ name: 'Unknown' }],
       linked_properties: [{ name: 'Unknown' }],
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'OSINT enrichment — FBI hit + federal criminal + civil dockets + NSOPW + dispatch calls with priority',
+    input: {
+      id: '8821',
+      first_name: 'Christopher',
+      last_name: 'Figueroa',
+      date_of_birth: '1988-04-22',
+      gender: 'M',
+      race: 'H',
+      height: '5\'10"',
+      weight: '185 lbs',
+      address: '2247 W 500 S',
+      city: 'Salt Lake City',
+      state: 'UT',
+      zip: '84104',
+      phone: '(801) 555-0187',
+      calls: [
+        { call_number: '26-00412', incident_type: 'trespassing', priority: 'P2', status: 'closed', location: '123 Main St, SLC', created_at: '2026-03-15T14:32:00Z' },
+        { call_number: '26-00389', incident_type: 'disturbance', priority: '3', status: 'closed', location: '45 Oak Ave, SLC', created_at: '2026-02-28T21:10:00Z' },
+        { call_number: '25-01987', incident_type: 'assault', priority: 'P1', status: 'closed', location: '900 S 200 W, SLC', created_at: '2025-11-04T03:47:00Z' },
+        { call_number: '25-01204', incident_type: 'welfare_check', priority: 'P3', status: 'closed', location: '7 Pine Ln, SLC', created_at: '2025-08-19T10:05:00Z' },
+      ],
+      _enrichment: {
+        searched_at: '2026-09-14T08:00:00Z',
+        sources: [
+          { source: 'fbi_wanted',     ok: true,  records: [] },
+          { source: 'courtlistener',  ok: true,  records: [] },
+          { source: 'nsopw',          ok: true,  records: [] },
+        ],
+        records: [
+          {
+            source: 'fbi_wanted',
+            name: 'Christopher Figueroa',
+            dob: '1988-04-22',
+            addresses: [],
+            watchlist_flags: ['fbi_wanted'],
+            raw: {
+              status: 'Wanted',
+              aliases: ['Chris Figueroa', 'C. Figueroa', 'El Lobo'],
+              description: 'Armed and considered dangerous. Prior convictions for aggravated assault and interstate wire fraud. Subject has fled jurisdiction multiple times.',
+            },
+          },
+          {
+            source: 'courtlistener',
+            name: 'Christopher Figueroa',
+            addresses: [],
+            watchlist_flags: ['federal_criminal_docket'],
+            raw: {
+              case_name: 'United States v. Figueroa',
+              docket_number: '2:21-cr-00441',
+              court: 'D. Utah',
+              date_filed: '2021-09-14',
+              url: 'https://www.courtlistener.com/docket/21cr441/',
+              is_criminal: true,
+            },
+          },
+          {
+            source: 'courtlistener',
+            name: 'Christopher Figueroa',
+            addresses: [],
+            watchlist_flags: ['federal_criminal_docket'],
+            raw: {
+              case_name: 'United States of America v. Figueroa et al.',
+              docket_number: '2:19-cr-00118',
+              court: 'D. Utah',
+              date_filed: '2019-03-07',
+              url: 'https://www.courtlistener.com/docket/19cr118/',
+              is_criminal: true,
+            },
+          },
+          {
+            source: 'courtlistener',
+            name: 'Christopher Figueroa',
+            addresses: [],
+            watchlist_flags: ['court_record'],
+            raw: {
+              case_name: 'Figueroa v. Salt Lake City Corp.',
+              docket_number: '2:22-cv-00803',
+              court: 'D. Utah',
+              date_filed: '2022-11-02',
+              url: 'https://www.courtlistener.com/docket/22cv803/',
+              is_criminal: false,
+            },
+          },
+          {
+            source: 'courtlistener',
+            name: 'Christopher Figueroa',
+            addresses: [],
+            watchlist_flags: ['court_record'],
+            raw: {
+              case_name: 'Figueroa v. State Farm Ins. Co.',
+              docket_number: '2:20-cv-00215',
+              court: 'D. Utah',
+              date_filed: '2020-02-18',
+              url: 'https://www.courtlistener.com/docket/20cv215/',
+              is_criminal: false,
+            },
+          },
+          {
+            source: 'nsopw',
+            name: 'Christopher Figueroa',
+            dob: '1988-04-22',
+            addresses: [{ city: 'Salt Lake City', state: 'UT' }],
+            watchlist_flags: ['sex_offender'],
+            raw: {
+              registration_state: 'UT',
+              tier: 'Tier III',
+              level: '3',
+            },
+          },
+        ],
+      },
     },
   },
   {
@@ -264,6 +404,29 @@ export const vehicleFixtures: PdfFixture<VehiclePdfData>[] = [
       linked_properties: rows(40, (i) => ({ name: `Lot ${i}` })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      id: '7204',
+      license_plate: 'UT-7X4K21',
+      plate_state: 'UT',
+      vin: 'WBA5A5C50FD123456',
+      make: 'Honda',
+      model: 'Civic',
+      year: 2019,
+      color: 'Silver',
+      tow_status: 'None',
+      stolen_status: 'clear',
+      owner_name: 'Marcus Reyes',
+      linked_persons: [
+        { name: 'Marcus Reyes', relationship: 'registered owner' },
+      ],
+      linked_properties: [
+        { name: 'Terra Sol Plaza', address: '3533 S Terra Sol Dr, South Salt Lake, UT 84115', relationship: 'last seen' },
+      ],
+    },
+  },
 ];
 
 // ── warrant (FORM PS-204) — court-legal ───────────────────────────────
@@ -321,6 +484,27 @@ export const warrantFixtures: PdfFixture<WarrantPdfData>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      warrant_number: 'WR-2026-004417',
+      type: 'Bench Warrant',
+      status: 'active',
+      offense_level: 'Felony 3',
+      charge_description: 'Theft, in violation of Utah Code 76-6-206',
+      subject_first_name: 'Marcus',
+      subject_last_name: 'Reyes',
+      subject_dob: '1990-01-01',
+      issuing_court: '3rd District Court, Salt Lake County',
+      issuing_judge: 'Hon. A. Bramwell',
+      bail_amount: 5000,
+      created_at: '2026-06-01T00:00:00Z',
+      service_attempts: [
+        { attempted_at: '2026-07-10T18:00:00Z', location: '1400 S State St', method: 'in-person', result: 'not located', notes: '' },
+      ],
+    },
+  },
 ];
 
 // ── evidence (FORM PS-205) — evidence-custody ─────────────────────────
@@ -366,6 +550,23 @@ export const evidenceFixtures: PdfFixture<EvidencePdfData>[] = [
         reason: 'lab submission',
         timestamp: '2026-12-31T23:00:00Z',
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      evidence_number: 'EV-2026-004417',
+      evidence_type: 'Physical',
+      category: 'Weapon',
+      status: 'in custody',
+      description: 'Folding knife recovered from scene, blade approx. 3.5 in.',
+      collected_by: 'Marcus Reyes',
+      collected_date: '2026-07-15',
+      storage_location: 'Evidence Locker B-4',
+      chain_of_custody: [
+        { action: 'collected', to_person: 'Marcus Reyes', reason: 'initial collection', timestamp: '2026-07-15T21:00:00Z' },
+      ],
     },
   },
 ];
@@ -422,6 +623,23 @@ export const fleetFixtures: PdfFixture<FleetPdfData>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle_number: 'RMPG-14',
+      make: 'Ford',
+      model: 'Explorer',
+      year: 2023,
+      status: 'active',
+      current_mileage: 41250,
+      last_service_date: '2026-06-01',
+      next_service_due: '2026-09-01',
+      fuel_logs: [
+        { fuel_date: '2026-07-20', gallons: 18.2, total_cost: 62.5 },
+      ],
+    },
+  },
 ];
 
 // ── personnel (FORM PS-207) — internal-reference ──────────────────────
@@ -471,6 +689,23 @@ export const personnelFixtures: PdfFixture<PersonnelPdfData>[] = [
         expiry_date: '2026-12-31',
         status: 'valid',
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      badge_number: '4417',
+      first_name: 'Marcus',
+      last_name: 'Reyes',
+      rank: 'Officer',
+      department: 'Patrol',
+      status: 'active',
+      employment_status: 'full-time',
+      hire_date: '2020-03-01',
+      credentials: [
+        { type: 'POST Certification', credential_number: 'POST-88214', issuing_authority: 'Utah POST', issued_date: '2020-03-01', expiry_date: '2028-03-01', status: 'valid' },
+      ],
     },
   },
 ];
@@ -523,6 +758,23 @@ export const propertyFixtures: PdfFixture<PropertyPdfData>[] = [
       linked_persons: rows(40, (i) => ({ name: `Tenant ${i}` })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      name: 'Terra Sol Plaza',
+      address: '3533 South Terra Sol Drive, Building 4, Suite 210, South Salt Lake',
+      city: 'South Salt Lake',
+      state: 'UT',
+      zip: '84115',
+      property_type: 'Commercial',
+      is_active: true,
+      owner_name: 'Rocky Mountain Protective Group',
+      key_holder_name: 'Dana Whitlock',
+      key_holder_phone: '(801) 555-0142',
+      linked_persons: [{ name: 'Dana Whitlock', relationship: 'key holder' }],
+    },
+  },
 ];
 
 // ── business (FORM PS-212) — client-facing ────────────────────────────
@@ -572,6 +824,28 @@ export const businessFixtures: PdfFixture<BusinessPdfData>[] = [
       created_at: YEAR_BOUNDARY,
       email: 'legal@example-holdings-group-international.com',
       website: 'https://www.example-holdings-group-international.com',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      id: '221',
+      name: 'Rocky Mountain Protective Group',
+      dba_name: 'RMPG Security Services',
+      business_type: 'Private Security',
+      industry: 'Security Services',
+      ein: '39-4812556',
+      employee_count: 62,
+      annual_revenue: 4250000,
+      status: 'active',
+      address: '1400 S State St',
+      city: 'Salt Lake City',
+      state: 'UT',
+      zip: '84115',
+      phone: '(801) 555-0142',
+      email: 'contact@rmpgutah.us',
+      website: 'https://www.rmpgutah.us',
     },
   },
 ];
@@ -632,6 +906,30 @@ export const citationFixtures: PdfFixture<CitationPdfData>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      citation_number: 'CI-2026-004417',
+      type: 'Traffic',
+      status: 'issued',
+      person_name: 'Dana Whitlock',
+      person_dl: 'D123-4567-8901',
+      vehicle_plate: 'UT-7X4K21',
+      statute_citation: '41-6a-601',
+      violation_description: 'Speeding, 15 over posted limit',
+      offense_level: 'Infraction',
+      fine_amount: 165,
+      violation_date: '2026-07-15',
+      location: '1400 S State St',
+      speed_recorded: 55,
+      speed_limit: 40,
+      issuing_officer_name: 'Marcus Reyes',
+      badge_number: '4417',
+      court_date: '2026-08-20',
+      court_name: '3rd District Court, Salt Lake County',
+    },
+  },
 ];
 
 // ── case (FORM PS-301) — court-legal ───────────────────────────────────
@@ -672,6 +970,22 @@ export const caseFixtures: PdfFixture<CasePdfData>[] = [
       closed_date: '2026-12-31',
       linked_persons: rows(40, (i) => ({ id: i, first_name: `Subject${i}`, last_name: 'Fixture' })),
       linked_incidents: rows(40, (i) => ({ id: i, incident_number: `2026-0${6000 + i}` })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      case_number: 'CS-2026-004417',
+      title: 'Theft from Terra Sol Plaza retail unit',
+      case_type: 'Property Crime',
+      status: 'open',
+      priority: 'medium',
+      lead_investigator_name: 'Marcus Reyes',
+      summary: 'Ongoing theft investigation involving a repeat suspect at a client property.',
+      opened_date: '2026-07-01',
+      linked_persons: [{ id: 1, first_name: 'Dana', last_name: 'Whitlock', relationship: 'suspect' }],
+      linked_incidents: [{ id: 1, incident_number: '2026-004417', incident_type: 'Theft', status: 'closed' }],
     },
   },
 ];
@@ -720,6 +1034,25 @@ export const fieldInterviewFixtures: PdfFixture<FieldInterviewPdfData>[] = [
       created_at: YEAR_BOUNDARY,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      fi_number: 'FI-2026-004417',
+      status: 'closed',
+      subject_first_name: 'Dana',
+      subject_last_name: 'Whitlock',
+      subject_dob: '1988-04-02',
+      location: '1400 S State St, Salt Lake City, UT 84115',
+      contact_reason: 'Subject observed loitering near closed business after hours.',
+      contact_type: 'Consensual',
+      officer_name: 'Marcus Reyes',
+      badge_number: '4417',
+      narrative: 'Subject was cooperative and identified themselves; no further action taken.',
+      vehicle_plate: 'UT-7X4K21',
+      created_at: '2026-07-15T22:00:00Z',
+    },
+  },
 ];
 
 // ── court_event (FORM PS-2xx) — court-legal ───────────────────────────
@@ -764,6 +1097,23 @@ export const courtEventFixtures: PdfFixture<CourtEventPdfData>[] = [
       officers_required: rows(40, (i) => `Officer ${i}`),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      event_number: 'CE-2026-004417',
+      event_type: 'Arraignment',
+      status: 'scheduled',
+      event_date: '2026-08-20',
+      event_time: '09:00',
+      court_name: '3rd District Court, Salt Lake County',
+      courtroom: 'Room 4B',
+      judge_name: 'Hon. A. Bramwell',
+      defendant_name: 'Dana Whitlock',
+      officers_required: ['Marcus Reyes'],
+      citation_number: 'CI-2026-004417',
+    },
+  },
 ];
 
 // ── jail_booking (FORM PS-2xx) — evidence-custody ─────────────────────
@@ -802,6 +1152,20 @@ export const jailBookingFixtures: PdfFixture<JailBookingPdfData>[] = [
       status: 'booked',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {
+      full_name: 'Dana Whitlock',
+      first_name: 'Dana',
+      last_name: 'Whitlock',
+      date_of_birth: '1988-04-02',
+      booking_date: '2026-07-15',
+      charges: 'Theft (76-6-206), Trespassing (76-6-206.3)',
+      county: 'Salt Lake',
+      status: 'booked',
+    },
+  },
 ];
 
 // ── generate() adapters ────────────────────────────────────────────────
@@ -827,3 +1191,4 @@ export const generateCaseRecord = (data: CasePdfData) => generateRecordPdf('case
 export const generateFieldInterviewRecord = (data: FieldInterviewPdfData) => generateRecordPdf('field_interview', data);
 export const generateCourtEventRecord = (data: CourtEventPdfData) => generateRecordPdf('court_event', data);
 export const generateJailBookingRecord = (data: JailBookingPdfData) => generateRecordPdf('jail_booking', data);
+
