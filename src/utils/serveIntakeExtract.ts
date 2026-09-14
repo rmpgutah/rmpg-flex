@@ -113,6 +113,12 @@ export const TARGET_FIELDS = [
   'witness_fee_instrument',                  // verbatim, e.g. 'Check VV787 $18.50'
   'registered_agent_address',                // distinct from recipient_address
   'sub_service_authorized_first_attempt',    // yes | no | ''
+  // ── Attempt-record fields (attempt_sheet family) ───────────
+  // Prior attempt observations — extracted from "First Attempt", "Second
+  // Attempt", etc. sheets where the server recorded what happened.
+  'prior_attempt_date',    // ISO date of the prior attempt
+  'attempt_outcome',       // description of what was observed (no answer, refused, wrong address…)
+  'observer_id',           // process server name/badge from that attempt
 ] as const;
 
 export type TargetField = typeof TARGET_FIELDS[number];
@@ -428,11 +434,17 @@ export function familyFromFileName(fileName: string): string | undefined {
 // every packet. Only genuinely doubtful critical fields qualify, capped
 // so a badly-scanned document cannot blow the daily free allocation.
 const CRITIC_FIELDS: TargetField[] = [
+  // Recipient identity — name is the most common OCR error source and was
+  // the field most often wrong in production packets.
+  'recipient_last_name', 'recipient_first_name',
   'case_number', 'court_name', 'recipient_address', 'service_deadline',
   'recipient_dob', 'recipient_phone', 'address_class',
+  // service_instructions carry special delivery requirements (gated entry,
+  // call ahead, etc.) whose mis-extraction causes failed serves.
+  'service_instructions',
 ];
 const CRITIC_CONFIDENCE_FLOOR = 0.6;
-const CRITIC_MAX_FIELDS = 5;
+const CRITIC_MAX_FIELDS = 6;
 
 export function needsCriticPass(
   fields: Record<string, ExtractedField>,
@@ -1195,7 +1207,7 @@ const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
 const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
 const DATE_FIELDS = new Set<TargetField>([
   'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
-  'attempt_start_not_before',
+  'attempt_start_not_before', 'prior_attempt_date',
 ]);
 const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.
