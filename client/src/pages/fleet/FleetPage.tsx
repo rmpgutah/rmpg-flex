@@ -42,6 +42,7 @@ import type {
 } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import type { FleetViewMode } from './fleetConstants';
+import { useFleetThresholds } from './fleetConstants';
 import { downloadTextFile, fleetListToCsv } from '../../utils/rmsListExport';
 
 // ============================================================
@@ -62,6 +63,7 @@ export default function FleetPage() {
   const isAdmin = user?.role === 'admin';
 
   const { openMenu } = useContextMenu();
+  const { expiryWarnDays } = useFleetThresholds();
   const cm = useMenuActions();
 
   // ── Vehicle list ──────────────────────────────────────────
@@ -200,16 +202,16 @@ export default function FleetPage() {
   const registrationExpiring = vehicles.filter(v => {
     if (!v.registration_expiry) return false;
     const exp = parseTimestamp(v.registration_expiry);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    return exp <= thirtyDays;
+    const warn = new Date();
+    warn.setDate(warn.getDate() + expiryWarnDays);
+    return exp <= warn;
   }).length;
   const insuranceExpiring = vehicles.filter(v => {
     if (!v.insurance_expiry) return false;
     const exp = parseTimestamp(v.insurance_expiry);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    return exp <= thirtyDays;
+    const warn = new Date();
+    warn.setDate(warn.getDate() + expiryWarnDays);
+    return exp <= warn;
   }).length;
   const assignedVehicles = vehicles.filter(v => v.assigned_unit_call_sign).length;
 
