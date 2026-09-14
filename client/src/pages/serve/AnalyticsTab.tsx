@@ -357,8 +357,10 @@ export default function AnalyticsTab() {
     try {
       const d = await apiFetch<{ total: number; first_attempt_served: number; rate: number }>('/serve/stats/first-attempt-rate');
       setFirstAttemptRate(d);
-    } catch {}
-  }, []);
+    } catch {
+      addToast('Could not load first-attempt rate', 'error');
+    }
+  }, [addToast]);
   useEffect(() => { fetchFirstAttemptRate(); }, [fetchFirstAttemptRate, refreshKey]);
 
   // [25] Attempt velocity sparkline
@@ -367,8 +369,10 @@ export default function AnalyticsTab() {
     try {
       const d = await apiFetch<{ last_7_days: number; prior_7_days: number; trend: number }>('/serve/stats/velocity');
       setVelocity(d);
-    } catch {}
-  }, []);
+    } catch {
+      addToast('Could not load attempt velocity', 'error');
+    }
+  }, [addToast]);
   useEffect(() => { fetchVelocity(); }, [fetchVelocity, refreshKey]);
 
   // [29] Client breakdown table
@@ -377,8 +381,10 @@ export default function AnalyticsTab() {
     try {
       const d = await apiFetch<Array<{ client: string; total: number; served: number; failed: number; active: number }>>('/serve/client-breakdown');
       setClientBreakdown(d);
-    } catch {}
-  }, []);
+    } catch {
+      addToast('Could not load client breakdown', 'error');
+    }
+  }, [addToast]);
   useEffect(() => { fetchClientBreakdown(); }, [fetchClientBreakdown, refreshKey]);
 
   const refreshAll = () => setRefreshKey((k) => k + 1);
