@@ -13,6 +13,7 @@ function entry(over: Partial<PdfRegistryEntry> = {}): PdfRegistryEntry {
       { variant: 'typical', label: 'Standard order', input: {} },
       { variant: 'empty', label: 'All optional fields absent', input: {} },
       { variant: 'maximal', label: 'Long narrative, 40 rows', input: {} },
+      { variant: 'enrichment', label: 'Repeat violator with prior violation', input: {} },
     ],
     ...over,
   } as PdfRegistryEntry;
@@ -41,7 +42,7 @@ describe('validateRegistry', () => {
     expect(problems.join(' ')).toMatch(/duplicate id.*trespass-order/i);
   });
 
-  it('requires all three fixture variants', () => {
+  it('requires all four fixture variants', () => {
     const problems = validateRegistry([
       entry({ fixtures: [{ variant: 'typical', label: 'Only one', input: {} }] }),
     ]);
@@ -74,6 +75,7 @@ describe('createEntry', () => {
         { variant: 'typical', label: 'Typical', input: { name: 'Alice' } },
         { variant: 'empty', label: 'Empty', input: { name: '' } },
         { variant: 'maximal', label: 'Maximal', input: { name: 'VeryLongName' } },
+        { variant: 'enrichment', label: 'Enriched', input: { name: 'Bob (enriched)' } },
       ],
     };
 
@@ -107,6 +109,7 @@ describe('createEntry', () => {
         { variant: 'typical', label: 'Standard', input: { subjectName: 'John Doe' } },
         { variant: 'empty', label: 'Empty', input: { subjectName: '' } },
         { variant: 'maximal', label: 'Long name', input: { subjectName: 'VeryLongName' } },
+        { variant: 'enrichment', label: 'Repeat violator', input: { subjectName: 'Marcus Reyes-Delgado' } },
       ],
     });
 
@@ -120,6 +123,7 @@ describe('createEntry', () => {
         { variant: 'typical', label: 'Standard', input: { invoiceNumber: 1001, total: 150 } },
         { variant: 'empty', label: 'Empty', input: { invoiceNumber: 0, total: 0 } },
         { variant: 'maximal', label: 'Large', input: { invoiceNumber: 9999, total: 99999 } },
+        { variant: 'enrichment', label: 'Enriched', input: { invoiceNumber: 5001, total: 75000 } },
       ],
     });
 
@@ -143,6 +147,7 @@ describe('createEntry', () => {
         { variant: 'typical', label: 'T', input: { data: 'test' } },
         { variant: 'empty', label: 'E', input: { data: '' } },
         { variant: 'maximal', label: 'M', input: { data: 'x'.repeat(1000) } },
+        { variant: 'enrichment', label: 'X', input: { data: 'enriched' } },
       ],
     });
 
@@ -156,6 +161,7 @@ describe('createEntry', () => {
         { variant: 'typical', label: 'T', input: { count: 5 } },
         { variant: 'empty', label: 'E', input: { count: 0 } },
         { variant: 'maximal', label: 'M', input: { count: 999 } },
+        { variant: 'enrichment', label: 'X', input: { count: 42 } },
       ],
     });
 

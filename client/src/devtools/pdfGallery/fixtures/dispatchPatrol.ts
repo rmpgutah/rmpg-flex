@@ -93,6 +93,12 @@ export const shiftReportFixtures: PdfFixture<ShiftReportInput>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {},
+  },
+
 ];
 
 // ── Shift Plan (shiftPlanPdf.ts) ──────────────────────────────
@@ -180,6 +186,17 @@ export const shiftPlanFixtures: PdfFixture<ShiftPlanPdfInput>[] = [
       })),
       conflicts: Array.from({ length: 10 }, (_, i) => ({ officer_name: `Officer ${i + 1}`, shift_count: 2 + (i % 3) })),
       preparedBy: MAXIMAL_NAME,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      plan: basePlan(),
+      stats: { assigned: 2, officers: 2, units: 2 },
+      notifications: [{ message: 'Beat A2 is understaffed for the current call volume.', severity: 'warning' }],
+      conflicts: [{ officer_name: 'Marcus Reyes', shift_count: 2 }],
+      preparedBy: 'Sgt. Marcus Reyes',
     },
   },
 ];
@@ -274,6 +291,41 @@ export const plateCaptureFixtures: PdfFixture<PlateCapturePdfInput>[] = [
       preparedBy: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      capture: {
+        id: 9001,
+        plate: 'UT-7X4K21',
+        state: 'UT',
+        make: 'Ford',
+        model: 'F150',
+        color: 'Red',
+        year: 2019,
+        vehicle_type: 'pickup',
+        review_status: 'confirmed',
+        accepted: true,
+        plate_confidence: 0.94,
+        risk_score: 0.1,
+        source: 'dashcam',
+        device_name: 'Unit 4-Adam-12 Dashcam',
+        location_text: '1400 S State St, Salt Lake City, UT 84115',
+        lat: 40.7291,
+        lng: -111.8879,
+        created_at: '2026-06-21T09:00:00Z',
+        call_id: 'call-4417',
+        trust_score: 0.94,
+        trust_basis: 'derived',
+        read_count: 3,
+      },
+      hits: [{ kind: 'watchlist', severity: 'critical', detail: 'Vehicle flagged on internal BOLO list.' }],
+      history: [
+        { id: 1, action: 'reviewed', details: 'Confirmed by supervisor.', created_at: '2026-06-21T09:10:00Z', user_name: 'Sgt. Marcus Reyes' },
+      ],
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
 ];
 
 // ── Field Interview Card (fiCardPdf.ts) ───────────────────────
@@ -356,6 +408,11 @@ export const fiCardFixtures: PdfFixture<FieldInterview>[] = [
       created_at: YEAR_BOUNDARY,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: baseFi,
+  },
 ];
 
 // ── PSO Notice of Communication (psoNoticePdfGenerator.ts) ────
@@ -417,6 +474,26 @@ export const psoNoticeFixtures: PdfFixture<NoticeOfCommunicationData>[] = [
       officerName: 'Sergeant Marcus Alexander Reyes, Badge 4417',
       officerBadge: '4417',
       nextWindow: '2027-01-02',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      noticeDate: '2026-06-21',
+      callNumber: 'C-2026-004417',
+      respondentName: 'Dana Whitlock',
+      courtCaseNumber: '2026-004417',
+      courtName: 'Third District Court',
+      clientName: 'Rocky Mountain Protective Group',
+      serviceType: 'civil_summons',
+      serviceAddress: '1400 S State St, Salt Lake City, UT 84115',
+      attempts: [
+        { number: 1, date: '2026-06-20', time: '10:00', result: 'no_contact', notes: 'No answer at door.' },
+        { number: 2, date: '2026-06-21', time: '14:00', result: 'served', notes: 'Served to respondent directly.' },
+      ],
+      officerName: 'Marcus Reyes',
+      officerBadge: '4417',
     },
   },
 ];
@@ -520,6 +597,26 @@ export const patrolTrackingFixtures: PdfFixture<PatrolTrackingReportData>[] = [
       total_points: 80,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      trails: [
+        {
+          unit_id: 1, call_sign: '4-Adam-12', officer_name: 'Marcus Reyes', badge_number: '4417',
+          points: [patrolPoint(0), patrolPoint(1)],
+          stats: {
+            total_points: 2, stationary_points: 0, moving_points: 2, total_distance_miles: 1.0,
+            max_speed_mph: 34, avg_speed_mph: 27, duration_minutes: 12,
+          },
+          response_segments: [minimalResponseSegment()],
+        },
+      ],
+      query: { startDate: '2026-06-21T00:00:00Z', endDate: '2026-06-21T23:59:00Z', hours: 24 },
+      total_units: 1,
+      total_points: 2,
+    },
+  },
 ];
 
 // ── Nav Pre-Trip Briefing (navBriefingPdf.ts) ─────────────────
@@ -606,6 +703,34 @@ export const navBriefingFixtures: PdfFixture<NavBriefingArgs>[] = [
       unitCallSign: '4-Adam-12',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      route: {
+        unitCallSign: '4-Adam-12',
+        callNumber: 'C-2026-004417',
+        eta: '6 min',
+        distance: '2.1 mi',
+        durationSec: 360,
+        distanceMeters: 3380,
+        steps: [
+          { instruction: 'Head north on S State St', distanceMeters: 500, distanceText: '0.3 mi', maneuverType: 'depart' },
+          { instruction: 'Turn right onto 1400 S', distanceMeters: 200, distanceText: '0.1 mi', maneuverType: 'turn', modifier: 'right' },
+        ],
+        trafficAware: true,
+        worstCongestion: 'moderate',
+        postedLimitMph: null,
+      },
+      destinationLabel: '1400 S State St, Salt Lake City, UT 84115',
+      destLat: 40.7291,
+      destLng: -111.8879,
+      originLat: 40.73,
+      originLng: -111.89,
+      officerName: 'Marcus Reyes',
+      unitCallSign: '4-Adam-12',
+    },
+  },
 ];
 
 // ── Nav Trip Report (navTripPdf.ts — multi-trip) ──────────────
@@ -688,6 +813,16 @@ export const navTripReportFixtures: PdfFixture<{ trips: NavTrip[]; officerName?:
       periodLabel: '2026-12-31',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      trips: [navTrip(1), navTrip(2)],
+      officerName: 'Marcus Reyes',
+      vehicleLabel: 'V-12 — Ford Explorer',
+      periodLabel: '2026-06-21',
+    },
+  },
 ];
 
 // ── Nav Trip Detail (navTripPdf.ts — single trip) ─────────────
@@ -717,6 +852,11 @@ export const navTripDetailFixtures: PdfFixture<{ trip: NavTrip; officerName?: st
       },
       officerName: MAXIMAL_NAME,
     },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { trip: navTrip(1), officerName: 'Marcus Reyes' },
   },
 ];
 
@@ -794,6 +934,30 @@ export const mapSituationReportFixtures: PdfFixture<MapSituationReportData>[] = 
       },
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      mapImageDataUrl: null,
+      mapAspect: 1.6,
+      operator: 'Marcus Reyes',
+      center: { lat: 40.7291, lng: -111.8879 },
+      zoom: 13,
+      calls: [
+        { call_number: 'C-2026-004417', incident_type: 'trespass', priority: 'P2', status: 'dispatched', location_address: '1400 S State St, Salt Lake City, UT 84115' },
+      ],
+      units: [
+        { call_sign: '4-Adam-12', officer_name: 'Marcus Reyes', status: 'available', current_call_type: null, current_call_location: null },
+      ],
+      analysis: { safetyZones: 3, highRisk: 1, predictions: 2, repeatAddrs: 1 },
+      patrol: {
+        unitCallSign: '4-Adam-12',
+        totalEta: '18 min',
+        totalDistance: '6.2 mi',
+        stops: [{ order: 1, callNumber: 'C-2026-004417', label: 'Retail corridor', legEta: '6 min' }],
+      },
+    },
+  },
 ];
 
 export const dialerCallRecordFixtures: PdfFixture<DialerRecordPdfInput>[] = [
@@ -847,4 +1011,27 @@ export const dialerCallRecordFixtures: PdfFixture<DialerRecordPdfInput>[] = [
       },
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      exportedBy: 'Marcus Reyes',
+      record: {
+        id: 4417,
+        kind: 'call',
+        call_sid: 'CAab12cd34ef56',
+        from_number: '+18015550100',
+        to_number: '+18015550999',
+        direction: 'inbound',
+        status: 'completed',
+        started_at: '2026-08-12T15:04:00Z',
+        ended_at: '2026-08-12T15:07:22Z',
+        duration_seconds: 202,
+        agent_name: 'Dana Whitlock',
+        transcript: 'Caller: I need an officer at 1400 S State Street.\nDispatcher: Copy, starting a call for service.',
+        recording_r2_key: 'dialer-connect/call/4417/1',
+      },
+    },
+  },
 ];
+
