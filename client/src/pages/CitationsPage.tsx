@@ -1334,18 +1334,18 @@ export default function CitationsPage() {
           )}
 
           {/* Traffic / Speed Details */}
-          {(c.type === 'traffic' || (c as any).speed_recorded || (c as any).bac_level || (c as any).dui_related) && (
+          {(c.type === 'traffic' || (c as any).speed_recorded > 0 || (c as any).bac_level > 0 || Boolean((c as any).dui_related)) && (
             <section>
               <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Zap size={10} className="text-[var(--brand-gold)]" /> Traffic Details
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
-                {(c as any).speed_recorded && (
+                {(c as any).speed_recorded > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-400">Speed:</span>
                     <span className="text-red-400 font-bold font-mono text-sm">{(c as any).speed_recorded} MPH</span>
-                    {(c as any).speed_limit && <span className="text-rmpg-400">in a <span className="text-rmpg-100 font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
-                    {(c as any).speed_recorded && (c as any).speed_limit && (
+                    {(c as any).speed_limit > 0 && <span className="text-rmpg-400">in a <span className="text-rmpg-100 font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
+                    {(c as any).speed_recorded > 0 && (c as any).speed_limit > 0 && (
                       <span className="text-[9px] font-bold text-red-400">({(c as any).speed_recorded - (c as any).speed_limit} over)</span>
                     )}
                   </div>
@@ -1371,7 +1371,7 @@ export default function CitationsPage() {
           )}
 
           {/* Bond / Bail */}
-          {((c as any).bond_amount > 0 || (c as any).appearance_required) && (
+          {((c as any).bond_amount > 0 || Boolean((c as any).appearance_required)) && (
             <section>
               <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Lock size={10} className="text-[var(--brand-gold)]" /> Bond / Bail
