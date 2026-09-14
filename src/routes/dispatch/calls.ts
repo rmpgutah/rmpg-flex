@@ -1471,6 +1471,8 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
           dispatched: 'dispatched_at',
           enroute:    'enroute_at',
           onscene:    'onscene_at',
+          cleared:    'cleared_at',
+          closed:     'closed_at',
         };
         const tsField = timestampFields[status as keyof typeof timestampFields];
         const tsValue = tsField ? String(updated?.[tsField] ?? '') : '';

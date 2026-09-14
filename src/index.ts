@@ -772,6 +772,18 @@ export default {
             ).catch((err) => log.error('Shift swap escalation sweep failed:', {}, err)),
           ).catch(() => {}),
         );
+        // Weekly skip-trace retry sweep — serve jobs with 3+ failed attempts
+        // that have never had an auto skip-trace, or whose last auto skip-trace
+        // is more than 7 days old, get a fresh skip-trace triggered automatically.
+        // The utility self-deduplicates at the 7-day window so running it daily
+        // is safe; without this cron entry the sweep was never called at all.
+        ctx.waitUntil(
+          import('./utils/autoSkipTraceSweep').then((m) =>
+            m.sweepAutoSkipTraces(env.DB, env).then((triggered) => {
+              if (triggered > 0) log.info(`[skip-trace-sweep] auto-triggered ${triggered} skip-trace(s)`);
+            }).catch((err) => log.error('Auto skip-trace sweep failed:', {}, err)),
+          ).catch(() => {}),
+        );
       }
 
       // Daily blotter at 00:05 America/Denver. Same hour+minute gate as the
