@@ -111,8 +111,8 @@ describe('SettingsPanel', () => {
     expect(bridge.available).toBe(true);
     expect(bridge.extendedAvailable).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Network' }));
-    await waitFor(() => expect(screen.getAllByText(/latest desktop app build/i).length).toBeGreaterThan(0));
-    expect(screen.getByRole('button', { name: /Ping/ })).toBeDisabled();
+    await waitFor(() => expect(screen.getAllByText(/next desktop build/i).length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: /Ping/ })).not.toBeDisabled();
   });
 
   it('display: populates the resolution list from the bridge and applies a change', async () => {
