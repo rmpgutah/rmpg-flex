@@ -332,6 +332,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
+          if (message.type === 'force_update') {
+            devLog('[WS] Force-update command received — triggering desktop updater');
+            const electron = (window as any).electron;
+            if (electron?.checkForUpdates) {
+              electron.checkForUpdates();
+              if (electron.onUpdateStatus) {
+                const unsub = electron.onUpdateStatus((status: { status: string }) => {
+                  if (status?.status === 'ready' && electron.installUpdate) {
+                    devLog('[WS] Update ready — installing now');
+                    unsub();
+                    electron.installUpdate();
+                  }
+                });
+              }
+            }
+            return;
+          }
+
           fanInMessage(message);
         } catch (err) {
           console.error('WebSocket message parse error:', err);

@@ -2260,7 +2260,9 @@ export type WSMessageType =
   // Smart automation engine — fired by server or client-side rule evaluation.
   // Payload: { action_type, rule_id, source:'officer'|'system', fired_at,
   //            trigger_lat?, trigger_lng?, context? }
-  | 'automation_alert';
+  | 'automation_alert'
+  // Desktop force-update push (admin broadcasts to trigger quitAndInstall)
+  | 'force_update';
 
 export interface WSMessage {
   type: WSMessageType;
