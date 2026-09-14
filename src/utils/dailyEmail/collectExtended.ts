@@ -117,7 +117,7 @@ export async function collectExtendedActivity(
       all<WarrantRow>(
         db,
         `SELECT warrant_number, type, status, subject_name, charge_description,
-                offense_level, bond_amount, served_at, created_at
+                offense_level, bail_amount AS bond_amount, served_at, created_at
            FROM warrants
           WHERE created_at >= ? AND created_at < ?
           ORDER BY created_at ASC`,
@@ -128,7 +128,7 @@ export async function collectExtendedActivity(
       all<WarrantRow>(
         db,
         `SELECT warrant_number, type, status, subject_name, charge_description,
-                offense_level, bond_amount, served_at, created_at
+                offense_level, bail_amount AS bond_amount, served_at, created_at
            FROM warrants
           WHERE served_at >= ? AND served_at < ?
           ORDER BY served_at ASC`,

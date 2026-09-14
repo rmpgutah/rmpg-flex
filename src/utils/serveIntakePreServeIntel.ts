@@ -32,8 +32,8 @@ export async function checkCadIncidents(
   try {
     const rows = await query<{ id: number; incident_number: string; type: string; created_at: string }>(
       db,
-      `SELECT id, incident_number, type, created_at FROM calls_for_service
-       WHERE LOWER(address) LIKE LOWER(?) AND created_at > datetime('now', '-90 days')
+      `SELECT id, call_number AS incident_number, incident_type AS type, created_at FROM calls_for_service
+       WHERE LOWER(location_address) LIKE LOWER(?) AND created_at > datetime('now', '-90 days')
        ORDER BY created_at DESC LIMIT 5`,
       `%${address.trim()}%`,
     );

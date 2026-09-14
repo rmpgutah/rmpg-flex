@@ -182,6 +182,7 @@ const DOCUMENT_TYPES = [
   { value: 'court_filing', label: 'Court Filing / Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
+  { value: 'attempt_sheet', label: 'Attempt Record', color: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
   { value: 'summons', label: 'Summons & Complaint', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
@@ -706,7 +707,8 @@ export default function ServeIntakePage() {
         pageCount = extracted.pages;
         const name = file.name.toLowerCase();
         type = name.includes('court') || name.includes('docket') ? 'court_filing'
-          : name.includes('field') ? 'field_sheet'
+          : name.includes('field') && name.includes('sheet') ? 'field_sheet'
+          : /(\d+(st|nd|rd|th)?[\s_-]*attempt|first[\s_-]*attempt|second[\s_-]*attempt|third[\s_-]*attempt|attempt[\s_-]*\d+)/i.test(name) ? 'attempt_sheet'
           : name.includes('affidavit') ? 'affidavit'
           : name.includes('summons') ? 'summons'
           : name.includes('complaint') ? 'complaint'
@@ -714,6 +716,7 @@ export default function ServeIntakePage() {
           : name.includes('eviction') || name.includes('unlawful') ? 'eviction'
           : name.includes('restraining') || name.includes('protective') ? 'restraining_order'
           : name.includes('id') || name.includes('passport') || name.includes('license') ? 'identification'
+          : name.includes('information') || name.includes('info') ? 'info_page'
           : 'info_page';
 
         // Scanned PDF (no usable text layer): rasterize its pages to images
@@ -759,7 +762,9 @@ export default function ServeIntakePage() {
         if (scan) {
           ocrResult = scan;
           type = scan.documentType === 'court_docket' ? 'court_filing'
+            : scan.documentType === 'court_filing' ? 'court_filing'
             : scan.documentType === 'field_sheet' ? 'field_sheet'
+            : scan.documentType === 'attempt_sheet' ? 'attempt_sheet'
             : 'info_page';
           text = scan.rawText || '';
         }
