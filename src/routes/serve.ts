@@ -392,7 +392,10 @@ sv.get('/active-routes', async (c) => {
     .format(new Date());
   const [routes, jobs] = await Promise.all([
     query(db, 'SELECT * FROM serve_routes WHERE route_date = ? ORDER BY id DESC LIMIT 50', today),
-    query(db, `SELECT * FROM serve_queue
+    query(db, `SELECT id, status, priority, officer_id, recipient_address, recipient_city,
+                      recipient_state, recipient_lat, recipient_lng, case_number,
+                      document_type, deadline, attempt_count, sort_order, created_at
+               FROM serve_queue
                WHERE status NOT IN ('served','cancelled','failed')
                ORDER BY sort_order, id DESC LIMIT 200`),
   ]);
@@ -512,6 +515,9 @@ sv.put('/reorder', async (c) => {
     .catch(() => ({} as { items?: { id: number; sort_order: number }[] }));
   if (!Array.isArray(body.items) || !body.items.length) {
     return c.json({ error: 'items array required' }, 400);
+  }
+  if (body.items.length > 500) {
+    return c.json({ error: 'Too many items — max 500 per request' }, 400);
   }
   const db = getDb(c.env);
   // D1 doesn't support transactions across multiple .run() calls in
@@ -827,17 +833,21 @@ sv.post('/assignments/assign', async (c) => {
 
   const assigned: number[] = [];
   const skipped: number[] = [];
+  const batchStmts: ReturnType<D1Database['prepare']>[] = [];
   for (const id of jobIds) {
     const job = await queryFirst<any>(db, 'SELECT id, status, officer_id FROM serve_queue WHERE id = ?', id);
     if (!job) { skipped.push(id); continue; }
     if (['served', 'cancelled', 'failed'].includes(job.status)) { skipped.push(id); continue; }
     const newStatus = officerId == null ? 'pending' : (job.status === 'pending' ? 'assigned' : job.status);
-    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?", officerId, newStatus, id);
-    await execute(db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`,
-      user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null }));
+    batchStmts.push(
+      db.prepare("UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(officerId, newStatus, id),
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`)
+        .bind(user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null })),
+    );
     assigned.push(id);
   }
+  if (batchStmts.length > 0) await db.batch(batchStmts);
   return c.json({ success: true, assigned, skipped });
 });
 
@@ -1785,7 +1795,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
       return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
     }
   }
-  const attemptOfficerId = user?.role === 'officer' ? user.id : (body.officer_id ?? user?.id ?? null);
+  const rawBodyOfficerId = body.officer_id != null ? parseInt(body.officer_id, 10) : null;
+  if (user?.role !== 'officer' && rawBodyOfficerId != null) {
+    if (!Number.isFinite(rawBodyOfficerId) || rawBodyOfficerId < 1) {
+      return c.json({ error: 'Invalid officer_id' }, 400);
+    }
+    const validOfficer = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", rawBodyOfficerId,
+    );
+    if (!validOfficer) return c.json({ error: 'officer_id is not a valid user' }, 400);
+  }
+  const attemptOfficerId = user?.role === 'officer' ? user.id : (rawBodyOfficerId ?? user?.id ?? null);
 
   // Duplicate-attempt guard — prevent double-tap on mobile or offline-queue
   // replays from writing two identical rows. Same officer, same job, within
@@ -2194,7 +2214,17 @@ sv.post('/:id/substitute-service', async (c) => {
     return c.json({ error: 'Not assigned to this job' }, 403);
   }
   const nextNum = (queue.attempt_count ?? 0) + 1;
-  const officerForAttempt = user?.id ?? body.officer_id ?? null;
+  const rawSubOfficerId = body.officer_id != null ? parseInt(body.officer_id, 10) : null;
+  if (rawSubOfficerId != null && (!Number.isFinite(rawSubOfficerId) || rawSubOfficerId < 1)) {
+    return c.json({ error: 'Invalid officer_id' }, 400);
+  }
+  if (rawSubOfficerId != null) {
+    const validOfficer = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", rawSubOfficerId,
+    );
+    if (!validOfficer) return c.json({ error: 'officer_id is not a valid user' }, 400);
+  }
+  const officerForAttempt = user?.id ?? rawSubOfficerId ?? null;
   if (user?.role === 'officer' && officerForAttempt) {
     const duty = await requireOnDutyForServe(db, Number(officerForAttempt));
     if (!duty.on_duty) {
@@ -2321,7 +2351,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
 
   if ('attempt_at' in body && body.attempt_at !== undefined) {
     sets.push('attempt_at = ?');
-    args.push(body.attempt_at || null);
+    args.push(deviceAttemptAt(body.attempt_at));
   }
   if ('attempt_type' in body && body.attempt_type !== undefined) {
     sets.push('attempt_type = ?');
@@ -2709,6 +2739,12 @@ sv.patch('/bulk-assign', async (c) => {
   if (!body?.ids?.length) return c.json({ error: 'ids required' }, 400);
   const officerId = body.officer_id ?? null;
   const db = getDb(c.env);
+  if (officerId != null) {
+    const validOfficer = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", officerId,
+    );
+    if (!validOfficer) return c.json({ error: 'officer_id is not an assignable user' }, 400);
+  }
   const updated = await executeInChunks(
     db,
     body.ids,
@@ -2737,7 +2773,7 @@ sv.get('/:id/comments', async (c) => {
 
 // [5b] POST /:id/comments — add a comment to a job's thread
 sv.post('/:id/comments', async (c) => {
-  const denied = requireRole(c, ...READ);
+  const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
