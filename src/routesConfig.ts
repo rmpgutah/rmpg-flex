@@ -212,6 +212,7 @@ import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
 import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
+import dialerVoice from './routes/dialerVoice';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -875,6 +876,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
   { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
     note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
+  { prefix: '/api/dialer', router: dialerVoice, auth: 'required',
+    note: 'Native softphone: Twilio token, presence, call controls and SSE proxied server-to-server to Dial Connect (dispatch-app) as the linked dispatcher (users.dialer_oidc_sub).' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },

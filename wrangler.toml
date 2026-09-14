@@ -453,6 +453,10 @@ APP_ORIGIN = "https://rmpgutah.us"
 # Dial Connect CFS status sync (POST /api/dispatch/calls/:id/status).
 # Secret is `npx wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
 DIAL_CONNECT_WEBHOOK_URL = "https://rmpgutah.us/dialer/api/webhooks/flex/cfs-status"
+# Dial Connect API base for the native softphone proxy (src/routes/dialerVoice.ts).
+# Secret: `npx wrangler secret put DIAL_CONNECT_SERVICE_KEY` (same value as
+# RMPG_FLEX_SERVICE_KEY on the `dialer` Worker).
+DIAL_CONNECT_API_BASE = "https://rmpgutah.us/dialer"
 
 # NSOPW nationwide SOR (mig 0146 + 0147). The federated search endpoint at
 # nsopw-api.ojp.gov is technically public + CORS-restricted; nsopw.gov's
