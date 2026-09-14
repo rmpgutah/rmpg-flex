@@ -90,8 +90,14 @@ export function useVehicleDetail(
   const [gpsMileage, setGpsMileage] = useState<unknown>(null);
   const [gpsMileageLoading, setGpsMileageLoading] = useState(false);
   const [persistedTab, setPersistedTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, DETAIL_TABS);
-  // Prefer controlled activeTab from caller (e.g. URL param) over localStorage.
-  const activeTab = opts?.activeTab ?? persistedTab;
+  // When a controlled setActiveTab is provided (URL-driven mode), the caller
+  // owns both read and write. Fall back to 'overview', NOT localStorage — if
+  // we fell through to persistedTab the vehicle-switch reset would read stale
+  // localStorage and refuse to go back to overview.
+  const isControlled = opts?.setActiveTab !== undefined;
+  const activeTab: DetailTab = isControlled
+    ? (opts!.activeTab ?? 'overview')
+    : persistedTab;
   const setActiveTab = opts?.setActiveTab ?? setPersistedTab;
 
   // The reset-on-vehicle-change effect must not run on mount, or it

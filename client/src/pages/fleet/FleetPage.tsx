@@ -72,15 +72,23 @@ export default function FleetPage() {
   const viewMode = (searchParams.get('view') as FleetViewMode) || 'dashboard';
   const filterStatus = searchParams.get('status') || 'all';
   const searchQuery = searchParams.get('q') || '';
-  const activeTabFromUrl = (searchParams.get('tab') as DetailTab) || 'overview';
+  // undefined when no URL param so the hook can distinguish "no URL value" from
+  // "URL param explicitly set to overview".
+  const activeTabFromUrl = (searchParams.get('tab') as DetailTab) || undefined;
 
   const setSelectedId = useCallback((id: string | number | null) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
+      const prevVehicle = prev.get('vehicle');
+      const nextVehicle = id == null ? null : String(id);
       if (id == null) next.delete('vehicle');
       else next.set('vehicle', String(id));
-      // Clear the tab param when switching vehicles so the default tab shows
-      next.delete('tab');
+      // Clear the tab param only when switching BETWEEN vehicles so the
+      // reset-to-overview behavior is URL-visible. A null→A first selection
+      // must not clear a bookmarked ?tab=fuel from the URL.
+      if (prevVehicle !== null && prevVehicle !== nextVehicle) {
+        next.delete('tab');
+      }
       return next;
     });
   }, [setSearchParams]);
