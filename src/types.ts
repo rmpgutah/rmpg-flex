@@ -189,6 +189,10 @@ export type Bindings = {
   // puppeteer.launch(). Fetcher is the correct binding type here (same
   // shape as a service binding); puppeteer.launch() accepts it structurally.
   BROWSER: Fetcher;
+  // Pushover app API token (optional — falls back to config_items.pushover_api_key).
+  // Set via `wrangler secret put PUSHOVER_APP_TOKEN`. Per-user delivery keys are
+  // stored in user_settings JSON as pushover_user_key.
+  PUSHOVER_APP_TOKEN?: string;
 };
 
 export type Variables = {
