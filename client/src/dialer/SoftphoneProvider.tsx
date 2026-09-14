@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/DialerPanel';
 import { dialerApi, type DialerApiError } from './dialerApi';
 import { isIframeDialerForced } from './dialerFlags';
+import { createLeaderElection, isPopoutWindow } from './leaderElection';
 import { INITIAL, reduce, type SoftphoneSnapshot } from './softphoneMachine';
 import { controlCallSid, type DeviceFactory, type SoftphoneCall, type SoftphoneDevice } from './types';
 
@@ -120,6 +121,17 @@ export function SoftphoneProvider({ children, createDevice, enabled = true }: { 
   useEffect(() => {
     void register();
     return () => { deviceRef.current?.destroy(); deviceRef.current = null; };
+  }, [register]);
+
+  // One registered Twilio client per dispatcher: a pop-out window takes over
+  // and every other window goes passive until the pop-out closes.
+  useEffect(() => {
+    const election = createLeaderElection({
+      isPopout: isPopoutWindow(),
+      onBecomeFollower: () => { deviceRef.current?.destroy(); deviceRef.current = null; dispatch({ type: 'PASSIVE' }); },
+      onBecomeLeader: () => { dispatch({ type: 'RESET' }); void register(); },
+    });
+    return () => election.close();
   }, [register]);
 
   // Presence heartbeat + proactive token refresh (deferred while a call is live).

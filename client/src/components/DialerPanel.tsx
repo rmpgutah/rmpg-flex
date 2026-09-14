@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { isIframeDialerForced } from '../dialer/dialerFlags';
 
 // Dial Connect is now served at rmpgutah.us/dialer (same origin as the
 // RMPG Flex SPA) via a Cloudflare Worker path route. The iframe is
@@ -111,14 +112,17 @@ export function normalizeDialTarget(raw: string): string {
 
 let dialerWindow: Window | null = null;
 
-/** Named top-level `/dialer` (no feature-string popup chrome — less likely to be blocked). */
+/** Named pop-out window (no feature-string popup chrome — less likely to be blocked).
+ *  Native softphone by default (`/dialer-connect?popout=1`); the legacy Dial
+ *  Connect app only under the `rmpg_dialer_iframe=1` kill-switch. */
 export function openDialerWindow(): Window | null {
   if (typeof window === 'undefined') return null;
   if (dialerWindow && !dialerWindow.closed) {
     dialerWindow.focus();
     return dialerWindow;
   }
-  dialerWindow = window.open(DIALER_APP_URL, DIALER_WINDOW_NAME);
+  const url = isIframeDialerForced() ? DIALER_APP_URL : `${window.location.origin}${DIALER_CONNECT_PATH}?popout=1`;
+  dialerWindow = window.open(url, DIALER_WINDOW_NAME);
   return dialerWindow;
 }
 

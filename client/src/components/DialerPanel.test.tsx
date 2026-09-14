@@ -122,7 +122,7 @@ describe('DialerPanel', () => {
     expect(screen.getByTestId('loc')).toHaveTextContent(DIALER_CONNECT_PATH);
   });
 
-  test('openDialerWindow reuses the named window instead of opening a second one', () => {
+  test('openDialerWindow opens the native pop-out and reuses the named window instead of opening a second one', () => {
     const popup = { closed: false, focus: vi.fn(), postMessage: vi.fn() };
     const open = vi.fn(() => popup);
     vi.stubGlobal('open', open);
@@ -130,8 +130,21 @@ describe('DialerPanel', () => {
     openDialerWindow();
     openDialerWindow();
     expect(open).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledWith(DIALER_APP_URL, DIALER_WINDOW_NAME);
+    expect(open).toHaveBeenCalledWith(`${window.location.origin}${DIALER_CONNECT_PATH}?popout=1`, DIALER_WINDOW_NAME);
     expect(popup.focus).toHaveBeenCalledTimes(1);
+  });
+
+  test('openDialerWindow falls back to the legacy Dial Connect app under the iframe kill-switch', () => {
+    localStorage.setItem('rmpg_dialer_iframe', '1');
+    try {
+      resetDialerWindowForTests();
+      const open = vi.fn(() => ({ closed: false, focus: vi.fn(), postMessage: vi.fn() }));
+      vi.stubGlobal('open', open);
+      openDialerWindow();
+      expect(open).toHaveBeenCalledWith(DIALER_APP_URL, DIALER_WINDOW_NAME);
+    } finally {
+      localStorage.removeItem('rmpg_dialer_iframe');
+    }
   });
 
   test('ignores messages from a non-Dial-Connect origin', () => {
