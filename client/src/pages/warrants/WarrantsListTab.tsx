@@ -42,6 +42,7 @@ import CollapsibleSection from '../../components/CollapsibleSection';
 import EmptyState from '../../components/EmptyState';
 import StatusPill from '../../components/warrants/StatusPill';
 import { apiFetch } from '../../hooks/useApi';
+import ExportButton from '../../components/ExportButton';
 import { useToast } from '../../components/ToastProvider';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { useWebSocket } from '../../context/WebSocketContext';
@@ -1040,6 +1041,12 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
               <Archive className="w-3 h-3" />
               {showArchived ? 'Showing Archived' : 'Archives'}
             </button>
+            <ExportButton
+              exportUrl={batchSelected.size > 0
+                ? `/warrants/export/csv?ids=${Array.from(batchSelected).join(',')}`
+                : '/warrants/export/csv'}
+              exportFilename="warrants_export.csv"
+            />
           </div>
 
           {/* Filter chips bar (Phase 1) */}
