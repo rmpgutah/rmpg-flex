@@ -3184,9 +3184,10 @@ export interface CrmTask {
 
 export interface CrmActivity {
   id: number | string;
-  client_id: number | string;
+  client_id?: number | string;
   client_name?: string;
-  activity_type: 'note' | 'call' | 'email' | 'meeting' | 'invoice' | 'contract_change' | 'site_visit';
+  lead_name?: string;
+  activity_type: 'note' | 'call' | 'email' | 'meeting' | 'invoice' | 'contract_change' | 'site_visit' | 'stage_change' | 'converted';
   subject?: string;
   details?: string;
   created_by?: string;
