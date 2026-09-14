@@ -332,7 +332,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
-    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
+    note: 'Sign in with Dialer (rmpgutah.us/dialer OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',

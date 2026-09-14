@@ -260,7 +260,7 @@ describe('DialerPanel', () => {
       source: 'dial-connect',
       type: 'recording_ready',
       callSid: 'CAabcd1234',
-      recordingUrl: 'https://dialer.rmpgutah.us/rec.mp3',
+      recordingUrl: 'https://rmpgutah.us/dialer/rec.mp3',
     });
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
@@ -271,7 +271,7 @@ describe('DialerPanel', () => {
     const last = vi.mocked(apiFetch).mock.calls[vi.mocked(apiFetch).mock.calls.length - 1];
     const body = JSON.parse((last?.[1] as { body: string }).body);
     expect(body.callSid).toBe('CAabcd1234');
-    expect(body.recordingUrl).toBe('https://dialer.rmpgutah.us/rec.mp3');
+    expect(body.recordingUrl).toBe('https://rmpgutah.us/dialer/rec.mp3');
   });
 
   test('recording_ready forwards call metadata and never carries a status that could overwrite a missed call', async () => {
@@ -280,7 +280,7 @@ describe('DialerPanel', () => {
       source: 'dial-connect',
       type: 'recording_ready',
       call_sid: 'CAsnake5678',
-      recordingUrl: 'https://dialer.rmpgutah.us/rec2.mp3',
+      recordingUrl: 'https://rmpgutah.us/dialer/rec2.mp3',
       from: '+18015550100',
       to: '+13855550100',
       direction: 'outbound',

@@ -5,9 +5,11 @@ import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
 
-export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
-/** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
- *  and cannot register the dispatcher Twilio Client the IVR actually Dials. */
+// Dial Connect is now served at rmpgutah.us/dialer (same origin as the
+// RMPG Flex SPA) via a Cloudflare Worker path route. The iframe is
+// same-origin, so postMessage needs no targetOrigin restriction.
+export const DIALER_ORIGIN = 'https://rmpgutah.us';
+/** Authenticated Dial Connect at its new same-origin path. */
 export const DIALER_APP_URL = `${DIALER_ORIGIN}/dialer`;
 export const DIALER_WINDOW_NAME = 'rmpg-dial-connect';
 export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
