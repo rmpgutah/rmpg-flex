@@ -182,7 +182,7 @@ export async function mapboxStaticImageUrl(options: {
     ).join(';'));
   }
 
-  const data = await apiFetch<{ url: string }>(`/mapbox/static?${params}`);
+  const data = await apiFetch<{ url: string }>(`/mapbox/static-map?${params}`);
   return data.url;
 }
 

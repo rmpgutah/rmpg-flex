@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '../../components/ToastProvider';
 import { useEnrichment } from '../../hooks/useEnrichment';
 import type { EnrichmentSeed, EnrichmentAddress, SourceResult } from '../../hooks/useEnrichment';
 import {
@@ -296,6 +297,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [skipTraces, setSkipTraces] = useState<ServeSkipTrace[]>([]);
   const [comments, setComments] = useState<ServeComment[]>([]);
   const [qrScans, setQrScans] = useState<QrScan[]>([]);
+  const { addToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [dossierTab, setDossierTab] = useState<'overview' | 'evidence' | 'intel' | 'activity'>('overview');
 
@@ -368,10 +370,11 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
       openPdfDocument(pdf, `Subject-Dossier-${job.case_number || job.id}.pdf`);
     } catch (err) {
       console.error('[SubjectFileTab] Failed to generate subject dossier PDF:', err);
+      addToast('Could not generate dossier PDF — please try again', 'error');
     } finally {
       setPrintingDossier(false);
     }
-  }, [job, attempts, skipTraces, comments, qrScans, enrichResult]);
+  }, [job, attempts, skipTraces, comments, qrScans, enrichResult, addToast]);
 
   const priorityColor: Record<string, string> = {
     urgent: 'text-red-400', rush: 'text-orange-400', normal: 'text-amber-400', routine: 'text-text-secondary',
