@@ -188,7 +188,7 @@ export const affairsComplaintFixtures: PdfFixture<IaComplaintPdfInput>[] = [
       complaint: typicalIaComplaint,
       investigations: [iaInvestigation(0)],
       preparedBy: 'Sgt. Marcus Reyes',
-      payloadHash: 'd'.repeat(64),
+      payloadHash: 'a3f8c12d44e77b91c05f2e89d63a1b4f7e8c29d05a3f8c12d44e77b91c05f28',
     },
   },
   {
