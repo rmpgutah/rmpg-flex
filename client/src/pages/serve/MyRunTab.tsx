@@ -27,6 +27,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
@@ -124,6 +125,7 @@ interface PendingJobsWithBatchesProps {
   navigate: NavigateFunction;
   routeStopIndex: Map<number, number>;
   etaByJobId: Map<number, string>;
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 function PendingJobsWithBatches({
@@ -134,6 +136,7 @@ function PendingJobsWithBatches({
   navigate,
   routeStopIndex,
   etaByJobId,
+  addToast,
 }: PendingJobsWithBatchesProps) {
   return (
     <>
@@ -147,6 +150,7 @@ function PendingJobsWithBatches({
           navigate={navigate}
           routeStopIndex={routeStopIndex}
           etaByJobId={etaByJobId}
+          addToast={addToast}
         />
       ))}
       {/* Single-address jobs */}
@@ -159,6 +163,7 @@ function PendingJobsWithBatches({
           navigate={navigate}
           routeStop={routeStopIndex.get(job.id)}
           eta={etaByJobId.get(job.id)}
+          addToast={addToast}
         />
       ))}
     </>
@@ -172,6 +177,7 @@ interface AddressBatchGroupProps {
   navigate: NavigateFunction;
   routeStopIndex: Map<number, number>;
   etaByJobId: Map<number, string>;
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 function AddressBatchGroup({
@@ -181,6 +187,7 @@ function AddressBatchGroup({
   navigate,
   routeStopIndex,
   etaByJobId,
+  addToast,
 }: AddressBatchGroupProps) {
   const [open, setOpen] = useState(true);
 
@@ -212,6 +219,7 @@ function AddressBatchGroup({
               navigate={navigate}
               routeStop={routeStopIndex.get(job.id)}
               eta={etaByJobId.get(job.id)}
+              addToast={addToast}
             />
           ))}
         </div>
@@ -228,9 +236,10 @@ interface RunJobRowProps {
   routeStop?: number;
   /** Formatted ETA string from optimization (shown next to the address). */
   eta?: string;
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }: RunJobRowProps) {
+function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta, addToast }: RunJobRowProps) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
 
@@ -245,11 +254,11 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }
       }));
       onOptimisticUpdate(job.id, newStatus);
     } catch {
-      // swallow — row stays as-is; server error doesn't brick the UI
+      addToast('Failed to update status — please try again', 'error');
     } finally {
       setActioning(null);
     }
-  }, [job.id, isClosed, actioning, onOptimisticUpdate]);
+  }, [job.id, isClosed, actioning, onOptimisticUpdate, addToast]);
 
   const hasAddress = !!(job.recipient_address);
 
@@ -360,7 +369,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }
 
 // ─── Next Job Card ─────────────────────────────────────────────────────────────
 
-function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction; routeStop?: number }) {
+function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop, addToast }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction; routeStop?: number; addToast: (msg: string, type: 'success' | 'error' | 'info') => void }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
@@ -375,11 +384,11 @@ function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop }: { job: Se
       }));
       onOptimisticUpdate(job.id, newStatus);
     } catch {
-      // swallow
+      addToast('Failed to update status — please try again', 'error');
     } finally {
       setActioning(null);
     }
-  }, [job.id, actioning, onOptimisticUpdate]);
+  }, [job.id, actioning, onOptimisticUpdate, addToast]);
 
   return (
     <div className="mx-0 mb-3 px-3 py-3 rounded-[2px] border-l-4 border-l-brand-400 border border-brand-400/30 bg-brand-400/5">
@@ -589,12 +598,15 @@ export interface MyRunTabProps {
   onJobsChange?: Dispatch<SetStateAction<ServeJob[]>>;
   /** Ordered job IDs from the saved route plan — when provided, active jobs sort by route sequence and show stop numbers. */
   routeOrderIds?: number[];
+  /** Database ID of the active saved route — forwarded to the optimization backend as a reference. */
+  serveRouteId?: number;
 }
 
 const FOLDER_ORDER: ServeFolder[] = ['in_progress', 'pending', 'served', 'failed', 'archived'];
 
-export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds }: MyRunTabProps) {
+export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds, serveRouteId }: MyRunTabProps) {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const today = useMemo(() => todayIso(), []);
   const runStartRef = useRef<number | null>(null);
 
@@ -835,12 +847,8 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
 
   const handleOptimize = useCallback(() => {
     const { shiftStart, shiftEnd } = denverShiftTimes();
-    // TODO: wire officerUnitId from auth context when available
-    const officerUnitId = 0;
-    // TODO: wire serveRouteId from active route when available
-    const serveRouteId = 0;
-    void optRun.startOptimization(byFolder.pending, officerUnitId, shiftStart, shiftEnd, serveRouteId);
-  }, [optRun, byFolder.pending]);
+    void optRun.startOptimization(byFolder.pending, officerId, shiftStart, shiftEnd, serveRouteId ?? 0);
+  }, [optRun, byFolder.pending, officerId, serveRouteId]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Render
@@ -952,7 +960,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
 
           {/* ── Next Job card (shown when run is NOT complete) ──── */}
           {!runComplete && nextJob && (
-            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} routeStop={routeStopIndex.get(nextJob.id)} />
+            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} routeStop={routeStopIndex.get(nextJob.id)} addToast={addToast} />
           )}
 
           {/* ── Folder-grouped job list ─────────────────────────── */}
@@ -981,6 +989,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
                         navigate={navigate}
                         routeStopIndex={routeStopIndex}
                         etaByJobId={etaByJobId}
+                        addToast={addToast}
                       />
                     : folderJobs.map((job) => (
                         <RunJobRow
@@ -991,6 +1000,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
                           navigate={navigate}
                           routeStop={routeStopIndex.get(job.id)}
                           eta={undefined}
+                          addToast={addToast}
                         />
                       ))
                   }
