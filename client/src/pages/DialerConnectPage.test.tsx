@@ -52,16 +52,16 @@ describe('DialerConnectPage', () => {
     expect(screen.getByRole('checkbox', { name: /starred/i })).toBeInTheDocument();
   });
 
-  test('LIVE toggle collapses and restores the Dial Connect dock', async () => {
+  test('Dial Connect dock starts collapsed and the LIVE toggle restores and re-collapses it', async () => {
     const user = userEvent.setup();
     await act(async () => { renderPage(); });
     // jsdom cannot parse `min(42vh, 680px)`, so assert on minHeight (240px open / 0px collapsed).
     const host = screen.getByTestId('dialer-connect-host');
-    expect(host.style.minHeight).toBe('240px');
-    await user.click(screen.getByRole('button', { name: /hide live dialer/i }));
     expect(host.style.minHeight).toBe('0px');
     await user.click(screen.getByRole('button', { name: /show live dialer/i }));
     expect(host.style.minHeight).toBe('240px');
+    await user.click(screen.getByRole('button', { name: /hide live dialer/i }));
+    expect(host.style.minHeight).toBe('0px');
   });
 
   test('keypad dials in Dial mode and sends tones in DTMF mode', async () => {

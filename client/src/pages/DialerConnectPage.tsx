@@ -134,7 +134,11 @@ export default function DialerConnectPage() {
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
   const [liveOpen, setLiveOpen] = useState(true);
-  const [dockCollapsed, setDockCollapsed] = useState(false);
+  // Default collapsed: the embedded Dial Connect iframe is often unusable
+  // (telephony unconfigured, still loading, etc.) and the native tab UI
+  // below covers dialing/voicemail/history on its own. Users can still
+  // expand it via the LIVE toggle when they need the live Twilio dock.
+  const [dockCollapsed, setDockCollapsed] = useState(true);
   const [vmUnread, setVmUnread] = useState(0);
   const dockVisible = liveOpen && !dockCollapsed;
 
