@@ -633,7 +633,12 @@ export default function ServeIntakePage() {
       // scanned PDF, leaving every review field blank with no error shown
       // (the row still renders a green "extracted" checkmark either way,
       // since that only reflects rasterization, not OCR, succeeding).
-      return await apiPostForm<OcrScanResult>('/ocr/scan-document', formData);
+      // timeoutMs: the server's own OCR pipeline retries across Claude ->
+      // OpenAI -> Workers AI under a 90s total budget (TOTAL_AI_BUDGET_MS in
+      // serveIntakeOcr.ts) before giving up — apiPostForm's 60s default
+      // aborted the client side first, surfacing a false TimeoutError on
+      // every large/slow scan even though the server would've come back.
+      return await apiPostForm<OcrScanResult>('/ocr/scan-document', formData, { timeoutMs: 100_000 });
     } catch (err) {
       console.warn("[ServeIntakePage] operation failed:", err);
       return null;
@@ -653,7 +658,8 @@ export default function ServeIntakePage() {
       formData.append('client_text', text);
       // apiPostForm, not raw fetch — see ocrScanImage above for why: a
       // mid-shift expired token must transparently refresh, not 401 forever.
-      const scanResult = await apiPostForm<OcrScanResult>('/serve-intake/scan-document', formData);
+      // timeoutMs: match ocrScanImage's — the server budget is 90s.
+      const scanResult = await apiPostForm<OcrScanResult>('/serve-intake/scan-document', formData, { timeoutMs: 100_000 });
       if (scanResult?.fields) {
         setFiles(prev => prev.map(f =>
           f.file === file ? { ...f, ocrResult: scanResult } : f,
