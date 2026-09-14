@@ -13,7 +13,7 @@ import {
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
   FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
-  Settings,
+  Settings, Phone, ExternalLink,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import { computeArrivalsInOrder } from '../components/serve/ServeRoutePlanner';
@@ -836,6 +836,7 @@ export default function ServePage() {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const mapFlyToTargetRef = useRef<[number, number] | null>(null);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
   const [isServeMapRecovering, setIsServeMapRecovering] = useState(false);
@@ -1146,6 +1147,26 @@ export default function ServePage() {
       addToast(`Could not move job: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
     }
   }, [addToast, refreshJobs]);
+
+  const handleSetPriority = useCallback(async (job: ServeJob, priority: ServeJob['priority']) => {
+    setJobs(prev => prev.map(j => j.id === job.id ? { ...j, priority } : j));
+    try {
+      await apiFetch(`/process-server/${job.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...job, priority }),
+      });
+      addToast(`Priority set to ${toDisplayLabel(priority)}`, 'success');
+    } catch {
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, priority: job.priority } : j));
+      addToast('Could not update priority', 'error');
+    }
+  }, [addToast]);
+
+  const handleShowOnMap = useCallback((job: ServeJob) => {
+    if (!job.recipient_lat || !job.recipient_lng) return;
+    mapFlyToTargetRef.current = [job.recipient_lng, job.recipient_lat];
+    setActiveTab('Map');
+  }, []);
 
   const handleDeleteJob = useCallback((job: ServeJob) => {
     setDeleteJob(job);
@@ -2128,6 +2149,14 @@ export default function ServePage() {
     if (mapReady) updateMapMarkers();
   }, [mapReady, updateMapMarkers]);
 
+  // Fly to a job after "Show on map" switches the tab and the map becomes ready.
+  useEffect(() => {
+    if (!mapReady || !mapFlyToTargetRef.current) return;
+    const [lng, lat] = mapFlyToTargetRef.current;
+    mapFlyToTargetRef.current = null;
+    mapRef.current?.easeTo({ center: [lng, lat], zoom: Math.max(mapZoom, 15), duration: 600 });
+  }, [mapReady, mapZoom]);
+
   // Fit bounds to the job set — deliberately its own effect, NOT folded into
   // updateMapMarkers above. updateMapMarkers is keyed on mapZoom (so it can
   // re-cluster as the user zooms), and the map's own 'zoomend' handler calls
@@ -2413,11 +2442,22 @@ export default function ServePage() {
     const addr = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    const PRIORITY_LEVELS: ServeJob['priority'][] = ['routine', 'normal', 'rush', 'urgent'];
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(canManage ? [m.action('Clone job', () => handleCloneJob(job.id), { icon: <Copy size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      // Quick priority escalation — submenu with all priority levels, current one checked
+      ...(!isClosed && canManage ? [{
+        label: 'Set priority',
+        icon: <Zap size={12} />,
+        submenu: PRIORITY_LEVELS.map(p => m.action(
+          `${toDisplayLabel(p)}${job.priority === p ? ' ✓' : ''}`,
+          () => handleSetPriority(job, p),
+          { icon: <Zap size={11} /> }
+        )),
+      } as ContextMenuItem] : []),
       m.action('Print Job Sheet (PS-300)', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
       m.action('Print Leave-Behind (PS-314)', () => handleLeaveBehind(job.id), { icon: <ScrollText size={12} /> }),
       ...(job.attempt_count > 0 && job.status !== 'served' ? [
@@ -2453,10 +2493,21 @@ export default function ServePage() {
         setSelectedJobIds(prev => new Set(prev).add(job.id));
         setRoutePlannerOpen(true);
       }, { icon: <Route size={12} /> }),
+      // Show on map — switches to Map tab and flies to the job's coordinates.
+      ...(job.recipient_lat && job.recipient_lng
+        ? [m.action('Show on map', () => handleShowOnMap(job), { icon: <MapPin size={12} /> })]
+        : []),
+      // Open linked dispatch call in a new tab when available.
+      ...(job.call_id
+        ? [m.action('Open linked call', () => window.open(`/dispatch?call=${job.call_id}`, '_blank'), { icon: <ExternalLink size={12} /> })]
+        : []),
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),
       m.copyId(job.id),
       m.copyCoords(job.recipient_lat, job.recipient_lng),
+      ...(addr ? [m.copy('Copy address', addr)] : []),
+      ...(job.case_number ? [m.copy('Copy case number', job.case_number)] : []),
+      ...(job.recipient_phone ? [m.copy('Copy phone', job.recipient_phone, <Phone size={12} />)] : []),
       ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
       m.separator(),
       m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
