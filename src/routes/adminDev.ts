@@ -3,8 +3,9 @@
 //   GET  /feature-flags        — read KV-backed feature flags (any authed user)
 //   PUT  /feature-flags        — update flags in KV              (admin only)
 //   POST /mock/gps             — inject a GPS position for a unit  (admin only)
-//   POST /mock/call            — seed a [TEST] call               (admin only)
-//   DELETE /mock/calls         — close all [TEST] calls           (admin only)
+//   POST /mock/call             — seed a [TEST] call               (admin only)
+//   DELETE /mock/calls          — close all [TEST] calls           (admin only)
+//   POST /trigger/ofac-sync     — manual OFAC SDN re-sync           (admin only)
 //
 // FeatureFlagsContext.tsx calls GET /admin/dev/feature-flags (via apiFetch).
 
@@ -151,6 +152,20 @@ adminDev.delete('/mock/calls', async (c) => {
   ).run();
 
   return c.json({ success: true });
+});
+
+// ── POST /trigger/ofac-sync ─────────────────────────────────────────────────
+// Manually re-runs the OFAC SDN sync (normally cron-only, monthly at
+// 0 3 1 * * — src/index.ts). ofac_sdn has been empty since the feature
+// shipped because the cron's one-and-only tick ever (2026-09-01) aborted on
+// download; this lets an admin re-run it without waiting for the 1st of next
+// month, both to backfill now and to verify a fix without a 30-day wait.
+adminDev.post('/trigger/ofac-sync', async (c) => {
+  if (requireAdmin(c)) return c.json({ error: 'admin_only' }, 403);
+
+  const { syncOfacSdn } = await import('../utils/enrichment/ofacSync');
+  const result = await syncOfacSdn(c.env.DB);
+  return c.json(result, result.error ? 502 : 200);
 });
 
 export default adminDev;
