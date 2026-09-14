@@ -7078,7 +7078,7 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '') || toDisplayLabel(entry.action || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 flex items-center gap-0.5 transition-opacity">
                                 <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[var(--brand-gold)] text-[var(--spm-text-muted)] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
