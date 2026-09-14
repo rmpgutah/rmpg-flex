@@ -3,6 +3,7 @@
 // to dispatch-app (Worker `dialer`) as the linked dispatcher.
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { z } from 'zod';
 import type { Env } from '../types';
 import { getDb, queryFirst, ensureDialerOidcColumns } from '../utils/db';
 import { requireRole } from '../middleware/auth';
@@ -104,6 +105,59 @@ dialerVoice.get('/presence', async (c) => {
   const r = await withSub(c);
   if ('res' in r) return r.res;
   return relay(c, await upstream(c, r.sub, '/api/voice/presence'));
+});
+
+const e164 = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  return digits ? `+${digits}` : '';
+};
+
+const callSid = z.string().min(1).max(64);
+const holdSchema = z.object({ callSid, hold: z.boolean() });
+const dispatcherTargetSchema = z.object({ callSid, targetDispatcherId: z.string().min(1).max(64) });
+const addPartySchema = z.object({
+  callSid,
+  phoneNumber: z.string().min(7).max(32).transform(e164).refine((v) => /^\+\d{8,15}$/.test(v), 'phoneNumber must be a dialable number'),
+});
+const recordingSchema = z.object({ callSid, action: z.enum(['start', 'stop']) });
+
+function control<S extends z.ZodTypeAny>(path: string, upstreamPath: string, schema: S) {
+  dialerVoice.post(path, async (c) => {
+    const r = await withSub(c);
+    if ('res' in r) return r.res;
+    const parsed = schema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'Invalid request', details: parsed.error.flatten() }, 400);
+    return relay(c, await upstream(c, r.sub, upstreamPath, { method: 'POST', body: parsed.data }));
+  });
+}
+
+control('/voice/hold', '/api/voice/hold', holdSchema);
+control('/voice/transfer', '/api/voice/transfer', dispatcherTargetSchema);
+control('/voice/conference/add-dispatcher', '/api/voice/conference/add-dispatcher', dispatcherTargetSchema);
+control('/voice/conference/add', '/api/voice/conference/add', addPartySchema);
+control('/voice/recording', '/api/voice/recording/control', recordingSchema);
+
+dialerVoice.post('/voice/duress', async (c) => {
+  const r = await withSub(c);
+  if ('res' in r) return r.res;
+  return relay(c, await upstream(c, r.sub, '/api/voice/duress', { method: 'POST', body: {} }));
+});
+
+// SSE passthrough: hand the upstream body straight back so Cloudflare streams
+// it; no timeout on this one (it's long-lived by design).
+dialerVoice.get('/stream', async (c) => {
+  const r = await withSub(c);
+  if ('res' in r) return r.res;
+  const res = await upstream(c, r.sub, '/api/stream', { method: 'GET', stream: true });
+  if (!res.ok) return relay(c, res);
+  return new Response(res.body, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' },
+  });
 });
 
 export default dialerVoice;
