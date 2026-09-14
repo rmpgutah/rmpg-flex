@@ -2923,7 +2923,7 @@ sv.get('/:id/chain-of-custody', async (c) => {
     officer_id: number | null; assigned_at: string | null;
     updated_at: string | null;
   }>(db, `SELECT id, created_at, created_by, status, closed_at,
-             recipient_name, case_number, officer_id, assigned_at, updated_at
+             recipient_name, case_number, officer_id, NULL AS assigned_at, updated_at
           FROM serve_queue WHERE id = ?`, id);
   if (!job) return c.json({ error: 'Not found' }, 404);
 
