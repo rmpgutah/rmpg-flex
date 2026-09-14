@@ -977,7 +977,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           {filterFlag && (
             <span className="text-rmpg-500 ml-auto">
               {displayPersons.length} match{displayPersons.length !== 1 ? 'es' : ''}
-              <button type="button" onClick={() => setFilterFlag(null)} className="ml-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-2.5 h-2.5 inline" /></button>
+              <button type="button" onClick={() => setFilterFlag(null)} aria-label="Clear filter" className="ml-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-2.5 h-2.5 inline" /></button>
             </span>
           )}
         </div>
