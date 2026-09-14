@@ -390,6 +390,23 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   [`client/src/utils/dialerConnect.ts`](client/src/utils/dialerConnect.ts) fall back to
   whichever number exists and never cluster numberless rows (no more
   "dup unknown ×10").
+- **Native softphone (P1, 2026-09-14).** RMPG Flex hosts the Twilio Voice client
+  ([`client/src/dialer/SoftphoneProvider.tsx`](client/src/dialer/SoftphoneProvider.tsx));
+  tokens/presence/controls/SSE go through [`src/routes/dialerVoice.ts`](src/routes/dialerVoice.ts)
+  (`/api/dialer/*`) to dispatch-app as the linked dispatcher
+  (`users.dialer_oidc_sub` → identity `dispatcher_<id>`). Secrets:
+  `DIAL_CONNECT_SERVICE_KEY` (rmpg-flex-api) == `RMPG_FLEX_SERVICE_KEY` (Worker
+  `dialer`). Unlinked users see the "Link Dial Connect" gate — the SSO callback
+  links by e-mail on first sign-in. `"Telephony not configured"` in the OLD
+  iframe meant ANY non-OK token fetch, not necessarily Twilio secrets.
+  **Kill-switch:** `localStorage.rmpg_dialer_iframe = '1'` restores the legacy
+  iframe (`DialerPanel`) per browser with no deploy; `DialerPanel` is deleted in P6.
+  Spec: [`docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md`](docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md).
+- **dispatch-app has no CI.** Its source is `~/Call Center/dispatch-app` (GitHub
+  `rmpgutah/dispatch-app`), deployed as Worker `dialer` via `npm run deploy` from
+  that directory — a merged PR there changes nothing until someone deploys. Every
+  browser URL in that app must go through `apiUrl()` (Next `basePath` `/dialer`
+  does not prefix `fetch()`/`EventSource`; 2026-09-14 outage).
 
 ### Legal Data Hunter (manual warrant-charge validation)
 

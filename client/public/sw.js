@@ -408,6 +408,9 @@ async function purgeCachedShell() {
 // v1104: Automation firing drain — flushClientFirings() chained after GPS
 //        flush in the gps-flush sync event so offline automation firings are
 //        replayed to dispatch the moment the device reconnects.
+// v1105: Native softphone (client/src/dialer) replaces the Dial Connect iframe
+//        by default; /api/dialer/* is a live SSE/token surface (never cached).
+//        No cache-shape change.
 // ── Background sync: flush unsynced GPS fixes + automation firings ────────
 self.addEventListener('sync', (event) => {
   if (event.tag !== 'gps-flush') return;
