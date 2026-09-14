@@ -53,8 +53,25 @@ crm.get('/dashboard', async (c) => {
 crm.get('/recent-activity', async (c) => {
   try {
     const db = getDb(c.env);
+    // Two independent activity logs feed this feed: crm_lead_activity (pipeline
+    // stage changes / conversions, always lead-scoped) and crm_activity (manually
+    // logged notes/calls/emails, client- or lead-scoped via nullable FKs). Each
+    // needs its own name join, so this UNIONs both rather than only querying
+    // crm_lead_activity — the old single-table query silently dropped every
+    // crm_activity row and only ever exposed lead_name, never client_name.
     return c.json(await query(db,
-      "SELECT a.*, l.business_name AS lead_name FROM crm_lead_activity a LEFT JOIN crm_leads l ON l.id = a.lead_id ORDER BY a.created_at DESC, a.id DESC LIMIT 25"));
+      `SELECT * FROM (
+         SELECT 'lead:' || a.id AS id, a.created_at, a.activity_type, a.subject, a.created_by,
+                NULL AS client_name, l.business_name AS lead_name
+         FROM crm_lead_activity a LEFT JOIN crm_leads l ON l.id = a.lead_id
+         UNION ALL
+         SELECT 'activity:' || a.id AS id, a.created_at, a.activity_type, a.subject, a.created_by,
+                cl.name AS client_name, l.business_name AS lead_name
+         FROM crm_activity a
+         LEFT JOIN clients cl ON cl.id = a.client_id
+         LEFT JOIN crm_leads l ON l.id = a.lead_id
+       ) combined
+       ORDER BY created_at DESC LIMIT 25`));
   } catch (err) { log.error('GET failed', { src: 'src/routes/crm.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
