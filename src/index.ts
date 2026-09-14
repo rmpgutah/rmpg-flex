@@ -436,8 +436,8 @@ export default {
     // ── Every 30 minutes ──
     if (event.cron === '*/30 * * * *') {
       // Dial Connect recording mirror backstop — copies any call/voicemail
-      // recording that still only has a dialer.rmpgutah.us source URL into
-      // encrypted R2 (inline ingest mirror may have lost the race / upstream).
+      // recording with only a Dial Connect source URL (now rmpgutah.us/dialer)
+      // into encrypted R2 (inline ingest may have lost the race / upstream).
       ctx.waitUntil(
         import('./routes/dialerConnect').then((m) =>
           m.mirrorPendingRecordings(env, 25).then((r) => {

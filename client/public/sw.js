@@ -3,10 +3,10 @@
 // Provides offline caching for static assets and API GET responses.
 // API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
-// v1108: FetchEvent rejections still fire from stale controllers AND from
-//        dialer.rmpgutah.us/sw.js (separate origin). Wrap the Flex fetch
-//        handler so a throw never rejects respondWith. Never take ownership
-//        of Cloudflare Insights or any other cross-origin URL.
+// v1108: FetchEvent rejections still fire from stale controllers. Wrap the
+//        Flex fetch handler so a throw never rejects respondWith. Never take
+//        ownership of Cloudflare Insights, cross-origin URLs, or /dialer/*
+//        (served by a separate Cloudflare Worker, not Pages).
 // v1106: Login navigations must not become an empty 503 Offline when the
 //        document URL has a query string (`/login?return=%2F`) that missed
 //        the precached `/` shell. Match ignoreSearch and always stash `/`.
@@ -538,7 +538,9 @@ self.addEventListener('fetch', (event) => {
   if (
     url.hostname === 'static.cloudflareinsights.com' ||
     url.hostname.endsWith('.cloudflareinsights.com') ||
-    url.hostname === 'dialer.rmpgutah.us'
+    // /dialer and /dialer/* are same-origin but served by a Cloudflare Worker,
+    // not Cloudflare Pages — the service worker cannot cache these resources.
+    url.pathname === '/dialer' || url.pathname.startsWith('/dialer/')
   ) {
     return;
   }

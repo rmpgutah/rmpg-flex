@@ -289,7 +289,7 @@ function ArchiveChip({ row }: { row: { recording_r2_key?: string | null; recordi
   }
   if (row.recording_source_url) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-wide text-fg-muted" title="Recording still only on dialer.rmpgutah.us — copy to RMPG Flex is pending">
+      <span className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-wide text-fg-muted" title="Recording still only on Dial Connect — copy to RMPG Flex R2 is pending">
         <CloudOff className="w-2.5 h-2.5" /> Copy pending
       </span>
     );

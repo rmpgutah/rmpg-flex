@@ -217,9 +217,10 @@ async function insertVoicemail(db: ReturnType<typeof getDb>, body: IngestCall & 
 // ---------------------------------------------------------------------------
 // Recording mirror — copy every Dial Connect recording INTO RMPG Flex.
 //
-// Dial Connect hands us a recording_source_url on dialer.rmpgutah.us. That link
-// stays as provenance, but the bytes are copied into encrypted R2 so playback,
-// download, evidence export and retention never depend on the dialer host.
+// Dial Connect hands us a recording_source_url (now at rmpgutah.us/dialer,
+// previously dialer.rmpgutah.us). That link stays as provenance, but the bytes
+// are copied into encrypted R2 so playback, download, evidence export and
+// retention never depend on the dialer host.
 // Runs (a) inline on ingest via waitUntil, (b) lazily when the audio endpoint
 // has to proxy, and (c) from the */30 cron sweep (mirrorPendingRecordings) as
 // the backstop. Retries are bounded by MIRROR_MAX_ATTEMPTS per row.
