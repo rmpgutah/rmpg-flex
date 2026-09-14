@@ -21,6 +21,7 @@
 import type { D1Database, DurableObjectNamespace } from '@cloudflare/workers-types';
 import { query, execute } from '../utils/db';
 import { emitAlert } from '../utils/alertHub';
+import { resolveAppToken, sendPushoverToUsers, cadPriorityToPushover } from '../utils/pushover';
 
 // The complete set of valid role strings in this system. Used to allowlist
 // roles parsed from target_roles JSON so an oversized or malicious JSON blob
@@ -62,7 +63,7 @@ export async function evaluateNotificationRules(
   // Pass c.env so matched notifications fan out LIVE via AlertHubDO (the shared
   // cross-worker bus). Optional so existing/test callers still work — they just
   // skip the live push and the row still lands (poll/reload picks it up).
-  env?: { ALERT_HUB?: DurableObjectNamespace },
+  env?: { ALERT_HUB?: DurableObjectNamespace; PUSHOVER_APP_TOKEN?: string },
   // Per-event recipients that aren't expressible as a rule's static
   // target_roles/target_user_ids — e.g. "the person who requested this
   // specific swap." Unioned with the rule's statically-resolved targets in
@@ -100,7 +101,7 @@ export async function fireRule(
   rule: NotificationRuleRow,
   context: NotifyContext = {},
   opts: { testPrefix?: boolean } = {},
-  env?: { ALERT_HUB?: DurableObjectNamespace },
+  env?: { ALERT_HUB?: DurableObjectNamespace; PUSHOVER_APP_TOKEN?: string },
   dynamicUserIds?: number[],
 ): Promise<number> {
   const staticTargets = await resolveTargets(db, rule.target_roles, rule.target_user_ids);
@@ -138,6 +139,24 @@ export async function fireRule(
       await emitAlert(env, 'notification', { action: 'notification_created', user_ids: userIds });
     } catch { /* fan-out failure must not break the triggering event */ }
   }
+
+  // Pushover mobile push — fire to any user who has registered a pushover_user_key
+  // in their user_settings JSON. Best-effort; never breaks the triggering event.
+  try {
+    const appToken = await resolveAppToken(db, env?.PUSHOVER_APP_TOKEN);
+    if (appToken) {
+      const pushPriority = cadPriorityToPushover(priority);
+      await sendPushoverToUsers(db, userIds, {
+        title,
+        message,
+        priority: pushPriority,
+        // Siren for critical/urgent; default sound otherwise
+        sound: pushPriority === 1 ? 'siren' : undefined,
+        timestamp: Math.floor(Date.now() / 1000),
+      }, appToken);
+    }
+  } catch { /* Pushover failure must never break the triggering event */ }
+
   return userIds.length;
 }
 

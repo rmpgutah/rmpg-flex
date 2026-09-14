@@ -27,6 +27,12 @@ import {
   Heart,
   Clock,
   BookOpen,
+  Layers,
+  ChevronDown,
+  ChevronRight,
+  Brain,
+  Scale,
+  Globe,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -235,8 +241,13 @@ const FLAG_COLORS: Record<string, string> = {
 // Import-provenance tags written into flags[] by DL-scan import flows.
 // They are data-lineage metadata, not officer-caution flags, and must be
 // excluded from badge rendering, warning counts, and posture computation.
+const PROVENANCE_FLAGS = new Set(['dl_ocr_imported', 'aos_id_capture']);
+const PROVENANCE_FLAG_LABELS: Record<string, string> = {
+  dl_ocr_imported: 'FlexCode Scan',
+  aos_id_capture: 'AOS Form Entry',
+};
 function isProvenanceFlag(flag: string): boolean {
-  return /_IMPORTED$/i.test(flag);
+  return PROVENANCE_FLAGS.has(flag.toLowerCase()) || /_IMPORTED$/i.test(flag);
 }
 
 // Single source of truth for a person's posture-relevant flags. Shared by the
@@ -327,6 +338,8 @@ export interface PersonsTabState {
   duplicateWarning: any[] | null;
   handleForceCreate: () => void;
   handleCancelDuplicate: () => void;
+  // Data refresh
+  fetchPersons: () => Promise<void>;
 }
 
 // ════════════════════════════════════════════════════
@@ -544,6 +557,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
+    fetchPersons,
   };
 }
 
@@ -590,42 +604,261 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     ];
   };
 
-  // ── Local sort + filter state ──
+  // ── Local sort + filter + group state ──
   const [sortBy, setSortBy] = useState<'name' | 'dob' | 'newest'>('name');
   const [filterFlag, setFilterFlag] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<'none' | 'alpha' | 'risk'>('none');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Risk tier for a person (used both in filter and group-by)
+  const personRiskTier = (p: Person): 'critical' | 'high' | 'caution' | 'clear' => {
+    if (p.watchlist_match || p.is_sex_offender) return 'critical';
+    const flagsLower = p.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
+    if (flagsLower.some(f => f.includes('warrant') || f.includes('bolo'))) return 'critical';
+    if (flagsLower.some(f => f.includes('known offender') || f.includes('known_offender') || f.includes('trespass'))) return 'high';
+    if (hasValue(p.gang_affiliation) || hasValue(p.probation_parole)) return 'high';
+    if (flagsLower.some(f => f.includes('mental') || f.includes('caution'))) return 'caution';
+    if (p.flags.filter(f => !isProvenanceFlag(typeof f === 'object' ? f.type : f)).length > 0) return 'caution';
+    return 'clear';
+  };
 
   // Sort + filter the already-filtered persons
   const displayPersons = React.useMemo(() => {
     let list = [...filteredPersons];
-    // Apply flag filter
     if (filterFlag) {
       list = list.filter(p => {
         if (filterFlag === 'warrant') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('warrant') : false);
         if (filterFlag === 'sex_offender') return p.is_sex_offender;
         if (filterFlag === 'veteran') return p.is_veteran;
-        if (filterFlag === 'gang') return !!p.gang_affiliation && !['none', '0', 'n/a'].includes(String(p.gang_affiliation).toLowerCase());
+        if (filterFlag === 'gang') return hasValue(p.gang_affiliation);
         if (filterFlag === 'bolo') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('bolo') : false);
+        if (filterFlag === 'mental_health') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('mental') : false) || !!p.mental_health_flags;
+        if (filterFlag === 'probation') return hasValue(p.probation_parole);
+        if (filterFlag === 'watchlist') return !!p.watchlist_match;
+        if (filterFlag === 'critical') return personRiskTier(p) === 'critical';
         return true;
       });
     }
-    // Sort
     if (sortBy === 'name') {
       list.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '') || (a.first_name || '').localeCompare(b.first_name || ''));
     } else if (sortBy === 'dob') {
       list.sort((a, b) => (a.date_of_birth || '').localeCompare(b.date_of_birth || ''));
     } else if (sortBy === 'newest') {
       list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    } else if (sortBy === 'name' && groupBy === 'risk') {
+      const order = { critical: 0, high: 1, caution: 2, clear: 3 };
+      list.sort((a, b) => order[personRiskTier(a)] - order[personRiskTier(b)] || (a.last_name || '').localeCompare(b.last_name || ''));
     }
     return list;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredPersons, sortBy, filterFlag]);
 
-  // Stats
+  // Build grouped structure when groupBy is active
+  const groupedPersons = React.useMemo(() => {
+    if (groupBy === 'none') return null;
+    if (groupBy === 'alpha') {
+      const groups: Map<string, Person[]> = new Map();
+      for (const p of displayPersons) {
+        const letter = (p.last_name?.[0] || '#').toUpperCase();
+        if (!groups.has(letter)) groups.set(letter, []);
+        groups.get(letter)!.push(p);
+      }
+      return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    if (groupBy === 'risk') {
+      const tiers: [string, string, Person[]][] = [
+        ['critical', 'Critical Risk', []],
+        ['high', 'High Risk', []],
+        ['caution', 'Caution', []],
+        ['clear', 'Clear', []],
+      ];
+      for (const p of displayPersons) {
+        const tier = personRiskTier(p);
+        tiers.find(t => t[0] === tier)![2].push(p);
+      }
+      return tiers.filter(t => t[2].length > 0).map(t => [t[1], t[2]] as [string, Person[]]);
+    }
+    return null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayPersons, groupBy]);
+
+  // Stats — clickable to filter
   const stats = React.useMemo(() => ({
     total: filteredPersons.length,
     withWarrants: filteredPersons.filter(p => p.flags.some(f => typeof f === 'string' && f.toLowerCase().includes('warrant'))).length,
     sexOffenders: filteredPersons.filter(p => p.is_sex_offender).length,
     veterans: filteredPersons.filter(p => p.is_veteran).length,
+    watchlist: filteredPersons.filter(p => !!p.watchlist_match).length,
+    withProbation: filteredPersons.filter(p => hasValue(p.probation_parole)).length,
   }), [filteredPersons]);
+
+  // Inline person row renderer (shared between flat list and grouped list)
+  const renderPersonRow = (person: Person, idx: number) => (
+    <div
+      key={person.id}
+      role="listitem"
+      tabIndex={0}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('application/json', JSON.stringify({ type: 'person', id: person.id, name: `${person.first_name} ${person.last_name}` }));
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
+      onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
+      onContextMenu={(e) => openMenu(e, buildPersonMenu(person))}
+      className={`
+        px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
+        ${selectedPerson?.id === person.id
+          ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+          : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
+        }
+      `}
+      aria-selected={selectedPerson?.id === person.id}
+    >
+      <div className="flex items-center gap-3">
+        {(() => {
+          const cornerBadge = recordCornerBadge(personPostureFlags(person));
+          const photo = person.photo || person.photo_url || person.id_image_url;
+          return (
+            <RecordAvatar
+              name={`${person.first_name || ''} ${person.last_name || ''}`}
+              photoUrl={photo ? authedImageUrl(photo) : undefined}
+              icon={User}
+              cornerBadge={cornerBadge}
+              size={36}
+            />
+          );
+        })()}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-rmpg-100 truncate">
+              {person.last_name}, {person.first_name}
+              {person.middle_name ? ` ${person.middle_name[0]}.` : ''}
+            </span>
+            {person.alias_nickname && (
+              <span className="text-[10px] text-amber-400 italic shrink-0">aka "{person.alias_nickname}"</span>
+            )}
+            {person.is_sex_offender && (
+              <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 shrink-0">RSO</span>
+            )}
+            {person.watchlist_match && (
+              <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse shrink-0">OFAC</span>
+            )}
+            <WarrantBadge flags={person.flags} size="sm" />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-rmpg-400">
+            {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = parseTimestamp(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+            {person.gender && <span>{humanizeGender(person.gender)}</span>}
+            {person.race && <span>{humanizeRace(person.race)}</span>}
+            {person.phone && (
+              <span className="flex items-center gap-0.5">
+                <Phone className="w-2.5 h-2.5" />{formatPhoneDisplay(person.phone)}
+              </span>
+            )}
+          </div>
+          {(person.address || person.city) && (
+            <div className="flex items-center gap-1 mt-0.5 text-[9px] text-rmpg-500 truncate">
+              <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
+              {[formatAddressDisplay(person.address), formatAddressDisplay(person.city), person.state?.toUpperCase(), person.zip].filter(Boolean).join(', ')}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          {(() => {
+            const securityFlags = person.flags.filter(f => {
+              const label = typeof f === 'object' ? (f.type || '') : f;
+              return !isProvenanceFlag(label);
+            });
+            if (securityFlags.length === 0) return null;
+            return (
+              <div className="flex gap-1 flex-wrap justify-end max-w-[90px]">
+                {securityFlags.slice(0, 2).map((flag, i) => {
+                  const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                  return (
+                    <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
+                  );
+                })}
+                {securityFlags.length > 2 && (
+                  <span className="text-[9px] text-rmpg-400">+{securityFlags.length - 2}</span>
+                )}
+              </div>
+            );
+          })()}
+          {person.phone && (
+            <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
+              className="md:hidden flex items-center justify-center w-9 h-9 border border-rmpg-700 text-green-400" title={`Call ${formatPhoneDisplay(person.phone)}`}>
+              <Phone className="w-4 h-4" />
+            </a>
+          )}
+          <div className="hidden md:flex items-center gap-1">
+            {person.phone && (
+              <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title={`Call ${formatPhoneDisplay(person.phone)}`}>
+                <Phone className="w-3 h-3" />
+              </a>
+            )}
+            {person.email && (
+              <a href={`mailto:${person.email}`} onClick={e => e.stopPropagation()}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400 transition-colors" title={`Email ${person.email}`}>
+                <Mail className="w-3 h-3" />
+              </a>
+            )}
+            {person.address && (
+              <a href={`https://maps.google.com/?q=${encodeURIComponent(person.address + (person.city ? ', ' + person.city : '') + (person.state ? ', ' + person.state : ''))}`}
+                target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Navigate to address">
+                <Navigation className="w-3 h-3" />
+              </a>
+            )}
+            <span className="w-px h-3 bg-rmpg-700 mx-0.5" />
+            {(!showArchived || user?.role === 'admin') && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+            <button type="button" onClick={(e) => { e.stopPropagation(); openRecordWindow('person', person.id); }}
+              className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
+              <ExternalLink className="w-3 h-3" />
+            </button>
+            {(!showArchived || user?.role === 'admin') && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+            {(!showArchived || user?.role === 'admin') && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
+                <Archive className="w-3 h-3" />
+              </button>
+            )}
+            {showArchived && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleUnarchive('persons', person.id); }}
+                className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const riskTierColors: Record<string, string> = {
+    'Critical Risk': 'text-red-400 border-red-800/60 bg-red-950/30',
+    'High Risk': 'text-orange-400 border-orange-800/60 bg-orange-950/30',
+    'Caution': 'text-amber-400 border-amber-800/60 bg-amber-950/20',
+    'Clear': 'text-green-500 border-green-900/40 bg-green-950/10',
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -651,7 +884,6 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             query={searchQuery}
             searchType="persons"
             onFiltersExtracted={(filters) => {
-              // Build a combined search string from AI-extracted filters
               const parts: string[] = [];
               if (filters.name) parts.push(filters.name);
               if (filters.address) parts.push(filters.address);
@@ -665,42 +897,90 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
-        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-rmpg-100">{stats.total}</strong> Records</span>
-        {stats.withWarrants > 0 && <span className="text-red-400 flex items-center gap-1"><Gavel className="w-3 h-3" /> <strong>{stats.withWarrants}</strong> Warrants</span>}
-        {stats.sexOffenders > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.sexOffenders}</strong> RSO</span>}
-        {stats.veterans > 0 && <span className="text-green-400 flex items-center gap-1"><Shield className="w-3 h-3" /> <strong>{stats.veterans}</strong> Veterans</span>}
+      {/* Stats Tiles (clickable quick filters) */}
+      <div className="px-2 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken grid grid-cols-3 gap-1.5 text-[9px]">
+        <button type="button" onClick={() => setFilterFlag(null)}
+          className={`flex flex-col items-center py-1.5 border transition-colors ${filterFlag === null ? 'bg-brand-900/25 border-brand-600/50 text-brand-300' : 'border-rmpg-700/50 text-rmpg-400 hover:border-rmpg-500 hover:text-rmpg-200'}`}>
+          <strong className={`text-base font-bold leading-tight ${filterFlag === null ? 'text-brand-200' : 'text-rmpg-100'}`}>{stats.total}</strong>
+          <span className="flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> All Records</span>
+        </button>
+        <button type="button" onClick={() => setFilterFlag(f => f === 'critical' ? null : 'critical')}
+          className={`flex flex-col items-center py-1.5 border transition-colors ${filterFlag === 'critical' ? 'bg-red-950/40 border-red-700/60 text-red-300' : 'border-rmpg-700/50 text-rmpg-400 hover:border-red-800/50 hover:text-red-400'}`}>
+          <strong className={`text-base font-bold leading-tight ${filterFlag === 'critical' ? 'text-red-300' : stats.withWarrants + (stats.watchlist > 0 ? stats.watchlist : 0) > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{stats.withWarrants + stats.watchlist}</strong>
+          <span className="flex items-center gap-0.5"><Gavel className="w-2.5 h-2.5" /> Wanted/OFAC</span>
+        </button>
+        <button type="button" onClick={() => setFilterFlag(f => f === 'sex_offender' ? null : 'sex_offender')}
+          className={`flex flex-col items-center py-1.5 border transition-colors ${filterFlag === 'sex_offender' ? 'bg-red-950/40 border-red-700/60 text-red-300' : 'border-rmpg-700/50 text-rmpg-400 hover:border-red-800/50 hover:text-red-400'}`}>
+          <strong className={`text-base font-bold leading-tight ${stats.sexOffenders > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{stats.sexOffenders}</strong>
+          <span className="flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" /> RSO</span>
+        </button>
+        <button type="button" onClick={() => setFilterFlag(f => f === 'probation' ? null : 'probation')}
+          className={`flex flex-col items-center py-1.5 border transition-colors ${filterFlag === 'probation' ? 'bg-orange-950/30 border-orange-700/50 text-orange-300' : 'border-rmpg-700/50 text-rmpg-400 hover:border-orange-800/40 hover:text-orange-400'}`}>
+          <strong className={`text-base font-bold leading-tight ${filterFlag === 'probation' ? 'text-orange-300' : 'text-rmpg-100'}`}>{stats.withProbation}</strong>
+          <span className="flex items-center gap-0.5"><Scale className="w-2.5 h-2.5" /> Supervision</span>
+        </button>
+        <button type="button" onClick={() => setFilterFlag(f => f === 'veteran' ? null : 'veteran')}
+          className={`flex flex-col items-center py-1.5 border transition-colors ${filterFlag === 'veteran' ? 'bg-green-950/30 border-green-700/50 text-green-300' : 'border-rmpg-700/50 text-rmpg-400 hover:border-green-800/40 hover:text-green-400'}`}>
+          <strong className={`text-base font-bold leading-tight ${stats.veterans > 0 ? 'text-green-400' : 'text-rmpg-100'}`}>{stats.veterans}</strong>
+          <span className="flex items-center gap-0.5"><Shield className="w-2.5 h-2.5" /> Veterans</span>
+        </button>
+        <button type="button" onClick={() => setFilterFlag(f => f === 'gang' ? null : 'gang')}
+          className={`flex flex-col items-center py-1.5 border transition-colors ${filterFlag === 'gang' ? 'bg-orange-950/30 border-orange-700/50 text-orange-300' : 'border-rmpg-700/50 text-rmpg-400 hover:border-orange-800/40 hover:text-orange-400'}`}>
+          <strong className="text-base font-bold leading-tight text-rmpg-100">{filteredPersons.filter(p => hasValue(p.gang_affiliation)).length}</strong>
+          <span className="flex items-center gap-0.5"><Users className="w-2.5 h-2.5" /> Gang Affil.</span>
+        </button>
+      </div>
 
-        {/* Sort */}
-        <div className="ml-auto flex items-center gap-1">
-          <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+      {/* Controls bar: sort + group + filter chips */}
+      <div className="border-b border-rmpg-700/40 bg-surface-base">
+        {/* Sort + Group row */}
+        <div className="px-3 py-1 flex items-center gap-2 border-b border-rmpg-700/30">
+          <ArrowUpDown className="w-3 h-3 text-rmpg-500 shrink-0" />
+          <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Sort:</span>
           {(['name', 'dob', 'newest'] as const).map(s => (
             <button key={s} type="button" onClick={() => setSortBy(s)}
               className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
-              {s === 'name' ? 'A-Z' : s === 'dob' ? 'DOB' : 'Newest'}
+              {s === 'name' ? 'A–Z' : s === 'dob' ? 'DOB' : 'Newest'}
+            </button>
+          ))}
+          <span className="w-px h-3 bg-rmpg-700 mx-1" />
+          <Layers className="w-3 h-3 text-rmpg-500 shrink-0" />
+          <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Group:</span>
+          {([['none', 'None'], ['alpha', 'A–Z'], ['risk', 'Risk']] as const).map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setGroupBy(key)}
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${groupBy === key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              {label}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Filter Chips */}
-      <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1.5 text-[9px] flex-wrap">
-        <Filter className="w-3 h-3 text-rmpg-500" />
-        {[
-          { key: null, label: 'All' },
-          { key: 'warrant', label: 'Wanted' },
-          { key: 'sex_offender', label: 'RSO' },
-          { key: 'veteran', label: 'Veteran' },
-          { key: 'gang', label: 'Gang' },
-          { key: 'bolo', label: 'BOLO' },
-        ].map(f => (
-          <button key={f.key || 'all'} type="button" onClick={() => setFilterFlag(f.key)}
-            className={`px-2 py-0.5 font-medium border transition-all ${filterFlag === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-500'}`}>
-            {f.label}
-          </button>
-        ))}
-        {filterFlag && <span className="text-rmpg-500 ml-1">({displayPersons.length} match{displayPersons.length !== 1 ? 'es' : ''})</span>}
+        {/* Filter chips row */}
+        <div className="px-3 py-1 flex items-center gap-1.5 text-[9px] flex-wrap">
+          <Filter className="w-3 h-3 text-rmpg-500 shrink-0" />
+          {[
+            { key: null, label: 'All' },
+            { key: 'warrant', label: 'Wanted' },
+            { key: 'sex_offender', label: 'RSO' },
+            { key: 'watchlist', label: 'OFAC' },
+            { key: 'gang', label: 'Gang' },
+            { key: 'bolo', label: 'BOLO' },
+            { key: 'mental_health', label: 'Mental Health', icon: Brain },
+            { key: 'probation', label: 'Probation/Parole', icon: Scale },
+            { key: 'veteran', label: 'Veteran', icon: Shield },
+          ].map(f => (
+            <button key={f.key || 'all'} type="button" onClick={() => setFilterFlag(f.key)}
+              className={`flex items-center gap-1 px-2 py-0.5 font-medium border transition-all ${filterFlag === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-500'}`}>
+              {f.icon && <f.icon className="w-2.5 h-2.5" />}
+              {f.label}
+            </button>
+          ))}
+          {filterFlag && (
+            <span className="text-rmpg-500 ml-auto">
+              {displayPersons.length} match{displayPersons.length !== 1 ? 'es' : ''}
+              <button type="button" onClick={() => setFilterFlag(null)} className="ml-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-2.5 h-2.5 inline" /></button>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Person List */}
@@ -709,195 +989,54 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-sm text-rmpg-400 font-medium">
-              {searchQuery
-                ? 'No persons match your search.'
-                : showArchived
-                  ? 'No archived person records.'
-                  : 'No person records found.'}
+              {searchQuery ? 'No persons match your search.' : showArchived ? 'No archived person records.' : 'No person records found.'}
             </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery
-                ? 'Try broadening your search terms.'
-                : showArchived
-                  ? 'Records you archive will appear here.'
-                  : 'Click "New Person" to create a record.'}
+              {searchQuery ? 'Try broadening your search terms.' : showArchived ? 'Records you archive will appear here.' : 'Click "New Person" to create a record.'}
             </p>
           </div>
         )}
-        {displayPersons.map((person, idx) => (
-          <div
-            key={person.id}
-            role="listitem"
-            tabIndex={0}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData('application/json', JSON.stringify({ type: 'person', id: person.id, name: `${person.first_name} ${person.last_name}` }));
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
-            onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
-            onContextMenu={(e) => openMenu(e, buildPersonMenu(person))}
-            className={`
-              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
-              ${selectedPerson?.id === person.id
-                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
-              }
-            `}
-            aria-selected={selectedPerson?.id === person.id}
-          >
-            <div className="flex items-center gap-3">
-              {(() => {
-                // No-photo persons get a uniform steel-blue person glyph; the
-                // must-not-miss condition (WARRANT / SOR / GANG / …) shows as a
-                // small corner tab instead of a full colored ring.
-                const cornerBadge = recordCornerBadge(personPostureFlags(person));
-                const photo = person.photo || person.photo_url || person.id_image_url;
-                return (
-                  <RecordAvatar
-                    name={`${person.first_name || ''} ${person.last_name || ''}`}
-                    photoUrl={photo ? authedImageUrl(photo) : undefined}
-                    icon={User}
-                    cornerBadge={cornerBadge}
-                    size={36}
-                  />
-                );
-              })()}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-rmpg-100 truncate">
-                    {person.last_name}, {person.first_name}
-                    {person.middle_name ? ` ${person.middle_name[0]}.` : ''}
-                  </span>
-                  {person.alias_nickname && (
-                    <span className="text-[10px] text-amber-400 italic">aka "{person.alias_nickname}"</span>
-                  )}
-                  {person.is_sex_offender && (
-                    <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50">RSO</span>
-                  )}
-                  {person.watchlist_match && (
-                    <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">OFAC</span>
-                  )}
-                  <WarrantBadge flags={person.flags} size="sm" />
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-rmpg-400">
-                  {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = parseTimestamp(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
-                  {person.gender && <span>{humanizeGender(person.gender)}</span>}
-                  {person.race && <span>{humanizeRace(person.race)}</span>}
-                  {person.phone && (
-                    <span className="flex items-center gap-0.5">
-                      <Phone className="w-2.5 h-2.5" />{formatPhoneDisplay(person.phone)}
-                    </span>
-                  )}
-                </div>
-                {(person.address || person.city) && (
-                  <div className="flex items-center gap-1 mt-0.5 text-[9px] text-rmpg-500 truncate">
-                    <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
-                    {[formatAddressDisplay(person.address), formatAddressDisplay(person.city), person.state?.toUpperCase(), person.zip].filter(Boolean).join(', ')}
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                {(() => {
-                  const securityFlags = person.flags.filter(f => {
-                    const label = typeof f === 'object' ? (f.type || '') : f;
-                    return !isProvenanceFlag(label);
-                  });
-                  if (securityFlags.length === 0) return null;
-                  return (
-                    <div className="flex gap-1">
-                      {securityFlags.slice(0, 2).map((flag, i) => {
-                        const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                        return (
-                          <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
-                        );
-                      })}
-                      {securityFlags.length > 2 && (
-                        <span className="text-[9px] text-rmpg-400">+{securityFlags.length - 2}</span>
-                      )}
-                    </div>
-                  );
-                })()}
-                {/* Phone: only the call action — the rest of the cluster would
-                    eat the whole row width at 44px touch size; row tap opens
-                    the detail panel and long-press has the full menu. */}
-                {person.phone && (
-                  <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
-                    className="md:hidden flex items-center justify-center w-9 h-9 border border-rmpg-700 text-green-400" title={`Call ${formatPhoneDisplay(person.phone)}`}>
-                    <Phone className="w-4 h-4" />
-                  </a>
-                )}
-                <div className="hidden md:flex items-center gap-1">
-                  {/* Quick actions */}
-                  {person.phone && (
-                    <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title={`Call ${formatPhoneDisplay(person.phone)}`}>
-                      <Phone className="w-3 h-3" />
-                    </a>
-                  )}
-                  {person.email && (
-                    <a href={`mailto:${person.email}`} onClick={e => e.stopPropagation()}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400 transition-colors" title={`Email ${person.email}`}>
-                      <Mail className="w-3 h-3" />
-                    </a>
-                  )}
-                  {person.address && (
-                    <a href={`https://maps.google.com/?q=${encodeURIComponent(person.address + (person.city ? ', ' + person.city : '') + (person.state ? ', ' + person.state : ''))}`}
-                      target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Navigate to address">
-                      <Navigation className="w-3 h-3" />
-                    </a>
-                  )}
-                  <span className="w-px h-3 bg-rmpg-700 mx-0.5" />
-                  {(!showArchived || user?.role === 'admin') && (
-                    <button type="button"
-                      onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
-                      title="Edit"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  )}
-                  <button type="button"
-                    onClick={(e) => { e.stopPropagation(); openRecordWindow('person', person.id); }}
-                    className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
-                    title="Open in Window"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                  {(!showArchived || user?.role === 'admin') && (
-                    <button type="button"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                  {(!showArchived || user?.role === 'admin') && (
-                    <button type="button"
-                      onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
-                      title="Archive"
-                    >
-                      <Archive className="w-3 h-3" />
-                    </button>
-                  )}
-                  {showArchived && (
-                    <button type="button"
-                      onClick={(e) => { e.stopPropagation(); handleUnarchive('persons', person.id); }}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
-                      title="Unarchive"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
 
+        {/* Flat list */}
+        {groupBy === 'none' && displayPersons.map((person, idx) => renderPersonRow(person, idx))}
+
+        {/* Grouped: alphabetical */}
+        {groupBy === 'alpha' && groupedPersons && groupedPersons.map(([letter, persons]) => {
+          const key = letter as string;
+          const list = persons as Person[];
+          const collapsed = collapsedGroups.has(key);
+          return (
+            <div key={key}>
+              <button type="button" onClick={() => toggleGroup(key)}
+                className="w-full flex items-center gap-2 px-4 py-1 bg-surface-sunken border-b border-rmpg-700/60 hover:bg-rmpg-700/20 transition-colors">
+                {collapsed ? <ChevronRight className="w-3 h-3 text-rmpg-500" /> : <ChevronDown className="w-3 h-3 text-rmpg-500" />}
+                <span className="text-[10px] font-bold text-brand-400 tracking-widest">{key}</span>
+                <span className="ml-auto text-[9px] text-rmpg-500">{list.length}</span>
+              </button>
+              {!collapsed && list.map((p, i) => renderPersonRow(p, i))}
+            </div>
+          );
+        })}
+
+        {/* Grouped: risk level */}
+        {groupBy === 'risk' && groupedPersons && groupedPersons.map(([label, persons]) => {
+          const key = label as string;
+          const list = persons as Person[];
+          const collapsed = collapsedGroups.has(key);
+          const colorClass = riskTierColors[key] || 'text-rmpg-400 border-rmpg-700/60';
+          return (
+            <div key={key}>
+              <button type="button" onClick={() => toggleGroup(key)}
+                className={`w-full flex items-center gap-2 px-4 py-1.5 border-b transition-colors ${colorClass}`}>
+                {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                <Shield className="w-3 h-3" />
+                <span className="text-[10px] font-bold tracking-wider uppercase">{key}</span>
+                <span className="ml-auto text-[9px] opacity-70">{list.length} record{list.length !== 1 ? 's' : ''}</span>
+              </button>
+              {!collapsed && list.map((p, i) => renderPersonRow(p, i))}
+            </div>
+          );
+        })}
       </div>
 
       {/* Person Form Modal (portals to body) */}
@@ -955,7 +1094,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
-    selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
+    selectedPerson, setSelectedPerson, fetchPersons, personAlerts, ssnRevealed, setSSNRevealed,
     linkRefreshKey, openLinkModal,
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
@@ -1024,7 +1163,25 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {hasSpecialFlags && (
             <>
               {selectedPerson.flags.map((flag, i) => {
-                const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                const label = typeof flag === 'object' ? ((flag as { type?: string }).type || 'FLAG') : flag;
+                const provLabel = PROVENANCE_FLAG_LABELS[label.toLowerCase()];
+                if (provLabel) {
+                  return (
+                    <RecordBadge
+                      key={`${label}-${i}`}
+                      tone="gray"
+                      glow={false}
+                      title={`Source: ${provLabel}`}
+                      onRemove={async () => {
+                        await apiFetch(`/records/persons/${selectedPerson.id}/flags/${encodeURIComponent(label)}`, { method: 'DELETE' });
+                        setSelectedPerson(prev => prev ? { ...prev, flags: prev.flags.filter((f) => (typeof f === 'object' ? (f as { type?: string }).type : f) !== label) } : prev);
+                        fetchPersons();
+                      }}
+                    >
+                      {provLabel}
+                    </RecordBadge>
+                  );
+                }
                 return (
                   <RecordBadge key={`${label}-${i}`} flag={label} title={humanizeFlag(label)}>
                     {label}
@@ -1046,10 +1203,33 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         )}
       </div>
 
+      {/* Section Jump Navigator */}
+      <div className="border-b border-rmpg-700/50 bg-surface-sunken px-2 py-1 flex items-center gap-1 overflow-x-auto scrollbar-dark flex-shrink-0">
+        {[
+          { id: 'sec-demographics', label: 'Demo' },
+          { id: 'sec-physical', label: 'Physical' },
+          { id: 'sec-contact', label: 'Contact' },
+          { id: 'sec-identification', label: 'ID' },
+          { id: 'sec-legal', label: 'Legal' },
+          { id: 'sec-criminal', label: 'Criminal' },
+          { id: 'sec-health', label: 'Health' },
+          { id: 'sec-officer-safety', label: 'Safety' },
+          { id: 'sec-notes', label: 'Notes' },
+          { id: 'sec-files', label: 'Files' },
+        ].map(s => (
+          <button key={s.id} type="button"
+            onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="shrink-0 px-2 py-0.5 text-[9px] font-medium border border-rmpg-700/50 text-rmpg-500 hover:text-brand-300 hover:border-brand-600/50 transition-colors whitespace-nowrap">
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       {/* Scrollable Detail Sections */}
       <div className="flex-1 overflow-auto p-2 space-y-1">
 
         {/* ── Demographics ─────────────────────────── */}
+        <div id="sec-demographics" />
         <CollapsibleSection title="Demographics" icon={User} defaultOpen>
           <FieldGrid cols={3}>
             {selectedPerson.alias_nickname && <RecordField label="Alias / AKA" value={selectedPerson.alias_nickname} />}
@@ -1067,6 +1247,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         </CollapsibleSection>
 
         {/* ── Physical Description ─────────────────── */}
+        <div id="sec-physical" />
         <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
           <FieldGrid cols={3}>
             <RecordField label="Height" value={selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height} />
@@ -1105,6 +1286,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         </CollapsibleSection>
 
         {/* ── Contact & Address ────────────────────── */}
+        <div id="sec-contact" />
         <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
           <FieldGrid cols={2}>
             <RecordField label="Phone" value={selectedPerson.phone ? formatPhoneDisplay(selectedPerson.phone) : undefined} icon={Phone} copyable />
@@ -1129,6 +1311,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         )}
 
         {/* ── Identification ──────────────────────── */}
+        <div id="sec-identification" />
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
           {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url || selectedPerson.dl_restrictions || selectedPerson.dl_endorsements || selectedPerson.dl_issue_date) ? (
             <div className="flex gap-3">
@@ -1247,6 +1430,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Legal & Associations (conditional) ──── */}
         {(selectedPerson.probation_parole || selectedPerson.known_associates || hasValue(selectedPerson.gang_affiliation) || selectedPerson.alias_dob) && (
+          <><div id="sec-legal" />
           <CollapsibleSection title="Legal & Associations" icon={Shield} accent="amber">
             <FieldGrid cols={2}>
               {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
@@ -1257,7 +1441,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.known_associates && (
               <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.known_associates}</span></div>
             )}
-          </CollapsibleSection>
+          </CollapsibleSection></>
         )}
 
         {/* ── Emergency Contact (conditional) ─────── */}
@@ -1282,6 +1466,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Health & Medical (conditional) ────────── */}
         {(selectedPerson.disability_flags || selectedPerson.mental_health_flags || selectedPerson.substance_abuse || selectedPerson.medication_notes) && (
+          <><div id="sec-health" />
           <CollapsibleSection title="Health & Medical" icon={AlertTriangle}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {renderInfoRow('Disabilities', selectedPerson.disability_flags)}
@@ -1291,7 +1476,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.medication_notes && (
               <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.medication_notes}</span></div>
             )}
-          </CollapsibleSection>
+          </CollapsibleSection></>
         )}
 
         {/* ── Custody / Intake (conditional) ─────────── */}
@@ -1319,9 +1504,10 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Officer Safety / Caution (conditional)  */}
         {selectedPerson.caution_flags && (
+          <><div id="sec-officer-safety" />
           <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle} accent="red">
             <p className="text-xs text-red-200/90 leading-relaxed break-words">{selectedPerson.caution_flags}</p>
-          </CollapsibleSection>
+          </CollapsibleSection></>
         )}
 
         {/* ── Last Known Location (conditional) ────── */}
@@ -1336,9 +1522,10 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Notes (conditional) ──────────────────── */}
         {selectedPerson.notes && (
+          <><div id="sec-notes" />
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
             <p className="text-xs text-rmpg-200 leading-relaxed break-words whitespace-pre-wrap">{selectedPerson.notes}</p>
-          </CollapsibleSection>
+          </CollapsibleSection></>
         )}
 
         {/* ── Record Metadata ─────────────────────── */}
@@ -1351,6 +1538,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         </CollapsibleSection>
 
         {/* ── Criminal History (standalone component) ─ */}
+        <div id="sec-criminal" />
         <CriminalHistorySection
           personId={selectedPerson.id}
           personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
@@ -1383,6 +1571,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         />
 
         {/* ── File Attachments ─────────────────────── */}
+        <div id="sec-files" />
         <div className="panel-beveled p-3 bg-surface-base">
           <FileAttachments entityType="person" entityId={selectedPerson.id} />
         </div>
@@ -1414,6 +1603,145 @@ export default function PersonsTab(props: PersonsTabProps) {
         </div>
       )}
     </>
+  );
+}
+
+// ════════════════════════════════════════════════════
+// PERSONS MODULE DASHBOARD (shown in right panel when nothing is selected)
+// ════════════════════════════════════════════════════
+
+export function PersonsDashboard({ persons, onSelect }: { persons: Person[]; onSelect: (p: Person) => void }) {
+  const criticalPersons = React.useMemo(() => {
+    return persons
+      .filter(p => p.is_sex_offender || p.watchlist_match || p.flags.some(f => (typeof f === 'string' ? f : f.type).toLowerCase().includes('warrant')))
+      .slice(0, 6);
+  }, [persons]);
+
+  const recentPersons = React.useMemo(() => {
+    return [...persons]
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+      .slice(0, 5);
+  }, [persons]);
+
+  const stats = React.useMemo(() => ({
+    total: persons.length,
+    withWarrants: persons.filter(p => p.flags.some(f => (typeof f === 'string' ? f : f.type).toLowerCase().includes('warrant'))).length,
+    sexOffenders: persons.filter(p => p.is_sex_offender).length,
+    veterans: persons.filter(p => p.is_veteran).length,
+    watchlist: persons.filter(p => !!p.watchlist_match).length,
+    withProbation: persons.filter(p => hasValue(p.probation_parole)).length,
+  }), [persons]);
+
+  const today = new Date();
+  const weekAgo = new Date(today.getTime() - 7 * 24 * 3600 * 1000);
+  const newThisWeek = persons.filter(p => {
+    if (!p.created_at) return false;
+    const d = parseTimestamp(p.created_at);
+    return !isNaN(d.getTime()) && d >= weekAgo;
+  }).length;
+
+  return (
+    <div className="h-full overflow-auto p-4 space-y-4 scrollbar-dark">
+      {/* Module title */}
+      <div className="flex items-center gap-2">
+        <Users className="w-5 h-5 text-brand-400" />
+        <h2 className="text-sm font-bold text-rmpg-100 uppercase tracking-widest">Subject File — Overview</h2>
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Total Records', value: stats.total, color: 'text-brand-300' },
+          { label: 'Active Warrants', value: stats.withWarrants, color: stats.withWarrants > 0 ? 'text-red-400' : 'text-rmpg-400' },
+          { label: 'Reg. Sex Off.', value: stats.sexOffenders, color: stats.sexOffenders > 0 ? 'text-red-400' : 'text-rmpg-400' },
+          { label: 'OFAC/Watchlist', value: stats.watchlist, color: stats.watchlist > 0 ? 'text-red-400' : 'text-rmpg-400' },
+          { label: 'Under Superv.', value: stats.withProbation, color: stats.withProbation > 0 ? 'text-orange-400' : 'text-rmpg-400' },
+          { label: 'Added (7 Days)', value: newThisWeek, color: newThisWeek > 0 ? 'text-green-400' : 'text-rmpg-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-surface-sunken border border-rmpg-700/60 p-2.5 flex flex-col gap-0.5">
+            <span className={`text-xl font-bold leading-none ${s.color}`}>{s.value}</span>
+            <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Hot list */}
+      {criticalPersons.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+            <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Priority Subjects</span>
+          </div>
+          <div className="space-y-1">
+            {criticalPersons.map(p => {
+              const photo = p.photo || p.photo_url || p.id_image_url;
+              const warrantFlags = p.flags.filter(f => (typeof f === 'string' ? f : f.type).toLowerCase().includes('warrant'));
+              return (
+                <button key={p.id} type="button" onClick={() => onSelect(p)}
+                  className="w-full flex items-center gap-3 p-2 bg-red-950/20 border border-red-900/40 hover:border-red-700/60 hover:bg-red-950/30 transition-colors text-left">
+                  <RecordAvatar
+                    name={`${p.first_name || ''} ${p.last_name || ''}`}
+                    photoUrl={photo ? authedImageUrl(photo) : undefined}
+                    icon={User}
+                    cornerBadge={recordCornerBadge(personPostureFlags(p))}
+                    size={28}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-rmpg-100 truncate">{p.last_name}, {p.first_name}</div>
+                    <div className="flex gap-1 mt-0.5 flex-wrap">
+                      {p.is_sex_offender && <span className="text-[8px] font-bold px-1 bg-red-900/60 text-red-300 border border-red-700/40">RSO</span>}
+                      {p.watchlist_match && <span className="text-[8px] font-bold px-1 bg-red-900/80 text-red-200 border border-red-500/50">OFAC</span>}
+                      {warrantFlags.slice(0, 1).map((f, i) => (
+                        <span key={i} className="text-[8px] font-bold px-1 bg-amber-900/60 text-amber-300 border border-amber-700/40">
+                          {humanizeFlag(typeof f === 'string' ? f : f.type)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recently added */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-2">
+          <Clock className="w-3.5 h-3.5 text-brand-400" />
+          <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider">Recently Added</span>
+        </div>
+        <div className="space-y-1">
+          {recentPersons.map(p => (
+            <button key={p.id} type="button" onClick={() => onSelect(p)}
+              className="w-full flex items-center gap-3 p-2 bg-surface-sunken border border-rmpg-700/50 hover:border-brand-600/50 hover:bg-rmpg-700/20 transition-colors text-left">
+              <User className="w-4 h-4 text-rmpg-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-rmpg-100 truncate">{p.last_name}, {p.first_name}</div>
+                {p.created_at && (
+                  <div className="text-[9px] text-rmpg-500">{(() => {
+                    const d = parseTimestamp(p.created_at!);
+                    if (isNaN(d.getTime())) return '';
+                    const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+                    if (diff < 60) return `${diff}s ago`;
+                    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                    return `${Math.floor(diff / 86400)}d ago`;
+                  })()}</div>
+                )}
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
+            </button>
+          ))}
+          {recentPersons.length === 0 && (
+            <p className="text-[10px] text-rmpg-600 text-center py-4">No records yet.</p>
+          )}
+        </div>
+      </div>
+
+      <p className="text-[9px] text-rmpg-700 text-center pt-2">Select a record from the list to view details.</p>
+    </div>
   );
 }
 

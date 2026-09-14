@@ -6445,6 +6445,17 @@ export default function DispatchPage() {
                           finally { setNarrativeSaving(false); }
                         }}
                       />
+                      <NarrativeAssist
+                        notes={selectedCall?.description || editData?.description || ''}
+                        incidentType={selectedCall?.incident_type || editData?.incident_type || ''}
+                        locationAddress={selectedCall?.location || editData?.location_address || ''}
+                        mode="dispatch_narrative"
+                        existingText={callNarrative}
+                        onAccept={(narrative) => {
+                          setCallNarrative(narrative);
+                          updateEditField('action_taken', narrative);
+                        }}
+                      />
                       <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1.5">
                         <span>Auto-saves on blur · Official Incident Summary & Action Taken of record</span>
                         {selectedCall?.status === 'cleared' && callNarrative.trim() && (

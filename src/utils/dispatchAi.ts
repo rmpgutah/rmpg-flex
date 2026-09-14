@@ -198,39 +198,70 @@ export async function suggestUnits(
 
 // ─── narrativeAssist ────────────────────────────────────────
 
-const NARRATIVE_SYSTEM =
-  'You are a veteran police report writer. Given incident notes, incident type, ' +
-  'and location, produce a concise, objective, plain-language incident narrative ' +
-  'suitable for an official police report. Use professional tone, avoid speculation, ' +
-  'include relevant details but omit subjective judgments. Output ONLY a plain-text ' +
-  'narrative paragraph. No JSON, no formatting, no preamble.';
+type NarrativeContextType = 'incident' | 'serve_attempt' | 'dispatch_narrative';
+
+const NARRATIVE_SYSTEM_MAP: Record<NarrativeContextType, string> = {
+  incident:
+    'You are a veteran police report writer. Given incident notes, incident type, ' +
+    'and location, produce a concise, objective, plain-language incident narrative ' +
+    'suitable for an official police report. Use professional tone, avoid speculation, ' +
+    'include relevant details but omit subjective judgments. Write in first-person past ' +
+    'tense (I observed, I contacted, I attempted). Output ONLY a plain-text narrative ' +
+    'paragraph. No JSON, no formatting, no preamble.',
+
+  serve_attempt:
+    'You are a professional process server writing an official service-attempt narrative ' +
+    'for a court-admissible affidavit of service or non-service. Given structured context ' +
+    '(subject name, address, document type, attempt type, and officer field notes), ' +
+    'produce a thorough, chronological, first-person past-tense narrative (I arrived, ' +
+    'I observed, I contacted, I was met by). Include: time of arrival, property observations, ' +
+    'contact or non-contact details, description of any person encountered (name if given, ' +
+    'demeanor), exact disposition of the documents, and any safety or access concerns. ' +
+    'Language must be precise, objective, and suitable for filing with the court. ' +
+    'Output ONLY the plain-text narrative. No JSON, no headings, no preamble.',
+
+  dispatch_narrative:
+    'You are a veteran police report writer drafting an official Call for Service narrative ' +
+    'and Action Taken summary. Given call context and notes, produce a detailed, chronological, ' +
+    'first-person past-tense incident narrative (I responded, I made contact, I observed). ' +
+    'Include: initial response and arrival observations, all persons contacted, actions taken, ' +
+    'evidence or documents collected, final disposition, and any follow-up required. ' +
+    'Use professional law enforcement language. Output ONLY a plain-text narrative. ' +
+    'No JSON, no headings, no preamble.',
+};
 
 export async function narrativeAssist(
   ai: Ai,
   notes: string,
   incidentType?: string,
   locationAddress?: string,
+  contextType: NarrativeContextType = 'incident',
 ): Promise<{ narrative: string; provider: string; fallback: boolean }> {
+  const systemPrompt = NARRATIVE_SYSTEM_MAP[contextType] ?? NARRATIVE_SYSTEM_MAP.incident;
+
   const user =
     `Incident type: ${incidentType ?? 'N/A'}\n` +
     `Location: ${locationAddress ?? 'N/A'}\n` +
-    `Notes: ${notes.slice(0, 2000)}`;
+    `Notes: ${notes.slice(0, 3000)}`;
+
+  // Serve-attempt and dispatch narratives need more room — they cover more ground.
+  const maxTokens = contextType === 'incident' ? 600 : 900;
 
   try {
     const res = (await ai.run(LLM_MODEL, {
       messages: [
-        { role: 'system', content: NARRATIVE_SYSTEM },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: user },
       ],
-      max_tokens: 600,
+      max_tokens: maxTokens,
       temperature: 0.3,
     } as never)) as { response?: string };
-    const narrative = (res?.response || '').trim().slice(0, 3000);
+    const narrative = (res?.response || '').trim().slice(0, 5000);
     if (narrative.length >= 20) {
       return { narrative, provider: 'workers-ai', fallback: false };
     }
   } catch (err) {
-    log.error('narrativeAssist LLM failed', {}, err);
+    log.error('narrativeAssist LLM failed', { contextType }, err);
   }
 
   return {

@@ -1043,6 +1043,33 @@ records.post('/persons/:id/unarchive', async (c) => {
   }
 });
 
+// DELETE /records/persons/:id/flags/:flag — remove a single string entry from persons.flags.
+// Used by the UI to clear provenance tags (dl_ocr_imported, aos_id_capture) and any
+// plain-string flag the operator wants to retract.
+records.delete('/persons/:id/flags/:flag', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const flagToRemove = c.req.param('flag');
+    const person = await queryFirst<{ id: number; flags: string }>(db, 'SELECT id, flags FROM persons WHERE id = ?', id);
+    if (!person) return c.json({ error: 'Person not found' }, 404);
+
+    const flags = (() => {
+      try { const p = JSON.parse(person.flags || '[]'); return Array.isArray(p) ? p : []; } catch { return []; }
+    })();
+    const filtered = flags.filter((f: unknown) =>
+      typeof f === 'string' ? f !== flagToRemove : (f as { type?: string }).type !== flagToRemove
+    );
+    if (filtered.length === flags.length) return c.json({ message: 'Flag not found' }, 404);
+
+    await execute(db, 'UPDATE persons SET flags = ? WHERE id = ?', JSON.stringify(filtered), id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /records/persons/:id/flags/:flag failed:', err);
+    return dbErrorResponse(c, err, 'Failed to remove flag');
+  }
+});
+
 // ── Persons sub-resource endpoints ──
 
 // GET /records/persons/:id/system-history — warrants, incidents, calls, citations for a person.
