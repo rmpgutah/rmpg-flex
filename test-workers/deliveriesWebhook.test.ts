@@ -142,4 +142,39 @@ describe('POST /api/deliveries/webhook', () => {
     const ext = await env.DB.prepare(`SELECT delivery_time_window FROM calls_for_service_ext WHERE id = ?`).bind(first.call_id).first<{ delivery_time_window: string }>();
     expect(ext?.delivery_time_window).toBe('11am-1pm');
   });
+
+  it('resolves a race: two concurrent webhooks for the same slot_id never 500 and converge on one call', async () => {
+    const request = async () => app.request('/api/deliveries/webhook', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-rmpg-flex-hmac-sha256': sign(VALID_BODY, SECRET) },
+      body: VALID_BODY,
+    }, await envWithSecret());
+
+    const [resA, resB] = await Promise.all([request(), request()]);
+
+    expect(resA.status).not.toBe(500);
+    expect(resB.status).not.toBe(500);
+    expect([200, 201]).toContain(resA.status);
+    expect([200, 201]).toContain(resB.status);
+
+    const jsonA = await resA.json() as { ok: boolean; call_id: number };
+    const jsonB = await resB.json() as { ok: boolean; call_id: number };
+    expect(jsonA.ok).toBe(true);
+    expect(jsonB.ok).toBe(true);
+    // Both racers must converge on the same canonical call — a duplicate
+    // webhook delivery must never leave two calls dispatchable for one slot.
+    expect(jsonA.call_id).toBe(jsonB.call_id);
+
+    const rows = await env.DB.prepare(
+      `SELECT COUNT(*) as n FROM calls_for_service c
+         JOIN calls_for_service_ext e ON e.id = c.id
+        WHERE e.delivery_slot_id = 42`,
+    ).first<{ n: number }>();
+    expect(rows?.n).toBe(1);
+
+    // No orphaned calls_for_service row (one that lost the race but was
+    // never cleaned up) should remain either.
+    const totalCalls = await env.DB.prepare(`SELECT COUNT(*) as n FROM calls_for_service`).first<{ n: number }>();
+    expect(totalCalls?.n).toBe(1);
+  });
 });
