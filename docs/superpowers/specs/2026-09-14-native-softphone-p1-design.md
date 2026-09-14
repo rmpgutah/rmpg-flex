@@ -77,7 +77,7 @@ Voicemail and Call History untouched; the Softphone card is replaced.
 | `SoftphoneProvider` (context, mounted once in `Layout`) | Owns the single `Device`. State: `offline → registering → ready → incoming \| in_call \| call_waiting → error`, plus `unlinked`. Token refresh at 55 min, deferred while a call is active. Heartbeat every 30 s while registered. Emits archive events. |
 | `useSoftphone()` | Read state + actions: `dial`, `answer`, `reject`, `hangup`, `mute`, `hold`, `sendDigits`, `transferBlind`, `transferWarm`, `addParty`, `recording`, `duress`, `setPresence`. |
 | `useDialerStream()` | One `EventSource` to `/api/dialer/stream`; dispatches `call_status`, `duress_alert`, `presence`, `alarm`. Reconnects with backoff. |
-| `SoftphoneCard` | Keypad, number display, contextual primary button (Call / Answer+Reject / Hang up), Mute, Hold/Resume, Record, Dial/DTMF toggle, Transfer (blind / warm picker), Conference add, caller-ID block, audio-device picker, live call timer, error line. |
+| `SoftphoneCard` | Keypad, number display, contextual primary button (Call / Answer+Reject / Hang up), Mute, Hold/Resume, Record, Dial/DTMF toggle, Transfer (blind / warm picker), Conference add, caller-ID block, live call timer, error line. (Audio input/output device picker is deferred to P2.) |
 | `IncomingCallToast`, `DuressBanner` | Global, in `Layout`. Click → `/dialer-connect`. Ring tone via existing `voiceAlerts`. |
 | `LinkDialerGate` | Shown on `unlinked`: explanation + "Sign in with Dialer". |
 | `PresenceBar` | My status → `PUT /api/dialer-connect/presence` (existing) and heartbeat; team list from `/api/dialer/presence` for warm transfer. |
