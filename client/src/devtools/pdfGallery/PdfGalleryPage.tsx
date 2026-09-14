@@ -239,7 +239,7 @@ export default function PdfGalleryPage() {
         </p>
 
         <div style={styles.variantBar}>
-          {REQUIRED_VARIANTS.map((v) => (
+          {(entry?.fixtures.map((f) => f.variant) ?? REQUIRED_VARIANTS).map((v) => (
             <button
               key={v}
               type="button"
