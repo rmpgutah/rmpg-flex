@@ -45,7 +45,7 @@ import DlScanImportModal from '../components/DlScanImportModal';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 // Tab hooks + components
-import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
+import { usePersonsTab, PersonsTabList, PersonsTabDetail, PersonsDashboard, mapDbPerson } from './records/PersonsTab';
 import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from './records/VehiclesTab';
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
@@ -906,6 +906,9 @@ export default function RecordsPage() {
 
       {/* Active TabDetail Content */}
       <div className="records-detail flex-1 overflow-hidden scrollbar-dark">
+        {activeTab === 'persons' && !personsState.selectedPerson && (
+          <PersonsDashboard persons={persons} onSelect={personsState.setSelectedPerson} />
+        )}
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
