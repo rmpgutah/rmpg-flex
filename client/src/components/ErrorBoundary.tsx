@@ -8,7 +8,7 @@ import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   CHUNK_RELOAD_KEY,
   CHUNK_RELOAD_WINDOW_MS,
-  isChunkLoadError,
+  isStaleChunkError,
   repairAllPoisonedChunksInBrowser,
   evictPoisonedChunkCachesInBrowser,
 } from '../utils/chunkRetry';
@@ -47,7 +47,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     // references old chunks). This is a safety net — lazyRetry normally reloads
     // before the boundary is hit. Uses the same key/window as chunkRetry.ts so
     // the two guards are always in sync (avoids duplicate hardcoded strings).
-    if (isChunkLoadError(error)) {
+    if (isStaleChunkError(error)) {
       const lastReload = sessionStorage.getItem(CHUNK_RELOAD_KEY);
       const lastAt = lastReload ? parseInt(lastReload, 10) : null;
       if (lastAt === null || Number.isNaN(lastAt) || Date.now() - lastAt > CHUNK_RELOAD_WINDOW_MS) {
@@ -126,7 +126,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
 
     const err = this.state.error;
-    if (err && isChunkLoadError(err)) {
+    if (err && isStaleChunkError(err)) {
       this.recoverThenReload(err, /* purgeCaches */ true);
       return;
     }
@@ -151,7 +151,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       // When a lazy chunk fails to load and the device is offline, "Reload Page"
       // would only fail again. Show a connectivity-specific recovery screen instead.
-      const isOfflineChunkFailure = isOffline && isChunkLoadError(error ?? new Error());
+      const isOfflineChunkFailure = isOffline && isStaleChunkError(error ?? new Error());
       if (isOfflineChunkFailure) {
         return (
           <div className="flex items-center justify-center min-h-[400px] p-8">
