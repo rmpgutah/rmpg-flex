@@ -638,6 +638,7 @@ export interface CallPdfData {
   hazard_notes?: string;       // from linked property JOIN — triggers posture band when present
   post_orders?: string;        // from linked property JOIN
   gate_code?: string;          // from linked property JOIN
+  alarm_code?: string;         // from linked property JOIN
   // Incident details
   num_subjects?: number;
   num_victims?: number;
@@ -2374,6 +2375,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'BWC ACTIVE', on: !!data.body_camera_active },
       { label: 'PHOTOS', on: !!data.photos_taken },
       { label: 'EVIDENCE', on: !!data.evidence_collected },
+      { label: 'TRESPASS', on: !!data.trespass_issued },
     ];
     if (items.some(i => i.on)) {
       const margin = LAYOUT.PAGE_MARGIN;
@@ -2723,17 +2725,6 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
 
-    // Service Instructions — rendered as a caution block so the dispatcher's / requestor's
-    // specific on-site guidance is impossible to miss when the form is read in printed form.
-    if (data.service_instructions && data.service_instructions.trim()) {
-      y = checkPageBreak(doc, y, 20, prio);
-      y = addCautionBlock(
-        doc,
-        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
-        lx, y, ffw,
-      );
-    }
-
     // (Process Service Details is rendered as a top-level section below, so it
     //  also appears for civil_paper_service / process_service calls — not only
     //  pso_client_request. See the "Process Service Details" block after this.)
@@ -2783,10 +2774,25 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           { label: 'Ops Playbook', value: Array.isArray(data.notes) && data.notes.some((n) => /^OPS$/i.test(String((n as { author?: string }).author || ''))) ? 'Filed' : '' },
         ], y);
       }
-      if (data.deadline) {
-        y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
+      if ((data as any).court_name || data.jurisdiction || data.deadline) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Court', value: (data as any).court_name || data.jurisdiction || '' },
+          { label: 'Deadline', value: fmtTimestamp(data.deadline) },
+          { label: '', value: '' },
+        ], y);
       }
       y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
+    }
+    // Service Instructions — caution block rendered for ALL process-service call types
+    // (pso_client_request, civil_paper_service, process_service). Previously gated inside
+    // the pso_client_request block alone, so serve-intake calls never printed it.
+    if (data.service_instructions && data.service_instructions.trim()) {
+      y = checkPageBreak(doc, y, 20, prio);
+      y = addCautionBlock(
+        doc,
+        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
+        lx, y, ffw,
+      );
     }
   }
 
@@ -2840,6 +2846,35 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       y = maxY;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Property / Access Information — gate_code, alarm_code, post_orders, hazard_notes
+  // These arrive via the property JOIN on the call record but were never rendered
+  // in the Call PDF (they only appeared in generatePropertyReport). An officer
+  // responding to a property with an alarm code or standing hazard note needs that
+  // information on the printed run sheet, not just on the posture band chip.
+  {
+    const hasAccess = !!(data.gate_code || (data as any).alarm_code || data.post_orders || data.hazard_notes);
+    if (hasAccess) {
+      y = checkPageBreak(doc, y, 20, prio);
+      const propSec = openAutoSection(doc, 'Property / Access Information', y); y = propSec.contentY;
+      if (data.gate_code || (data as any).alarm_code) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Gate Code', value: data.gate_code || '' },
+          { label: 'Alarm Code', value: (data as any).alarm_code || '' },
+          { label: '', value: '' },
+        ], y);
+      }
+      if (data.post_orders && data.post_orders.trim()) {
+        y = checkPageBreak(doc, y, 14, prio);
+        y = addFieldPair(doc, 'Post Orders', data.post_orders.trim(), lx, y, ffw);
+      }
+      if (data.hazard_notes && data.hazard_notes.trim()) {
+        y = checkPageBreak(doc, y, 14, prio);
+        y = addCautionBlock(doc, `HAZARD — ${data.hazard_notes.trim()}`, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, propSec.sectionY, y, undefined, propSec.sectionPage);
+    }
   }
 
   // CFS address-location map — SWAT location-analysis treatment (2026-06-11):
@@ -2927,7 +2962,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const scFields = [
       { label: 'Weather', value: weatherLabel },
       { label: 'Lighting', value: data.lighting_conditions || (snap?.lighting ?? '') },
-      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'N/A' : data.weapons_involved },
+      { label: 'Weapons', value: (() => { const w = (data.weapons_involved || '').trim(); return (!w || w === '0' || /^(none|false|no)$/i.test(w)) ? 'N/A' : w; })() },
       { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
     ];
     let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
