@@ -53,6 +53,23 @@ import { formatServiceAddress, flattenServiceAddress } from './formatServiceAddr
 
 // ── Data Interfaces ──────────────────────────────────────────
 
+/** Rich photo attachment — callers that don't have metadata can pass a plain string instead. */
+export interface PhotoWithMeta {
+  src: string; // base64 data URI
+  gpsLat?: number | null;
+  gpsLng?: number | null;
+  timestamp?: string | null; // ISO 8601 or display string
+}
+
+export type PhotoInput = string | PhotoWithMeta;
+
+export interface ChainOfCustodyEvent {
+  ts: string;
+  event: string;
+  actor?: string | null;
+  detail?: string | null;
+}
+
 export interface AffidavitOfServiceData {
   courtName: string;
   caseNumber: string;
@@ -69,8 +86,9 @@ export interface AffidavitOfServiceData {
   gpsLat: number;
   gpsLng: number;
   substituteInfo?: { name: string; relationship: string; description: string };
-  photos?: string[]; // base64 data URIs
+  photos?: PhotoInput[];
   signature?: string; // base64 canvas data URI
+  chainOfCustody?: ChainOfCustodyEvent[];
 }
 
 export interface AffidavitOfNonServiceData {
@@ -90,7 +108,7 @@ export interface AffidavitOfNonServiceData {
     gpsLng: number;
     result: string;
     notes: string;
-    photos?: string[];
+    photos?: PhotoInput[];
   }>;
   skipTraces?: Array<{
     date: string;
@@ -133,6 +151,8 @@ export interface NoticeOfAttemptData {
   documentType: string;
   clientName?: string;
   attorneyName?: string;
+  attorneyPhone?: string;
+  attorneyEmail?: string;
   attempts: Array<{
     number: number;
     date: string;
@@ -291,58 +311,72 @@ function addNotarySection(doc: jsPDF, y: number, heading = 'JURAT'): number {
 
 // ── Helper: Embed photos ─────────────────────────────────────
 
-function addPhotos(doc: jsPDF, photos: string[], y: number, label?: string): number {
+function addPhotos(doc: jsPDF, photos: PhotoInput[], y: number, label?: string): number {
   if (!photos || photos.length === 0) return y;
 
   const cw = getContentWidth(doc);
   const lx = getLeftX();
-  const imgMaxW = cw - 2 * SPACING.CONTENT_INSET;
-  const imgMaxH = 60; // Max attachment image height
-  const photosPerPage = 3;
+  // 2-up grid: two photos side-by-side with a small gutter
+  const GUTTER = 3;
+  const imgW = (cw - GUTTER) / 2;
+  const imgH = 52; // shorter than single-column height since photos are narrower
+  const CAPTION_H = 8; // reserved below each image for GPS / timestamp text
+  const CELL_H = imgH + CAPTION_H;
 
-  for (let i = 0; i < photos.length; i++) {
-    if (i > 0 && i % photosPerPage === 0) {
-      // Already handled by checkPageBreak
-    }
-
-    y = checkPageBreak(doc, y, imgMaxH + SPACING.LG + 6);
-
-    if (label && i === 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(label.toUpperCase(), lx, y + 2);
-      y += 4;
-    }
-
-    try {
-      // Determine format from data URI
-      const format = photos[i].includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(photos[i], format, lx, y, imgMaxW, imgMaxH);
-
-      // Border around image
-      doc.setDrawColor(...COLOR.BORDER_FIELD);
-      doc.setLineWidth(BORDER.FIELD);
-      doc.rect(lx, y, imgMaxW, imgMaxH);
-    } catch {
-      // Fallback placeholder
-      doc.setDrawColor(...COLOR.BORDER_FIELD);
-      doc.setLineWidth(BORDER.FIELD);
-      doc.rect(lx, y, imgMaxW, imgMaxH);
-      doc.setFont(PDF_VALUE_FONT, 'normal');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('[Image unavailable]', lx + imgMaxW / 2, y + imgMaxH / 2, { align: 'center' });
-    }
-
-    // Caption
-    doc.setFont(PDF_VALUE_FONT, 'normal');
+  if (label) {
+    y = checkPageBreak(doc, y, CELL_H + 6);
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text(`Photo ${i + 1}`, lx, y + imgMaxH + 3);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(label.toUpperCase(), lx, y + 2);
+    y += 5;
+  }
+
+  for (let i = 0; i < photos.length; i += 2) {
+    y = checkPageBreak(doc, y, CELL_H + 4);
+    const pair = [photos[i], photos[i + 1]].filter(Boolean) as PhotoInput[];
+
+    for (let col = 0; col < pair.length; col++) {
+      const px = lx + col * (imgW + GUTTER);
+      const photo = pair[col];
+      const src = typeof photo === 'string' ? photo : photo.src;
+      const gpsLat = typeof photo === 'string' ? null : (photo.gpsLat ?? null);
+      const gpsLng = typeof photo === 'string' ? null : (photo.gpsLng ?? null);
+      const timestamp = typeof photo === 'string' ? null : (photo.timestamp ?? null);
+
+      try {
+        const format = src.includes('image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(src, format, px, y, imgW, imgH);
+      } catch {
+        doc.setDrawColor(...COLOR.BORDER_FIELD);
+        doc.setLineWidth(BORDER.FIELD);
+        doc.rect(px, y, imgW, imgH);
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setTextColor(...COLOR.TEXT_TERTIARY);
+        doc.text('[Image unavailable]', px + imgW / 2, y + imgH / 2, { align: 'center' });
+      }
+
+      // Border
+      doc.setDrawColor(...COLOR.BORDER_FIELD);
+      doc.setLineWidth(BORDER.FIELD);
+      doc.rect(px, y, imgW, imgH);
+
+      // Caption: photo number + GPS coord (if present) + timestamp (if present)
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL - 0.5);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      const photoNum = `Photo ${i + col + 1}`;
+      const gpsPart = gpsLat != null && gpsLng != null
+        ? `  GPS: ${gpsLat.toFixed(5)}, ${gpsLng.toFixed(5)}`
+        : '';
+      const tsPart = timestamp ? `  ${timestamp}` : '';
+      const captionLine = `${photoNum}${gpsPart}${tsPart}`;
+      doc.text(doc.splitTextToSize(captionLine, imgW), px, y + imgH + 3);
+    }
 
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    y += imgMaxH + 6;
+    y += CELL_H;
   }
 
   return y;
@@ -462,6 +496,64 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     y = sec.contentY;
     y = addPhotos(doc, data.photos, y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Chain of Custody ──
+  if (data.chainOfCustody && data.chainOfCustody.length > 0) {
+    const cocRowH = 5.5;
+    const cocHeaderH = 8;
+    const cocH = cocHeaderH + data.chainOfCustody.length * cocRowH + 4;
+    y = checkPageBreak(doc, y, cocH + SPACING.MD);
+    const lxC = getLeftX();
+    const cwC = getContentWidth(doc);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('CHAIN OF CUSTODY', lxC, y + 2);
+    y += 5;
+
+    // Thin header rule
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(BORDER.FIELD);
+    doc.line(lxC, y, lxC + cwC, y);
+    y += 1;
+
+    // Column widths: timestamp | event | actor | detail
+    const colW = [36, 38, 36, cwC - 110];
+    const headers = ['TIMESTAMP', 'EVENT', 'ACTOR', 'DETAIL'];
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL - 1);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    let hx = lxC;
+    for (let ci = 0; ci < headers.length; ci++) {
+      doc.text(headers[ci], hx, y + 3);
+      hx += colW[ci];
+    }
+    y += cocRowH;
+
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL - 1);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    for (const ev of data.chainOfCustody) {
+      y = checkPageBreak(doc, y, cocRowH + 2);
+      const cells = [
+        ev.ts ? ev.ts.replace('T', ' ').slice(0, 19) : '',
+        ev.event,
+        ev.actor ?? '',
+        ev.detail ?? '',
+      ];
+      let cx = lxC;
+      for (let ci = 0; ci < cells.length; ci++) {
+        doc.text(doc.splitTextToSize(cells[ci], colW[ci] - 2), cx, y + 3);
+        cx += colW[ci];
+      }
+      y += cocRowH;
+    }
+
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.line(lxC, y, lxC + cwC, y);
+    y += SPACING.MD;
   }
 
   // ── Signature Block ──
@@ -1261,10 +1353,13 @@ export async function generateNoticeOfAttempt(
   // the combined string doesn't wrap mid-name in the narrow panel column.
   // "\n" is honoured by drawSubjectPanel's value-splitting logic.
   const hiringPartyLabel = (() => {
-    if (data.attorneyName && data.clientName) {
-      return `${data.attorneyName} (Atty)\n${data.clientName}`;
-    }
-    return data.attorneyName || data.clientName || 'N/A';
+    const attyParts = [
+      data.attorneyName ? `${data.attorneyName} (Atty)` : null,
+      data.attorneyPhone ? `Ph: ${data.attorneyPhone}` : null,
+      data.attorneyEmail ? `E: ${data.attorneyEmail}` : null,
+    ].filter(Boolean).join('\n');
+    if (attyParts && data.clientName) return `${attyParts}\n${data.clientName}`;
+    return attyParts || data.clientName || 'N/A';
   })();
 
   y = checkPageBreak(doc, y, 30);

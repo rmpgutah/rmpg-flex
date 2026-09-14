@@ -1419,6 +1419,39 @@ sv.get('/client-breakdown', async (c) => {
   return c.json(rows);
 });
 
+// ─────────────────────────────────────────────────────────────
+// Supervisor flagging queue — GET /serve/flagged
+// Returns all jobs that have at least one open flag, ranked by
+// flag count descending so the most-flagged jobs surface first.
+// Supervisor/manager/admin only.
+// ─────────────────────────────────────────────────────────────
+sv.get('/flagged', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const hasTable = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='serve_job_flags' LIMIT 1",
+  ).first<{ name: string }>();
+  if (!hasTable) return c.json({ flags: [], flagged_jobs: [] });
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT
+      q.id, q.recipient_name, q.recipient_address, q.case_number,
+      q.status, q.priority, q.officer_id, q.deadline,
+      u.full_name AS officer_name,
+      COUNT(f.id) AS flag_count,
+      MIN(f.created_at) AS first_flagged_at,
+      MAX(f.created_at) AS last_flagged_at,
+      GROUP_CONCAT(f.flag_type, ',') AS flag_types
+    FROM serve_queue q
+    JOIN serve_job_flags f ON f.serve_queue_id = q.id AND f.status = 'open'
+    LEFT JOIN users u ON u.id = q.officer_id
+    GROUP BY q.id
+    ORDER BY flag_count DESC, last_flagged_at DESC
+    LIMIT 200
+  `);
+  return c.json({ flagged_jobs: rows });
+});
+
 sv.get('/:id', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
@@ -1740,6 +1773,31 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   }
   const attemptOfficerId = user?.role === 'officer' ? user.id : (body.officer_id ?? user?.id ?? null);
 
+  // Duplicate-attempt guard — prevent double-tap on mobile or offline-queue
+  // replays from writing two identical rows. Same officer, same job, within
+  // 120 seconds of the most recent attempt is treated as a duplicate. The
+  // window is narrow enough that a genuine second attempt (knock-knock, wait,
+  // knock again) never triggers it, but wide enough to absorb a slow network
+  // retry, an accidental double-press, or a stale offline queue entry.
+  if (attemptOfficerId != null) {
+    const recentAttempt = await queryFirst<{ id: number; result: string }>(
+      db,
+      `SELECT id, result FROM serve_attempts
+       WHERE serve_queue_id = ? AND officer_id = ?
+         AND attempt_at > datetime('now', '-120 seconds')
+       ORDER BY attempt_at DESC LIMIT 1`,
+      id, attemptOfficerId,
+    );
+    if (recentAttempt) {
+      log.warn('Duplicate attempt blocked', { queueId: id, officerId: attemptOfficerId, existingAttemptId: recentAttempt.id, result: recentAttempt.result });
+      return c.json({
+        error: 'A recent attempt was already logged for this job. Wait 2 minutes before logging another.',
+        code: 'DUPLICATE_ATTEMPT',
+        existing_attempt_id: recentAttempt.id,
+      }, 409);
+    }
+  }
+
   // Structured PS code (PS/15.05 etc.) is the new source of truth. When
   // supplied, it derives both the legacy `result` enum (for the existing
   // CHECK constraint) and the next queue status. When absent, fall back to
@@ -1766,38 +1824,50 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const hasDispositionCol = psCode
     ? await columnExists(db, 'serve_attempts', 'disposition_code')
     : false;
+  // Person-served fields (migration 0256) — present when service was effected
+  // on a person other than the named recipient (sub-service, authorized agent).
+  const hasPersonServedCols =
+    (body.person_served_name || body.person_served_relationship || body.person_served_description)
+      ? await columnExists(db, 'serve_attempts', 'person_served_name')
+      : false;
   // Device-stamped attempt time. COALESCE(?, datetime('now')) keeps the
   // server clock as the fallback when the device sent nothing usable, so the
   // column is never null and behavior is unchanged for older clients.
   const stampedAt = deviceAttemptAt(body.attempt_at);
 
-  const ins = hasDispositionCol
-    ? await execute(
-        db,
-        `INSERT INTO serve_attempts (
-           serve_queue_id, attempt_number, officer_id, result, disposition_code,
-           latitude, longitude, notes, attempt_type, photo_ids, signature_data,
-           attempt_at
-         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, attemptOfficerId, result, psCode,
-        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
-        body.attempt_type ?? null,
-        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-        stampedAt,
-      )
-    : await execute(
-        db,
-        `INSERT INTO serve_attempts (
-           serve_queue_id, attempt_number, officer_id, result,
-           latitude, longitude, notes, attempt_type, photo_ids, signature_data,
-           attempt_at
-         ) VALUES (?,?,?,?, ?,?,?,?, ?,?, COALESCE(?, datetime('now')))`,
-        id, nextNum, attemptOfficerId, result,
-        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
-        body.attempt_type ?? null,
-        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-        stampedAt,
-      );
+  // Build the INSERT dynamically so we never bind to columns that don't exist
+  // on live D1 (deploy is continue-on-error; the column guard above is the
+  // only safe gate).
+  const attemptCols = [
+    'serve_queue_id', 'attempt_number', 'officer_id', 'result',
+    ...(hasDispositionCol ? ['disposition_code'] : []),
+    'latitude', 'longitude', 'notes', 'attempt_type', 'photo_ids', 'signature_data', 'attempt_at',
+    ...(hasPersonServedCols ? ['person_served_name', 'person_served_relationship', 'person_served_description'] : []),
+  ];
+  const attemptVals: (string | number | null)[] = [
+    id, nextNum, attemptOfficerId, result,
+    ...(hasDispositionCol ? [psCode] : []),
+    body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+    body.attempt_type ?? null,
+    JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+    // last param is COALESCE'd — pass the value directly, SQL handles the fallback
+    stampedAt,
+    ...(hasPersonServedCols ? [
+      body.person_served_name ?? null,
+      body.person_served_relationship ?? null,
+      body.person_served_description ?? null,
+    ] : []),
+  ];
+  // The attempt_at column uses COALESCE so stampedAt can be null without binding NULL
+  // as the final value; replace its placeholder position in the VALUES list.
+  const attemptPlaceholders = attemptCols.map((col) =>
+    col === 'attempt_at' ? 'COALESCE(?, datetime(\'now\'))' : '?',
+  ).join(', ');
+  const ins = await execute(
+    db,
+    `INSERT INTO serve_attempts (${attemptCols.join(', ')}) VALUES (${attemptPlaceholders})`,
+    ...attemptVals,
+  );
 
   const loggedAttemptId = Number(ins.meta.last_row_id) || 0;
   if (loggedAttemptId > 0) {
@@ -2830,6 +2900,194 @@ sv.get('/:id/affidavit-prefill', async (c) => {
     attempt_summary:   attemptLines.join('\n'),
     generated_at:      new Date().toISOString(),
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Chain of custody — GET /serve/:id/chain-of-custody
+// Returns a chronological custody trail: queue creation, officer
+// assignment history (from activity_log), attempt timeline, status
+// transitions, and terminal outcome. Used as an evidentiary record
+// of who handled the job at each stage.
+// ─────────────────────────────────────────────────────────────
+sv.get('/:id/chain-of-custody', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+
+  const job = await queryFirst<{
+    id: number; created_at: string; created_by: number | null;
+    status: string; closed_at: string | null;
+    recipient_name: string | null; case_number: string | null;
+    officer_id: number | null; assigned_at: string | null;
+    updated_at: string | null;
+  }>(db, `SELECT id, created_at, created_by, status, closed_at,
+             recipient_name, case_number, officer_id, assigned_at, updated_at
+          FROM serve_queue WHERE id = ?`, id);
+  if (!job) return c.json({ error: 'Not found' }, 404);
+
+  // Assignment history from activity_log (may not have all events — logs are
+  // best-effort; the query degrades gracefully when there are none).
+  const assignments = await query<{ action: string; details: string; created_at: string; user_name: string | null }>(
+    db,
+    `SELECT a.action, a.details, a.created_at, u.full_name AS user_name
+     FROM activity_log a LEFT JOIN users u ON a.user_id = u.id
+     WHERE a.entity_type = 'serve_assignment' AND a.entity_id = ?
+     ORDER BY a.id ASC`,
+    id,
+  ).catch(() => [] as { action: string; details: string; created_at: string; user_name: string | null }[]);
+
+  // Attempt timeline — all columns including person_served when present.
+  const attempts = await query<Record<string, unknown>>(
+    db,
+    `SELECT a.id, a.attempt_number, a.attempt_at, a.result, a.disposition_code,
+            a.notes, a.latitude, a.longitude, a.person_served_name,
+            a.person_served_relationship,
+            u.full_name AS officer_name
+     FROM serve_attempts a
+     LEFT JOIN users u ON u.id = a.officer_id
+     WHERE a.serve_queue_id = ?
+     ORDER BY a.attempt_number ASC`,
+    id,
+  ).catch(() => [] as Record<string, unknown>[]);
+
+  // Open and resolved flags.
+  const hasFlags = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='serve_job_flags' LIMIT 1",
+  ).first<{ name: string }>();
+  const flags = hasFlags
+    ? await query<Record<string, unknown>>(db,
+        `SELECT f.id, f.flag_type, f.flag_reason, f.status, f.created_at,
+                uf.full_name AS flagged_by_name, ur.full_name AS resolved_by_name,
+                f.resolved_at, f.resolved_note
+         FROM serve_job_flags f
+         LEFT JOIN users uf ON uf.id = f.flagged_by
+         LEFT JOIN users ur ON ur.id = f.resolved_by
+         WHERE f.serve_queue_id = ? ORDER BY f.created_at ASC`,
+        id,
+      ).catch(() => [] as Record<string, unknown>[])
+    : [];
+
+  // Synthesize a timeline array ordered chronologically.
+  type CustodyEvent = { ts: string; event: string; actor: string | null; detail?: string };
+  const events: CustodyEvent[] = [];
+
+  events.push({ ts: job.created_at, event: 'CREATED', actor: null });
+
+  if (job.assigned_at) {
+    events.push({ ts: job.assigned_at, event: 'ASSIGNED', actor: null });
+  }
+  for (const a of assignments as { action: string; details: string; created_at: string; user_name: string | null }[]) {
+    let detail: string | undefined;
+    try { detail = JSON.parse(a.details)?.note ?? undefined; } catch { /* skip */ }
+    events.push({ ts: a.created_at, event: a.action.toUpperCase(), actor: a.user_name, detail });
+  }
+  for (const a of attempts as Record<string, unknown>[]) {
+    const detail = [
+      a.result as string,
+      a.disposition_code ? `[${a.disposition_code}]` : '',
+      a.person_served_name ? `Served to: ${a.person_served_name}${a.person_served_relationship ? ` (${a.person_served_relationship})` : ''}` : '',
+      a.notes ? String(a.notes).slice(0, 120) : '',
+    ].filter(Boolean).join(' — ');
+    events.push({
+      ts: (a.attempt_at as string) || '',
+      event: `ATTEMPT #${a.attempt_number}`,
+      actor: a.officer_name as string | null,
+      detail,
+    });
+  }
+  if (job.closed_at) {
+    events.push({ ts: job.closed_at, event: job.status === 'served' ? 'SERVED (CLOSED)' : 'CLOSED', actor: null });
+  }
+  for (const f of flags as Record<string, unknown>[]) {
+    events.push({ ts: f.created_at as string, event: `FLAG:${(f.flag_type as string).toUpperCase()}`, actor: f.flagged_by_name as string | null, detail: f.flag_reason as string | undefined });
+    if (f.resolved_at) {
+      events.push({ ts: f.resolved_at as string, event: `FLAG_RESOLVED:${f.status as string}`.toUpperCase(), actor: f.resolved_by_name as string | null, detail: f.resolved_note as string | undefined });
+    }
+  }
+
+  events.sort((a, b) => (a.ts ?? '').localeCompare(b.ts ?? ''));
+
+  return c.json({
+    serve_queue_id: id,
+    recipient_name: job.recipient_name,
+    case_number: job.case_number,
+    current_status: job.status,
+    events,
+    attempts,
+    flags,
+    generated_at: new Date().toISOString(),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Supervisor flagging — POST /serve/:id/flag, DELETE /serve/:id/flag/:flagId
+// POST creates a new open flag on a job.
+// PATCH /:id/flag/:flagId resolves or dismisses an existing flag.
+// ─────────────────────────────────────────────────────────────
+const FLAG_TYPES = new Set([
+  'review', 'suspicious_address', 'incomplete_docs',
+  'identity_question', 'safety_concern', 'billing_dispute',
+  'legal_hold', 'other',
+]);
+
+sv.post('/:id/flag', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ flag_type?: string; flag_reason?: string }>().catch(() => ({} as { flag_type?: string; flag_reason?: string }));
+  const flagType = typeof body.flag_type === 'string' && FLAG_TYPES.has(body.flag_type) ? body.flag_type : 'review';
+  const flagReason = typeof body.flag_reason === 'string' ? body.flag_reason.slice(0, 500) : null;
+  const userId = (c.get('user') as { id: number } | undefined)?.id ?? null;
+  const db = getDb(c.env);
+
+  const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM serve_queue WHERE id = ?', id);
+  if (!exists) return c.json({ error: 'Job not found' }, 404);
+
+  const hasTable = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='serve_job_flags' LIMIT 1",
+  ).first<{ name: string }>();
+  if (!hasTable) return c.json({ error: 'Flag system not yet initialized. Apply migration 0288.' }, 503);
+
+  const r = await execute(db,
+    `INSERT INTO serve_job_flags (serve_queue_id, flagged_by, flag_type, flag_reason)
+     VALUES (?, ?, ?, ?)`,
+    id, userId, flagType, flagReason,
+  );
+  const flagId = Number(r.meta.last_row_id);
+  log.info('Job flagged', { queueId: id, flagId, flagType, flaggedBy: userId });
+  return c.json({ ok: true, flag_id: flagId, flag_type: flagType }, 201);
+});
+
+sv.patch('/:id/flag/:flagId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  const flagId = parseInt(c.req.param('flagId'), 10);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid job id' }, 400);
+  if (!Number.isFinite(flagId) || flagId < 1) return c.json({ error: 'Invalid flag id' }, 400);
+  const body = await c.req.json<{ status?: string; resolved_note?: string }>().catch(() => ({} as { status?: string; resolved_note?: string }));
+  const status = body.status === 'resolved' || body.status === 'dismissed' ? body.status : null;
+  if (!status) return c.json({ error: "status must be 'resolved' or 'dismissed'" }, 400);
+  const resolvedNote = typeof body.resolved_note === 'string' ? body.resolved_note.slice(0, 500) : null;
+  const userId = (c.get('user') as { id: number } | undefined)?.id ?? null;
+  const db = getDb(c.env);
+
+  const flag = await queryFirst<{ id: number; status: string }>(db,
+    'SELECT id, status FROM serve_job_flags WHERE id = ? AND serve_queue_id = ?', flagId, id,
+  );
+  if (!flag) return c.json({ error: 'Flag not found' }, 404);
+  if (flag.status !== 'open') return c.json({ error: `Flag already ${flag.status}` }, 409);
+
+  await execute(db,
+    `UPDATE serve_job_flags SET status = ?, resolved_by = ?, resolved_at = datetime('now'), resolved_note = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+    status, userId, resolvedNote, flagId,
+  );
+  log.info('Flag resolved', { queueId: id, flagId, status, resolvedBy: userId });
+  return c.json({ ok: true, flag_id: flagId, status });
 });
 
 export default sv;
