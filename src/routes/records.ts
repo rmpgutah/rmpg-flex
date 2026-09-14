@@ -2079,6 +2079,37 @@ records.post('/evidence/:id/checkin', async (c) => {
   } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
+// PUT /records/evidence/bulk-disposition — batch disposition update
+records.put('/evidence/bulk-disposition', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids: number[]; disposition: string }>();
+    const ids = (body.ids ?? []).map(Number).filter(Number.isFinite).filter(n => n > 0).slice(0, 200);
+    if (ids.length === 0) return c.json({ error: 'ids required', code: 'NO_IDS' }, 400);
+    const VALID_DISPOSITIONS = ['destroy', 'forfeit', 'auction', 'return_to_owner', 'pending'];
+    const disposition = String(body.disposition ?? '');
+    if (!VALID_DISPOSITIONS.includes(disposition)) return c.json({ error: 'Invalid disposition', code: 'INVALID_DISPOSITION' }, 400);
+    const newStatus = disposition === 'pending' ? 'pending_disposition'
+      : ['destroy', 'forfeit', 'auction'].includes(disposition) ? 'disposed'
+      : disposition === 'return_to_owner' ? 'released'
+      : 'pending_disposition';
+    const CHUNK = 90;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const ph = chunk.map(() => '?').join(',');
+      await execute(db,
+        `UPDATE evidence SET disposition = ?, status = ?,
+          disposal_date = CASE WHEN ? != 'pending' THEN date('now') ELSE NULL END,
+          updated_at = datetime('now') WHERE id IN (${ph})`,
+        disposition, newStatus, disposition, ...chunk,
+      );
+    }
+    return c.json({ success: true, affected: ids.length });
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
+});
+
 // PUT /records/evidence/:id/disposition
 records.put('/evidence/:id/disposition', async (c) => {
   try {
