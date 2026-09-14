@@ -111,7 +111,10 @@ describe('SettingsPanel', () => {
     expect(bridge.available).toBe(true);
     expect(bridge.extendedAvailable).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Network' }));
-    await waitFor(() => expect(screen.getAllByText(/latest desktop app build/i).length).toBeGreaterThan(0));
+    // Generous timeout: CI's desktop-test job runs 24+ heavy jsdom environments
+    // under GC contention (see vitest.desktop.config.ts), which can push this
+    // adapters-loader resolution past the @testing-library default 1000ms.
+    await waitFor(() => expect(screen.getAllByText(/latest desktop app build/i).length).toBeGreaterThan(0), { timeout: 5000 });
     expect(screen.getByRole('button', { name: /Ping/ })).toBeDisabled();
   });
 
