@@ -1403,6 +1403,7 @@ export default function ServePage() {
           method: 'PUT',
           body: JSON.stringify({
             ...formData,
+            serve_date: formData.serve_date || selectedDate,
             address_class: formData.address_class,
             address_class_confirmed: formData.address_class_confirmed,
             ops: formOps,
@@ -4502,7 +4503,7 @@ export default function ServePage() {
                   onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), documents_to_serve: e.target.value } }))}
                   rows={2}
                   placeholder="20 DAY SUMMONS; VERIFIED COMPLAINT; …"
-                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
