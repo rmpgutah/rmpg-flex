@@ -18,7 +18,8 @@ import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDef
 import type { FieldVerdict } from '../types/serveIntakeJudge';
 import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
 import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
-import { toDisplayLabel } from '../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../utils/formatters';
+import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import { importWithRetry } from '../utils/importWithRetry';
 import QualityReviewPanel from '../components/serve-intake/QualityReviewPanel';
 import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
@@ -1445,8 +1446,13 @@ export default function ServeIntakePage() {
                           id={`ff-intake-override-${key}`}
                           type="text"
                           value={editOverrides[key] ?? ''}
-                          onChange={e => overrideField(key, e.target.value)}
-                          placeholder="—"
+                          onChange={e => {
+                            const val = key === 'recipient_phone'
+                              ? formatPhoneInput(e.target.value)
+                              : e.target.value;
+                            overrideField(key, val);
+                          }}
+                          placeholder={key === 'recipient_phone' ? '(###) ###-####' : '—'}
                           className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                         />
                         {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
@@ -1479,11 +1485,16 @@ export default function ServeIntakePage() {
                   Street
                   {ocrSourced.has('recipient_address') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
                 </label>
-                <input
-                  id="ff-intake-override-recipient_address"
-                  type="text"
+                <AddressAutocomplete
                   value={editOverrides['recipient_address'] ?? ''}
-                  onChange={e => overrideField('recipient_address', e.target.value)}
+                  onChange={v => overrideField('recipient_address', v)}
+                  onSelect={(addr: ParsedAddress) => {
+                    overrideField('recipient_address', addr.street || addr.formatted);
+                    if (addr.city)  overrideField('recipient_city',  addr.city);
+                    if (addr.state) overrideField('recipient_state', addr.state);
+                    if (addr.zip)   overrideField('recipient_zip',   addr.zip);
+                  }}
+                  fillWith="street"
                   placeholder="—"
                   className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('recipient_address') ? 'border-brand-700' : 'border-border-subtle'}`}
                 />
@@ -1597,8 +1608,13 @@ export default function ServeIntakePage() {
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => overrideField(key, e.target.value)}
-                    placeholder="—"
+                    onChange={e => {
+                      const val = key === 'attorney_phone'
+                        ? formatPhoneInput(e.target.value)
+                        : e.target.value;
+                      overrideField(key, val);
+                    }}
+                    placeholder={key === 'attorney_phone' ? '(###) ###-####' : '—'}
                     className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
                   {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
