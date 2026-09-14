@@ -1,5 +1,5 @@
 // client/src/pages/serve/AssignTab.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Users, Settings } from 'lucide-react';
 import { useServeAssignments, type BoardJob } from '../../hooks/useServeAssignments';
@@ -21,6 +21,19 @@ export default function AssignTab() {
   const unassignedNear = board.unassigned.filter((j) => j.attention.includes('unassigned_near_deadline')).length;
   if (unassignedNear) totals['unassigned_near_deadline'] = (totals['unassigned_near_deadline'] ?? 0) + unassignedNear;
   const overdue = totals['deadline_passed'] ?? 0;
+
+  // Count how many jobs share each address in the current list so we can show
+  // a batch indicator.  BoardJob only exposes recipient_address (no unit/city),
+  // so we normalise just that field here rather than going through addressBatchKey.
+  const addressCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const j of jobs) {
+      const key = j.recipient_address?.trim().toLowerCase();
+      if (!key) continue;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [jobs]);
 
   const doAssign = async () => {
     if (!picked.length || target === '') return;
@@ -95,7 +108,16 @@ export default function AssignTab() {
               <tr key={j.id} className="border-b border-border-subtle" style={{ color: color(j) }}>
                 <td className="py-[2px]"><input type="checkbox" checked={picked.includes(j.id)} onChange={() => setPicked((p) => toggleSelect(p, j.id))} /></td>
                 <td>{j.defendant_name ?? j.recipient_name ?? j.id}</td>
-                <td className="text-fg-muted">{j.recipient_address ?? '—'}</td>
+                <td className="text-fg-muted">
+                  {j.recipient_address ?? '—'}
+                  {(() => {
+                    const key = j.recipient_address?.trim().toLowerCase();
+                    const n = key ? (addressCount.get(key) ?? 1) : 1;
+                    return n >= 2
+                      ? <span className="ml-1 text-[9px] text-accent-silver-400 tabular-nums">×{n}</span>
+                      : null;
+                  })()}
+                </td>
                 <td>{j.deadline ?? '—'}</td>
                 <td className="text-[9px] text-fg-muted">{j.attention.join(', ')}</td>
               </tr>
