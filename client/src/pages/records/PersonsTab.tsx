@@ -235,8 +235,13 @@ const FLAG_COLORS: Record<string, string> = {
 // Import-provenance tags written into flags[] by DL-scan import flows.
 // They are data-lineage metadata, not officer-caution flags, and must be
 // excluded from badge rendering, warning counts, and posture computation.
+const PROVENANCE_FLAGS = new Set(['dl_ocr_imported', 'aos_id_capture']);
+const PROVENANCE_FLAG_LABELS: Record<string, string> = {
+  dl_ocr_imported: 'FlexCode Scan',
+  aos_id_capture: 'AOS Form Entry',
+};
 function isProvenanceFlag(flag: string): boolean {
-  return /_IMPORTED$/i.test(flag);
+  return PROVENANCE_FLAGS.has(flag.toLowerCase()) || /_IMPORTED$/i.test(flag);
 }
 
 // Single source of truth for a person's posture-relevant flags. Shared by the
@@ -327,6 +332,8 @@ export interface PersonsTabState {
   duplicateWarning: any[] | null;
   handleForceCreate: () => void;
   handleCancelDuplicate: () => void;
+  // Data refresh
+  fetchPersons: () => Promise<void>;
 }
 
 // ════════════════════════════════════════════════════
@@ -544,6 +551,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
+    fetchPersons,
   };
 }
 
@@ -955,7 +963,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
 export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   const {
-    selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
+    selectedPerson, setSelectedPerson, fetchPersons, personAlerts, ssnRevealed, setSSNRevealed,
     linkRefreshKey, openLinkModal,
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
@@ -1024,7 +1032,25 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {hasSpecialFlags && (
             <>
               {selectedPerson.flags.map((flag, i) => {
-                const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                const label = typeof flag === 'object' ? ((flag as { type?: string }).type || 'FLAG') : flag;
+                const provLabel = PROVENANCE_FLAG_LABELS[label.toLowerCase()];
+                if (provLabel) {
+                  return (
+                    <RecordBadge
+                      key={`${label}-${i}`}
+                      tone="gray"
+                      glow={false}
+                      title={`Source: ${provLabel}`}
+                      onRemove={async () => {
+                        await apiFetch(`/records/persons/${selectedPerson.id}/flags/${encodeURIComponent(label)}`, { method: 'DELETE' });
+                        setSelectedPerson(prev => prev ? { ...prev, flags: prev.flags.filter((f) => (typeof f === 'object' ? (f as { type?: string }).type : f) !== label) } : prev);
+                        fetchPersons();
+                      }}
+                    >
+                      {provLabel}
+                    </RecordBadge>
+                  );
+                }
                 return (
                   <RecordBadge key={`${label}-${i}`} flag={label} title={humanizeFlag(label)}>
                     {label}
