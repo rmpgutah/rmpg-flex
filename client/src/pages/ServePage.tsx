@@ -807,14 +807,18 @@ export default function ServePage() {
     try {
       const data = await apiFetch<any>('/process-server/deadlines');
       setDeadlines(data);
-    } catch { /* ignore */ }
+    } catch {
+      addToast('Could not load deadlines — please try again', 'error');
+    }
   };
 
   const handleLoadSuccessRates = async () => {
     try {
       const data = await apiFetch<any>('/process-server/success-rates?days=90');
       setSuccessRates(data);
-    } catch { /* ignore */ }
+    } catch {
+      addToast('Could not load success rates — please try again', 'error');
+    }
   };
 
   // ── Serve settings (mileage rate, etc.) ───────────────────────────
@@ -1625,10 +1629,7 @@ export default function ServePage() {
   // Filtered Jobs
   // ══════════════════════════════════════════════════════════════════════
 
-  // ── Feature 29: Multi-key sort ──
-  type SortKey = 'urgency' | 'priority' | 'date' | 'name' | 'fee';
-  const [sortKey, setSortKey] = useState<SortKey>('urgency');
-  // ── Feature 1: Priority Queue Sort (kept for backwards compat) ──
+  // ── Feature 1: Sort by deadline urgency ──
   const [sortByUrgency, setSortByUrgency] = useState(false);
   // ── Feature 33: Serve-type filter ──
   const [serveTypeFilter, setServeTypeFilter] = useState<string>('all');
@@ -1689,7 +1690,10 @@ export default function ServePage() {
           total: data.subtotal ?? 0,
         },
       });
-    } catch { setCostEstimate(null); }
+    } catch {
+      setCostEstimate(null);
+      addToast('Could not load cost estimate — please try again', 'error');
+    }
   };
 
   const filteredJobs = useMemo(() => {
