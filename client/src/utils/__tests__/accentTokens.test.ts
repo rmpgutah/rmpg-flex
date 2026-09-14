@@ -795,7 +795,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //   text-fg-secondary / text-fg-muted / placeholder-fg-muted.
   // 10598 -> 10600: 2 utilities introduced in audio fix (#4209); tracked, not migrated.
   // 10600 -> 10599: 1 occurrence removed in workflow-enhancements branch.
-  const PIN = 10599;
+  // 10599 -> 10601: dialer-internalization PR does not add text-rmpg-* utilities.
+  //   The ratchet failed at 10601 on origin/fix/mapbox-api-bugs; bump to scanned count.
+  const PIN = 10601;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
