@@ -30,6 +30,7 @@ import { apiFetch } from '../../hooks/useApi';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
+import { groupByAddress, type AddressBatch } from '../../utils/serveAddressBatch';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { useServeRunOptimization } from './hooks/useServeRunOptimization';
@@ -112,6 +113,112 @@ async function openNavigation(job: ServeJob, navigate: NavigateFunction): Promis
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+// ─── Address-batch sub-component for the pending folder ──────────────────────
+
+interface PendingJobsWithBatchesProps {
+  batches: AddressBatch[];
+  singles: ServeJob[];
+  nextJobId: number | undefined;
+  onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
+  navigate: NavigateFunction;
+  routeStopIndex: Map<number, number>;
+  etaByJobId: Map<number, string>;
+}
+
+function PendingJobsWithBatches({
+  batches,
+  singles,
+  nextJobId,
+  onOptimisticUpdate,
+  navigate,
+  routeStopIndex,
+  etaByJobId,
+}: PendingJobsWithBatchesProps) {
+  return (
+    <>
+      {/* Address batch groups first — officer can knock out multiple jobs per door */}
+      {batches.map((batch) => (
+        <AddressBatchGroup
+          key={batch.key}
+          batch={batch}
+          nextJobId={nextJobId}
+          onOptimisticUpdate={onOptimisticUpdate}
+          navigate={navigate}
+          routeStopIndex={routeStopIndex}
+          etaByJobId={etaByJobId}
+        />
+      ))}
+      {/* Single-address jobs */}
+      {singles.map((job) => (
+        <RunJobRow
+          key={job.id}
+          job={job}
+          isNext={nextJobId === job.id}
+          onOptimisticUpdate={onOptimisticUpdate}
+          navigate={navigate}
+          routeStop={routeStopIndex.get(job.id)}
+          eta={etaByJobId.get(job.id)}
+        />
+      ))}
+    </>
+  );
+}
+
+interface AddressBatchGroupProps {
+  batch: AddressBatch;
+  nextJobId: number | undefined;
+  onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
+  navigate: NavigateFunction;
+  routeStopIndex: Map<number, number>;
+  etaByJobId: Map<number, string>;
+}
+
+function AddressBatchGroup({
+  batch,
+  nextJobId,
+  onOptimisticUpdate,
+  navigate,
+  routeStopIndex,
+  etaByJobId,
+}: AddressBatchGroupProps) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div className="border border-accent-silver-700/40 rounded-[2px] overflow-hidden">
+      {/* Batch header */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2 py-[4px] bg-surface-sunken text-left hover:bg-surface-raised/60 transition-colors"
+        aria-expanded={open}
+      >
+        <MapPin size={10} className="text-accent-silver-400 flex-shrink-0" aria-hidden />
+        <span className="flex-1 min-w-0 text-[10px] text-fg-secondary truncate">{batch.displayAddress}</span>
+        <span className="flex-shrink-0 text-[9px] font-semibold text-accent-silver-400 tabular-nums">
+          {batch.jobs.length} jobs
+        </span>
+        <span className="flex-shrink-0 text-[9px] text-fg-muted">{open ? '▴' : '▾'}</span>
+      </button>
+      {/* Batch jobs */}
+      {open && (
+        <div className="divide-y divide-border-subtle/40">
+          {batch.jobs.map((job) => (
+            <RunJobRow
+              key={job.id}
+              job={job}
+              isNext={nextJobId === job.id}
+              onOptimisticUpdate={onOptimisticUpdate}
+              navigate={navigate}
+              routeStop={routeStopIndex.get(job.id)}
+              eta={etaByJobId.get(job.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface RunJobRowProps {
   job: ServeJob;
@@ -704,6 +811,12 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
     });
   }, [byFolder.pending, optRun.status, optRun.optimizedOrder]);
 
+  // Address-based batching for the pending queue
+  const pendingAddressGroups = useMemo(
+    () => groupByAddress(pendingJobsForDisplay),
+    [pendingJobsForDisplay],
+  );
+
   // Queue jobs that have coordinates (prerequisite for routing)
   const routableQueueCount = useMemo(
     () => byFolder.pending.filter((j) => j.recipient_lat != null && j.recipient_lng != null).length,
@@ -859,17 +972,28 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
                   defaultOpen={cfg.defaultOpen}
                   count={folderJobs.length}
                 >
-                  {folderJobs.map((job) => (
-                    <RunJobRow
-                      key={job.id}
-                      job={job}
-                      isNext={nextJob?.id === job.id && !runComplete}
-                      onOptimisticUpdate={handleOptimisticUpdate}
-                      navigate={navigate}
-                      routeStop={routeStopIndex.get(job.id)}
-                      eta={folder === 'pending' ? etaByJobId.get(job.id) : undefined}
-                    />
-                  ))}
+                  {folder === 'pending'
+                    ? <PendingJobsWithBatches
+                        batches={pendingAddressGroups.batches}
+                        singles={pendingAddressGroups.singles}
+                        nextJobId={!runComplete ? nextJob?.id : undefined}
+                        onOptimisticUpdate={handleOptimisticUpdate}
+                        navigate={navigate}
+                        routeStopIndex={routeStopIndex}
+                        etaByJobId={etaByJobId}
+                      />
+                    : folderJobs.map((job) => (
+                        <RunJobRow
+                          key={job.id}
+                          job={job}
+                          isNext={nextJob?.id === job.id && !runComplete}
+                          onOptimisticUpdate={handleOptimisticUpdate}
+                          navigate={navigate}
+                          routeStop={routeStopIndex.get(job.id)}
+                          eta={undefined}
+                        />
+                      ))
+                  }
                 </ServeStatusFolder>
               );
             })}
