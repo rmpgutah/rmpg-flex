@@ -108,7 +108,7 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className={`relative w-full ${maxWidth} mx-2 sm:mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background:"var(--surface-sunken)", maxHeight: 'calc(100dvh - 16px)' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
+      <div className={`relative w-full ${maxWidth} mx-2 sm:mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background:"var(--surface-sunken)", maxHeight: 'calc(100dvh - 16px)' }} onClick={(e) => { e.stopPropagation(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: 'var(--text-muted)' }} />
