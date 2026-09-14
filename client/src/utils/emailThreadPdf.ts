@@ -275,7 +275,8 @@ export function generateEmailThreadPdf(input: EmailThreadPdfInput): jsPDF {
     doc.setFont('Arial', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(TEXT_DARK);
-    const from = msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : (msg.fromAddress || 'Unknown');
+    const fromFull = msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : (msg.fromAddress || 'Unknown');
+    const from = fromFull.length > 60 ? fromFull.slice(0, 59) + '…' : fromFull;
     doc.text(`${i + 1}. ${from}`, M, y);
     doc.setFont('Arial', 'normal');
     doc.setTextColor(TEXT_MUTED);
