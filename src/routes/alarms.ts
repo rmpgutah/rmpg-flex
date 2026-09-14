@@ -84,7 +84,7 @@ alarms.get('/stats', async (c) => {
 alarms.get('/permits', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM alarm_accounts ORDER BY created_at DESC LIMIT 200');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM alarm_accounts ORDER BY created_at DESC LIMIT 1000');
     const mapped = (rows || []).map((r) => ({
       id: r.id,
       permit_number: r.permit_number || r.account_number,

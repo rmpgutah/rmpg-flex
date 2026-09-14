@@ -160,6 +160,18 @@ function StatusModal({ unit, onClose, onSave }: StatusModalProps) {
     }
   }, [selected, unit, onSave, onClose]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key >= '1' && e.key <= '7') {
+        const idx = parseInt(e.key, 10) - 1;
+        if (CHANGEABLE_STATUSES[idx]) setSelected(CHANGEABLE_STATUSES[idx]);
+      }
+      if (e.key === 'Enter' && !saving) { e.preventDefault(); void handleSave(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleSave, saving]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -228,15 +240,16 @@ interface UnitCardProps {
   unit: DispatchUnit;
   canChangeStatus: boolean;
   onClick: () => void;
+  focused?: boolean;
 }
 
-function UnitCard({ unit, canChangeStatus, onClick }: UnitCardProps) {
+function UnitCard({ unit, canChangeStatus, onClick, focused }: UnitCardProps) {
   const label = STATUS_LABELS[unit.status] ?? unit.status;
 
   return (
     <div
       className={`relative flex flex-col gap-1.5 p-2.5 rounded-[2px] transition-all ${canChangeStatus ? 'cursor-pointer hover:brightness-110' : ''}`}
-      style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', minWidth: 180, maxWidth: 220, width: '100%' }}
+      style={{ background: 'var(--surface-raised)', border: focused ? '1px solid var(--brand-400)' : '1px solid var(--border-subtle)', minWidth: 180, maxWidth: 220, width: '100%', outline: focused ? '2px solid var(--brand-500)' : 'none', outlineOffset: 1 }}
       onClick={canChangeStatus ? onClick : undefined}
       title={canChangeStatus ? 'Click to change status' : undefined}
     >
@@ -322,6 +335,7 @@ export default function UnitStatusBoardPage() {
   const [modalUnit, setModalUnit] = useState<DispatchUnit | null>(null);
   const [pollMs, setPollMs] = useState(20_000);
   const [engagedFirst, setEngagedFirst] = useState(false);
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(true);
@@ -377,6 +391,8 @@ export default function UnitStatusBoardPage() {
   // ── Status change ────────────────────────────────────────────────────────────
 
   const handleStatusChange = useCallback(async (unitId: number, status: string) => {
+    // Optimistic update — board reflects the change instantly; rolls back on error.
+    setUnits(prev => prev.map(u => u.id === unitId ? { ...u, status } : u));
     try {
       // The Worker route is PUT /dispatch/units/:id/status (PATCH is not mounted).
       await apiFetch(`/dispatch/units/${unitId}/status`, {
@@ -386,8 +402,11 @@ export default function UnitStatusBoardPage() {
       setToast('Status updated');
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 2500);
+      // Reconcile to pick up any server-side fields (e.g. updated_at, last_call).
       await fetchUnits();
     } catch (e: unknown) {
+      // Roll back the optimistic update by re-fetching authoritative state.
+      await fetchUnits();
       setToast(e instanceof Error ? e.message : 'Status change failed');
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 3500);
@@ -427,15 +446,29 @@ export default function UnitStatusBoardPage() {
       if (e.key === 'Escape') {
         setModalUnit(null);
         setSearch('');
+        setFocusedIdx(null);
       }
       if (typing) return;
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'r' || e.key === 'R') { setLoading(true); fetchUnits(); }
       if (e.key === 'a' || e.key === 'A') setFilter('AVAILABLE');
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setFocusedIdx(prev => prev === null ? 0 : Math.min(prev + 1, visible.length - 1));
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setFocusedIdx(prev => prev === null ? 0 : Math.max(prev - 1, 0));
+      }
+      if ((e.key === 'Enter' || e.key === ' ') && focusedIdx !== null && canChangeStatus) {
+        e.preventDefault();
+        const unit = visible[focusedIdx];
+        if (unit) setModalUnit(unit);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [fetchUnits]);
+  }, [fetchUnits, visible, focusedIdx, canChangeStatus]);
 
   // ── Filter tab helper ────────────────────────────────────────────────────────
 
@@ -606,12 +639,13 @@ export default function UnitStatusBoardPage() {
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {visible.map(unit => (
+            {visible.map((unit, idx) => (
               <UnitCard
                 key={unit.id}
                 unit={unit}
                 canChangeStatus={canChangeStatus}
-                onClick={() => setModalUnit(unit)}
+                onClick={() => { setModalUnit(unit); setFocusedIdx(idx); }}
+                focused={focusedIdx === idx}
               />
             ))}
           </div>

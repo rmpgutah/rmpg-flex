@@ -48,7 +48,7 @@ async function findPersons(db: D1Database, seed: IntelSeed): Promise<PersonMatch
 async function warrantsFor(db: D1Database, personId: number): Promise<any[]> {
   try {
     const { results } = await db.prepare(
-      `SELECT id, warrant_number, charge, status, issuing_court, issue_date
+      `SELECT id, warrant_number, charge_description AS charge, status, issuing_court, issued_date AS issue_date
        FROM warrants WHERE subject_person_id=? LIMIT 20`,
     ).bind(personId).all<any>();
     return results ?? [];
@@ -73,7 +73,7 @@ async function arrestsFor(db: D1Database, personId: number): Promise<any[]> {
 async function casesFor(db: D1Database, personId: number): Promise<any[]> {
   try {
     const { results } = await db.prepare(
-      `SELECT id, case_number, case_name, charges, status, court_date
+      `SELECT id, case_number, title AS case_name, cause_of_action AS charges, status, deadline AS court_date
        FROM cases WHERE subject_person_id=? LIMIT 20`,
     ).bind(personId).all<any>();
     return results ?? [];

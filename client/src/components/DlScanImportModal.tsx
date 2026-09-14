@@ -6,6 +6,7 @@ import type { Person } from '../types';
 import type { AamvaResult, ScanAlert, ReadoutRow } from '../utils/aamvaParser';
 import { toDisplayLabel } from '../utils/formatters';
 import { importWithRetry } from '../utils/importWithRetry';
+import { aamvaToScanResultObj } from '../utils/scanIdToRecipient';
 
 // Lazy-loaded to keep the Records page initial bundle lean.
 type AamvaParserModule = typeof import('../utils/aamvaParser');
@@ -101,30 +102,7 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
         property: unknown;
       }>('/records/from-dl-scan', {
         method: 'POST',
-        body: JSON.stringify({
-          scan: {
-            first_name:      parsed.first_name,
-            middle_name:     parsed.middle_name,
-            last_name:       parsed.last_name,
-            date_of_birth:   parsed.date_of_birth,
-            gender:          parsed.gender,
-            height:          parsed.height,
-            weight:          parsed.weight,
-            eye_color:       parsed.eye_color,
-            hair_color:      parsed.hair_color,
-            address:         parsed.address,
-            city:            parsed.city,
-            state:           parsed.state,
-            zip:             parsed.zip,
-            dl_number:       parsed.dl_number,
-            dl_state:        parsed.dl_state,
-            dl_class:        parsed.dl_class,
-            dl_expiry:       parsed.dl_expiry,
-            dl_issue_date:   parsed.dl_issue_date,
-            dl_restrictions: parsed.dl_restrictions,
-            dl_endorsements: parsed.dl_endorsements,
-          },
-        }),
+        body: JSON.stringify({ scan: aamvaToScanResultObj(parsed) }),
       });
       if (!resp?.person) throw new Error('No person returned');
       // Map server row → Person shape (same fields PersonsTab uses)

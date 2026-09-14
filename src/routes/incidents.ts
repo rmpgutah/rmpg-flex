@@ -317,6 +317,45 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
   }
 });
 
+// PUT /bulk — bulk status / archive change (admin/manager/supervisor)
+incidents.put('/bulk', requireRole(...REVIEW_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as any;
+    const body = await c.req.json<{ ids: number[]; action: 'archive' | 'status'; status?: string }>().catch(() => ({ ids: [], action: 'archive' as const }));
+    const ids = (body.ids ?? []).map(Number).filter(Number.isFinite).filter(n => n > 0).slice(0, 200);
+    if (ids.length === 0) return c.json({ error: 'ids required', code: 'NO_IDS' }, 400);
+
+    if (body.action === 'archive') {
+      // Chunk to stay within the D1 100-parameter cap
+      const CHUNK = 90;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const ph = chunk.map(() => '?').join(',');
+        await execute(db, `UPDATE incidents SET archived = 1, updated_at = datetime('now') WHERE id IN (${ph})`, ...chunk);
+      }
+      try { await recordAudit(c, { action: 'incident_bulk_archive', entityType: 'incident', entityId: 0, details: `Archived ${ids.length} incidents`, actorId: user.id }); } catch { /* non-fatal */ }
+      return c.json({ success: true, affected: ids.length });
+    }
+
+    const VALID_STATUSES = ['draft', 'submitted', 'under_review', 'approved', 'returned', 'closed'];
+    const newStatus = String(body.status ?? '');
+    if (!VALID_STATUSES.includes(newStatus)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
+
+    const CHUNK = 90;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const ph = chunk.map(() => '?').join(',');
+      await execute(db, `UPDATE incidents SET status = ?, updated_at = datetime('now') WHERE id IN (${ph})`, newStatus, ...chunk);
+    }
+    try { await recordAudit(c, { action: 'incident_bulk_status', entityType: 'incident', entityId: 0, details: `Set ${ids.length} incidents to ${newStatus}`, actorId: user.id }); } catch { /* non-fatal */ }
+    return c.json({ success: true, affected: ids.length });
+  } catch (err) {
+    console.error('[incidents] bulk error', err);
+    return c.json({ error: 'Bulk update failed', code: 'BULK_ERR' }, 500);
+  }
+});
+
 // DELETE /:id — draft-only
 incidents.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
   try {

@@ -13,8 +13,9 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
 import type {
-  AuthenticatorTransportFuture, RegistrationResponseJSON, AuthenticationResponseJSON,
+  RegistrationResponseJSON, AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
+type AuthenticatorTransportFuture = 'ble' | 'cable' | 'hybrid' | 'internal' | 'nfc' | 'smart-card' | 'usb';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';

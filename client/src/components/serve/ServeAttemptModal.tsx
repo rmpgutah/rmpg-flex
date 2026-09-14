@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../RichTextArea';
+import NarrativeAssist from '../dispatch/NarrativeAssist';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
   Loader2, Navigation, Trash2, Clock, Volume2, Upload,
@@ -1134,7 +1135,17 @@ export default function ServeAttemptModal({
             )}
 
             {/* Notes — with live char counter against the PDF table limit */}
-            <NotesField value={notes} onChange={setNotes} />
+            <NotesField
+              value={notes}
+              onChange={setNotes}
+              serveContext={{
+                recipientName: job.recipient_name,
+                address: [job.recipient_address, job.recipient_city, job.recipient_state].filter(Boolean).join(', ') || undefined,
+                documentType: job.document_type,
+                attemptType: attemptType ?? undefined,
+                failedReason: failedReason ?? undefined,
+              }}
+            />
 
             <div className="flex justify-between pt-2">
               <button type="button"
@@ -1305,7 +1316,17 @@ export default function ServeAttemptModal({
                     captured these on Step 2 (Documentation) already. */}
                 {isFailedPath && (
                   <>
-                    <NotesField value={notes} onChange={setNotes} />
+                    <NotesField
+                      value={notes}
+                      onChange={setNotes}
+                      serveContext={{
+                        recipientName: job.recipient_name,
+                        address: [job.recipient_address, job.recipient_city, job.recipient_state].filter(Boolean).join(', ') || undefined,
+                        documentType: job.document_type,
+                        attemptType: 'failed',
+                        failedReason: failedReason ?? undefined,
+                      }}
+                    />
                     <div className="space-y-2">
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase">
                         Photos ({photos.length}/5) <span className="text-fg-muted normal-case">(optional)</span>
@@ -1462,12 +1483,18 @@ export default function ServeAttemptModal({
 // table — which silently truncates at NOTES_CHAR_LIMIT. The counter
 // surfaces that limit so the operator doesn't lose the tail of a long
 // observation when the notice is generated.
+//
+// When serveContext is supplied, an AI Assist toolbar appears so the
+// officer can draft a professional service-attempt narrative from their
+// raw field notes.
 function NotesField({
   value,
   onChange,
+  serveContext,
 }: {
   value: string;
   onChange: (v: string) => void;
+  serveContext?: Parameters<typeof NarrativeAssist>[0]['serveContext'];
 }) {
   const len = value.length;
   const over = len > NOTES_CHAR_LIMIT;
@@ -1491,6 +1518,16 @@ function NotesField({
             : 'border-rmpg-600 focus:border-[color:var(--accent-silver-400)] focus:ring-[color:var(--accent-silver-400)]/40'
         }`}
       />
+      {serveContext && (
+        <NarrativeAssist
+          notes={value}
+          mode="serve_attempt"
+          serveContext={serveContext}
+          locationAddress={serveContext.address}
+          existingText={value}
+          onAccept={onChange}
+        />
+      )}
     </div>
   );
 }

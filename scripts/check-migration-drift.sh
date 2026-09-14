@@ -63,20 +63,20 @@ extract_columns() {
   local sql="$1"
   echo "$sql" \
     | strip_line_comments \
-    | grep -oiE 'ALTER[[:space:]]+TABLE[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+ADD[[:space:]]+(COLUMN[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*' \
+    | grep -oiE 'ALTER[[:space:]]+TABLE[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+ADD[[:space:]]+(COLUMN[[:space:]]+(IF[[:space:]]+NOT[[:space:]]+EXISTS[[:space:]]+)?)?[A-Za-z_][A-Za-z0-9_]*' \
     | awk '{
-        # Input: "ALTER TABLE foo ADD COLUMN bar" or "ALTER TABLE foo ADD bar"
-        # ($1=ALTER $2=TABLE $3=foo $4=ADD $5=COLUMN-or-bar $6=bar-if-$5-was-COLUMN).
-        # A prior version checked $4 against "COLUMN" — $4 is always "ADD"
-        # (the grep pattern requires it), so that check was always false
-        # and every extraction silently returned the literal string "ADD"
-        # as the column name. Every ALTER in a file then collapsed to the
-        # same "table.ADD" dedup key, so only one bogus entry was ever
-        # recorded per table regardless of how many real columns exist —
-        # this went unnoticed because `declare -A` failing on bash 3.2
-        # (see below) meant the whole script never actually ran the check.
+        # Input forms:
+        #   "ALTER TABLE foo ADD COLUMN bar"
+        #   "ALTER TABLE foo ADD COLUMN IF NOT EXISTS bar"
+        #   "ALTER TABLE foo ADD bar"
+        # Fields: $1=ALTER $2=TABLE $3=table $4=ADD $5=COLUMN-or-col
+        #         $6=IF-or-col (if $5==COLUMN)  $7=NOT $8=EXISTS $9=col (if IF NOT EXISTS)
         table = $3
-        col = ($5 == "COLUMN" || $5 == "column") ? $6 : $5
+        if (toupper($5) == "COLUMN") {
+          if (toupper($6) == "IF") { col = $9 } else { col = $6 }
+        } else {
+          col = $5
+        }
         if (table && col) print table " " col
       }' \
     | tr -d '`"'

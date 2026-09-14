@@ -232,6 +232,78 @@ sm.get('/documents/:documentId/download', async (c) => {
   });
 });
 
+// POST /jobs/upsert — insert or refresh a job in sm_jobs from an external source
+// (e.g. the desktop ICU scraper) that has its own SM session and can see jobs
+// the poller's API key cannot.  Accepts a subset of the SM job fields; only
+// non-null provided values overwrite existing ones so re-sends are safe.
+sm.post('/jobs/upsert', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      sm_job_id: number;
+      sm_job_number?: string;
+      client_company_name?: string;
+      recipient_name?: string;
+      job_status?: string;
+      service_status?: string;
+      due_date?: string;
+      service_instructions?: string;
+      process_server_name?: string;
+      addresses_json?: string;
+      documents_json?: string;
+    }>();
+
+    const jobId = Number(body.sm_job_id);
+    if (!Number.isFinite(jobId) || jobId <= 0) return c.json({ error: 'sm_job_id required' }, 400);
+
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM sm_jobs WHERE sm_job_id = ?', jobId);
+    const now = new Date().toISOString();
+
+    if (existing) {
+      const sets: string[] = ["updated_at=datetime('now')", "sm_updated_at=?", "synced_at=?"];
+      const vals: (string | number | null)[] = [now, now];
+      const add = (col: string, val: string | number | null | undefined) => {
+        if (val !== undefined && val !== null) { sets.push(`${col}=?`); vals.push(val); }
+      };
+      add('sm_job_number', body.sm_job_number ?? null);
+      add('client_company_name', body.client_company_name ?? null);
+      add('recipient_name', body.recipient_name ?? null);
+      add('job_status', body.job_status ?? null);
+      add('service_status', body.service_status ?? null);
+      add('due_date', body.due_date ?? null);
+      add('service_instructions', body.service_instructions ?? null);
+      add('process_server_name', body.process_server_name ?? null);
+      add('addresses_json', body.addresses_json ?? null);
+      add('documents_json', body.documents_json ?? null);
+      await execute(db, `UPDATE sm_jobs SET ${sets.join(', ')} WHERE sm_job_id=?`, ...vals, jobId);
+      return c.json({ upserted: 'updated', sm_job_id: jobId });
+    } else {
+      await execute(db,
+        `INSERT INTO sm_jobs (sm_job_id, sm_job_number, client_company_name, recipient_name,
+           job_status, service_status, due_date, service_instructions, process_server_name,
+           addresses_json, documents_json, sm_created_at, sm_updated_at, synced_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        jobId,
+        body.sm_job_number ?? null,
+        body.client_company_name ?? null,
+        body.recipient_name ?? null,
+        body.job_status ?? null,
+        body.service_status ?? null,
+        body.due_date ?? null,
+        body.service_instructions ?? null,
+        body.process_server_name ?? null,
+        body.addresses_json ?? null,
+        body.documents_json ?? null,
+        now, now, now,
+      );
+      return c.json({ upserted: 'inserted', sm_job_id: jobId });
+    }
+  } catch (err) {
+    log.error('POST /jobs/upsert failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
+    return c.json({ error: 'Upsert failed' }, 500);
+  }
+});
+
 // POST /jobs/:jobId/create-dispatch — manual override of the target-client
 // filter and the "Auto-Create Dispatch Calls" toggle. An admin/manager (the
 // router-wide gate above) can push a specific job through even when the

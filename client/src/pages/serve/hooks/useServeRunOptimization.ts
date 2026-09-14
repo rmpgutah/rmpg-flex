@@ -186,7 +186,7 @@ export function useServeRunOptimization(): UseServeRunOptimizationResult {
         const stops: OptimizedStop[] = (route?.stops ?? [])
           .filter((s) => s.type === 'service')
           .map((s) => ({
-            jobId: Number(s.location),
+            jobId: Number(s.services?.[0] ?? s.location),
             eta: s.eta,
             wait: s.wait ?? 0,
           }));

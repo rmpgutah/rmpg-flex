@@ -89,7 +89,6 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { useOptimizationV2 } from '../../hooks/useOptimizationV2';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
@@ -439,7 +438,6 @@ export default function DispatchPage() {
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
-  const dispatchOptimization = useOptimizationV2();
   const [showAssignmentOverlay, setShowAssignmentOverlay] = useState(false);
   const dispatchOpt = useDispatchOptimization();
   const [calls, setCalls] = useState<CallForService[]>([]);
@@ -502,18 +500,12 @@ export default function DispatchPage() {
     ]));
     const unitsBySign = new Map(availableUnits.map((u) => [u.call_sign, Number(u.id)]));
 
-    // Drive both: legacy simple overlay (kept for compat) + new proposal modal
-    await dispatchOptimization.submit({
-      job_type: 'multi_unit_dispatch',
-      call_ids: openCallIds,
-      unit_ids: availableUnitIds,
-    });
-    await dispatchOpt.startOptimization(openCallIds, availableUnitIds);
-  }, [units, calls, dispatchOptimization.submit, dispatchOpt]);
+    await dispatchOpt.startOptimization(openCallIds, availableUnitIds, { callDetails, callAssignments, unitsBySign });
+  }, [units, calls, dispatchOpt]);
 
   useEffect(() => {
-    if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
-  }, [dispatchOptimization.status]);
+    if (dispatchOpt.status === 'complete' && dispatchOpt.solution) setShowAssignmentOverlay(true);
+  }, [dispatchOpt.status, dispatchOpt.solution]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   // Spillman CAD console view (P1 structural replica). Persisted; defaults ON
@@ -6453,6 +6445,17 @@ export default function DispatchPage() {
                           finally { setNarrativeSaving(false); }
                         }}
                       />
+                      <NarrativeAssist
+                        notes={selectedCall?.description || editData?.description || ''}
+                        incidentType={selectedCall?.incident_type || editData?.incident_type || ''}
+                        locationAddress={selectedCall?.location || editData?.location_address || ''}
+                        mode="dispatch_narrative"
+                        existingText={callNarrative}
+                        onAccept={(narrative) => {
+                          setCallNarrative(narrative);
+                          updateEditField('action_taken', narrative);
+                        }}
+                      />
                       <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1.5">
                         <span>Auto-saves on blur · Official Incident Summary & Action Taken of record</span>
                         {selectedCall?.status === 'cleared' && callNarrative.trim() && (
@@ -7413,12 +7416,12 @@ export default function DispatchPage() {
               <button
                 type="button"
                 onClick={handleOptimizeAssignments}
-                disabled={dispatchOptimization.status === 'pending' || dispatchOptimization.status === 'processing'}
+                disabled={dispatchOpt.status === 'pending' || dispatchOpt.status === 'processing'}
                 className="toolbar-btn toolbar-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Optimize unit-to-call assignments with Mapbox V2"
               >
-                {dispatchOptimization.status === 'pending' || dispatchOptimization.status === 'processing'
-                  ? `Optimizing… ${Math.round(dispatchOptimization.elapsedMs / 1000)}s`
+                {dispatchOpt.status === 'pending' || dispatchOpt.status === 'processing'
+                  ? `Optimizing… ${Math.round(dispatchOpt.elapsedMs / 1000)}s`
                   : 'Optimize Assignments'}
               </button>
             )}
@@ -8373,26 +8376,26 @@ export default function DispatchPage() {
       </div>
 
       {/* Optimize Assignments result overlay — legacy simple view (kept for backwards compat) */}
-      {showAssignmentOverlay && dispatchOptimization.solution && !dispatchOpt.showModal && (
+      {showAssignmentOverlay && dispatchOpt.solution && !dispatchOpt.showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-surface-base border border-rmpg-600 p-4 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col gap-3" style={{ borderRadius: 2 }}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-rmpg-100">Optimized Assignments</span>
               <button
                 type="button"
-                onClick={() => { setShowAssignmentOverlay(false); dispatchOptimization.reset(); }}
+                onClick={() => { setShowAssignmentOverlay(false); dispatchOpt.reset(); }}
                 className="text-rmpg-400 hover:text-rmpg-100 text-xs"
               >
                 Dismiss
               </button>
             </div>
-            {dispatchOptimization.solution.dropped.services.length > 0 && (
+            {dispatchOpt.solution!.dropped.services.length > 0 && (
               <div className="text-xs text-amber-400">
-                ⚠ {dispatchOptimization.solution.dropped.services.length} call(s) could not be assigned
+                ⚠ {dispatchOpt.solution!.dropped.services.length} call(s) could not be assigned
               </div>
             )}
             <div className="overflow-y-auto flex-1 space-y-3">
-              {dispatchOptimization.solution.routes.map((route: V2Route) => (
+              {dispatchOpt.solution!.routes.map((route: V2Route) => (
                 <div key={route.vehicle} className="bg-surface-raised p-2" style={{ borderRadius: 2 }}>
                   <div className="text-xs font-semibold text-rmpg-200 mb-1">{route.vehicle}</div>
                   {route.stops

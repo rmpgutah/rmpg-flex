@@ -1920,6 +1920,80 @@ warrants.post('/ingest-utah', async (c) => {
   }
 });
 
+// GET /export/csv — supervisor+ only; respects active filters + optional ?ids= selection
+warrants.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const idsParam = c.req.query('ids');
+    const status = c.req.query('status');
+    const dateFrom = c.req.query('date_from');
+    const dateTo = c.req.query('date_to');
+
+    const where: string[] = ['1=1'];
+    const params: unknown[] = [];
+
+    if (idsParam) {
+      const ids = idsParam.split(',').map(Number).filter(Number.isFinite).slice(0, 500);
+      if (ids.length > 0) {
+        where.push(`w.id IN (${ids.map(() => '?').join(',')})`);
+        params.push(...ids);
+      }
+    } else {
+      if (status) { where.push('w.status = ?'); params.push(status); }
+      if (dateFrom) { where.push('w.created_at >= ?'); params.push(dateFrom); }
+      if (dateTo) { where.push('w.created_at <= ?'); params.push(dateTo); }
+    }
+
+    function csvEsc(v: unknown): string {
+      if (v === null || v === undefined) return '""';
+      const s = typeof v === 'string' ? v : String(v);
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT w.warrant_number, w.subject_name, w.subject_dob, w.status, w.priority,
+              w.offense_level, w.charge_description, w.issuing_court, w.bail_amount,
+              w.issued_date, w.expiry_date, w.created_at,
+              u.full_name as assigned_officer
+       FROM warrants w
+       LEFT JOIN users u ON w.assigned_officer_id = u.id
+       WHERE ${where.join(' AND ')}
+       ORDER BY w.created_at DESC LIMIT 10000`,
+      ...params,
+    );
+
+    const headers = [
+      { key: 'warrant_number', label: 'Warrant #' },
+      { key: 'subject_name', label: 'Subject' },
+      { key: 'subject_dob', label: 'DOB' },
+      { key: 'status', label: 'Status' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'offense_level', label: 'Offense Level' },
+      { key: 'charge_description', label: 'Charge' },
+      { key: 'issuing_court', label: 'Court' },
+      { key: 'bail_amount', label: 'Bail Amount' },
+      { key: 'issued_date', label: 'Issued' },
+      { key: 'expiry_date', label: 'Expires' },
+      { key: 'assigned_officer', label: 'Assigned Officer' },
+      { key: 'created_at', label: 'Created' },
+    ];
+    const head = headers.map((h) => csvEsc(h.label)).join(',');
+    const body = rows.map((r) => headers.map((h) => csvEsc(r[h.key])).join(',')).join('\n');
+    const csv = `${head}\n${body}\n`;
+    return new Response(csv, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="warrants_${new Date().toISOString().slice(0, 10)}.csv"`,
+      },
+    });
+  } catch (err) {
+    log.error('GET /warrants/export/csv failed', { src: 'src/routes/warrants.ts' }, err);
+    return c.json({ error: 'Failed to export warrants', code: 'EXPORT_ERROR' }, 500);
+  }
+});
+
 // POST /warrants/check/:personId — "Run Check Now" in the person drawer.
 // On-demand single-person Utah warrant check (see
 // runUtahWarrantCheckForPerson's doc comment for why this can't just call
