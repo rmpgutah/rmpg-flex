@@ -11,6 +11,7 @@ export type { AssignmentProposal };
 const POLL_INTERVAL_MS = 3_000;
 
 export interface UseDispatchOptimizationResult {
+  solution: V2Solution | null;
   status: OptimizationJobStatus;
   elapsedMs: number;
   proposals: AssignmentProposal[];
@@ -109,6 +110,7 @@ export function useDispatchOptimization(): UseDispatchOptimizationResult {
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [solution, setSolution] = useState<V2Solution | null>(null);
 
   const jobIdRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -149,6 +151,7 @@ export function useDispatchOptimization(): UseDispatchOptimizationResult {
     setAccepted(new Set());
     setShowModal(false);
     setApplying(false);
+    setSolution(null);
   }, [clearPolling]);
 
   const closeModal = useCallback(() => {
@@ -192,6 +195,7 @@ export function useDispatchOptimization(): UseDispatchOptimizationResult {
     setDroppedServices(solution.dropped.services);
     // Pre-accept all changed proposals
     setAccepted(new Set(enriched.filter((p) => p.changed).map((p) => p.callId)));
+    setSolution(solution);
     setShowModal(true);
   }, []);
 
@@ -279,6 +283,7 @@ export function useDispatchOptimization(): UseDispatchOptimizationResult {
     } finally {
       if (mountedRef.current) {
         setApplying(false);
+    setSolution(null);
         setShowModal(false);
       }
     }
@@ -296,6 +301,7 @@ export function useDispatchOptimization(): UseDispatchOptimizationResult {
     acceptAll,
     startOptimization,
     applyProposals,
+    solution,
     closeModal,
     reset,
   };
