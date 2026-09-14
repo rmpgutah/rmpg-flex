@@ -753,6 +753,10 @@ export interface CallPdfData {
     narrative?: string;
     created_at?: string;
     timestamp?: string;
+    // Optional entry-type override — when present, drives the chip label
+    // directly (e.g. 'OFFICER SAFETY', 'INTAKE', 'DISPATCH') so the chip
+    // is correct even when author is a generic tag like 'AI GENERATED'.
+    category?: string;
   }[];
   narrative?: string;
   // OPR identifier
@@ -3424,16 +3428,29 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // on CFS26-00100).
       const authorRaw = (n.author || '').trim();
       const upper = authorRaw.toUpperCase();
-      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR|OPS)$/i.test(authorRaw)
+      // category field (added to interface 2026-09-13) overrides author for
+      // chip label — lets AI-generated entries specify the correct section
+      // type ('OFFICER SAFETY', 'INTAKE', etc.) while author stays 'AI GENERATED'.
+      const categoryRaw = ((n as { category?: string }).category || '').trim();
+      const categoryUpper = categoryRaw.toUpperCase();
+      // 'AI GENERATED' is a system-pipeline author, not a named officer.
+      // Added here after the OCR/OFFICER SAFETY pattern (2026-07-03 fix) —
+      // same root cause: pseudo-author not in the regex → fell through to
+      // OFFICER NOTE tag + "AI GENERATED" printed as officer suffix.
+      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR|OPS|AI GENERATED)$/i.test(authorRaw)
         || upper === '' || upper === 'SYSTEM';
-      const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
+      // Chip label: category wins over author when present so an AI-generated
+      // OFFICER SAFETY note shows "OFFICER SAFETY", not "AI GENERATED".
+      const resolvedTagLabel = (categoryUpper || (isSystemTag ? upper : '')) || 'SYSTEM';
+      const entryType = isSystemTag ? resolvedTagLabel : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [26, 47, 92]
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [38, 62, 110]
-        : upper === 'NCIC' || upper === 'ALERT' ? [90, 32, 32]
-        : upper === 'OFFICER SAFETY' ? [90, 32, 32]
-        : upper === 'OPS' ? [26, 47, 92]
-        : upper === 'OCR' ? [55, 60, 72]
+      const tagBg: [number, number, number] = resolvedTagLabel === 'DISPATCH' ? [26, 47, 92]
+        : resolvedTagLabel === 'SERVE INTAKE' || resolvedTagLabel === 'INTAKE' ? [38, 62, 110]
+        : resolvedTagLabel === 'NCIC' || resolvedTagLabel === 'ALERT' ? [90, 32, 32]
+        : resolvedTagLabel === 'OFFICER SAFETY' ? [90, 32, 32]
+        : resolvedTagLabel === 'OPS' ? [26, 47, 92]
+        : resolvedTagLabel === 'OCR' ? [55, 60, 72]
+        : resolvedTagLabel === 'AI GENERATED' ? [40, 65, 95]
         : !isSystemTag ? [70, 75, 85]
         : [45, 55, 70];
 
@@ -3475,7 +3492,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         (n as { body?: string }).body ||
         (n as { narrative?: string }).narrative ||
         '';
-      const preserveMarkdown = isSystemTag;
+      // preserveMarkdown: true only for OCR-extraction logs (raw text from
+      // document scans). AI-generated tactical narratives (author='AI GENERATED')
+      // and all officer notes render ALL CAPS — the skill spec mandates it and
+      // mixed-case is visually inconsistent with every other field on the form.
+      const preserveMarkdown = isSystemTag && upper !== 'AI GENERATED';
       const bodyEndY = addFormattedText(
         doc,
         preserveMarkdown ? noteBody : noteBody.toUpperCase(),
