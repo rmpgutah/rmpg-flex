@@ -29,10 +29,9 @@ function buildCspHeaderValue() {
     "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://*.rmpgutah.us https://api.rmpgutah.us wss://api.rmpgutah.us wss://*.rmpgutah.us https://*.mapbox.com https://events.mapbox.com https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
-    // DialerPanel embeds Dial Connect. Stamping frame-src 'self' onto every
-    // response (including that iframe) made Chromium log report-only violations
-    // for https://dialer.rmpgutah.us/dialer-embed on every Dispatch load.
-    "frame-src 'self' https://dialer.rmpgutah.us",
+    // Dial Connect is now at rmpgutah.us/dialer (same origin). 'self' covers
+    // the iframe so no separate frame-src entry is needed.
+    "frame-src 'self'",
   ];
   return directives.join('; ') + ';';
 }
@@ -44,7 +43,7 @@ function buildCspHeaderValue() {
  * report-only policy (script-src without 'self', connect-src 'none') and
  * floods the console with violations for /_next chunks, the Insights
  * beacon, and cdn-cgi/challenge-platform scripts. Those documents already
- * ship their own CSP (frame-ancestors on dialer.rmpgutah.us).
+ * ship their own CSP (Dial Connect at rmpgutah.us/dialer via next.config.ts).
  */
 function shouldAttachDesktopCspReportOnly(url) {
   let parsed;
@@ -94,12 +93,15 @@ const ALLOWED_PERMISSIONS = new Set(['geolocation', 'notifications', 'media']);
  * window ever loaded. This adds the missing origin check: only the
  * configured trusted host may receive them.
  */
-const DIALER_HOST = 'dialer.rmpgutah.us';
+// Dial Connect is now at rmpgutah.us/dialer (same origin as the CAD app).
+// The requesting host for the iframe will be 'rmpgutah.us', matching
+// expectedHost directly — no separate DIALER_HOST override needed.
+const DIALER_HOST = 'rmpgutah.us';
 
 function isPermissionAllowed(requestingHost, expectedHost, permission) {
   if (!ALLOWED_PERMISSIONS.has(permission)) return false;
   if (requestingHost === expectedHost) return true;
-  // Twilio Voice runs in DialerPanel's https://dialer.rmpgutah.us iframe.
+  // Twilio Voice runs in DialerPanel's iframe at rmpgutah.us/dialer (same host).
   return requestingHost === DIALER_HOST && permission === 'media';
 }
 

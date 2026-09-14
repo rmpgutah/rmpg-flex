@@ -267,7 +267,10 @@ export function isAllowedRecordingSourceUrl(raw: string | null | undefined): boo
     const url = new URL(raw);
     if (url.protocol !== 'https:') return false;
     const host = url.hostname.toLowerCase();
-    return host === 'dialer.rmpgutah.us'
+    // Dial Connect moved from dialer.rmpgutah.us to rmpgutah.us/dialer.
+    // Accept both during the DNS TTL rollover window.
+    return (host === 'rmpgutah.us' && url.pathname.startsWith('/dialer/'))
+      || host === 'dialer.rmpgutah.us'
       || host === 'api.twilio.com'
       || host.endsWith('.twilio.com');
   } catch {

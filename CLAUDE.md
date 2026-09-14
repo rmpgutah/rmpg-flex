@@ -343,7 +343,7 @@ re-pull never re-bills a CarsXE credit. Secret `CARXE_API_KEY`; unset →
   `0214`/`0215`. Assume nothing about index coverage on older tables; check
   `sqlite_master` and confirm with `EXPLAIN QUERY PLAN`.
 
-### Dial Connect (Twilio dialer at dialer.rmpgutah.us) — call-archive invariants
+### Dial Connect (Twilio dialer at rmpgutah.us/dialer) — call-archive invariants
 
 The dialer is a separate app embedded as an iframe by
 [`DialerPanel`](client/src/components/DialerPanel.tsx); it talks to the CAD via
@@ -381,7 +381,7 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   `isAllowedRecordingSourceUrl` hosts are ever fetched. Pinned by
   `test-workers/dialerConnectRecordingMirror.test.ts`. The UI shows an
   `Archived` / `Copy pending` chip per row. The dialer stays at
-  `https://dialer.rmpgutah.us` (`DIALER_ORIGIN`) — the mirror is additive.
+  `https://rmpgutah.us/dialer` (`DIALER_ORIGIN`) — the mirror is additive.
 - **🔴 After merge**: `scripts/apply-migration.sh 0280_dialer_recording_mirror.sql`
   against live D1 `785de7ae`, then confirm the backfill with
   `SELECT COUNT(*) FROM dialer_calls WHERE recording_source_url IS NOT NULL AND recording_r2_key IS NULL`
