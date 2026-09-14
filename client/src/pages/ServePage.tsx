@@ -901,7 +901,7 @@ export default function ServePage() {
     setLoading(true);
     setFetchError('');
     try {
-      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
+      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}&limit=500`);
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
@@ -1441,6 +1441,9 @@ export default function ServePage() {
             ops: formOps,
           }),
         });
+        // Optimistically update the job in place so it stays visible during the
+        // background refresh and doesn't disappear if the sort order changes.
+        setJobs(prev => prev.map(j => j.id === editJob.id ? { ...j, ...formData, serve_date: formData.serve_date || selectedDate } : j));
       } else {
         await apiFetch('/process-server', {
           method: 'POST',
