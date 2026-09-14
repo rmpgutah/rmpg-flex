@@ -2175,17 +2175,36 @@ export default function IncidentsPage() {
                 const fg = typeColors[link.linked_type] || 'var(--text-muted)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
+                // Build a deep-link path for each linked entity type so officers
+                // can navigate directly to the record without leaving and searching.
+                const linkPath = (() => {
+                  switch (link.linked_type) {
+                    case 'warrant': return `/warrants?warrant_id=${link.linked_id}`;
+                    case 'case': return `/cases?case_id=${link.linked_id}`;
+                    case 'call': return `/dispatch?call_id=${link.linked_id}`;
+                    case 'incident': return `/incidents?incident_id=${link.linked_id}`;
+                    default: return null;
+                  }
+                })();
+                const refLabel = link.detail
+                  ? (link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`)
+                  : `#${link.linked_id}`;
                 return (
                   <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                     <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: fg, background: `rgb(${rgb} / 0.12)`, border: `1px solid rgb(${rgb} / 0.25)` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
-                    {link.detail ? (
-                      <span className="text-xs text-rmpg-100 font-mono">
-                        {link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`}
-                      </span>
+                    {linkPath ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(linkPath)}
+                        className="text-xs font-mono text-brand-400 hover:text-brand-200 hover:underline underline-offset-2 transition-colors text-left"
+                        title={`Go to ${typeLabels[link.linked_type] || link.linked_type} ${refLabel}`}
+                      >
+                        {refLabel}
+                      </button>
                     ) : (
-                      <span className="text-xs text-rmpg-400">#{link.linked_id}</span>
+                      <span className="text-xs text-rmpg-100 font-mono">{refLabel}</span>
                     )}
                     {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{toDisplayLabel(link.detail.incident_type)}</span>}
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{toDisplayLabel(link.detail.status)}</span>}

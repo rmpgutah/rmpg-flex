@@ -377,6 +377,8 @@ export default function UnitStatusBoardPage() {
   // ── Status change ────────────────────────────────────────────────────────────
 
   const handleStatusChange = useCallback(async (unitId: number, status: string) => {
+    // Optimistic update — board reflects the change instantly; rolls back on error.
+    setUnits(prev => prev.map(u => u.id === unitId ? { ...u, status } : u));
     try {
       // The Worker route is PUT /dispatch/units/:id/status (PATCH is not mounted).
       await apiFetch(`/dispatch/units/${unitId}/status`, {
@@ -386,8 +388,11 @@ export default function UnitStatusBoardPage() {
       setToast('Status updated');
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 2500);
+      // Reconcile to pick up any server-side fields (e.g. updated_at, last_call).
       await fetchUnits();
     } catch (e: unknown) {
+      // Roll back the optimistic update by re-fetching authoritative state.
+      await fetchUnits();
       setToast(e instanceof Error ? e.message : 'Status change failed');
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => { if (mountedRef.current) setToast(null); }, 3500);
