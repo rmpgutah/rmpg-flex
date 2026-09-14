@@ -1276,7 +1276,7 @@ export default function CitationsPage() {
                   </div>
                   <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
                 </div>
-                {completeness.missing_required.length > 0 && (
+                {(completeness.missing_required?.length ?? 0) > 0 && (
                   <div className="text-[10px] text-amber-400">Missing: {completeness.missing_required.join(', ')}</div>
                 )}
               </div>
