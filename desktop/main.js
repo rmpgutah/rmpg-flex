@@ -524,7 +524,10 @@ function startSplashTimeout(maxMs = 15000) {
   splashTimeout = setTimeout(() => {
     console.warn(`[SPLASH] Timed out after ${maxMs}ms — force-closing`);
     closeSplash();
-    // If the main window exists but isn't visible yet, show it now
+    // Always show the main window if it exists but isn't visible yet —
+    // in kiosk mode the splash:auth flow normally drives this, but if
+    // the splash timed out the officer needs the main window as a
+    // fallback so they're not left with a blank screen.
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.show();
       mainWindow.focus();
@@ -1176,8 +1179,13 @@ async function createMainWindow() {
     // In kiosk shell mode the splash drives show/focus via the splash:auth flow.
     // Do not close the splash here — it must stay up for the lock screen.
     // In all other contexts (dev, non-kiosk Windows, macOS) close and show directly.
+    // Edge case: if the splash was already force-closed by the safety timeout,
+    // show the main window anyway so the officer isn't left with a blank screen.
     if (!isKioskShell) {
       closeSplash();
+      mainWindow.show();
+      mainWindow.focus();
+    } else if (!splashWindow || splashWindow.isDestroyed()) {
       mainWindow.show();
       mainWindow.focus();
     }
@@ -2462,7 +2470,7 @@ const returnToWindowsRateLimiter = createRateLimiter(5, 60_000);
 const KIOSK_ESCAPE_PAGE_PATH = path.join(__dirname, 'kioskEscape.html');
 const { guardedHandle: guardedLocalFileHandle } = createLocalFileIpcGuards(ipcMain, [KIOSK_ESCAPE_PAGE_PATH]);
 const SPLASH_PAGE_PATH = path.join(__dirname, 'splash.html');
-const { guardedOn: guardedSplashOn } = createLocalFileIpcGuards(ipcMain, [SPLASH_PAGE_PATH]);
+const { guardedOn: guardedSplashOn, guardedHandle: guardedSplashHandle } = createLocalFileIpcGuards(ipcMain, [SPLASH_PAGE_PATH]);
 
 function openKioskEscapeWindow() {
   if (kioskEscapeWindow) { kioskEscapeWindow.focus(); return; }
@@ -2691,7 +2699,62 @@ guardedSplashOn('splash:auth', async (event, payload) => {
     }
   } catch (err) {
     console.error('[SPLASH:AUTH] Login request failed:', err.message);
-    sendResult({ ok: false, error: 'Unable to reach server — check network connection' });
+    const isNetworkError = /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|fetch failed/i.test(err.message || '');
+    sendResult({
+      ok: false,
+      error: isNetworkError
+        ? 'Unable to reach server — if this is a fresh boot, wait 15–30 seconds for the network to come up and try again'
+        : `Login failed: ${err.message || 'Unknown error'}`,
+    });
+  }
+});
+
+// ── Splash PIN auth: offline fallback when server is unreachable ──
+guardedSplashHandle('splash:pin-available', async () => {
+  try {
+    const db = getLocalDb();
+    if (!db) return { available: false };
+    const userId = getConfig('current_user_id');
+    if (!userId) return { available: false };
+    const row = db.prepare('SELECT 1 FROM offline_pins WHERE user_id = ? AND active = 1 LIMIT 1').get(userId);
+    return { available: Boolean(row) };
+  } catch {
+    return { available: false };
+  }
+});
+
+guardedSplashHandle('splash:pin-auth', async (_event, payload) => {
+  const pin = payload && typeof payload.pin === 'string' ? payload.pin : '';
+  const pinCheck = validatePinInput(pin);
+  if (!pinCheck.ok) return { success: false, error: pinCheck.error };
+
+  try {
+    if (!pinManager) return { success: false, error: 'PIN system not initialized' };
+    const result = pinManager.validatePin(pin);
+    if (result.success) {
+      logSecurityAuditEvent('splash:pin-auth', 'success', {});
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        const officerName = getConfig('last_flexos_username') || 'Officer';
+        const role = getConfig('current_user_role') || '';
+        splashWindow.webContents.send('splash:phase', {
+          phase: 'welcome',
+          data: { officerName, role },
+        });
+        setTimeout(() => {
+          closeSplash();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }, 3100);
+      }
+    } else {
+      logSecurityAuditEvent('splash:pin-auth', 'denied', { error: result.error });
+    }
+    return result;
+  } catch (err) {
+    console.error('[SPLASH:PIN-AUTH] Error:', err.message);
+    return { success: false, error: err.message };
   }
 });
 
@@ -5710,9 +5773,14 @@ app.whenReady().then(async () => {
 
   // Show splash screen while connecting
   createSplashWindow();
-  // Safety timeout: close splash after 15s even if ready-to-show never fires
-  // (prevents macOS users from getting stuck on an unresponsive splash)
-  startSplashTimeout(15000);
+  // Safety timeout: close splash if ready-to-show never fires. In kiosk mode
+  // the splash IS the lock screen — it must stay visible until the officer
+  // authenticates, so use a much longer timeout (5 min). On non-kiosk (macOS
+  // dev, normal Windows launch) 15s prevents being stuck on an unresponsive
+  // splash. The old 15s timeout race-killed the lock screen on Toughbooks
+  // when the connectivity check (up to 24s in kiosk) hadn't finished yet.
+  const splashTimeoutMs = (process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV)) ? 300000 : 15000;
+  startSplashTimeout(splashTimeoutMs);
 
   try {
     // Initialize local database for offline support (non-fatal if it fails)
