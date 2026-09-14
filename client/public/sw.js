@@ -150,7 +150,9 @@ const API_CACHE_NAME = 'rmpg-api-data';
 const MAX_API_CACHE_ENTRIES = 250;
 // API endpoints whose responses change too rapidly or are security-sensitive
 // to serve stale. All others are cached network-first.
-const API_NO_CACHE = ['/api/auth', '/api/health', '/api/ws', '/api/offline'];
+// /api/dialer carries the softphone's live SSE stream + one-shot Twilio tokens:
+// caching would clone an infinite body and could hand out an expired token.
+const API_NO_CACHE = ['/api/auth', '/api/health', '/api/ws', '/api/offline', '/api/dialer'];
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
