@@ -6,7 +6,7 @@ import { aamvaToServeOverrides } from '../utils/scanIdToRecipient';
 import { useToast } from '../components/ToastProvider';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiPostForm } from '../hooks/useApi';
 import { useNavigate, useSearchParams } from 'react-router';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -627,17 +627,17 @@ export default function ServeIntakePage() {
       // 'auto' → the server's Claude-vision engine classifies the image (ID card /
       // license plate / serve document) AND extracts its fields in one call.
       formData.append('docType', docType);
-      const token = localStorage.getItem('rmpg_token');
-      const resp = await fetch('/api/ocr/scan-document', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      if (resp.ok) {
-        return await resp.json();
-      }
-    } catch (err) { console.warn("[ServeIntakePage] operation failed:", err); }
-    return null;
+      // apiPostForm (not raw fetch) so an access token that expired mid-shift
+      // transparently refreshes and retries once instead of 401ing forever —
+      // a raw fetch here silently returned null on every rasterized page of a
+      // scanned PDF, leaving every review field blank with no error shown
+      // (the row still renders a green "extracted" checkmark either way,
+      // since that only reflects rasterization, not OCR, succeeding).
+      return await apiPostForm<OcrScanResult>('/ocr/scan-document', formData);
+    } catch (err) {
+      console.warn("[ServeIntakePage] operation failed:", err);
+      return null;
+    }
   }, []);
 
   // Server-side field extraction for born-digital PDFs. The client already
@@ -651,24 +651,18 @@ export default function ServeIntakePage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('client_text', text);
-      const token = localStorage.getItem('rmpg_token');
-      const resp = await fetch('/api/serve-intake/scan-document', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      if (!resp.ok) {
-        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
-        return;
-      }
-      const scanResult: OcrScanResult = await resp.json();
+      // apiPostForm, not raw fetch — see ocrScanImage above for why: a
+      // mid-shift expired token must transparently refresh, not 401 forever.
+      const scanResult = await apiPostForm<OcrScanResult>('/serve-intake/scan-document', formData);
       if (scanResult?.fields) {
         setFiles(prev => prev.map(f =>
           f.file === file ? { ...f, ocrResult: scanResult } : f,
         ));
+      } else {
+        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
       }
     } catch {
-      // Network/timeout failure — still surface it rather than silently
+      // Network/timeout/auth failure — still surface it rather than silently
       // leaving a false-positive "extracted" checkmark (see ocrScanFailed doc).
       setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
     }
@@ -700,6 +694,7 @@ export default function ServeIntakePage() {
       let type = 'info_page';
       let scanned = false;
       let pageCount = 0;
+      let ocrScanFailedForFile = false;
 
       if (isPdf) {
         const extracted = await extractPdfText(file);
@@ -727,8 +722,10 @@ export default function ServeIntakePage() {
         // gets pre-filled from the scanned content — same path as dropped images.
         if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
           const pages = await rasterizePdf(file);
+          let anyPageOcrSucceeded = false;
           for (let p = 0; p < pages.length; p++) {
             const pageOcr = await ocrScanImage(pages[p], type);
+            if (pageOcr?.fields && Object.keys(pageOcr.fields).length > 0) anyPageOcrSucceeded = true;
             newFiles.push({
               name: pages[p].name,
               type,
@@ -741,8 +738,13 @@ export default function ServeIntakePage() {
           }
           // A scanned PDF that rasterized OK isn't an error — its OCR rides on
           // the derived images. Mark it so the row shows "Scan OCR" + a green
-          // check instead of a misleading ⚠️ "no text" warning.
+          // check instead of a misleading ⚠️ "no text" warning. But rasterizing
+          // is not the same as OCR succeeding — if every page's Vision OCR call
+          // failed (expired token, network, server error), the review panel
+          // silently shows a green check with every field blank and no
+          // indication anything went wrong. Surface that as a real failure.
           scanned = pages.length > 0;
+          if (pages.length > 0 && !anyPageOcrSucceeded) ocrScanFailedForFile = true;
         } else {
           // Born-digital PDF with a text layer: queue for server-side LLM
           // field extraction so the review panel pre-fills with extracted values.
@@ -775,6 +777,7 @@ export default function ServeIntakePage() {
         status: text.length > 50 || ocrResult?.success || scanned ? 'extracted' : 'error',
         scanned,
         ocrResult,
+        ocrScanFailed: ocrScanFailedForFile,
         file,
         size: file.size,
         pages: pageCount || undefined,
