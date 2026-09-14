@@ -95,7 +95,8 @@ warrants.get('/', async (c) => {
       },
     });
   } catch (err) {
-    return c.json({ data: [], pagination: { total: 0, page: 1, perPage: 25, totalPages: 1 } });
+    log.error('[warrants] list error', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to load warrants' }, 500);
   }
 });
 
@@ -1579,20 +1580,20 @@ warrants.post('/', async (c) => {
          warrant_number, type, status,
          subject_person_id, subject_name,
          charge_description, issuing_court, issuing_judge,
-         bail_amount, offense_level, expires_at, notes,
+         bail_amount, offense_level, issued_date, expires_at, notes,
          statute_id, statute_citation, source, entered_by, created_by,
          created_at, updated_at
        ) VALUES (?, ?, 'active',
          ?, ?,
          ?, ?, ?,
-         ?, ?, ?, ?,
+         ?, ?, ?, ?, ?,
          ?, ?, 'manual', ?, ?,
          datetime('now'), datetime('now'))`,
       warrantNumber, body.type,
       body.subject_person_id ?? null, subjectName,
       body.charge_description, body.issuing_court ?? null, body.issuing_judge ?? null,
       body.bail_amount ?? null, body.offense_level ?? null,
-      body.expires_at ?? null, body.notes ?? null,
+      body.issued_date ?? null, body.expires_at ?? null, body.notes ?? null,
       body.statute_id ?? null, body.statute_citation ?? null,
       user?.id ?? null, user?.id ?? null,
     );
@@ -1745,11 +1746,11 @@ warrants.post('/:id/reopen', requireRole('admin', 'supervisor', 'manager'), asyn
   }
 });
 
-// POST /warrants/:id/archive
-warrants.post('/:id/archive', async (c) => {
+// POST /warrants/:id/archive — supervisor+ only; archiving is a record-keeping action
+warrants.post('/:id/archive', requireRole('admin', 'supervisor', 'manager'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') ?? '0', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
@@ -1778,11 +1779,11 @@ warrants.post('/:id/unarchive', async (c) => {
   }
 });
 
-// DELETE /warrants/:id
-warrants.delete('/:id', async (c) => {
+// DELETE /warrants/:id — admin only; hard-delete is irreversible
+warrants.delete('/:id', requireRole('admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') ?? '0', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
@@ -1794,10 +1795,8 @@ warrants.delete('/:id', async (c) => {
   }
 });
 
-// POST /warrants/bulk-archive { warrant_ids: number[] }
-// Same "never existed" gap as batch-update — reuses the archived_at column
-// the single-warrant /:id/archive route already writes.
-warrants.post('/bulk-archive', async (c) => {
+// POST /warrants/bulk-archive { warrant_ids: number[] } — supervisor+ only
+warrants.post('/bulk-archive', requireRole('admin', 'supervisor', 'manager'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ warrant_ids?: number[] }>();
@@ -1827,9 +1826,8 @@ warrants.post('/bulk-archive', async (c) => {
   }
 });
 
-// POST /warrants/bulk-review { warrant_ids: number[] }
-// Stamps reviewed_at/reviewed_by (migration 0186) — same "never existed" gap.
-warrants.post('/bulk-review', async (c) => {
+// POST /warrants/bulk-review { warrant_ids: number[] } — supervisor+ only
+warrants.post('/bulk-review', requireRole('admin', 'supervisor', 'manager'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ warrant_ids?: number[] }>();
@@ -1874,7 +1872,7 @@ warrants.post('/ingest-utah', async (c) => {
         ? await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE warrant_number = ?', warrantNumber)
         : subjectName
         ? await queryFirst<{ id: number }>(
-            db, 'SELECT id FROM warrants WHERE warrant_number IS NULL AND subject_name = ? AND issued_date IS ?',
+            db, 'SELECT id FROM warrants WHERE warrant_number IS NULL AND subject_name = ? AND issued_date = ?',
             subjectName, w.issue_date ?? null,
           )
         : null;
@@ -2013,5 +2011,69 @@ warrants.post('/check/:personId', async (c) => {
   }
 });
 
+
+// ── Source-conflict resolution API ────────────────────────────────────────
+// warrant_source_conflicts rows are written by syncLocalWarrantRecord in the
+// Utah warrant poller when a state source disagrees with the local record
+// (e.g. state says 'recalled', local says 'active'). These routes expose that
+// table so supervisors can review and resolve disagreements.
+
+// GET /warrants/conflicts?resolved=false&limit=50
+warrants.get('/conflicts', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolvedParam = c.req.query('resolved');
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 200);
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (resolvedParam === 'false') { where.push('resolved_at IS NULL'); }
+    if (resolvedParam === 'true') { where.push('resolved_at IS NOT NULL'); }
+    const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT wsc.*, w.warrant_number, w.type, w.status AS local_status,
+              w.subject_name, w.subject_person_id
+       FROM warrant_source_conflicts wsc
+       LEFT JOIN warrants w ON w.id = wsc.warrant_id
+       ${whereClause}
+       ORDER BY wsc.detected_at DESC LIMIT ?`,
+      ...params, limit,
+    );
+    return c.json({ data: rows, total: rows.length });
+  } catch (err) {
+    log.error('[warrants] conflicts list error', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ data: [], total: 0 });
+  }
+});
+
+// POST /warrants/conflicts/:id/resolve { resolution_note: string }
+// Marks a conflict as resolved. Does NOT automatically update the local
+// warrant — the supervisor must decide whether to reopen/update manually.
+warrants.post('/conflicts/:id/resolve', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const conflictId = parseInt(c.req.param('id') ?? '0', 10);
+    if (!Number.isFinite(conflictId) || conflictId <= 0) return c.json({ error: 'Invalid conflict id' }, 400);
+    const existing = await queryFirst<{ id: number; resolved_at: string | null }>(
+      db, 'SELECT id, resolved_at FROM warrant_source_conflicts WHERE id = ?', conflictId);
+    if (!existing) return c.json({ error: 'Conflict not found' }, 404);
+    if (existing.resolved_at) return c.json({ error: 'Already resolved', resolved_at: existing.resolved_at }, 409);
+    const body = await c.req.json<{ resolution_note?: string }>();
+    const user = c.get('user') as { id?: number } | undefined;
+    await execute(
+      db,
+      `UPDATE warrant_source_conflicts
+       SET resolved_at = datetime('now'), resolved_by = ?, resolution_note = ?
+       WHERE id = ?`,
+      user?.id ?? null, body.resolution_note?.trim() ?? null, conflictId,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM warrant_source_conflicts WHERE id = ?', conflictId);
+    return c.json(updated);
+  } catch (err) {
+    log.error('[warrants] resolve conflict error', {}, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ error: 'Failed to resolve conflict' }, 500);
+  }
+});
 
 export default warrants;

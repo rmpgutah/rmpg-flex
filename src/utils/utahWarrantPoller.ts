@@ -1137,12 +1137,20 @@ export async function resumePartialWatchRun(db: D1Database): Promise<WatchRunRes
     db, `SELECT COUNT(*) AS n FROM warrant_watch_runs WHERE status = 'running'`);
   if ((inFlight?.n ?? 0) > 0) return null;
 
-  // 2. Only continue when the LAST run was itself budget-truncated. A run that
-  //    completed a full pass, failed outright, or was reaped is not resumable —
-  //    resuming those would be a new pass, which is the cron's job, not ours.
+  // 2. Only continue when the LAST run was budget-truncated. A run that
+  //    completed a full pass is not resumable — that would be a new pass,
+  //    which is the 4-hour cron's job.
+  //
+  //    A reaped run gets status='failed' (not 'completed'), so the original
+  //    check `status !== 'completed'` caused budget-truncated runs that were
+  //    ALSO reaped to permanently lose their resume slot until the next cron
+  //    tick. We now accept 'failed' as resumable when the error_message
+  //    indicates a wall-budget truncation specifically.
   const latest = await queryFirst<{ status: string; error_message: string | null }>(
     db, `SELECT status, error_message FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1`);
-  if (!latest || latest.status !== 'completed') return null;
+  if (!latest) return null;
+  const isResumableStatus = latest.status === 'completed' || latest.status === 'failed';
+  if (!isResumableStatus) return null;
   if (!String(latest.error_message ?? '').startsWith('partial:')) return null;
 
   // 3. Confirm we are genuinely mid-pass. The cursor wraps to 0 when a pass

@@ -638,6 +638,7 @@ export interface CallPdfData {
   hazard_notes?: string;       // from linked property JOIN — triggers posture band when present
   post_orders?: string;        // from linked property JOIN
   gate_code?: string;          // from linked property JOIN
+  alarm_code?: string;         // from linked property JOIN
   // Incident details
   num_subjects?: number;
   num_victims?: number;
@@ -753,6 +754,10 @@ export interface CallPdfData {
     narrative?: string;
     created_at?: string;
     timestamp?: string;
+    // Optional entry-type override — when present, drives the chip label
+    // directly (e.g. 'OFFICER SAFETY', 'INTAKE', 'DISPATCH') so the chip
+    // is correct even when author is a generic tag like 'AI GENERATED'.
+    category?: string;
   }[];
   narrative?: string;
   // OPR identifier
@@ -2370,6 +2375,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'BWC ACTIVE', on: !!data.body_camera_active },
       { label: 'PHOTOS', on: !!data.photos_taken },
       { label: 'EVIDENCE', on: !!data.evidence_collected },
+      { label: 'TRESPASS', on: !!data.trespass_issued },
     ];
     if (items.some(i => i.on)) {
       const margin = LAYOUT.PAGE_MARGIN;
@@ -2719,17 +2725,6 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     y = closeAutoSection(doc, psoSec.sectionY, y, undefined, psoSec.sectionPage);
 
-    // Service Instructions — rendered as a caution block so the dispatcher's / requestor's
-    // specific on-site guidance is impossible to miss when the form is read in printed form.
-    if (data.service_instructions && data.service_instructions.trim()) {
-      y = checkPageBreak(doc, y, 20, prio);
-      y = addCautionBlock(
-        doc,
-        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
-        lx, y, ffw,
-      );
-    }
-
     // (Process Service Details is rendered as a top-level section below, so it
     //  also appears for civil_paper_service / process_service calls — not only
     //  pso_client_request. See the "Process Service Details" block after this.)
@@ -2779,10 +2774,25 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           { label: 'Ops Playbook', value: Array.isArray(data.notes) && data.notes.some((n) => /^OPS$/i.test(String((n as { author?: string }).author || ''))) ? 'Filed' : '' },
         ], y);
       }
-      if (data.deadline) {
-        y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
+      if ((data as any).court_name || data.jurisdiction || data.deadline) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Court', value: (data as any).court_name || data.jurisdiction || '' },
+          { label: 'Deadline', value: fmtTimestamp(data.deadline) },
+          { label: '', value: '' },
+        ], y);
       }
       y = closeAutoSection(doc, psSec.sectionY, y, undefined, psSec.sectionPage);
+    }
+    // Service Instructions — caution block rendered for ALL process-service call types
+    // (pso_client_request, civil_paper_service, process_service). Previously gated inside
+    // the pso_client_request block alone, so serve-intake calls never printed it.
+    if (data.service_instructions && data.service_instructions.trim()) {
+      y = checkPageBreak(doc, y, 20, prio);
+      y = addCautionBlock(
+        doc,
+        `SERVICE INSTRUCTIONS — ${data.service_instructions.trim()}`,
+        lx, y, ffw,
+      );
     }
   }
 
@@ -2836,6 +2846,35 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       y = maxY;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Property / Access Information — gate_code, alarm_code, post_orders, hazard_notes
+  // These arrive via the property JOIN on the call record but were never rendered
+  // in the Call PDF (they only appeared in generatePropertyReport). An officer
+  // responding to a property with an alarm code or standing hazard note needs that
+  // information on the printed run sheet, not just on the posture band chip.
+  {
+    const hasAccess = !!(data.gate_code || (data as any).alarm_code || data.post_orders || data.hazard_notes);
+    if (hasAccess) {
+      y = checkPageBreak(doc, y, 20, prio);
+      const propSec = openAutoSection(doc, 'Property / Access Information', y); y = propSec.contentY;
+      if (data.gate_code || (data as any).alarm_code) {
+        y = addThreeColumnFields(doc, [
+          { label: 'Gate Code', value: data.gate_code || '' },
+          { label: 'Alarm Code', value: (data as any).alarm_code || '' },
+          { label: '', value: '' },
+        ], y);
+      }
+      if (data.post_orders && data.post_orders.trim()) {
+        y = checkPageBreak(doc, y, 14, prio);
+        y = addFieldPair(doc, 'Post Orders', data.post_orders.trim(), lx, y, ffw);
+      }
+      if (data.hazard_notes && data.hazard_notes.trim()) {
+        y = checkPageBreak(doc, y, 14, prio);
+        y = addCautionBlock(doc, `HAZARD — ${data.hazard_notes.trim()}`, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, propSec.sectionY, y, undefined, propSec.sectionPage);
+    }
   }
 
   // CFS address-location map — SWAT location-analysis treatment (2026-06-11):
@@ -2923,7 +2962,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const scFields = [
       { label: 'Weather', value: weatherLabel },
       { label: 'Lighting', value: data.lighting_conditions || (snap?.lighting ?? '') },
-      { label: 'Weapons', value: (!data.weapons_involved || data.weapons_involved === '0') ? 'N/A' : data.weapons_involved },
+      { label: 'Weapons', value: (() => { const w = (data.weapons_involved || '').trim(); return (!w || w === '0' || /^(none|false|no)$/i.test(w)) ? 'N/A' : w; })() },
       { label: 'Scene Safety', value: data.scene_safety || 'Standard' },
     ];
     let maxScY = y + SPACING.FIELD_ROW_ADVANCE;
@@ -3424,16 +3463,29 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // on CFS26-00100).
       const authorRaw = (n.author || '').trim();
       const upper = authorRaw.toUpperCase();
-      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR|OPS)$/i.test(authorRaw)
+      // category field (added to interface 2026-09-13) overrides author for
+      // chip label — lets AI-generated entries specify the correct section
+      // type ('OFFICER SAFETY', 'INTAKE', etc.) while author stays 'AI GENERATED'.
+      const categoryRaw = ((n as { category?: string }).category || '').trim();
+      const categoryUpper = categoryRaw.toUpperCase();
+      // 'AI GENERATED' is a system-pipeline author, not a named officer.
+      // Added here after the OCR/OFFICER SAFETY pattern (2026-07-03 fix) —
+      // same root cause: pseudo-author not in the regex → fell through to
+      // OFFICER NOTE tag + "AI GENERATED" printed as officer suffix.
+      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR|OPS|AI GENERATED)$/i.test(authorRaw)
         || upper === '' || upper === 'SYSTEM';
-      const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
+      // Chip label: category wins over author when present so an AI-generated
+      // OFFICER SAFETY note shows "OFFICER SAFETY", not "AI GENERATED".
+      const resolvedTagLabel = (categoryUpper || (isSystemTag ? upper : '')) || 'SYSTEM';
+      const entryType = isSystemTag ? resolvedTagLabel : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [26, 47, 92]
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [38, 62, 110]
-        : upper === 'NCIC' || upper === 'ALERT' ? [90, 32, 32]
-        : upper === 'OFFICER SAFETY' ? [90, 32, 32]
-        : upper === 'OPS' ? [26, 47, 92]
-        : upper === 'OCR' ? [55, 60, 72]
+      const tagBg: [number, number, number] = resolvedTagLabel === 'DISPATCH' ? [26, 47, 92]
+        : resolvedTagLabel === 'SERVE INTAKE' || resolvedTagLabel === 'INTAKE' ? [38, 62, 110]
+        : resolvedTagLabel === 'NCIC' || resolvedTagLabel === 'ALERT' ? [90, 32, 32]
+        : resolvedTagLabel === 'OFFICER SAFETY' ? [90, 32, 32]
+        : resolvedTagLabel === 'OPS' ? [26, 47, 92]
+        : resolvedTagLabel === 'OCR' ? [55, 60, 72]
+        : resolvedTagLabel === 'AI GENERATED' ? [40, 65, 95]
         : !isSystemTag ? [70, 75, 85]
         : [45, 55, 70];
 
@@ -3475,7 +3527,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         (n as { body?: string }).body ||
         (n as { narrative?: string }).narrative ||
         '';
-      const preserveMarkdown = isSystemTag;
+      // preserveMarkdown: true only for OCR-extraction logs (raw text from
+      // document scans). AI-generated tactical narratives (author='AI GENERATED')
+      // and all officer notes render ALL CAPS — the skill spec mandates it and
+      // mixed-case is visually inconsistent with every other field on the form.
+      const preserveMarkdown = isSystemTag && upper !== 'AI GENERATED';
       const bodyEndY = addFormattedText(
         doc,
         preserveMarkdown ? noteBody : noteBody.toUpperCase(),

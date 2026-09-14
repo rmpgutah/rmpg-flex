@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-cloudflare",
-  "version": "1.0.0",
+  "version": "5.9.1",
   "private": true,
   "engines": {
     "node": ">=18.0.0"
@@ -25,14 +25,14 @@
     "@cloudflare/containers": "^0.3.7",
     "@cloudflare/puppeteer": "^1.4.0",
     "@hono/zod-validator": "^0.9.0",
-    "@libsql/client": "^0.17.4",
+    "@libsql/client": "^0.18.0",
     "@mapbox/vector-tile": "^3.0.0",
     "@noble/post-quantum": "^0.7.1",
-    "@simplewebauthn/server": "^13.3.3",
+    "@simplewebauthn/server": "^14.0.1",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "fflate": "^0.8.3",
-    "hono": "^4.13.5",
+    "hono": "^4.13.7",
     "jose": "^6.2.10",
     "mp4box": "^2.4.1",
     "pbf": "^5.1.2",
@@ -40,21 +40,21 @@
     "pmtiles": "^4.5.0",
     "unpdf": "^1.8.1",
     "uuid": "^14.0.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.2"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.123.0",
+    "@anthropic-ai/sdk": "^0.125.0",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260904.1",
     "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.1",
     "@types/uuid": "^10.0.0",
     "husky": "^9.1.7",
     "patch-package": "^8.0.1",
     "sharp": "^0.35.4",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.129.0"
+    "vitest": "^5.0.0",
+    "wrangler": "^4.131.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"

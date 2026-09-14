@@ -85,6 +85,29 @@ function fmtUnits(s: string | null | undefined): string {
   return trimmed;
 }
 
+// ── WinAnsi sanitization ─────────────────────────────────────
+// pdf-lib's StandardFonts use WinAnsiEncoding (ISO Latin-1 based). Any
+// character with a Unicode code point above U+00FF is not representable
+// and causes an immediate throw inside drawText() or widthOfTextAtSize().
+// Substitute the most common offenders before they reach pdf-lib.
+
+/** Strip or substitute characters that WinAnsiEncoding cannot encode. */
+function safe(s: string | null | undefined): string {
+  if (!s) return '';
+  return s
+    // Common typographic substitutions (keep text readable)
+    .replace(/[‘’]/g, "'")       // curly single quotes → '
+    .replace(/[“”]/g, '"')       // curly double quotes → "
+    .replace(/[–—]/g, '-')       // en-dash, em-dash → -
+    .replace(/…/g, '...')            // ellipsis → ...
+    .replace(/[•●■]/g, '*') // bullet, filled circle, black square → *
+    .replace(/™/g, 'TM')            // trademark → TM
+    .replace(/®/g, '(R)')           // registered → (R)
+    .replace(/©/g, '(C)')           // copyright → (C)
+    // Drop everything else that's outside the WinAnsi range
+    .replace(/[^\x00-\xFF]/g, '?');
+}
+
 // ── Layout constants ─────────────────────────────────────────
 
 const PAGE_W = 612;   // US Letter
@@ -133,8 +156,9 @@ function ensureSpace(cur: Cursor, linesNeeded: number, doc: PDFDocument): void {
 }
 
 function truncate(s: string, maxW: number, f: FontRef, size: number): string {
+  s = safe(s);
   if (f.widthOfTextAtSize(s, size) <= maxW) return s;
-  const ellipsis = '…';
+  const ellipsis = '...';
   let lo = 0, hi = s.length;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
@@ -553,7 +577,7 @@ export async function renderDailyReport(data: DailyReportData): Promise<Uint8Arr
       color: rgb(0.4, 0.4, 0.4),
     });
     // Confidential notice
-    const confText = 'CONFIDENTIAL — Rocky Mountain Protective Group';
+    const confText = 'CONFIDENTIAL - Rocky Mountain Protective Group';
     const confW = font.widthOfTextAtSize(confText, 6);
     p.drawText(confText, {
       x: (PAGE_W - confW) / 2, y: MARGIN_BOT - 30, size: 6, font,

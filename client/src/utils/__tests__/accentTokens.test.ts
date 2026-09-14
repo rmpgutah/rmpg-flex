@@ -795,8 +795,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //   text-fg-secondary / text-fg-muted / placeholder-fg-muted.
   // 10598 -> 10600: 2 utilities introduced in audio fix (#4209); tracked, not migrated.
   // 10600 -> 10599: 1 occurrence removed in workflow-enhancements branch.
-  // 10599 -> 10601: 2 occurrences re-entered from main merge; tracked, not migrated.
-  const PIN = 10601;
+  const PIN = 10599;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
