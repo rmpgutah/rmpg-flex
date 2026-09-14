@@ -281,6 +281,14 @@ export default function IncidentsPage() {
   const [uofFilter, setUofFilter] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Client-side pagination of the filtered list
+  const [listPage, setListPage] = useState(1);
+  const LIST_PER_PAGE = 75;
+
+  // Reset page + selection when filters change
+  useEffect(() => { setListPage(1); setSelectedIds(new Set()); }, [searchQuery, uofFilter, showArchived]);
   const [sortKey, setSortKey] = usePersistedState<SortKey>('rmpg_incidents_sort', 'occurred_at');
   const [sortAsc, setSortAsc] = usePersistedState('rmpg_incidents_sort_asc', false);
 
@@ -954,6 +962,27 @@ export default function IncidentsPage() {
   };
 
   // ============================================================
+  // Bulk actions
+  // ============================================================
+
+  const handleBulkAction = async (action: 'archive' | 'status', status?: string) => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    try {
+      await apiFetch('/incidents/bulk', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds).map(Number), action, ...(status ? { status } : {}) }),
+      });
+      setSelectedIds(new Set());
+      await fetchIncidents({ silent: true });
+      addToast(`${count} incident${count > 1 ? 's' : ''} updated`, 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk update failed', 'error');
+    }
+  };
+
+  // ============================================================
   // Sort
   // ============================================================
 
@@ -986,6 +1015,11 @@ export default function IncidentsPage() {
       const cmp = String(aVal).localeCompare(String(bVal));
       return sortAsc ? cmp : -cmp;
     });
+
+  const totalListPages = Math.max(1, Math.ceil(filtered.length / LIST_PER_PAGE));
+  // Clamp page when filter narrows the list
+  const currentListPage = Math.min(listPage, totalListPages);
+  const filteredPage = filtered.slice((currentListPage - 1) * LIST_PER_PAGE, currentListPage * LIST_PER_PAGE);
 
   // ============================================================
   // Stats
@@ -1091,6 +1125,25 @@ export default function IncidentsPage() {
         </div>
       </div>
 
+      {/* Bulk action toolbar */}
+      {selectedIds.size > 0 && canSupervise && (
+        <div className="px-4 py-1.5 border-b border-brand-700/40 flex items-center gap-2 flex-shrink-0" style={{ background: 'rgb(var(--brand-900-rgb,0 0 0)/0.25)' }}>
+          <span className="text-[10px] font-semibold text-brand-300">{selectedIds.size} selected</span>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => handleBulkAction('archive')}>
+            <Archive className="w-3 h-3" /> Archive
+          </button>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => handleBulkAction('status', 'approved')}>
+            Approve
+          </button>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => handleBulkAction('status', 'under_review')}>
+            Mark Review
+          </button>
+          <button type="button" className="ml-auto text-[10px] text-rmpg-400 hover:text-rmpg-200" onClick={() => setSelectedIds(new Set())}>
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
         <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: 'var(--surface-overlay)' }}>
@@ -1122,7 +1175,8 @@ export default function IncidentsPage() {
             </div>
           )}
           <span className="ml-auto text-rmpg-500 tabular-nums">
-            Showing {filtered.length} of {incidents.length}
+            Showing {Math.min(filteredPage.length, LIST_PER_PAGE)} of {filtered.length}
+            {totalListPages > 1 && ` (pg ${currentListPage}/${totalListPages})`}
           </span>
         </div>
       )}
@@ -1152,6 +1206,23 @@ export default function IncidentsPage() {
           <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
+                {canSupervise && !showArchived && (
+                  <th className="w-7 pr-0">
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3"
+                      checked={filteredPage.length > 0 && filteredPage.every(i => selectedIds.has(i.id))}
+                      onChange={(e) => {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          filteredPage.forEach(i => e.target.checked ? next.add(i.id) : next.delete(i.id));
+                          return next;
+                        });
+                      }}
+                      title="Select all on this page"
+                    />
+                  </th>
+                )}
                 <th className="cursor-pointer select-none" onClick={() => handleSort('incident_number')}>
                   <div className="flex items-center gap-1">
                     IR # <SortIcon colKey="incident_number" sortKey={sortKey} sortAsc={sortAsc} />
@@ -1190,7 +1261,7 @@ export default function IncidentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((inc) => (
+              {filteredPage.map((inc) => (
                 <tr
                   key={inc.id}
                   onClick={() => {
@@ -1202,6 +1273,22 @@ export default function IncidentsPage() {
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
+                  {canSupervise && !showArchived && (
+                    <td className="w-7 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="w-3 h-3"
+                        checked={selectedIds.has(inc.id)}
+                        onChange={(e) => {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            e.target.checked ? next.add(inc.id) : next.delete(inc.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    </td>
+                  )}
                   <td className="font-bold text-rmpg-100 text-xs font-mono">
                     <span className="cursor-pointer hover:text-green-400 transition-colors" title="Click to copy"
                       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(inc.incident_number || ''); }}>
@@ -1232,9 +1319,9 @@ export default function IncidentsPage() {
                   <td className="text-xs text-rmpg-300 font-mono">{formatDate(inc.occurred_at)}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {filteredPage.length === 0 && (
                 <tr>
-                  <td colSpan={isMobile ? 5 : 7} className="text-center py-12">
+                  <td colSpan={(isMobile ? 5 : 7) + (canSupervise && !showArchived ? 1 : 0)} className="text-center py-12">
                     <FileText className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
                     {/* Distinguish empty-shelf from no-match — operator
                         needs to know whether the search dropped them off
@@ -1272,6 +1359,29 @@ export default function IncidentsPage() {
           </table></div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalListPages > 1 && (
+        <div className="flex items-center justify-center gap-2 px-4 py-2 border-t border-rmpg-700/50 flex-shrink-0 text-[10px]">
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={() => setListPage(p => Math.max(1, p - 1))}
+            disabled={currentListPage === 1}
+          >
+            ← Prev
+          </button>
+          <span className="text-rmpg-400">Page {currentListPage} / {totalListPages}</span>
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={() => setListPage(p => Math.min(totalListPages, p + 1))}
+            disabled={currentListPage === totalListPages}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -2175,17 +2285,36 @@ export default function IncidentsPage() {
                 const fg = typeColors[link.linked_type] || 'var(--text-muted)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
+                // Build a deep-link path for each linked entity type so officers
+                // can navigate directly to the record without leaving and searching.
+                const linkPath = (() => {
+                  switch (link.linked_type) {
+                    case 'warrant': return `/warrants?warrant_id=${link.linked_id}`;
+                    case 'case': return `/cases?case_id=${link.linked_id}`;
+                    case 'call': return `/dispatch?call_id=${link.linked_id}`;
+                    case 'incident': return `/incidents?incident_id=${link.linked_id}`;
+                    default: return null;
+                  }
+                })();
+                const refLabel = link.detail
+                  ? (link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`)
+                  : `#${link.linked_id}`;
                 return (
                   <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                     <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: fg, background: `rgb(${rgb} / 0.12)`, border: `1px solid rgb(${rgb} / 0.25)` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
-                    {link.detail ? (
-                      <span className="text-xs text-rmpg-100 font-mono">
-                        {link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`}
-                      </span>
+                    {linkPath ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(linkPath)}
+                        className="text-xs font-mono text-brand-400 hover:text-brand-200 hover:underline underline-offset-2 transition-colors text-left"
+                        title={`Go to ${typeLabels[link.linked_type] || link.linked_type} ${refLabel}`}
+                      >
+                        {refLabel}
+                      </button>
                     ) : (
-                      <span className="text-xs text-rmpg-400">#{link.linked_id}</span>
+                      <span className="text-xs text-rmpg-100 font-mono">{refLabel}</span>
                     )}
                     {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{toDisplayLabel(link.detail.incident_type)}</span>}
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{toDisplayLabel(link.detail.status)}</span>}

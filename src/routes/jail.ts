@@ -165,6 +165,31 @@ jail.put('/inmates/:id', async (c) => {
   }
 });
 
+jail.put('/inmates/bulk-status', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids: number[]; status: string }>().catch(() => ({ ids: [], status: '' }));
+    const ids = (body.ids ?? []).map(Number).filter(Number.isFinite).filter(n => n > 0).slice(0, 200);
+    const VALID_STATUSES = ['booked', 'released', 'transferred', 'medical_hold', 'court_hold', 'disciplinary_hold'];
+    const status = String(body.status ?? '');
+    if (ids.length === 0) return c.json({ error: 'ids required', code: 'NO_IDS' }, 400);
+    if (!VALID_STATUSES.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
+
+    const CHUNK = 90;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const ph = chunk.map(() => '?').join(',');
+      await execute(db, `UPDATE inmates SET status = ?, updated_at = datetime('now') WHERE id IN (${ph})`, status, ...chunk);
+    }
+    return c.json({ success: true, affected: ids.length });
+  } catch (err) {
+    log.error('PUT /inmates/bulk-status failed', { src: 'src/routes/jail.ts' }, err);
+    return c.json({ error: 'Failed to update inmates', code: 'BULK_ERROR' }, 500);
+  }
+});
+
 jail.delete('/inmates/:id', async (c) => {
   const denied = requireRole(c, 'admin');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
