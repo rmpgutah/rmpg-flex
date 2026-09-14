@@ -14,6 +14,7 @@
 import {
   resolveMapboxAccessToken,
   clearMapboxConfigCache,
+  getSyncCachedToken,
 } from './mapboxToken';
 
 const MISSING_TOKEN_MESSAGE =
@@ -28,7 +29,11 @@ export function getCachedMapboxAccessToken(): string {
   // below (getMapboxTokenStatus, hasMapboxToken) before they ever fall
   // back to the server-resolved token.
   if (token.startsWith('sk.')) return '';
-  return token;
+  if (token) return token;
+  // Fall back to the write-through cache populated by resolveMapboxAccessToken
+  // after a successful server fetch. This lets sync callers (locationImagery,
+  // static image URL builders) work once warmImageryToken() has resolved.
+  return getSyncCachedToken();
 }
 
 export function getMapboxTokenErrorMessage(): string {

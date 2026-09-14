@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link2, Route, TimerReset, Search, Radar } from 'lucide-react';
 import {
   buildMapboxStaticImageUrl,
@@ -7,6 +7,7 @@ import {
   fetchMapboxMatchedPath,
   fetchMapboxReverseGeocode,
   fetchMapboxRoute,
+  ensureMapboxDirections,
   hasMapboxDirections,
 } from '../../../utils/mapboxRouting';
 import type { ActiveCall } from '../utils/mapConstants';
@@ -38,9 +39,19 @@ export default function MapboxDispatchConnections({
   matrixActive = false,
   directionsActive = false,
 }: MapboxDispatchConnectionsProps) {
-  const connected = hasMapboxDirections();
+  const [connected, setConnected] = useState<boolean | null>(() => hasMapboxDirections() ? true : null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [resultText, setResultText] = useState<string>('Ready');
+
+  useEffect(() => {
+    let cancelled = false;
+    if (connected === true) return undefined;
+    void ensureMapboxDirections().then(
+      available => { if (!cancelled) setConnected(available); },
+      () => { if (!cancelled) setConnected(false); },
+    );
+    return () => { cancelled = true; };
+  }, [connected]);
 
   const bestUnit = useMemo(
     () => results.find(result => result.unit.latitude != null && result.unit.longitude != null) || null,
@@ -52,12 +63,18 @@ export default function MapboxDispatchConnections({
     : null;
 
   const runAction = async (action: string, fn: () => Promise<string>) => {
-    if (!connected) {
-      setResultText('Mapbox token required');
-      return;
-    }
     setBusyAction(action);
     try {
+      // Do not let the initial synchronous cache miss disable a true cold-start
+      // action while the authenticated server token request is still in flight.
+      if (!connected) {
+        const available = await ensureMapboxDirections();
+        setConnected(available);
+        if (!available) {
+          setResultText('Mapbox token required');
+          return;
+        }
+      }
       setResultText(await fn());
     } catch (error) {
       setResultText(error instanceof Error ? error.message : 'Mapbox action failed');
@@ -131,7 +148,8 @@ export default function MapboxDispatchConnections({
               : []),
           ],
         });
-        return url ? `Static image ready: ${url}` : 'Static image URL unavailable';
+        // Never render the token-bearing URL into operator-visible diagnostics.
+        return url ? 'Static image ready' : 'Static image URL unavailable';
       },
     },
     {
@@ -168,12 +186,12 @@ export default function MapboxDispatchConnections({
           className="text-[8px] font-bold uppercase px-1.5 py-0.5"
           style={{
             borderRadius: 2,
-            color: connected ? 'var(--sev-ok)' : 'var(--sev-warn)',
+            color: connected === true ? 'var(--sev-ok)' : connected === false ? 'var(--sev-warn)' : 'var(--text-muted)',
             border: `1px solid ${connected ? 'rgb(var(--sev-ok-rgb) / 0.25)' : 'rgb(var(--sev-warn-rgb) / 0.25)'}`,
             background: connected ? 'rgb(var(--sev-ok-rgb) / 0.07)' : 'rgb(var(--sev-warn-rgb) / 0.07)',
           }}
         >
-          {connected ? 'Connected' : 'Token Required'}
+          {connected === true ? 'Connected' : connected === false ? 'Token Required' : 'Checking…'}
         </span>
       </div>
 

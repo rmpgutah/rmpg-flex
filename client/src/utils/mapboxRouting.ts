@@ -1,3 +1,5 @@
+import { getSyncCachedToken, resolveMapboxAccessToken } from './mapboxToken';
+
 export interface CoordinatePair {
   lat: number;
   lng: number;
@@ -56,11 +58,14 @@ function isFiniteCoordinate(value: CoordinatePair | null | undefined): value is 
   return !!value && Number.isFinite(value.lat) && Number.isFinite(value.lng);
 }
 
-// Sync build-time-only read used by hasMapboxDirections() and the
-// static image URL builder. Falls back to empty when token is server-side;
-// async callers (mapboxFetch, buildMapboxStaticImageUrl) use resolveMapboxAccessToken.
+// Sync token read for hasMapboxDirections() and buildMapboxStaticImageUrl.
+// Checks the build-time env var first, then falls back to the write-through
+// cache populated by resolveMapboxAccessToken after a successful server fetch
+// (e.g. via warmImageryToken). This lets the static image URL work even when
+// VITE_MAPBOX_ACCESS_TOKEN is not baked in at build time.
 function getBuildTimeToken(): string {
-  return String(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '').trim();
+  const buildTime = String(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '').trim();
+  return buildTime || getSyncCachedToken();
 }
 
 // Re-export so useMapboxOptimizationRoutes (and any other callers that imported
@@ -72,9 +77,13 @@ export function hasMapboxDirections(): boolean {
   return getBuildTimeToken().length > 0;
 }
 
+/** Resolve routing availability on a cold start, including the server token path. */
+export async function ensureMapboxDirections(): Promise<boolean> {
+  return (await resolveMapboxAccessToken()).length > 0;
+}
+
 async function mapboxFetch<T>(path: string, query: URLSearchParams): Promise<T> {
   // Use the shared async resolver so server-delivered tokens work here too.
-  const { resolveMapboxAccessToken } = await import('./mapboxToken');
   const token = await resolveMapboxAccessToken();
   if (!token) throw new Error('Mapbox access token not configured');
   query.set('access_token', token);
