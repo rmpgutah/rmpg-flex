@@ -145,6 +145,7 @@ import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import deliveriesWebhook from './routes/deliveriesWebhook';
 import driverPerformance from './routes/driverPerformance';
 import legalDataHunter from './routes/legalDataHunter';
 import webBrowser from './routes/webBrowser';
@@ -873,6 +874,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Longer ingest prefix FIRST so Hono does not let the parent router steal POST /ingest.
   { prefix: '/api/dialer-connect/ingest', router: dialerConnectIngest, auth: 'public',
     note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
+  { prefix: '/api/deliveries/webhook', router: deliveriesWebhook, auth: 'public',
+    note: 'rmpgutahps.us delivery-scheduler push (piece 1/3). HMAC via RMPG_FLEX_WEBHOOK_SECRET (x-rmpg-flex-hmac-sha256). 200 not_configured when unset.' },
   { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
     note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
