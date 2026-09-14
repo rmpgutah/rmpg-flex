@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
-import DataTable from '../components/DataTable';
+import DataTable, { type Column } from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import JailFormModal, { JailFormData } from '../components/JailFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -95,6 +95,7 @@ export default function JailPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [selectedInmateIds, setSelectedInmateIds] = useState<Set<number>>(new Set());
   const { addToast } = useToast();
   const m = useMenuActions();
   const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
@@ -352,7 +353,47 @@ export default function JailPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [formOpen, deleteId, canCreate, openNew]);
 
-  const columns = [
+  const canBulkManage = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+
+  const handleBulkInmateStatus = async (status: string) => {
+    const count = selectedInmateIds.size;
+    if (count === 0) return;
+    try {
+      await apiFetch('/jail/inmates/bulk-status', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedInmateIds), status }),
+      });
+      setSelectedInmateIds(new Set());
+      await fetchInmates();
+      addToast(`${count} inmate${count > 1 ? 's' : ''} updated to ${status}`, 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Bulk update failed', 'error');
+    }
+  };
+
+  const columns: Column<Inmate>[] = [
+    ...(canBulkManage ? [{
+      key: '_sel',
+      label: '',
+      width: '36px',
+      render: (row: Inmate) => (
+        <input
+          type="checkbox"
+          className="w-3 h-3"
+          checked={selectedInmateIds.has(row.id)}
+          onChange={(e) => {
+            e.stopPropagation();
+            setSelectedInmateIds(prev => {
+              const next = new Set(prev);
+              e.target.checked ? next.add(row.id) : next.delete(row.id);
+              return next;
+            });
+          }}
+          onClick={e => e.stopPropagation()}
+        />
+      ),
+    }] : []),
     { key: 'booking_number', label: 'Booking #' },
     { key: 'last_name', label: 'Last Name' },
     { key: 'first_name', label: 'First Name' },
@@ -548,6 +589,18 @@ export default function JailPage() {
           {matchedCount} of {totalCount} shown
         </span>
       </div>
+
+      {canBulkManage && selectedInmateIds.size > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-[10px]">
+          <span className="font-semibold text-brand-300">{selectedInmateIds.size} selected</span>
+          {(['released', 'transferred', 'medical_hold'] as const).map(s => (
+            <button key={s} type="button" className="toolbar-btn" onClick={() => void handleBulkInmateStatus(s)}>
+              → {s.replace('_', ' ')}
+            </button>
+          ))}
+          <button type="button" className="toolbar-btn ml-auto" onClick={() => setSelectedInmateIds(new Set())}>Clear</button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}
