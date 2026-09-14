@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { BarChart3, RefreshCw, Users, Zap } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../components/ToastProvider';
 
 type Period = 30 | 60 | 90;
 
@@ -32,6 +33,7 @@ interface SuccessRatesResponse {
 
 export default function PerformanceTab() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const isAdmin = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
 
   const [period, setPeriod] = useState<Period>(90);
@@ -47,10 +49,11 @@ export default function PerformanceTab() {
       setData(res);
     } catch {
       setData(null);
+      addToast('Could not load performance data — please try again', 'error');
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, addToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -66,6 +69,7 @@ export default function PerformanceTab() {
       setAssignResult({ assigned: res.assigned ?? 0 });
     } catch {
       setAssignResult({ assigned: -1 });
+      addToast('Auto-assign failed — please try again', 'error');
     } finally {
       setAutoAssigning(false);
       load();
