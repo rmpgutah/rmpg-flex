@@ -1,0 +1,198 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/DialerPanel';
+import { dialerApi, type DialerApiError } from './dialerApi';
+import { isIframeDialerForced } from './dialerFlags';
+import { INITIAL, reduce, type SoftphoneSnapshot } from './softphoneMachine';
+import { controlCallSid, type DeviceFactory, type SoftphoneCall, type SoftphoneDevice } from './types';
+
+const HEARTBEAT_MS = 30_000;
+const TOKEN_REFRESH_LEAD_MS = 5 * 60_000;
+
+export interface SoftphoneContextValue extends SoftphoneSnapshot {
+  identity: string | null;
+  dial(to: string, opts?: { blockCallerId?: boolean }): Promise<void>;
+  answer(): void;
+  reject(): void;
+  hangup(): void;
+  setMuted(muted: boolean): void;
+  toggleHold(): Promise<void>;
+  sendDigits(digits: string): void;
+  transferBlind(targetDispatcherId: string): Promise<void>;
+  transferWarm(targetDispatcherId: string): Promise<void>;
+  addParty(phoneNumber: string): Promise<void>;
+  toggleRecording(): Promise<void>;
+  duress(): Promise<void>;
+  retry(): void;
+}
+
+const Ctx = createContext<SoftphoneContextValue | null>(null);
+
+async function realDeviceFactory(token: string): Promise<SoftphoneDevice> {
+  const { Device } = await import('@twilio/voice-sdk');
+  return new Device(token, { logLevel: 'error' }) as unknown as SoftphoneDevice;
+}
+
+export function SoftphoneProvider({ children, createDevice, enabled = true }: { children: ReactNode; createDevice?: DeviceFactory; enabled?: boolean }) {
+  const [snap, dispatch] = useReducer(reduce, INITIAL);
+  const deviceRef = useRef<SoftphoneDevice | null>(null);
+  const activeCallRef = useRef<SoftphoneCall | null>(null);
+  const waitingCallRef = useRef<SoftphoneCall | null>(null);
+  const identityRef = useRef<string | null>(null);
+  const expiresAtRef = useRef<number>(0);
+  const refreshPendingRef = useRef(false);
+  const startedAtRef = useRef<number>(0);
+  const [, force] = useReducer((n: number) => n + 1, 0);
+
+  const dispatcherId = () => identityRef.current?.replace(/^dispatcher_/, '') ?? '';
+
+  const archive = useCallback((call: SoftphoneCall | null, status: string) => {
+    if (!call) return;
+    const callSid = call.parameters.CallSid ?? controlCallSid(call) ?? undefined;
+    const from = call.parameters.From, to = call.parameters.To;
+    const durationSeconds = startedAtRef.current ? Math.round((Date.now() - startedAtRef.current) / 1000) : undefined;
+    void dialerApi.archive({ type: 'call_status', callSid, status, from, to, durationSeconds });
+  }, []);
+
+  const refreshToken = useCallback(async () => {
+    const res = await dialerApi.fetchToken();
+    if (!('token' in res)) throw Object.assign(new Error('Dial Connect not configured'), { code: 'not_configured' });
+    identityRef.current = res.identity;
+    expiresAtRef.current = Date.parse(res.expiresAt);
+    deviceRef.current?.updateToken(res.token);
+    return res.token;
+  }, []);
+
+  const attachCall = useCallback((call: SoftphoneCall, direction: 'inbound' | 'outbound') => {
+    activeCallRef.current = call;
+    call.on('accept', () => {
+      startedAtRef.current = Date.now();
+      dispatch({ type: 'ACCEPTED', callSid: controlCallSid(call), connectedAt: startedAtRef.current });
+    });
+    call.on('mute', (muted: boolean) => dispatch({ type: 'MUTED', muted }));
+    // Status is decided when the call ENDS: a call that was ever connected is
+    // 'completed'; otherwise it's the fallback (missed for inbound, failed for
+    // errors, completed for an outbound leg Twilio ended before 'accept').
+    const end = (fallback: string) => () => {
+      if (activeCallRef.current !== call) return;
+      archive(call, startedAtRef.current ? 'completed' : fallback);
+      activeCallRef.current = null;
+      startedAtRef.current = 0;
+      call.removeAllListeners();
+      dispatch({ type: 'DISCONNECTED' });
+      if (refreshPendingRef.current) { refreshPendingRef.current = false; void refreshToken().catch(() => undefined); }
+    };
+    call.on('disconnect', end(direction === 'outbound' ? 'completed' : 'missed'));
+    call.on('cancel', end('missed'));
+    call.on('reject', end('missed'));
+    call.on('error', (err: Error) => { dispatch({ type: 'ERROR', message: err.message }); end('failed')(); });
+  }, [archive, refreshToken]);
+
+  const register = useCallback(async () => {
+    if (!enabled || isIframeDialerForced()) { dispatch({ type: 'PASSIVE' }); return; }
+    dispatch({ type: 'REGISTERING' });
+    let token: string;
+    try {
+      token = await refreshToken();
+    } catch (err) {
+      const e = err as DialerApiError;
+      if (e.code === 'dialer_unlinked') { dispatch({ type: 'UNLINKED' }); return; }
+      dispatch({ type: 'ERROR', message: e.code === 'not_configured' ? 'Dial Connect is not configured' : e.message || 'Could not reach Dial Connect' });
+      return;
+    }
+    const device = createDevice ? createDevice(token) : await realDeviceFactory(token);
+    deviceRef.current = device;
+    device.on('registered', () => dispatch({ type: 'REGISTERED' }));
+    device.on('error', (err: Error) => dispatch({ type: 'ERROR', message: err.message }));
+    device.on('incoming', (call: SoftphoneCall) => {
+      const from = call.parameters.From ?? call.customParameters.get('To') ?? 'unknown';
+      if (activeCallRef.current) {
+        waitingCallRef.current = call;
+        call.on('cancel', () => { waitingCallRef.current = null; dispatch({ type: 'WAITING_CANCELLED' }); });
+        dispatch({ type: 'INCOMING', from, callSid: controlCallSid(call) });
+        return;
+      }
+      attachCall(call, 'inbound');
+      dispatch({ type: 'INCOMING', from, callSid: controlCallSid(call) });
+    });
+    try { await device.register(); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); }
+  }, [enabled, createDevice, refreshToken, attachCall]);
+
+  useEffect(() => {
+    void register();
+    return () => { deviceRef.current?.destroy(); deviceRef.current = null; };
+  }, [register]);
+
+  // Presence heartbeat + proactive token refresh (deferred while a call is live).
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!deviceRef.current) return;
+      void dialerApi.heartbeat().catch(() => undefined);
+      if (expiresAtRef.current && Date.now() > expiresAtRef.current - TOKEN_REFRESH_LEAD_MS) {
+        if (activeCallRef.current) refreshPendingRef.current = true;
+        else void refreshToken().catch(() => undefined);
+      }
+    }, HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [refreshToken]);
+
+  const dial = useCallback(async (raw: string, opts?: { blockCallerId?: boolean }) => {
+    const device = deviceRef.current;
+    const to = normalizeDialTarget(raw);
+    if (!device || !to || activeCallRef.current) return;
+    dispatch({ type: 'DIALING', to });
+    const call = await device.connect({ params: { To: to, DispatcherId: dispatcherId(), CallerIdBlocked: opts?.blockCallerId ? 'true' : 'false' } });
+    call.parameters.To = call.parameters.To ?? to;
+    attachCall(call, 'outbound');
+  }, [attachCall]);
+
+  useEffect(() => {
+    const onPlace = (event: Event) => {
+      const to = (event as CustomEvent<{ to?: string }>).detail?.to;
+      if (typeof to === 'string') void dial(to);
+    };
+    window.addEventListener(DIALER_PLACE_CALL_EVENT, onPlace);
+    return () => window.removeEventListener(DIALER_PLACE_CALL_EVENT, onPlace);
+  }, [dial]);
+
+  const withSid = useCallback(async (fn: (sid: string) => Promise<unknown>) => {
+    const sid = controlCallSid(activeCallRef.current);
+    if (!sid) return;
+    try { await fn(sid); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); }
+  }, []);
+
+  const value = useMemo<SoftphoneContextValue>(() => ({
+    ...snap,
+    identity: identityRef.current,
+    dial,
+    answer: () => {
+      const waiting = waitingCallRef.current;
+      if (waiting && activeCallRef.current) {
+        activeCallRef.current.disconnect();
+        waitingCallRef.current = null;
+        attachCall(waiting, 'inbound');
+        waiting.accept();
+        return;
+      }
+      activeCallRef.current?.accept();
+    },
+    reject: () => { (waitingCallRef.current ?? activeCallRef.current)?.reject(); },
+    hangup: () => activeCallRef.current?.disconnect(),
+    setMuted: (m) => activeCallRef.current?.mute(m),
+    sendDigits: (d) => activeCallRef.current?.sendDigits(d),
+    toggleHold: () => withSid(async (sid) => { await dialerApi.hold(sid, !snap.held); dispatch({ type: 'HELD', held: !snap.held }); }),
+    transferBlind: (target) => withSid((sid) => dialerApi.transfer(sid, target)),
+    transferWarm: (target) => withSid((sid) => dialerApi.addDispatcher(sid, target)),
+    addParty: (phone) => withSid((sid) => dialerApi.addParty(sid, phone)),
+    toggleRecording: () => withSid(async (sid) => { await dialerApi.recording(sid, snap.recording ? 'stop' : 'start'); dispatch({ type: 'RECORDING', recording: !snap.recording }); }),
+    duress: async () => { try { await dialerApi.duress(); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); } },
+    retry: () => { deviceRef.current?.destroy(); deviceRef.current = null; dispatch({ type: 'RESET' }); force(); void register(); },
+  }), [snap, dial, withSid, attachCall, register]);
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useSoftphone(): SoftphoneContextValue {
+  const v = useContext(Ctx);
+  if (!v) throw new Error('useSoftphone must be used inside <SoftphoneProvider>');
+  return v;
+}
