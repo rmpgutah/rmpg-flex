@@ -27,6 +27,12 @@
  *  a failed reload can't loop. Do NOT change this string in isolation. */
 export const CHUNK_RELOAD_KEY = 'rmpg_chunk_reload';
 
+/** Set when the escalated full-purge reload fires (evict caches + unregister SW).
+ *  If this key is recent AND chunks still fail, we give up entirely rather than
+ *  looping. Separate from CHUNK_RELOAD_KEY so the two stages are independently
+ *  trackable. */
+export const CHUNK_PURGE_RELOAD_KEY = 'rmpg_chunk_purge_reload';
+
 /** Only reload once per this window; a second failure inside it means the reload
  *  didn't help, so we surface the error instead of reloading again. */
 export const CHUNK_RELOAD_WINDOW_MS = 30_000;
@@ -483,21 +489,51 @@ export function reloadAndHold<T>(err: unknown, deps: ReloadHoldDeps): Promise<T>
 
 /**
  * Convenience wrapper over the read-decide-record-reload dance shared by both
- * call sites, using real browser globals. Returns a bounded pending promise when
- * a reload is triggered, or `null` when we're inside the reload window and the
- * caller should rethrow the original error.
+ * call sites, using real browser globals.
+ *
+ * Escalation ladder:
+ *   1. First failure: normal `window.location.reload()` — fastest path, most
+ *      common case (hash-rotated chunk, deploy-propagation lag).
+ *   2. Still failing within 30s of (1): full cache purge + SW unregister + reload.
+ *      The normal reload landed but chunks were still poisoned in Cache Storage or
+ *      the HTTP cache on that specific device.
+ *   3. Still failing within 30s of (2): give up and return null so the caller can
+ *      surface a real error (ErrorBoundary card / toast) instead of looping.
+ *
+ * Returns a bounded pending promise when a reload is triggered, or null when the
+ * purge-reload dedup window is active and the caller should rethrow.
  */
 export function tryReloadForChunkFailure<T>(err: unknown): Promise<T> | null {
-  let lastAt: number | null = null;
+  const now = Date.now();
+  let lastReloadAt: number | null = null;
+  let lastPurgeAt: number | null = null;
   try {
-    const raw = sessionStorage.getItem(CHUNK_RELOAD_KEY);
-    lastAt = raw ? parseInt(raw, 10) : null;
-    if (lastAt !== null && Number.isNaN(lastAt)) lastAt = null;
+    const r = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+    lastReloadAt = r ? parseInt(r, 10) : null;
+    if (Number.isNaN(lastReloadAt)) lastReloadAt = null;
+    const p = sessionStorage.getItem(CHUNK_PURGE_RELOAD_KEY);
+    lastPurgeAt = p ? parseInt(p, 10) : null;
+    if (Number.isNaN(lastPurgeAt)) lastPurgeAt = null;
   } catch { /* sessionStorage unavailable (private mode) — treat as never reloaded */ }
 
-  if (!mayReloadForChunkFailure(Date.now(), lastAt)) return null;
+  // Stage 3: purge-reload already tried recently and still failing → surface error
+  if (!mayReloadForChunkFailure(now, lastPurgeAt)) return null;
 
-  try { sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now())); } catch { /* ignore */ }
+  // Stage 2: normal reload was tried recently but didn't help → full purge + reload
+  if (!mayReloadForChunkFailure(now, lastReloadAt)) {
+    try { sessionStorage.setItem(CHUNK_PURGE_RELOAD_KEY, String(now)); } catch { /* ignore */ }
+    return reloadAndHold<T>(err, {
+      reload: () => {
+        // Fire-and-forget: eviction is fast; reload() runs in .finally() so it
+        // happens even if one eviction step partially fails.
+        evictPoisonedChunkCachesInBrowser().finally(() => window.location.reload());
+      },
+      setTimer: (cb, ms) => window.setTimeout(cb, ms),
+    });
+  }
+
+  // Stage 1: first failure — normal reload
+  try { sessionStorage.setItem(CHUNK_RELOAD_KEY, String(now)); } catch { /* ignore */ }
   return reloadAndHold<T>(err, {
     reload: () => window.location.reload(),
     setTimer: (cb, ms) => window.setTimeout(cb, ms),
