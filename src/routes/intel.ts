@@ -120,7 +120,7 @@ intel.get('/search', operational, async (c) => {
       try {
         for (const p of await query<any>(db,
           `SELECT id, first_name, last_name FROM persons
-           WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT 10`, term))
+           WHERE (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' LIMIT 10`, term))
           hits.set(`person:${p.id}`, { type: 'person', id: p.id, label: `${p.first_name} ${p.last_name}`, snippet: '', flags: [], score: 10 });
       } catch (e) { log.warn('intel LIKE fallback failed', { error: e instanceof Error ? e.message : String(e) }); }
     }
