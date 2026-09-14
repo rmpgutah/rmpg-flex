@@ -181,7 +181,7 @@ export type Bindings = {
   DIAL_CONNECT_WEBHOOK_URL?: string;
   DIAL_CONNECT_WEBHOOK_SECRET?: string;
   // rmpgutahps.us delivery-scheduler → CAD push (piece 1/3). Set via
-  // `wrangler secret put RMPG_FLEX_WEBHOOK_SECRET`. Unset -> 503 not_configured.
+  // `wrangler secret put RMPG_FLEX_WEBHOOK_SECRET`. Unset -> 200 not_configured.
   // See docs/superpowers/specs/2026-09-14-delivery-scheduler-cad-push-design.md
   RMPG_FLEX_WEBHOOK_SECRET?: string;
   // WebBrowserSessionDO namespace — one instance per active Web Company
