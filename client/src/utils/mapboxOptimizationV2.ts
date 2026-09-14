@@ -122,7 +122,12 @@ export interface ServeV2Result {
 }
 
 const V2_POLL_MS = 1_500;
-const V2_MAX_POLLS = 40;
+// The Worker (mapboxOptimizationV2Jobs.ts) keeps a job alive for up to 10
+// minutes before marking it timed_out, and useOptimizationV2.ts polls for
+// 11 minutes to match. This loop used to give up after 60s (40 * 1.5s) and
+// report "no solution", which fired on perfectly reachable stops whenever
+// Mapbox's solve just took longer than a minute — not a real infeasibility.
+const V2_MAX_POLLS = Math.ceil((11 * 60_000) / V2_POLL_MS);
 
 function jobIdFromV2Stop(s: V2Stop): number | null {
   for (const raw of [s.services?.[0], s.location]) {

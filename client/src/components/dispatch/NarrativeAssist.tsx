@@ -1,58 +1,53 @@
 import { useState } from 'react';
 import {
   Brain, Check, X, Loader2, ScanLine, Copy, ChevronDown,
-  Wand2, AlignLeft, Minimize2, Scale, FileText,
+  Wand2, AlignLeft, Minimize2, Scale, FileText, Settings2, ChevronUp,
+  AlignJustify, Clock,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type NarrativeMode = 'incident' | 'dispatch_narrative' | 'serve_attempt';
+type NarrativeLengthTarget = 'brief' | 'standard' | 'detailed' | 'full_report';
 
 interface ServeContext {
-  /** Full name of the person being served */
   recipientName?: string;
-  /** Service address */
   address?: string;
-  /** Attempt type: personal / substitute / posting / failed */
   attemptType?: string;
-  /** Reason for failed attempt, when applicable */
   failedReason?: string;
-  /** Optional subject-matter context (e.g. subpoena, summons, eviction) */
   documentType?: string;
 }
 
 interface NarrativeAssistProps {
-  /** Raw notes / freeform text the officer has entered */
   notes: string;
-  /** Additional context fed to the narrative generator */
   incidentType?: string;
   locationAddress?: string;
-  /** Controls which system prompt / endpoint variant to use */
   mode?: NarrativeMode;
-  /** Serve-specific context — required when mode === 'serve_attempt' */
   serveContext?: ServeContext;
-  /** Called when the officer accepts an AI-generated draft */
   onAccept: (narrative: string) => void;
-  /** Optional: called with extracted fields for auto-fill */
   onExtractFields?: (fields: Record<string, unknown>) => void;
-  /**
-   * When provided, an inline Refine toolbar is shown that lets the officer
-   * polish existing text without re-generating from scratch.
-   * Pass the current field value; the refined result is delivered via onAccept.
-   */
   existingText?: string;
 }
+
+// ─── Length options ──────────────────────────────────────────────────────────
+
+const LENGTH_OPTIONS: { key: NarrativeLengthTarget; label: string; desc: string }[] = [
+  { key: 'brief',       label: 'Brief',       desc: '1 paragraph · ~150 words' },
+  { key: 'standard',   label: 'Standard',    desc: '2–3 paragraphs · ~400 words' },
+  { key: 'detailed',   label: 'Detailed',    desc: '4–6 paragraphs · ~800 words' },
+  { key: 'full_report',label: 'Full Report', desc: '7–12 paragraphs · ~1500–2000 words (≈3 pages)' },
+];
 
 // ─── Refine actions ─────────────────────────────────────────────────────────
 
 const REFINE_ACTIONS = [
-  { key: 'first-person',     label: 'First Person',    icon: FileText,    title: 'Rewrite in first-person active voice (I observed, I contacted…)' },
-  { key: 'improve-clarity',  label: 'Improve Clarity', icon: AlignLeft,   title: 'Make the text clearer and easier to understand' },
-  { key: 'formal-legal-tone',label: 'Formal / Legal',  icon: Scale,       title: 'Rewrite in formal legal tone suitable for court filings' },
-  { key: 'expand',           label: 'Expand',          icon: Wand2,       title: 'Add detail and professional narrative language' },
-  { key: 'brevity',          label: 'Condense',        icon: Minimize2,   title: 'Make concise while keeping all legally significant facts' },
-  { key: 'summarize',        label: 'Summarize',       icon: AlignLeft,   title: 'Write a 2-4 sentence synopsis of the key facts and outcome' },
+  { key: 'first-person',      label: 'First Person',    icon: FileText,      title: 'Rewrite in first-person active voice (I observed, I contacted…)' },
+  { key: 'improve-clarity',   label: 'Improve Clarity', icon: AlignLeft,     title: 'Make the text clearer and easier to understand' },
+  { key: 'formal-legal-tone', label: 'Formal / Legal',  icon: Scale,         title: 'Rewrite in formal legal tone suitable for court filings' },
+  { key: 'expand',            label: 'Expand',          icon: Wand2,         title: 'Add detail and professional narrative language' },
+  { key: 'brevity',           label: 'Condense',        icon: Minimize2,     title: 'Make concise while keeping all legally significant facts' },
+  { key: 'summarize',         label: 'Summarize',       icon: AlignLeft,     title: 'Write a 2-4 sentence synopsis of the key facts and outcome' },
 ] as const;
 
 type RefineKey = typeof REFINE_ACTIONS[number]['key'];
@@ -79,6 +74,12 @@ export default function NarrativeAssist({
   const [refiningKey, setRefiningKey] = useState<RefineKey | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Advanced controls
+  const [lengthTarget, setLengthTarget] = useState<NarrativeLengthTarget>('standard');
+  const [paragraphGuidance, setParagraphGuidance] = useState('');
+  const [timelineMode, setTimelineMode] = useState<'chronological' | 'thematic'>('chronological');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   // ── Generate narrative from notes ──────────────────────────────────────
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -86,6 +87,10 @@ export default function NarrativeAssist({
     setPreview(null);
     try {
       const contextNotes = buildContextNotes(notes, mode, serveContext);
+      const guidance = [
+        paragraphGuidance.trim(),
+        timelineMode === 'thematic' ? 'Organize by topic/theme rather than strict chronological order.' : '',
+      ].filter(Boolean).join(' ');
       const data = await apiFetch<{ narrative: string; text?: string }>('/ai/narrative', {
         method: 'POST',
         body: JSON.stringify({
@@ -93,6 +98,8 @@ export default function NarrativeAssist({
           incident_type: incidentType ?? labelForMode(mode, serveContext),
           location_address: locationAddress ?? serveContext?.address,
           context_type: mode,
+          length_target: lengthTarget,
+          paragraph_guidance: guidance || undefined,
         }),
       });
       setPreview(data.narrative || data.text || '');
@@ -173,10 +180,12 @@ export default function NarrativeAssist({
   const canGenerate = !aiUnavailable && !!notes?.trim();
   const canRefine = !aiUnavailable && !!(existingText?.trim() || notes?.trim());
   const isRefining = refiningKey !== null;
+  const wordCount = preview ? preview.trim().split(/\s+/).filter(Boolean).length : 0;
+  const charCount = preview ? preview.length : 0;
 
   return (
     <div className="mt-1.5 space-y-1.5">
-      {/* ── Toolbar row ─────────────────────────────────────────── */}
+      {/* ── Primary toolbar ─────────────────────────────────────── */}
       <div className="flex flex-wrap items-start gap-1.5">
 
         {/* Generate button */}
@@ -237,6 +246,18 @@ export default function NarrativeAssist({
           </div>
         )}
 
+        {/* Advanced toggle */}
+        <button
+          onClick={() => setAdvancedOpen(o => !o)}
+          className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors"
+          style={{ background: 'color-mix(in srgb, var(--accent-silver-500) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--accent-silver-500) 20%, transparent)', color: 'var(--text-muted)' }}
+          title="Advanced generation settings"
+        >
+          <Settings2 className="w-3 h-3" />
+          Advanced
+          {advancedOpen ? <ChevronUp className="w-2.5 h-2.5 opacity-60" /> : <ChevronDown className="w-2.5 h-2.5 opacity-60" />}
+        </button>
+
         {/* Extract Fields button */}
         {onExtractFields && (
           <button
@@ -257,20 +278,96 @@ export default function NarrativeAssist({
         )}
       </div>
 
+      {/* ── Advanced settings panel ──────────────────────────────── */}
+      {advancedOpen && (
+        <div
+          className="rounded-sm border p-2 space-y-2"
+          style={{ background: 'var(--surface-sunken)', borderColor: 'var(--border-default)' }}
+        >
+          {/* Length target */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <AlignJustify className="w-2.5 h-2.5" /> Report Length
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {LENGTH_OPTIONS.map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setLengthTarget(opt.key)}
+                  className="px-2 py-1 text-[9px] font-medium rounded-sm border transition-colors"
+                  style={
+                    lengthTarget === opt.key
+                      ? { background: 'color-mix(in srgb, var(--sev-special) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 40%, transparent)', color: 'var(--sev-special)' }
+                      : { background: 'var(--surface-raised)', borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }
+                  }
+                  title={opt.desc}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[8px]" style={{ color: 'var(--text-muted)' }}>
+              {LENGTH_OPTIONS.find(o => o.key === lengthTarget)?.desc}
+            </p>
+          </div>
+
+          {/* Timeline layout */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <Clock className="w-2.5 h-2.5" /> Timeline Layout
+            </label>
+            <div className="flex gap-1">
+              {(['chronological', 'thematic'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTimelineMode(t)}
+                  className="px-2 py-1 text-[9px] font-medium rounded-sm border transition-colors capitalize"
+                  style={
+                    timelineMode === t
+                      ? { background: 'color-mix(in srgb, var(--sev-special) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 40%, transparent)', color: 'var(--sev-special)' }
+                      : { background: 'var(--surface-raised)', borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }
+                  }
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Paragraph focus / custom guidance */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              <FileText className="w-2.5 h-2.5" /> Paragraph Focus (optional)
+            </label>
+            <textarea
+              value={paragraphGuidance}
+              onChange={e => setParagraphGuidance(e.target.value)}
+              placeholder="e.g. Make sure paragraph 2 covers the Melvin Nichols confrontation in detail. Emphasize the blocking of the exit and my verbal commands."
+              rows={3}
+              className="w-full rounded-sm border px-2 py-1 text-[9px] resize-y"
+              style={{ background: 'var(--surface-base)', borderColor: 'var(--border-default)', color: 'var(--text-primary)', minHeight: '48px' }}
+            />
+            <p className="text-[8px]" style={{ color: 'var(--text-muted)' }}>
+              Guide the AI on what each paragraph should emphasize. Leave blank for automatic structure.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Preview panel ─────────────────────────────────────────── */}
       {preview && (
         <div
-          className="rounded-sm border p-2.5"
+          className="rounded-sm border"
           style={{ background: 'var(--surface-overlay)', borderColor: 'color-mix(in srgb, var(--sev-special) 19%, transparent)' }}
         >
           {/* Header row */}
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between px-2.5 pt-2 pb-1.5">
             <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-purple-400">
               <Brain className="w-2.5 h-2.5" /> {previewLabel}
             </label>
             <div className="flex items-center gap-1">
-              <span className="text-[8px] text-fg-muted font-mono">
-                {preview.trim().split(/\s+/).filter(Boolean).length} words · {preview.length} chars
+              <span className="text-[8px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                {wordCount.toLocaleString()} words · {charCount.toLocaleString()} chars
               </span>
               <button
                 onClick={handleCopy}
@@ -284,13 +381,18 @@ export default function NarrativeAssist({
             </div>
           </div>
 
-          {/* Draft text */}
-          <p className="text-[11px] text-rmpg-200 leading-relaxed whitespace-pre-wrap mb-2.5">
-            {preview}
-          </p>
+          {/* Draft text — scrollable, no hard cap */}
+          <div
+            className="overflow-y-auto px-2.5 pb-1"
+            style={{ maxHeight: '480px' }}
+          >
+            <p className="text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-primary)' }}>
+              {preview}
+            </p>
+          </div>
 
           {/* Accept / Discard */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 px-2.5 py-2 border-t" style={{ borderColor: 'color-mix(in srgb, var(--border-default) 60%, transparent)' }}>
             <button
               onClick={handleAccept}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-sm border transition-colors"

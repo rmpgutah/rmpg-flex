@@ -135,6 +135,16 @@ export const useOfForceReportFixtures: PdfFixture<UofReportPdfInput>[] = [
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {
+      report: typicalUofReport,
+      linkedFootage: [linkedFootageEntry(0), linkedFootageEntry(1)],
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
+
 ];
 
 // ── Internal Affairs Complaint ───────────────────────────────
@@ -188,7 +198,7 @@ export const affairsComplaintFixtures: PdfFixture<IaComplaintPdfInput>[] = [
       complaint: typicalIaComplaint,
       investigations: [iaInvestigation(0)],
       preparedBy: 'Sgt. Marcus Reyes',
-      payloadHash: 'd'.repeat(64),
+      payloadHash: 'a3f8c12d44e77b91c05f2e89d63a1b4f7e8c29d05a3f8c12d44e77b91c05f28',
     },
   },
   {
@@ -229,6 +239,16 @@ export const affairsComplaintFixtures: PdfFixture<IaComplaintPdfInput>[] = [
       investigations: Array.from({ length: 40 }, (_, i) => iaInvestigation(i)),
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
       payloadHash: 'e'.repeat(64),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      complaint: typicalIaComplaint,
+      investigations: [iaInvestigation(0)],
+      preparedBy: 'Sgt. Marcus Reyes',
+      payloadHash: 'a3f8c12d44e77b91c05f2e89d63a1b4f7e8c29d05a3f8c12d44e77b91c05f28',
     },
   },
 ];
@@ -283,6 +303,16 @@ export const clearedSummaryFixtures: PdfFixture<ClearedSummaryInput>[] = [
       windowStart: new Date('2026-12-31T06:00:00Z'),
       windowEnd: new Date('2026-12-31T23:59:00Z'),
       dispatcherName: 'Sergeant Marcus Alexander Reyes, Badge 4417',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      calls: [clearedCall(0), clearedCall(1)],
+      windowStart: new Date('2026-06-21T06:00:00Z'),
+      windowEnd: new Date('2026-06-21T18:00:00Z'),
+      dispatcherName: 'Marcus Reyes',
     },
   },
 ];
@@ -397,4 +427,10 @@ export const darFixtures: PdfFixture<DailyActivityReport>[] = [
       submitted_at: '2026-12-31T23:59:00Z',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: typicalDar,
+  },
 ];
+

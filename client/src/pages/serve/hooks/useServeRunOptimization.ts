@@ -38,7 +38,11 @@ export interface UseServeRunOptimizationResult {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 3_000;
-const MAX_POLLS = 20; // 60s total timeout
+// The Worker keeps a job alive for up to 10 minutes (mapboxOptimizationV2Jobs.ts)
+// before marking it timed_out; useOptimizationV2.ts polls for 11 minutes to match.
+// This used to give up after 60s (20 * 3s) and report an error, which fired on
+// perfectly reachable stops whenever Mapbox's solve just took longer than a minute.
+const MAX_POLLS = Math.ceil((11 * 60_000) / POLL_INTERVAL_MS);
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
