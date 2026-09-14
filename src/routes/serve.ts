@@ -718,11 +718,28 @@ sv.get('/schedule-analytics', async (c) => {
 sv.get('/export/csv', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
+
+  const rawFrom = c.req.query('from');
+  const rawTo   = c.req.query('to');
+  const status  = c.req.query('status') ?? null;
+
+  // Default window: last 90 days. Caller may widen/narrow via ?from=&to= (ISO date).
+  const defaultFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(rawFrom ?? '') ? rawFrom! : defaultFrom;
+  const to   = /^\d{4}-\d{2}-\d{2}$/.test(rawTo   ?? '') ? rawTo!   : new Date().toISOString().slice(0, 10);
+
+  const bindings: unknown[] = [from, to];
+  const statusClause = status ? ' AND status = ?' : '';
+  if (status) bindings.push(status);
+
   const rows = await query<any>(
     getDb(c.env),
     `SELECT id, status, priority, recipient_name, recipient_address, recipient_city,
             recipient_state, document_type, case_number, deadline, attempt_count, officer_id, created_at
-       FROM serve_queue ORDER BY id DESC LIMIT 10000`,
+       FROM serve_queue
+      WHERE date(created_at) BETWEEN ? AND ?${statusClause}
+      ORDER BY id DESC LIMIT 10000`,
+    ...bindings,
   );
   const headers = ['id', 'status', 'priority', 'recipient_name', 'recipient_address',
     'recipient_city', 'recipient_state', 'document_type', 'case_number', 'deadline',
