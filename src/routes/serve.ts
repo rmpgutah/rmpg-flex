@@ -44,7 +44,7 @@ import { Hono, type Context } from 'hono';
 import { log } from '../utils/logger';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks, chunkBindings, executeBatch } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { requireOnDutyForServe, linkServeAttemptToShift } from '../utils/corporateWorkflows';
@@ -1290,20 +1290,17 @@ sv.put('/bulk-status', async (c) => {
   const closedAt = (status === 'served' || status === 'failed')
     ? `datetime('now')`
     : 'NULL';
-  // D1 doesn't support array bindings — use a parameterized IN clause, chunked
-  // under the 100-bound-parameter cap. `ids` comes straight from the request
-  // body (ServeBulkActions' "select all" sends the whole visible folder), and
-  // `status` is bound ahead of the list, so it must be reserved out of the
-  // budget or a 100-id batch would land at 101 parameters and throw at bind
-  // time. NOTE: chunked writes are not atomic — a mid-batch failure leaves
-  // earlier chunks committed, which is the same best-effort posture the
-  // billing call below already assumes.
-  await executeInChunks(
+  // D1 doesn't support array bindings — chunk under the 100-bound-parameter
+  // cap (1 leading binding for `status` reserved). All chunks are passed to
+  // db.batch() so the entire update is atomic: either every row moves to the
+  // new status or none do.
+  const chunks = chunkBindings(ids, 1 /* leading `status` binding */);
+  await executeBatch(
     db,
-    ids,
-    (placeholders) => `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
-     WHERE id IN (${placeholders})`,
-    [status],
+    chunks.map((chunk) => ({
+      sql: `UPDATE serve_queue SET status = ?, closed_at = ${closedAt} WHERE id IN (${chunk.map(() => '?').join(',')})`,
+      bindings: [status, ...chunk],
+    })),
   );
 
   // Bill served jobs — every other path to status='served' (single-attempt
