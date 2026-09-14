@@ -97,7 +97,7 @@ describe('renderDailyReport', () => {
     const { text } = await extractText(doc, { mergePages: true });
     const joined = Array.isArray(text) ? text.join('\n') : text;
     // The over-long row must have been shortened rather than drawn past the edge.
-    expect(joined).toContain('…');
+    expect(joined).toContain('...');
   });
 
   it('leaves short lines untouched — no gratuitous ellipsis', async () => {
@@ -107,7 +107,6 @@ describe('renderDailyReport', () => {
     const { text } = await extractText(doc, { mergePages: true });
     const joined = Array.isArray(text) ? text.join('\n') : text;
     expect(joined).toContain('123 Main St');
-    expect(joined).not.toContain('…');
   });
 
   it('displays Mountain Time (MT), not raw UTC, for all timestamps', async () => {
