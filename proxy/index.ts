@@ -675,6 +675,15 @@ const API_ROUTES: RouteRule[] = [
   // Whole namespace on the rewrite (leave, disciplinary, reviews, benefits,
   // payroll, grievances, attendance, documents, PIPs).
   { kind: 'prefix', value: '/api/hr' },
+
+  // ── Dial Connect (dispatch-app) bridge ────────────────────────
+  // RMPG Flex ingest webhook from the dialer iframe (public HMAC) and the
+  // authenticated call-history / voicemail / speed-dial / presence / events
+  // API consumed by DialerConnectPage. Both are handled by
+  // src/routes/dialerConnect.ts in the rmpg-flex-api Worker.
+  // ingest must appear first so its broader prefix match is explicit.
+  { kind: 'prefix', value: '/api/dialer-connect/ingest' },
+  { kind: 'prefix', value: '/api/dialer-connect' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {
