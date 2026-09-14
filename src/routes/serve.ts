@@ -2172,8 +2172,8 @@ sv.post('/:id/substitute-service', async (c) => {
   if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number; role?: string } | undefined;
   const db = getDb(c.env);
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null; officer_id: number | null }>(
-    db, 'SELECT attempt_count, max_attempts, call_id, officer_id FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string; call_id: number | null; officer_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, status, call_id, officer_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
   if (user?.role === 'officer' && queue.officer_id != null && queue.officer_id !== user.id) {
@@ -2187,6 +2187,34 @@ sv.post('/:id/substitute-service', async (c) => {
       return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
     }
   }
+
+  // Reject if the job is already closed — substitute-service fires billing and
+  // notifications, so a double-submit would double-charge and double-notify.
+  if (queue.status === 'served' || queue.status === 'failed' || queue.status === 'cancelled') {
+    return c.json({ error: 'This job is already closed', code: 'ALREADY_CLOSED' }, 409);
+  }
+
+  // Duplicate-attempt guard — mirrors logAttempt's 120-second window so a
+  // mobile double-tap or an offline-queue replay cannot insert two rows.
+  if (officerForAttempt != null) {
+    const recentAttempt = await queryFirst<{ id: number }>(
+      db,
+      `SELECT id FROM serve_attempts
+       WHERE serve_queue_id = ? AND officer_id = ?
+         AND attempt_at > datetime('now', '-120 seconds')
+       ORDER BY attempt_at DESC LIMIT 1`,
+      id, Number(officerForAttempt),
+    );
+    if (recentAttempt) {
+      log.warn('Duplicate substitute-service attempt blocked', { queueId: id, officerId: officerForAttempt, existingAttemptId: recentAttempt.id });
+      return c.json({
+        error: 'A recent attempt was already logged for this job. Wait 2 minutes before logging another.',
+        code: 'DUPLICATE_ATTEMPT',
+        existing_attempt_id: recentAttempt.id,
+      }, 409);
+    }
+  }
+
   // No `status` column on live serve_attempts (see logAttempt note above).
   const ins = await execute(
     db,
