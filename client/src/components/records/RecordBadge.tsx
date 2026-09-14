@@ -22,6 +22,8 @@ interface RecordBadgeProps {
   size?: 'xs' | 'sm';
   title?: string;
   className?: string;
+  /** If provided, renders an × button to remove the badge. */
+  onRemove?: () => void;
 }
 
 function RecordBadge({
@@ -34,6 +36,7 @@ function RecordBadge({
   size = 'xs',
   title,
   className = '',
+  onRemove,
 }: RecordBadgeProps) {
   // Resolve tone/pulse: explicit prop wins, else classify the flag text.
   const classified = flag ? classifyFlag(flag) : null;
@@ -56,6 +59,16 @@ function RecordBadge({
     >
       {Icon && <Icon className={size === 'sm' ? 'w-3 h-3' : 'w-2.5 h-2.5'} aria-hidden="true" />}
       {children}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          aria-label="Remove flag"
+          className="ml-0.5 opacity-60 hover:opacity-100 leading-none"
+        >
+          ×
+        </button>
+      )}
     </span>
   );
 }
