@@ -25,6 +25,7 @@ import { planWithAi, type AwarenessSnapshot } from '../utils/dispatcherCommand/p
 import { validateToolCall, describeCatalog, type ValidatedToolCall } from '../utils/dispatcherCommand/catalog';
 import { compileToolCall, collectRefs, CompileError } from '../utils/dispatcherCommand/compile';
 import { resolveRefs, describeIssue, loadCandidateUnits, pickUnit, loadCandidateCalls, pickCall } from '../utils/dispatcherCommand/resolve';
+import { likePattern } from '../utils/d1Like';
 import type { CommandContext, CommandResponse, PlanStep, PlannerOutput, StepResult } from '../utils/dispatcherCommand/types';
 
 const dispatcher = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -134,15 +135,20 @@ async function runServerRead(env: Bindings, db: D1Database, call: ValidatedToolC
         `${flags.length ? ` — ${flags.join(', ')}` : ''}.`;
     }
     case 'premise_alerts': {
-      // D1 caps a LIKE pattern at 50 chars; the two wrapping '%' plus a long
-      // spoken address blows past it and matches nothing. Trim the needle.
-      const address = String(p.address).trim().slice(0, 40);
+      // D1 caps a LIKE pattern at 50 BYTES, and the two wrapping '%' count
+      // toward it, so a long spoken address has to be trimmed or the query
+      // errors. likePattern() measures the ENCODED length: the previous
+      // `.slice(0, 40)` counted UTF-16 units, so an address carrying a
+      // diacritic, an em dash or an emoji still overflowed despite the guard.
+      // It also folds case before measuring, since upper-casing can change
+      // byte length.
+      const address = String(p.address).trim();
       const rows = await query<{ title: string | null; alert_type: string | null; alert_level: string | null; description: string | null }>(
         db, `SELECT title, alert_type, alert_level, description FROM premise_alerts
              WHERE active = 1 AND (expires_at IS NULL OR expires_at >= datetime('now'))
                AND UPPER(address) LIKE ?
              ORDER BY alert_level = 'critical' DESC, alert_level = 'warning' DESC, created_at DESC LIMIT 5`,
-        `%${address.toUpperCase()}%`,
+        likePattern(address, { upperCase: true }),
       ).catch(() => []);
       if (!rows.length) return `No premise alerts on file for ${address}.`;
       return `${rows.length} premise alert${rows.length > 1 ? 's' : ''} at ${address}: ` +
@@ -187,6 +193,10 @@ async function runServerRead(env: Bindings, db: D1Database, call: ValidatedToolC
   }
 }
 
+// Tools whose whole job is to act on a call that is already off the board.
+// Only these may resolve a ref against archived rows — see resolveRefs below.
+const ARCHIVE_SCOPED_TOOLS = new Set(['unarchive_call', 'delete_call']);
+
 // ─── Plan assembly ────────────────────────────────────────────────────────
 interface Assembled {
   steps: PlanStep[];
@@ -196,7 +206,12 @@ interface Assembled {
   destructive: boolean;
 }
 
-async function assemble(env: Bindings, db: D1Database, planned: PlannerOutput, ctx: CommandContext): Promise<Assembled> {
+// Exported for tests: the deterministic rules planner never emits a plan that
+// mixes an archive-scoped tool with a board tool (only lookup_record +
+// open_ncic are multi-tool, and neither takes a call ref), so the per-ref
+// archive scoping below is reachable only through the AI planner. Driving it
+// from a synthetic PlannerOutput is the only way to cover it.
+export async function assemble(env: Bindings, db: D1Database, planned: PlannerOutput, ctx: CommandContext): Promise<Assembled> {
   const validated: ValidatedToolCall[] = [];
   const errors: string[] = [];
   for (const raw of planned.tool_calls) {
@@ -204,10 +219,38 @@ async function assemble(env: Bindings, db: D1Database, planned: PlannerOutput, c
     if (v.ok) validated.push(v.call);
     else errors.push(v.error.error);
   }
-  const { callRefs, unitRefs } = collectRefs(validated.filter(v => !v.def.serverRead));
-  // Only unarchive/delete may reach an archived call — see loadCandidateCalls.
-  const includeArchived = validated.some(v => v.tool === 'unarchive_call' || v.tool === 'delete_call');
-  const { refs, issues } = await resolveRefs(db, callRefs, unitRefs, ctx, { includeArchived });
+  // Only unarchive/delete may reach an archived call — see loadCandidateCalls,
+  // whose default-off `includeArchived` exists so that "clear 42" can never
+  // silently land on a call that is off the board.
+  //
+  // That has to be decided PER REF, not per plan. A single flag computed with
+  // `validated.some(...)` meant one archive tool anywhere in the plan widened
+  // the candidate set for every other ref too, so "delete 900 and clear 42"
+  // could bind "42" to an archived call — exactly the surprise the default
+  // prevents. The two ref sets are resolved separately instead.
+  const writes = validated.filter(v => !v.def.serverRead);
+  const archiveWrites = writes.filter(v => ARCHIVE_SCOPED_TOOLS.has(v.tool));
+  const boardWrites = writes.filter(v => !ARCHIVE_SCOPED_TOOLS.has(v.tool));
+
+  const board = collectRefs(boardWrites);
+  const archived = collectRefs(archiveWrites);
+  // A ref used by BOTH kinds of tool keeps its board meaning: pulling it to an
+  // archived call because the same utterance also contained a delete is the
+  // very thing being prevented. Disjoint sets also stop a ref that fails on
+  // the board from being reported unresolved twice.
+  const boardCallRefs = new Set(board.callRefs);
+  const archivedOnlyCallRefs = archived.callRefs.filter(r => !boardCallRefs.has(r));
+
+  // Unit resolution ignores includeArchived entirely (loadCandidateUnits takes
+  // no such option), so every unit ref goes through the first pass and the
+  // second never re-queries units.
+  const allUnitRefs = [...new Set([...board.unitRefs, ...archived.unitRefs])];
+  const { refs, issues } = await resolveRefs(db, board.callRefs, allUnitRefs, ctx);
+  if (archivedOnlyCallRefs.length) {
+    const archivedPass = await resolveRefs(db, archivedOnlyCallRefs, [], ctx, { includeArchived: true });
+    Object.assign(refs.calls, archivedPass.refs.calls);
+    issues.push(...archivedPass.issues);
+  }
   if (issues.length) {
     return { steps: [], readTexts: [], clarify: issues.map(describeIssue).join(' '), errors, destructive: false };
   }
