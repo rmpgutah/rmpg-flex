@@ -16,6 +16,7 @@
 // ============================================================
 
 import { speak } from './edgeTTS';
+import { pushTranscriptEntry } from '../hooks/useDispatchTranscript';
 import type { AlertSeverity } from './alertSeverity';
 
 export interface SpeechItem {
@@ -91,6 +92,7 @@ async function drain(): Promise<void> {
       await speak(next.text, next.severity);
       lastSpoken.set(cooldownKey(next), Date.now());
       if (next.severity !== 'major') lastNonMajorAt = Date.now();
+      pushTranscriptEntry({ text: next.text, severity: next.severity, source: 'rule', ruleId: next.ruleId });
     }
   } finally {
     draining = false;

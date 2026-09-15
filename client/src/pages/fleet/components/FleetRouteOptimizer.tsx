@@ -17,16 +17,12 @@ import {
   geocodeAddress,
   type FleetStop,
 } from '../hooks/useFleetRouteOptimization';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, localToday } from '../../../utils/dateUtils';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayDenver(hour: number, minute = 0): string {
-  const d = new Date();
-  // Build a naive local-ish ISO string for the Denver shift window.
-  // The optimizer uses the string as the "start of shift" anchor for ETAs.
-  d.setHours(hour, minute, 0, 0);
-  return d.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+  return `${localToday()}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 function fmtTime(iso: string): string {
@@ -343,6 +339,11 @@ export default function FleetRouteOptimizer({
                 </span>
               </div>
 
+              {optimizedRoute.droppedStopIds.length > 0 && (
+                <div role="alert" className="text-xs text-amber-400 border border-amber-400/40 rounded-sm p-2">
+                  {optimizedRoute.droppedStopIds.length} stops could not be assigned within the routing constraints. Review these stops before starting the route: {optimizedRoute.droppedStopIds.join(', ')}.
+                </div>
+              )}
               {/* Ordered stop list */}
               <ol className="space-y-1">
                 {optimizedRoute.stops.map((s, i) => (

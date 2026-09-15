@@ -332,11 +332,16 @@ dlRecords.post('/scan-log', async (c) => {
     const b = await c.req.json<Record<string, any>>();
     const findings = JSON.stringify(b.findings ?? {}).slice(0, 32_000);
 
+    const isRealId = b.is_real_id == null ? null : (b.is_real_id ? 1 : 0);
     const result = await execute(db, `
-      INSERT INTO dl_scan_log (user_id, scan_method, dl_number, dl_state, subject_name, dob, person_id, findings)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      INSERT INTO dl_scan_log
+        (user_id, scan_method, dl_number, dl_state, subject_name, dob, person_id, findings,
+         raw_aamva_text, aamva_version, card_type, is_real_id, decode_passes, decode_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       userId, b.scan_method || 'PDF417', b.dl_number || '', b.dl_state || '',
       b.subject_name || '', b.dob || '', b.person_id ?? null, findings,
+      b.raw_aamva_text ?? null, b.aamva_version ?? null, b.card_type ?? null,
+      isRealId, b.decode_passes ?? null, b.decode_ms ?? null,
     );
 
     // License history link — every scanned license lands in dl_records.
@@ -364,6 +369,66 @@ dlRecords.post('/scan-log', async (c) => {
             b.height || '', b.weight || '', b.eye_color || '', b.hair_color || '', rawRecord);
         }
       } catch { /* link is best-effort; the log row is the record */ }
+    }
+
+    // Backfill persons_ext with AAMVA-derived fields when a person record matched.
+    // FILL-ONLY: every column uses COALESCE so officer-entered data is never overwritten.
+    // Policy mirrors the CarsXE vehicleRecords pattern — barcode data populates blanks only.
+    if (b.person_id) {
+      try {
+        const personId = Number(b.person_id);
+        // Normalise boolean-ish values from the client.
+        const toBoolInt = (v: unknown): number | null =>
+          v == null ? null : (v === true || v === 1 || v === '1' ? 1 : v === false || v === 0 || v === '0' ? 0 : null);
+
+        await execute(db, `
+          INSERT INTO persons_ext (person_id,
+            is_real_id, card_type, is_organ_donor, is_veteran,
+            dl_hazmat_expiry, document_discriminator, aamva_version, issuer_id,
+            non_resident_indicator, limited_duration_doc, raw_aamva_elements,
+            place_of_birth, name_prefix, card_revision_date, dl_issue_date,
+            dl_restrictions, dl_endorsements, country, address2,
+            under_18_until, under_21_until)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(person_id) DO UPDATE SET
+            is_real_id           = COALESCE(persons_ext.is_real_id,           excluded.is_real_id),
+            card_type            = COALESCE(NULLIF(persons_ext.card_type,''),  excluded.card_type),
+            is_organ_donor       = COALESCE(persons_ext.is_organ_donor,        excluded.is_organ_donor),
+            is_veteran           = COALESCE(persons_ext.is_veteran,            excluded.is_veteran),
+            dl_hazmat_expiry     = COALESCE(NULLIF(persons_ext.dl_hazmat_expiry,''), excluded.dl_hazmat_expiry),
+            document_discriminator = COALESCE(NULLIF(persons_ext.document_discriminator,''), excluded.document_discriminator),
+            aamva_version        = COALESCE(NULLIF(persons_ext.aamva_version,''), excluded.aamva_version),
+            issuer_id            = COALESCE(NULLIF(persons_ext.issuer_id,''),  excluded.issuer_id),
+            non_resident_indicator = COALESCE(persons_ext.non_resident_indicator, excluded.non_resident_indicator),
+            limited_duration_doc = COALESCE(persons_ext.limited_duration_doc, excluded.limited_duration_doc),
+            raw_aamva_elements   = COALESCE(NULLIF(persons_ext.raw_aamva_elements,''), excluded.raw_aamva_elements),
+            place_of_birth       = COALESCE(NULLIF(persons_ext.place_of_birth,''), excluded.place_of_birth),
+            name_prefix          = COALESCE(NULLIF(persons_ext.name_prefix,''), excluded.name_prefix),
+            card_revision_date   = COALESCE(NULLIF(persons_ext.card_revision_date,''), excluded.card_revision_date),
+            dl_issue_date        = COALESCE(NULLIF(persons_ext.dl_issue_date,''), excluded.dl_issue_date),
+            dl_restrictions      = COALESCE(NULLIF(persons_ext.dl_restrictions,''), excluded.dl_restrictions),
+            dl_endorsements      = COALESCE(NULLIF(persons_ext.dl_endorsements,''), excluded.dl_endorsements),
+            country              = COALESCE(NULLIF(persons_ext.country,''),    excluded.country),
+            address2             = COALESCE(NULLIF(persons_ext.address2,''),   excluded.address2),
+            under_18_until       = COALESCE(NULLIF(persons_ext.under_18_until,''), excluded.under_18_until),
+            under_21_until       = COALESCE(NULLIF(persons_ext.under_21_until,''), excluded.under_21_until)`,
+          personId,
+          toBoolInt(b.is_real_id), b.card_type ?? null,
+          toBoolInt(b.is_organ_donor), toBoolInt(b.is_veteran),
+          b.dl_hazmat_expiry ?? null, b.document_discriminator ?? null,
+          b.aamva_version ?? null, b.issuer_id ?? null,
+          toBoolInt(b.non_resident_indicator), toBoolInt(b.limited_duration_doc),
+          b.raw_aamva_elements ?? null,
+          b.place_of_birth ?? null, b.name_prefix ?? null,
+          b.card_revision_date ?? null, b.dl_issue_date ?? null,
+          b.dl_restrictions ?? null, b.dl_endorsements ?? null,
+          b.country ?? null, b.address2 ?? null,
+          b.under_18_until ?? null, b.under_21_until ?? null,
+        );
+      } catch (extErr) {
+        // persons_ext write is best-effort — the scan log row is the record.
+        log.error('persons_ext AAMVA backfill failed', { person_id: b.person_id }, extErr);
+      }
     }
 
     await audit(db, userId, 'dl_scan', Number(result.meta.last_row_id),

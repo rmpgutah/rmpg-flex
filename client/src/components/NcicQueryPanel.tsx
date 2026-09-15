@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 // ============================================================
 // RMPG Flex — NCIC/NLETS Query Terminal Panel
 // Slide-out terminal that simulates NCIC queries against the
@@ -205,7 +206,7 @@ const NcicQueryPanel = forwardRef<NcicQueryPanelHandle, NcicQueryPanelProps>(fun
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ncic-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `ncic-session-${localToday()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }, [entries]);

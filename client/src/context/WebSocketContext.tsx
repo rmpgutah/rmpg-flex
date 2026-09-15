@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
-import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import { handleDispatchEvent, startBrainTimer, setCurrentUser } from '../utils/dispatcherBrain';
 import { apiWsBase } from '../utils/apiOrigin';
 import {
   announceGpsGap,
@@ -16,17 +16,23 @@ import { trackCriticalAlert, alertKey } from '../utils/alertEscalation';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
 import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
+import { SAFETY_RULES } from '../utils/dispatcherRules/safety';
+import { OPERATIONAL_RULES } from '../utils/dispatcherRules/operational';
 
-// Register the Dispatcher Brain rule catalog once at module load.
-// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants,
-//   evidence, arrests, HR).
-// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony
-//   backup, MH protocol, geofence breach, overdue-status timer).
-// Registry is a module-level array that only grows at boot; duplicates
-// from hot-reload are harmless because ruleId+entityKey cooldown in
-// speakQueue dedupes them.
+// Register the full Dispatcher Brain rule catalog once at module load.
+// - EVENT_RULES: Phase 2 event fan-in (citations, incidents, warrants, evidence, arrests, HR).
+// - COACHING_RULES: Phase 3 proactive guidance (DV approach, felony backup, MH protocol,
+//   geofence breach, overdue-status timer).
+// - SAFETY_RULES: Phase 4 safety checks (weapons-staging, pursuit-protocol, hazmat, P1
+//   single-unit, traffic stop, juvenile, barricade, medical, gang, repeat offender).
+// - OPERATIONAL_RULES: Phase 4 timer rules (shift-end-reminder, coverage-gap,
+//   high-call-volume, long-hold-warning, radio-silence, handoff-reminder, mutual-aid).
+// Registry is a module-level array that only grows at boot; duplicates from hot-reload are
+// harmless because ruleId+entityKey cooldown in speakQueue dedupes them.
 registerRules(EVENT_RULES);
 registerRules(COACHING_RULES);
+registerRules(SAFETY_RULES);
+registerRules(OPERATIONAL_RULES);
 
 // Start the Dispatcher Brain 30s tick so timer-triggered rules
 // (e.g. overdue-status-check) have a pulse. tickTimers() is itself
@@ -45,12 +51,13 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 const WS_RECONNECT_DELAY = 2000;
-const WS_MAX_RECONNECT_DELAY = 10000;
+const WS_MAX_RECONNECT_DELAY = 30000; // 30s cap (was 10s — too aggressive on cellular dead zones)
 const WS_CONNECT_TIMEOUT = 15000; // 15s — cellular can be slow
 const WS_MAX_RETRIES = 100;       // keep trying for the full shift
 const WS_HEARTBEAT_INTERVAL = 30000; // 30s ping interval
 const WS_PONG_TIMEOUT = 20000;       // 20s — generous for cellular hand-offs
 const WS_OFFLINE_GRACE_MS = 5000; // delay before showing OFFLINE in status bar
+const WS_ALERTS_STAGGER_MS = 3000; // stagger AlertHub reconnect vs main socket
 
 // dispatch_update action discriminators that carry a unit (not a call). These
 // get re-fanned to the legacy 'unit_update' channel (see onmessage) so the map,
@@ -84,6 +91,8 @@ function playPriorityChime(priority: string | undefined): void {
   // Respect the global sound mute (the same 'rmpg-sound' key the voice-alert
   // layer + edgeTTS honor) — the chime used to fire even when alerts were muted.
   try { if (localStorage.getItem('rmpg-sound') === 'false') return; } catch { /* no storage */ }
+  // Respect per-category mute from the Alert Sounds admin panel.
+  if (!isAlertSoundEnabled(priority === 'P1' ? 'p1_call' : 'p2_call')) return;
   const ctx = getChimeCtx();
   if (!ctx) return;
   try {
@@ -113,7 +122,7 @@ function playPriorityChime(priority: string | undefined): void {
 }
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, user } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const subscribersRef = useRef<Map<WSMessageType, Set<MessageHandler>>>(new Map());
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,6 +137,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const offlineGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
+
+  // Keep the Dispatcher Brain's currentUserCallSign in sync with the logged-in
+  // user's unit assignment so the overdue-status-check timer rule can match.
+  useEffect(() => {
+    setCurrentUser(user?.unit_call_sign ?? undefined);
+  }, [user?.unit_call_sign]);
 
   // Stable refs so connect/connectAlerts don't recreate on token changes
   const tokenRef = useRef(token);
@@ -254,7 +269,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           markDisconnected();
           retryCountRef.current++;
           reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectDelayRef.current = Math.min(reconnectDelayRef.current + 2000, WS_MAX_RECONNECT_DELAY);
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, WS_MAX_RECONNECT_DELAY);
             connect();
           }, reconnectDelayRef.current);
         }
@@ -314,6 +329,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           if (message.type === 'auth_error') {
             devWarn('[WS] Authentication failed:', (message as any).message);
             ws.close();
+            return;
+          }
+
+          if (message.type === 'force_update') {
+            devLog('[WS] Force-update command received — triggering desktop updater');
+            const electron = (window as any).electron;
+            if (electron?.checkForUpdates) {
+              electron.checkForUpdates();
+              if (electron.onUpdateStatus) {
+                const unsub = electron.onUpdateStatus((status: { status: string }) => {
+                  if (status?.status === 'ready' && electron.installUpdate) {
+                    devLog('[WS] Update ready — installing now');
+                    unsub();
+                    electron.installUpdate();
+                  }
+                });
+              }
+            }
             return;
           }
 

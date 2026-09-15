@@ -120,15 +120,21 @@ function firstLabelLayerId(map: mapboxgl.Map): string | undefined {
 function apply3D(map: mapboxgl.Map, isLight: boolean): void {
   try {
     // Terrain (works on every style — it's an independent raster-dem source).
-    if (!hasSource(map, DEM_SOURCE)) {
-      map.addSource(DEM_SOURCE, {
-        type: 'raster-dem',
-        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        tileSize: 512,
-        maxzoom: 14,
-      });
+    // Mapbox GL JS only supports terrain with 'mercator' or 'globe' projections.
+    const proj = (map.getProjection && map.getProjection()?.name) || 'mercator';
+    if (proj === 'mercator' || proj === 'globe') {
+      if (!hasSource(map, DEM_SOURCE)) {
+        map.addSource(DEM_SOURCE, {
+          type: 'raster-dem',
+          url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+          tileSize: 512,
+          maxzoom: 14,
+        });
+      }
+      map.setTerrain({ source: DEM_SOURCE, exaggeration: 1.15 });
+    } else {
+      try { map.setTerrain(null); } catch { /* ignore */ }
     }
-    map.setTerrain({ source: DEM_SOURCE, exaggeration: 1.15 });
 
     // Sky / atmospheric horizon.
     if (!hasLayer(map, SKY_LAYER)) {

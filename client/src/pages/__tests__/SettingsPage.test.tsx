@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, useSearchParams } from 'react-router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import SettingsPage from '../SettingsPage';
@@ -43,8 +43,8 @@ describe('SettingsPage', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  it('renders the Display & Theme section with all three theme choices', () => {
-    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+  it('renders the Display & Theme section with all three theme choices', async () => {
+    await act(async () => { render(<MemoryRouter><SettingsPage /></MemoryRouter>); });
     expect(screen.getByText('DISPLAY & THEME')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Auto/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Night/i })).toBeInTheDocument();
@@ -83,8 +83,8 @@ describe('SettingsPage', () => {
     });
   });
 
-  it('toggles the legacy black kill-switch via localStorage', () => {
-    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+  it('toggles the legacy black kill-switch via localStorage', async () => {
+    await act(async () => { render(<MemoryRouter><SettingsPage /></MemoryRouter>); });
     const toggle = screen.getByRole('switch', { name: /Legacy pure-black mode/i });
     expect(localStorage.getItem('rmpg_theme_legacy')).toBeNull();
     fireEvent.click(toggle);

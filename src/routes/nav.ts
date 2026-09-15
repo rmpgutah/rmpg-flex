@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { resolveTakeHome } from '../utils/takeHome';
 
 const nav = new Hono<Env>();
 
@@ -514,12 +515,8 @@ nav.get('/trip/check-take-home', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
 
-    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
-      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
-
-    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
-
-    return c.json({ take_home: !!hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
+    const th = await resolveTakeHome(db, userId);
+    return c.json({ take_home: th.hasTakeHome, vehicle_id: th.vehicleId });
   } catch (err) {
     console.error('[nav] GET /trip/check-take-home failed:', err);
     return c.json({ error: 'Failed to check take-home status' }, 500);
@@ -566,12 +563,8 @@ nav.get('/vehicle-take-home', async (c) => {
     const db = getDb(c.env);
     const userId = (c.get('userId') as number | undefined) ?? null;
 
-    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
-      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
-
-    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
-
-    return c.json({ has_take_home: hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
+    const th = await resolveTakeHome(db, userId);
+    return c.json({ has_take_home: th.hasTakeHome, vehicle_id: th.vehicleId });
   } catch (err) {
     console.error('[nav] GET /vehicle-take-home failed:', err);
     return c.json({ error: 'Failed to check take-home status' }, 500);

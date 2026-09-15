@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../utils/dateUtils';
 // ============================================================
 // Vehicle telemetry engine — turns the raw GPS track into a rich
 // movement report for the NAVIGATE screen's "TRIP" drawer.
@@ -196,7 +197,7 @@ export function buildMovementReport(track: FixPoint[]): MovementReport {
   let sawDerived = false;
 
   for (const p of track) {
-    const t = Date.parse(p.timestamp);
+    const t = parseTimestamp(p.timestamp).getTime();
     if (!Number.isFinite(t) || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
     let mph: number;
     let derived = false;

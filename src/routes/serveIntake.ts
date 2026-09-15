@@ -90,7 +90,7 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
-import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../utils/encryptedR2';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -324,10 +324,13 @@ async function ocrImageWithTesseractGate(
   return ocrImage(env, bytes, mime);
 }
 
-async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
+function makeIntakeStorageKey(file: File, uploaderId: number | null): string {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
-  const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
+  return `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
+}
+
+async function storeToR2(env: Env['Bindings'], file: File, key: string): Promise<string> {
   await putEncrypted(env.UPLOADS, getDb(env), env, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
   });
@@ -546,6 +549,34 @@ si.post('/upload', async (c) => {
   await ensureQualityGateColumns(db);
   const allDates = new Set<string>();
 
+  // Persist every source document before starting OCR or creating business
+  // records. Promise.allSettled lets us wait for every concurrent write, so
+  // a partial multi-file failure can be rolled back deterministically rather
+  // than leaving encrypted objects (or encryption-key rows) orphaned.
+  const storageKeys = files.map((file) => makeIntakeStorageKey(file, user.id));
+  const storageResults = await Promise.allSettled(
+    files.map((file, index) => storeToR2(c.env, file, storageKeys[index])),
+  );
+  const storageFailures = storageResults.filter((result) => result.status === 'rejected');
+  if (storageFailures.length > 0) {
+    await Promise.allSettled(storageKeys.map(async (key) => {
+      await Promise.allSettled([
+        c.env.UPLOADS.delete(key),
+        deleteEncryptionKey(db, key),
+      ]);
+    }));
+    log.error('serve-intake: document storage failed; partial writes rolled back', {
+      traceId: c.get('traceId'),
+      files: files.map((file) => file.name),
+      failed: storageFailures.length,
+    }, storageFailures[0].reason);
+    return c.json({
+      success: false,
+      code: 'UPLOAD_STORAGE_FAILED',
+      error: 'Document storage failed. No intake records were created; retry the upload.',
+    }, 503);
+  }
+
   // ── Phase 1+2: per-file text acquisition + field extraction, IN PARALLEL ──
   // Each document is fully processed independently and concurrently:
   //   • acquire text (pdfjs client text / container OCR / Vision for images)
@@ -589,8 +620,8 @@ si.post('/upload', async (c) => {
     modelCalled: boolean;
   }
 
-  const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
-    const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
+  const collected = await Promise.all(files.map(async (file, index): Promise<Collected> => {
+    const r2Key = storageKeys[index];
     // Intake packets follow a fixed naming convention ("<job#> Field
     // Sheet.pdf" / "Court Docket.pdf" / "Information Form.pdf") — derive
     // the document family from the uploaded file's own name so the system
@@ -1387,6 +1418,35 @@ si.post('/intake', async (c) => {
     });
   }
   const normalized = intakeValidation.adjusted;
+
+  // Keep the browser-text fallback semantically identical to /upload. A
+  // File handle can disappear between review and submit (for example when a
+  // cloud-synced source is moved), at which point the client intentionally
+  // falls back to this JSON route. Previously that fallback silently dropped
+  // the operator's reviewed field edits, client selection, and multi-party
+  // picks even though the normal multipart route preserves all three.
+  const DATE_OVERRIDE_FIELDS = new Set([
+    'service_deadline', 'hearing_date', 'filing_date', 'attempt_start_not_before', 'recipient_dob',
+  ]);
+  const overrides = body.field_overrides;
+  if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+    for (const [key, value] of Object.entries(overrides)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const raw = value.trim();
+      normalized[key] = {
+        value: DATE_OVERRIDE_FIELDS.has(key) ? (toIsoDate(raw) || raw) : raw,
+        confidence: 1.0,
+      };
+    }
+  }
+  const clientId = (typeof body.client_id === 'number' && Number.isSafeInteger(body.client_id) && body.client_id > 0)
+    ? body.client_id
+    : (typeof body.client_id === 'string' && /^\d+$/.test(body.client_id.trim()) ? Number(body.client_id.trim()) : null);
+  let defendantsSelected: string[] | null = null;
+  if (Array.isArray(body.defendants_selected) && body.defendants_selected.every((value: unknown) => typeof value === 'string')) {
+    const selected = body.defendants_selected.map((value: string) => value.trim()).filter(Boolean);
+    defendantsSelected = selected.length > 0 ? selected : null;
+  }
   const row = fieldsToQueueRow(normalized);
 
   let commit: CommitResult = {
@@ -1404,6 +1464,8 @@ si.post('/intake', async (c) => {
       userId: user.id,
       documentSummary: buildCallDescription(row, normalized, docs.length),
       docCount: docs.length,
+      clientId,
+      defendantsSelected,
       env: c.env,
       // R9: these were computed and logged two lines above but never passed,
       // so the row persisted `validation_issues: []` while the log said
@@ -1480,7 +1542,8 @@ si.get('/documents/:docId/file', async (c) => {
     'SELECT r2_key, file_type, file_name FROM serve_intake_documents WHERE id = ?',
     docId,
   );
-  if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
+  if (!doc) return c.json({ error: 'Not found' }, 404);
+  if (!doc.r2_key) return c.json({ error: 'Document file is unavailable — the upload was interrupted before storage completed. Re-upload the packet to recover.', code: 'FILE_UNAVAILABLE' }, 410);
   try {
     const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
     if (decrypted) {

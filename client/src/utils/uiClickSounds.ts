@@ -167,21 +167,8 @@ export const initUiClickSounds = (): void => {
     { capture: true, passive: true }
   );
 
-  // Key-up on every dialog/overlay mount, app-wide. Observing childList on
-  // body is cheap (no attribute/characterData churn) and the matches()
-  // check only runs on added element nodes.
-  try {
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (!(node instanceof Element)) continue;
-          if (node.matches(DIALOG_SELECTOR) || node.querySelector(DIALOG_SELECTOR)) {
-            playUiOpen();
-            return;
-          }
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  } catch { /* observer unavailable — opens stay silent */ }
+  // MutationObserver for modal open-tones is intentionally omitted — a CAD app
+  // mounts overlays constantly (tooltips, dropdowns, live-sync panels), making
+  // an open-chime on every childList mutation far too noisy. Callers that need
+  // an explicit open-sound can call playUiOpen() directly.
 };

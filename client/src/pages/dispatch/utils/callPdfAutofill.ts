@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 // ============================================================
 // Call PDF Autofill — fallback policy for blank fields on the
 // Call Record PDF. Returns a SHALLOW MERGE with the original
@@ -79,11 +80,51 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
   ) {
     const servedAt = (c as any).process_served_at ?? filled.process_served_at;
     if (servedAt) {
-      const d = new Date(servedAt);
+      const d = parseTimestamp(servedAt);
       const dateStr = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       filled.action_taken = filled.action_taken.trimEnd() + ` ${dateStr} AT ${timeStr}.`;
     }
+  }
+
+  // Secondary truncation guard: action_taken that ends mid-sentence (no
+  // terminal period/question mark/exclamation) on a completed process-service
+  // call is almost certainly a legacy truncation. Append the served-at
+  // timestamp so the resolution narrative is legally complete.
+  if (
+    filled.action_taken &&
+    filled.process_service_result &&
+    !filled.action_taken.trimEnd().match(/[.?!]$/)
+  ) {
+    const servedAt = (c as any).process_served_at ?? filled.process_served_at;
+    if (servedAt) {
+      const d = parseTimestamp(servedAt);
+      const dateStr = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      filled.action_taken = filled.action_taken.trimEnd() + ` ${dateStr} AT ${timeStr}.`;
+    }
+  }
+
+  // Synthesize a minimal action_taken for completed process-service calls that
+  // have a result recorded but no narrative at all. A blank action_taken on a
+  // served call is a documentation gap — enough context exists in the record
+  // to produce a legally defensible minimum sentence.
+  if (
+    !filled.action_taken &&
+    filled.process_service_result &&
+    filled.process_served_to
+  ) {
+    const servedAt = (c as any).process_served_at ?? filled.process_served_at;
+    const resultLabel = filled.process_service_result.replace(/_/g, ' ').toUpperCase();
+    const servedAddress = filled.process_served_address || filled.location || 'THE ADDRESS OF RECORD';
+    let narrative = `OFFICER RESPONDED TO ${servedAddress.toUpperCase()}. SERVICE WAS ATTEMPTED ON ${filled.process_served_to.toUpperCase()}. RESULT: ${resultLabel}.`;
+    if (servedAt) {
+      const d = parseTimestamp(servedAt);
+      const dateStr = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      narrative = `OFFICER RESPONDED TO ${servedAddress.toUpperCase()}. SERVICE WAS COMPLETED ON ${filled.process_served_to.toUpperCase()} ON ${dateStr} AT ${timeStr}. RESULT: ${resultLabel}.`;
+    }
+    filled.action_taken = narrative;
   }
 
   // PROPERTY field on the printed Call Record: the legacy generator reads

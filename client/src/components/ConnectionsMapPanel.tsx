@@ -29,6 +29,7 @@ interface Props {
 export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, dateTo, height = 220 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +56,11 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
       const map = new mapboxgl.Map({ container, style: MAPBOX_STYLE_DARK, center, zoom: camera?.zoom ?? 12, projection: 'mercator', attributionControl: false });
       mapRef.current = map;
       registerMapInstance(map);
+      if (container) {
+        const ro = new ResizeObserver(() => map.resize());
+        ro.observe(container);
+        resizeObserverRef.current = ro;
+      }
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       map.on('load', () => {
         if (cancelled) return;
@@ -85,7 +91,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
           webglRecoveryCleanupRef.current = null;
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
           markersRef.current = [];
-          unregisterMapInstance(map);
+          resizeObserverRef.current?.disconnect(); resizeObserverRef.current = null; unregisterMapInstance(map);
           map.remove();
           mapRef.current = null;
           if (!containerRef.current) return;
@@ -144,6 +150,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
       cancelled = true;
       markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
       markersRef.current = [];
+      resizeObserverRef.current?.disconnect(); resizeObserverRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
     };
   }, [nodeType, nodeEntityId, dateFrom, dateTo]);

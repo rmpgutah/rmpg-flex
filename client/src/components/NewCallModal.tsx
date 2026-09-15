@@ -13,7 +13,7 @@ import {
   DIRECTION_OPTIONS,
 } from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
-import { formatPhoneInput } from '../utils/formatters';
+import { formatPhoneInput, formatEnumValue } from '../utils/formatters';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
@@ -1057,7 +1057,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             {formData.involvedPersons.map((p, i) => (
               <div key={p.name ?? i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
                 <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{formatEnumValue(p.role)}</span>
                   <span className="font-medium truncate">{p.name}</span>
                   {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
                 </span>
@@ -1140,7 +1140,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             {formData.involvedVehicles.map((v, i) => (
               <div key={v.plate ?? `${v.make}-${v.model}-${i}`} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
                 <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{formatEnumValue(v.role)}</span>
                   <span className="font-medium truncate">{[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}</span>
                   {v.plate && <span className="text-rmpg-300 font-mono shrink-0">{v.plate}</span>}
                 </span>

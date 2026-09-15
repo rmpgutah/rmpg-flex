@@ -7,6 +7,7 @@
 // ============================================================
 
 import { playToneAsync } from './dispatchTones';
+import { isAlertSoundEnabled } from './alertSoundPrefs';
 import type { VoiceMode } from './edgeTTS';
 import { importWithRetry } from './importWithRetry';
 import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
@@ -748,6 +749,7 @@ export async function announceCallAlerts(call: CallFlags & {
  * "PANIC ALERT. OFFICER NEEDS IMMEDIATE ASSISTANCE. Officer Smith, unit S19. All units respond."
  */
 export async function announcePanicAlert(officerName?: string, location?: string, callSign?: string): Promise<void> {
+  if (!isAlertSoundEnabled('panic')) return;
   if (!isVoiceEnabled() || !isAudioAvailable() || !isEventEnabled('panic')) return;
 
   const dedupKey = `panic:${officerName || 'unknown'}`;
@@ -861,6 +863,8 @@ export async function announceNewCall(call: CallFlags & {
   city?: string;
   description?: string;
 }): Promise<void> {
+  const callPriorityCategory = call.priority === 'P1' ? 'p1_call' : call.priority === 'P2' ? 'p2_call' : null;
+  if (callPriorityCategory && !isAlertSoundEnabled(callPriorityCategory)) return;
   if (!isVoiceEnabled() || !isAudioAvailable() || !isEventEnabled('new_call')) return;
 
   const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
@@ -1692,6 +1696,8 @@ export async function demoAllVoiceAlerts(): Promise<void> {
  *   crit → descending 3-pip + "Unit XXXX GPS lost"
  */
 export async function announceGpsGap(severity: 'warning' | 'critical', unit?: string, officerName?: string, gapMin?: number): Promise<void> {
+  const category = severity === 'warning' ? 'gps_gap_warning' : 'gps_gap_critical';
+  if (!isAlertSoundEnabled(category)) return;
   if (!isVoiceEnabled() && !isSpeechAvailable()) {
     // Even if voice is off, still play the tone — it's an important
     // "is the radio working" signal independent of voice prefs.
@@ -1728,6 +1734,7 @@ export async function announceGpsGap(severity: 'warning' | 'critical', unit?: st
  * re-announces normally.
  */
 export async function announceGpsRecovered(unit?: string): Promise<void> {
+  if (!isAlertSoundEnabled('gps_recovered')) return;
   // Clear the gap dedup so a future stall re-announces.
   if (unit) {
     // Manually wipe the warn + crit dedup keys for this unit.
@@ -1749,6 +1756,7 @@ export async function announceGpsRecovered(unit?: string): Promise<void> {
  * the regular warning tone via announceCallAlerts / similar paths.
  */
 export async function announcePursuitSpeed(unit?: string, mph?: number, officerName?: string): Promise<void> {
+  if (!isAlertSoundEnabled('pursuit_speed')) return;
   // Dedup per-unit on a short window — speed alerts can fire repeatedly
   // during an active pursuit and we don't want a rapid-fire voice
   // overlap. The server-side cooldown is already 60s on the speed
@@ -1775,6 +1783,7 @@ export async function announcePursuitSpeed(unit?: string, mph?: number, officerN
  * they fire on every drift across a boundary and would be noisy).
  */
 export async function announceBeatBreach(unit?: string, expected?: string, actual?: string): Promise<void> {
+  if (!isAlertSoundEnabled('beat_breach')) return;
   const dedupKey = `breach:${unit}:${actual}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);

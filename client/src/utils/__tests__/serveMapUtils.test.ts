@@ -42,7 +42,10 @@ describe('buildServeJobMarkerEl', () => {
   });
 
   it('adds amber urgency ring for deadline < 72h away', () => {
-    const soon = new Date(Date.now() + 24 * 3_600_000).toISOString();
+    // Use 36h so hoursLeft is well clear of the 24h red/amber boundary even
+    // accounting for the microseconds between setting deadline and the
+    // function's own Date.now() call (24h ± epsilon flips to red, 36h does not).
+    const soon = new Date(Date.now() + 36 * 3_600_000).toISOString();
     const el = buildServeJobMarkerEl({ ...baseJob, deadline: soon });
     // jsdom doesn't parse 'border' shorthand in cssText into borderColor;
     // check cssText directly which contains the raw value.

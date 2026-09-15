@@ -31,7 +31,8 @@ export interface JwtPayload {
 //   refresh      → POST /api/auth/refresh
 //   2fa_pending  → POST /api/auth/login/verify-2fa  (pre-second-factor)
 //   pwd_reset    → the forgot-password completion handler
-const NON_SESSION_TOKEN_TYPES = new Set(['refresh', '2fa_pending', 'pwd_reset']);
+//   pwd_change   → POST /api/auth/login/change-password after a forced rotation
+const NON_SESSION_TOKEN_TYPES = new Set(['refresh', '2fa_pending', 'pwd_reset', 'pwd_change']);
 
 // Paths that MUST stay public no matter where authMiddleware is invoked from.
 // OAuth providers (Microsoft Identity) redirect the user's BROWSER straight to
@@ -58,7 +59,11 @@ function isPublicAuthBypass(pathname: string): boolean {
     // JWT session — gated instead by requireApiKeyScope('service_request')
     // in src/routes/integrations.ts (integration_api_keys, migration 0006).
     || pathname === '/api/integrations/calls-for-service'
-    || pathname === '/api/dialer-connect/ingest';
+    || pathname === '/api/dialer-connect/ingest'
+    // rmpgutahps.us delivery-scheduler → CAD push (piece 1/3). No JWT —
+    // gated by HMAC-SHA256 (RMPG_FLEX_WEBHOOK_SECRET) inside the route
+    // itself (see src/routes/deliveriesWebhook.ts).
+    || pathname === '/api/deliveries/webhook';
 }
 
 // ── Audited self-verifying media routes ─────────────────────────
@@ -180,7 +185,7 @@ export async function authMiddleware(c: Context, next: Next) {
     // allow-list on 'access' — an allow-list would log out every legacy
     // session on deploy.
     const tokenType = typeof jwtPayload.type === 'string' ? jwtPayload.type : null;
-    if (tokenType && NON_SESSION_TOKEN_TYPES.has(tokenType)) {
+    if (tokenType && (NON_SESSION_TOKEN_TYPES.has(tokenType) || tokenType !== 'access')) {
       return c.json({ error: 'Token is not valid for session use' }, 401);
     }
 

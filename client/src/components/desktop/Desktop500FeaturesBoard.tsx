@@ -60,7 +60,7 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
       style={{
         position: 'fixed', inset: 0, zIndex: 100000,
         background: 'rgba(5, 10, 20, 0.92)', backdropFilter: 'blur(16px)',
-        display: 'flex', flexDirection: 'column', color: '#f8fafc', fontFamily: 'Arial, sans-serif',
+        display: 'flex', flexDirection: 'column', color: 'var(--text-primary)', fontFamily: 'Arial, sans-serif',
       }}
     >
       {/* Header */}
@@ -71,7 +71,7 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
             <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               FLEXOS 500 UI-ACTIVE FEATURES CONTROL BOARD
             </div>
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
               Reconstructed & Enhanced Systems — 500/500 UI Active | 200 APIs Connected | 400 Functions Loaded
             </div>
           </div>
@@ -88,14 +88,14 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
             disabled={isExecuting}
             style={{
               padding: '6px 14px', fontSize: 11, fontWeight: 700,
-              background: '#3b82f6', border: 'none', color: '#fff', cursor: 'pointer',
+              background: '#3b82f6', border: 'none', color: 'var(--text-primary)', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
             <RefreshCw style={{ width: 12, height: 12 }} /> Test All 500 Features
           </button>
 
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X style={{ width: 20, height: 20 }} />
           </button>
         </div>
@@ -131,7 +131,7 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
 
         {/* Tab Content Display */}
         <div style={{ flex: 1, padding: 24, overflowY: 'auto', background: '#0b1329' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>MODULE {activeTab}: 50 UI-ACTIVE ENHANCED FEATURES ({ (activeTab - 1) * 50 + 1 }–{ activeTab * 50 })</span>
             <span style={{ fontSize: 10, color: '#10b981', fontWeight: 600 }}>● ALL 50 FEATURES ACTIVE IN UI</span>
           </div>
@@ -155,17 +155,17 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
                       UI ACTIVE
                     </span>
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#f1f5f9' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>
                     Enhanced System Functionality #{num}
                   </div>
-                  <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.4 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.4 }}>
                     Reconstructed feature with active visual state monitoring, automatic latency checks, and real-time UI toggle.
                   </div>
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <label style={{ fontSize: 9, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <input type="checkbox" defaultChecked style={{ accentColor: '#38bdf8' }} /> Enforce Policy
                     </label>
-                    <span style={{ fontSize: 9, color: '#cbd5e1', fontFamily: 'Arial, sans-serif' }}>5ms OK</span>
+                    <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontFamily: 'Arial, sans-serif' }}>5ms OK</span>
                   </div>
                 </div>
               );
@@ -174,8 +174,8 @@ export default function Desktop500FeaturesBoard({ isOpen, onClose }: { isOpen: b
 
           {/* Execution Log */}
           {executionLog.length > 0 && (
-            <div style={{ marginTop: 24, padding: 16, background: '#000', border: '1px solid #1e293b', fontFamily: 'Arial, sans-serif', fontSize: 10, color: '#10b981' }}>
-              <div style={{ fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>DIAGNOSTIC EXECUTION SNAPSHOT</div>
+            <div style={{ marginTop: 24, padding: 16, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', fontFamily: 'Arial, sans-serif', fontSize: 10, color: '#10b981' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>DIAGNOSTIC EXECUTION SNAPSHOT</div>
               {executionLog.map((log, i) => (
                 <div key={i}>{log}</div>
               ))}

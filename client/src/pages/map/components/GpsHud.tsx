@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Live GPS + Navigation HUD
 // ============================================================
@@ -103,7 +104,7 @@ function maneuverIcon(type: string, modifier?: string): LucideIcon {
 
 function syncAgo(iso?: string | null): string | null {
   if (!iso) return null;
-  const t = Date.parse(iso);
+  const t = parseTimestamp(iso).getTime();
   if (Number.isNaN(t)) return null;
   const secs = Math.max(0, Math.round((Date.now() - t) / 1000));
   if (secs < 60) return `${secs}s ago`;

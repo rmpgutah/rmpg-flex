@@ -16,7 +16,13 @@
 name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
-compatibility_flags = ["nodejs_compat"]
+# global_fetch_strictly_public: without it a Worker cannot fetch() another
+# Worker on its own zone (Cloudflare error 1042). Both the Dial Connect OIDC
+# discovery fetch (src/utils/sso.ts) and the native-softphone proxy
+# (src/routes/dialerVoice.ts) call rmpgutah.us/dialer/*, served by Worker
+# `dialer` on this same zone. Miniflare tests stub fetch, so only live traffic
+# ever sees 1042.
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # ─── Smart Placement (enabled 2026-06-12, monitor) ─────────
 # This worker is D1-heavy (most CAD endpoints make several sequential
@@ -258,13 +264,13 @@ bucket_name = "rmpg-flex-tesseract-training"
 # otherwise write into a stream with no sink, and the rows would be discarded
 # rather than landing in Iceberg — silent data loss that looks like success.
 #
-# [[pipelines]]
-# binding = "ANALYTICS"
-# stream  = "940a2ab71ee54ace9e534fd91e342f89"
+[[pipelines]]
+binding = "ANALYTICS"
+stream  = "940a2ab71ee54ace9e534fd91e342f89"
 #
-# [[pipelines]]
-# binding = "EVENTS"
-# stream  = "622585b17623479190bbecb141d606ce"
+[[pipelines]]
+binding = "EVENTS"
+stream  = "622585b17623479190bbecb141d606ce"
 
 # ─── PDF Tools Container (RE-ENABLED, retest 2026-08-08 v2) ─
 # Two real, now-resolved blockers were found and fixed for this container:
@@ -377,6 +383,15 @@ new_sqlite_classes = ["TesseractOcrContainer"]
 [ai]
 binding = "AI"
 
+# ─── AI Search (RMPG Flex knowledge base) ──────────────────
+# Binds the "flex-search" AI Search instance (default namespace) for
+# src/routes/knowledge.ts (/api/knowledge). Instance config — system prompt,
+# hybrid retrieval, reranking, public endpoint at https://intel.rmpgutah.us
+# for MCP clients — lives in the dashboard (AI → AI Search → flex-search).
+[[ai_search]]
+binding = "FLEX_SEARCH"
+instance_name = "flex-search"
+
 # ─── Observability (Workers Logs) ──────────────────────────
 # Persists this worker's console.log/error output to Workers Logs
 # (7-day retention, queryable in the dashboard). Without this, the
@@ -398,7 +413,10 @@ head_sampling_rate = 1
 # Without them the dual-write wrapper is a null no-op — local dev is unaffected.
 NODE_ENV = "production"
 PRIMARY_DOMAIN = "rmpgutah.us"
-CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,https://rmpgutahps.us,https://www.rmpgutahps.us,http://localhost:5173"
+# Frontend hostnames allowed to mint Turnstile tokens for /api/verify/schedule-request.
+# Must match the Turnstile widget's domains. Never add localhost here in prod.
+TURNSTILE_HOSTNAMES = "rmpgutahps.us,www.rmpgutahps.us"
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
@@ -428,7 +446,7 @@ FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 # it lives here as a plain var.
 # DIALER_OIDC_CLIENT_SECRET is set via
 # `npx wrangler secret put DIALER_OIDC_CLIENT_SECRET` — never in this file.
-DIALER_OIDC_ISSUER = "https://dialer.rmpgutah.us/api/oidc/.well-known/openid-configuration"
+DIALER_OIDC_ISSUER = "https://rmpgutah.us/dialer/api/oidc/.well-known/openid-configuration"
 DIALER_OIDC_CLIENT_ID = "flex-ceb1d9a685995b45"
 # Browser callbacks must hit rmpgutah.us/api/* (zone proxy + WAF cookie).
 # api.rmpgutah.us is the managed-challenge host except /api/health.
@@ -440,7 +458,7 @@ DIALER_OIDC_REDIRECT_URI = "https://rmpgutah.us/api/oidc/dialer/callback"
 APP_ORIGIN = "https://rmpgutah.us"
 # Dial Connect CFS status sync (POST /api/dispatch/calls/:id/status).
 # Secret is `npx wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
-DIAL_CONNECT_WEBHOOK_URL = "https://dialer.rmpgutah.us/api/webhooks/flex/cfs-status"
+DIAL_CONNECT_WEBHOOK_URL = "https://rmpgutah.us/dialer/api/webhooks/flex/cfs-status"
 
 # NSOPW nationwide SOR (mig 0146 + 0147). The federated search endpoint at
 # nsopw-api.ojp.gov is technically public + CORS-restricted; nsopw.gov's

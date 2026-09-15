@@ -27,9 +27,11 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
+import { groupByAddress, type AddressBatch } from '../../utils/serveAddressBatch';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { useServeRunOptimization } from './hooks/useServeRunOptimization';
@@ -113,6 +115,119 @@ async function openNavigation(job: ServeJob, navigate: NavigateFunction): Promis
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+// ─── Address-batch sub-component for the pending folder ──────────────────────
+
+interface PendingJobsWithBatchesProps {
+  batches: AddressBatch[];
+  singles: ServeJob[];
+  nextJobId: number | undefined;
+  onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
+  navigate: NavigateFunction;
+  routeStopIndex: Map<number, number>;
+  etaByJobId: Map<number, string>;
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+}
+
+function PendingJobsWithBatches({
+  batches,
+  singles,
+  nextJobId,
+  onOptimisticUpdate,
+  navigate,
+  routeStopIndex,
+  etaByJobId,
+  addToast,
+}: PendingJobsWithBatchesProps) {
+  return (
+    <>
+      {/* Address batch groups first — officer can knock out multiple jobs per door */}
+      {batches.map((batch) => (
+        <AddressBatchGroup
+          key={batch.key}
+          batch={batch}
+          nextJobId={nextJobId}
+          onOptimisticUpdate={onOptimisticUpdate}
+          navigate={navigate}
+          routeStopIndex={routeStopIndex}
+          etaByJobId={etaByJobId}
+          addToast={addToast}
+        />
+      ))}
+      {/* Single-address jobs */}
+      {singles.map((job) => (
+        <RunJobRow
+          key={job.id}
+          job={job}
+          isNext={nextJobId === job.id}
+          onOptimisticUpdate={onOptimisticUpdate}
+          navigate={navigate}
+          routeStop={routeStopIndex.get(job.id)}
+          eta={etaByJobId.get(job.id)}
+          addToast={addToast}
+        />
+      ))}
+    </>
+  );
+}
+
+interface AddressBatchGroupProps {
+  batch: AddressBatch;
+  nextJobId: number | undefined;
+  onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
+  navigate: NavigateFunction;
+  routeStopIndex: Map<number, number>;
+  etaByJobId: Map<number, string>;
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+}
+
+function AddressBatchGroup({
+  batch,
+  nextJobId,
+  onOptimisticUpdate,
+  navigate,
+  routeStopIndex,
+  etaByJobId,
+  addToast,
+}: AddressBatchGroupProps) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div className="border border-accent-silver-700/40 rounded-[2px] overflow-hidden">
+      {/* Batch header */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2 py-[4px] bg-surface-sunken text-left hover:bg-surface-raised/60 transition-colors"
+        aria-expanded={open}
+      >
+        <MapPin size={10} className="text-accent-silver-400 flex-shrink-0" aria-hidden />
+        <span className="flex-1 min-w-0 text-[10px] text-fg-secondary truncate">{batch.displayAddress}</span>
+        <span className="flex-shrink-0 text-[9px] font-semibold text-accent-silver-400 tabular-nums">
+          {batch.jobs.length} jobs
+        </span>
+        <span className="flex-shrink-0 text-[9px] text-fg-muted">{open ? '▴' : '▾'}</span>
+      </button>
+      {/* Batch jobs */}
+      {open && (
+        <div className="divide-y divide-border-subtle/40">
+          {batch.jobs.map((job) => (
+            <RunJobRow
+              key={job.id}
+              job={job}
+              isNext={nextJobId === job.id}
+              onOptimisticUpdate={onOptimisticUpdate}
+              navigate={navigate}
+              routeStop={routeStopIndex.get(job.id)}
+              eta={etaByJobId.get(job.id)}
+              addToast={addToast}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface RunJobRowProps {
   job: ServeJob;
   isNext: boolean;
@@ -121,9 +236,10 @@ interface RunJobRowProps {
   routeStop?: number;
   /** Formatted ETA string from optimization (shown next to the address). */
   eta?: string;
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }: RunJobRowProps) {
+function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta, addToast }: RunJobRowProps) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
 
@@ -138,11 +254,11 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }
       }));
       onOptimisticUpdate(job.id, newStatus);
     } catch {
-      // swallow — row stays as-is; server error doesn't brick the UI
+      addToast('Failed to update status — please try again', 'error');
     } finally {
       setActioning(null);
     }
-  }, [job.id, isClosed, actioning, onOptimisticUpdate]);
+  }, [job.id, isClosed, actioning, onOptimisticUpdate, addToast]);
 
   const hasAddress = !!(job.recipient_address);
 
@@ -253,7 +369,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }
 
 // ─── Next Job Card ─────────────────────────────────────────────────────────────
 
-function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction; routeStop?: number }) {
+function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop, addToast }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction; routeStop?: number; addToast: (msg: string, type: 'success' | 'error' | 'info') => void }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
@@ -268,11 +384,11 @@ function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop }: { job: Se
       }));
       onOptimisticUpdate(job.id, newStatus);
     } catch {
-      // swallow
+      addToast('Failed to update status — please try again', 'error');
     } finally {
       setActioning(null);
     }
-  }, [job.id, actioning, onOptimisticUpdate]);
+  }, [job.id, actioning, onOptimisticUpdate, addToast]);
 
   return (
     <div className="mx-0 mb-3 px-3 py-3 rounded-[2px] border-l-4 border-l-brand-400 border border-brand-400/30 bg-brand-400/5">
@@ -482,12 +598,15 @@ export interface MyRunTabProps {
   onJobsChange?: Dispatch<SetStateAction<ServeJob[]>>;
   /** Ordered job IDs from the saved route plan — when provided, active jobs sort by route sequence and show stop numbers. */
   routeOrderIds?: number[];
+  /** Database ID of the active saved route — forwarded to the optimization backend as a reference. */
+  serveRouteId?: number;
 }
 
 const FOLDER_ORDER: ServeFolder[] = ['in_progress', 'pending', 'served', 'failed', 'archived'];
 
-export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds }: MyRunTabProps) {
+export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds, serveRouteId }: MyRunTabProps) {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const today = useMemo(() => todayIso(), []);
   const runStartRef = useRef<number | null>(null);
 
@@ -704,6 +823,12 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
     });
   }, [byFolder.pending, optRun.status, optRun.optimizedOrder]);
 
+  // Address-based batching for the pending queue
+  const pendingAddressGroups = useMemo(
+    () => groupByAddress(pendingJobsForDisplay),
+    [pendingJobsForDisplay],
+  );
+
   // Queue jobs that have coordinates (prerequisite for routing)
   const routableQueueCount = useMemo(
     () => byFolder.pending.filter((j) => j.recipient_lat != null && j.recipient_lng != null).length,
@@ -722,12 +847,8 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
 
   const handleOptimize = useCallback(() => {
     const { shiftStart, shiftEnd } = denverShiftTimes();
-    // TODO: wire officerUnitId from auth context when available
-    const officerUnitId = 0;
-    // TODO: wire serveRouteId from active route when available
-    const serveRouteId = 0;
-    void optRun.startOptimization(byFolder.pending, officerUnitId, shiftStart, shiftEnd, serveRouteId);
-  }, [optRun, byFolder.pending]);
+    void optRun.startOptimization(byFolder.pending, officerId, shiftStart, shiftEnd, serveRouteId ?? 0);
+  }, [optRun, byFolder.pending, officerId, serveRouteId]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Render
@@ -839,7 +960,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
 
           {/* ── Next Job card (shown when run is NOT complete) ──── */}
           {!runComplete && nextJob && (
-            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} routeStop={routeStopIndex.get(nextJob.id)} />
+            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} routeStop={routeStopIndex.get(nextJob.id)} addToast={addToast} />
           )}
 
           {/* ── Folder-grouped job list ─────────────────────────── */}
@@ -859,17 +980,30 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
                   defaultOpen={cfg.defaultOpen}
                   count={folderJobs.length}
                 >
-                  {folderJobs.map((job) => (
-                    <RunJobRow
-                      key={job.id}
-                      job={job}
-                      isNext={nextJob?.id === job.id && !runComplete}
-                      onOptimisticUpdate={handleOptimisticUpdate}
-                      navigate={navigate}
-                      routeStop={routeStopIndex.get(job.id)}
-                      eta={folder === 'pending' ? etaByJobId.get(job.id) : undefined}
-                    />
-                  ))}
+                  {folder === 'pending'
+                    ? <PendingJobsWithBatches
+                        batches={pendingAddressGroups.batches}
+                        singles={pendingAddressGroups.singles}
+                        nextJobId={!runComplete ? nextJob?.id : undefined}
+                        onOptimisticUpdate={handleOptimisticUpdate}
+                        navigate={navigate}
+                        routeStopIndex={routeStopIndex}
+                        etaByJobId={etaByJobId}
+                        addToast={addToast}
+                      />
+                    : folderJobs.map((job) => (
+                        <RunJobRow
+                          key={job.id}
+                          job={job}
+                          isNext={nextJob?.id === job.id && !runComplete}
+                          onOptimisticUpdate={handleOptimisticUpdate}
+                          navigate={navigate}
+                          routeStop={routeStopIndex.get(job.id)}
+                          eta={undefined}
+                          addToast={addToast}
+                        />
+                      ))
+                  }
                 </ServeStatusFolder>
               );
             })}

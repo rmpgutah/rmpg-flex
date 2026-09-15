@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useEffect, useMemo, useState } from 'react';
 import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard, Copy } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
@@ -249,7 +250,7 @@ function findDuplicateGroups(logs: FleetFuelLog[]): Map<string, FleetFuelLog[]> 
     if (claimed.has(log)) continue;
     const gallons = typeof log.gallons === 'number' ? log.gallons : null;
     if (gallons == null || !(gallons > 0) || !log.fuel_date) continue;
-    const ts = Date.parse(log.fuel_date);
+    const ts = parseTimestamp(log.fuel_date).getTime();
     if (Number.isNaN(ts)) continue;
     const k = `${log.vehicle_id}|${gallons.toFixed(3)}`;
     byVehicleGallons.set(k, [...(byVehicleGallons.get(k) ?? []), log]);
@@ -259,7 +260,7 @@ function findDuplicateGroups(logs: FleetFuelLog[]): Map<string, FleetFuelLog[]> 
     // Cluster chronologically: consecutive entries within the window belong
     // to the same physical fill.
     const sorted = [...bucket].sort(
-      (a, b) => Date.parse(a.fuel_date as string) - Date.parse(b.fuel_date as string),
+      (a, b) => parseTimestamp(a.fuel_date as string).getTime() - parseTimestamp(b.fuel_date as string).getTime(),
     );
     let cluster: FleetFuelLog[] = [sorted[0]];
     const flush = (c: FleetFuelLog[], idx: number) => {
@@ -268,8 +269,8 @@ function findDuplicateGroups(logs: FleetFuelLog[]): Map<string, FleetFuelLog[]> 
     let clusterIdx = 0;
     for (let i = 1; i < sorted.length; i++) {
       const gapMin = Math.abs(
-        Date.parse(sorted[i].fuel_date as string)
-        - Date.parse(sorted[i - 1].fuel_date as string),
+        parseTimestamp(sorted[i].fuel_date as string).getTime()
+        - parseTimestamp(sorted[i - 1].fuel_date as string).getTime(),
       ) / 60000;
       if (gapMin <= NEAR_DUP_WINDOW_MIN) cluster.push(sorted[i]);
       else { flush(cluster, clusterIdx++); cluster = [sorted[i]]; }

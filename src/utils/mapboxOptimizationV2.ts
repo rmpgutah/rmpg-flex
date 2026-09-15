@@ -3,63 +3,8 @@
 import { clampDwellSeconds } from './serveStopTiming';
 import { denverWallClockToUtcMs } from './serveRouteOptimizer';
 
-export interface V2Location {
-  name: string;
-  coordinates: [number, number]; // [lng, lat]
-}
-
-export interface V2Vehicle {
-  name: string;
-  routing_profile?: string;
-  start_location?: string;
-  end_location?: string;
-  earliest_start?: string;
-  latest_end?: string;
-  breaks?: { earliest_start: string; latest_end: string; duration: number }[];
-}
-
-export interface V2ServiceTime {
-  earliest: string;
-  latest: string;
-  type?: 'strict' | 'soft' | 'soft_start' | 'soft_end';
-}
-
-export interface V2Service {
-  name: string;
-  location: string;
-  duration?: number;
-  service_times?: V2ServiceTime[];
-}
-
-export interface V2ProblemDocument {
-  version: 1;
-  locations: V2Location[];
-  vehicles: V2Vehicle[];
-  services: V2Service[];
-  options?: { objectives?: string[]; avg_mpg?: number | null };
-}
-
-export interface V2Stop {
-  type: 'start' | 'service' | 'pickup' | 'dropoff' | 'break' | 'end';
-  location: string;
-  eta: string;
-  odometer?: number;
-  wait?: number;
-  duration?: number;
-  services?: string[];
-}
-
-export interface V2Route {
-  vehicle: string;
-  stops: V2Stop[];
-  distance?: number;  // meters, from Mapbox V2 route summary
-  duration?: number;  // seconds, from Mapbox V2 route summary
-}
-
-export interface V2Solution {
-  dropped: { services: string[]; shipments: string[] };
-  routes: V2Route[];
-}
+export type * from './mapboxOptimizationV2Types';
+import type { V2Location, V2Vehicle, V2Service, V2ServiceTime, V2ProblemDocument } from './mapboxOptimizationV2Types';
 
 // ─── Input row types (minimal — only what builders need) ─────────────────────
 
@@ -82,6 +27,7 @@ export interface UnitRow {
   longitude?: number | null;
   earliest_start?: string | null;
   latest_end?: string | null;
+  capabilities?: string[] | null;
 }
 
 export interface BeatRow {
@@ -99,6 +45,8 @@ export interface CallRow {
   latitude?: number | null;
   longitude?: number | null;
   priority?: string | null;
+  /** Optional capability requirements for this call (e.g. ['k9', 'medical']) */
+  requirements?: string[] | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -140,26 +88,6 @@ function denverYmdFromIso(iso: string): string {
   }).format(new Date(ms));
 }
 
-/** Detect the correct UTC offset for America/Denver on a given date.
- *  Mountain Daylight Time (MDT = UTC-6) second Sunday of March → first Sunday of November.
- *  Mountain Standard Time (MST = UTC-7) the rest of the year. */
-function denverUtcOffset(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return '-06:00'; // safe fallback
-  const d = new Date(ms);
-  // DST starts: second Sunday of March at 2:00 AM local
-  const mar = new Date(d.getUTCFullYear(), 2, 1);
-  const marSun1 = mar.getUTCDay(); // 0=Sun
-  const marSun2 = marSun1 === 0 ? 8 : 15 - marSun1 + 1; // second Sunday (1-indexed day of month)
-  const dstStart = Date.UTC(d.getUTCFullYear(), 2, marSun2, 2, 0, 0) + 7 * 3600_000; // 2 AM MST = 9 AM UTC
-  // DST ends: first Sunday of November at 2:00 AM local
-  const nov = new Date(d.getUTCFullYear(), 10, 1);
-  const novSun1 = nov.getUTCDay() === 0 ? 1 : 8 - nov.getUTCDay();
-  const dstEnd = Date.UTC(d.getUTCFullYear(), 10, novSun1, 2, 0, 0) + 6 * 3600_000; // 2 AM MDT = 8 AM UTC
-  const inDst = ms >= dstStart && ms < dstEnd;
-  return inDst ? '-06:00' : '-07:00';
-}
-
 function parseTimeWindow(
   window: string,
   shiftStartIso: string,
@@ -170,9 +98,14 @@ function parseTimeWindow(
   const m = normalized.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
   if (!m) return null;
   const day = denverYmdFromIso(shiftStartIso);
-  const offset = denverUtcOffset(shiftStartIso);
-  const earliest = `${day}T${m[1]}:00${offset}`;
-  const latest = `${day}T${m[2]}:00${offset}`;
+  const [year, month, date] = day.split('-').map(Number);
+  const toIso = (clock: string) => {
+    const [hour, minute] = clock.split(':').map(Number);
+    if (hour > 23 || minute > 59) throw new Error('Invalid service time');
+    return new Date(denverWallClockToUtcMs(year, month - 1, date, hour, minute)).toISOString();
+  };
+  const earliest = toIso(m[1]);
+  const latest = toIso(m[2]);
   const shiftMs = Date.parse(shiftStartIso);
   const earliestMs = Date.parse(earliest);
   const latestMs = Date.parse(latest);
@@ -206,8 +139,14 @@ export function buildServeRunProblem(
   officer: UnitRow,
   shiftStart: string,
   shiftEnd: string,
-  options: { circular?: boolean; avgMpg?: number | null } = {},
+  options: {
+    circular?: boolean;
+    avgMpg?: number | null;
+    objective?: 'min-schedule-completion-time' | 'min-total-travel-duration';
+    requirements?: string[] | ((stop: ServeStop, index: number) => string[] | null);
+  } = {},
 ): V2ProblemDocument {
+  if (officer.latitude == null || officer.longitude == null) throw new Error('Officer needs a current location');
   const depotName = `officer-${officer.id}-depot`;
 
   const locations: V2Location[] = [
@@ -219,6 +158,7 @@ export function buildServeRunProblem(
   ];
 
   const vehicle: V2Vehicle = {
+    capabilities: officer.capabilities ?? undefined,
     name: officer.call_sign || `officer-${officer.id}`,
     routing_profile: 'mapbox/driving-traffic',
     start_location: depotName,
@@ -246,12 +186,21 @@ export function buildServeRunProblem(
     }
   }
 
-  const services: V2Service[] = items.map((s) => {
+  if (vehicle.breaks) vehicle.breaks = vehicle.breaks.filter(b => Date.parse(b.earliest_start) >= Date.parse(shiftStart) && Date.parse(b.latest_end) <= Date.parse(shiftEnd));
+
+  const services: V2Service[] = items.map((s, idx) => {
     const svc: V2Service = {
       name: String(s.id),
       location: String(s.id),
       duration: serveOnsiteDuration(s),
     };
+    // Apply caller-supplied requirements to specific stops if provided
+    if (options.requirements) {
+      const reqs = typeof options.requirements === 'function'
+        ? options.requirements(s, idx)
+        : options.requirements;
+      if (reqs?.length) svc.requirements = reqs;
+    }
     const serviceTimes: V2ServiceTime[] = [];
     if (s.time_window) {
       const tw = parseTimeWindow(s.time_window, shiftStart, shiftEnd);
@@ -269,7 +218,10 @@ export function buildServeRunProblem(
           }
         }
       } else {
-        serviceTimes.push({ earliest: shiftStart, latest: s.deadline, type: 'soft_end' });
+        const dlMs = Date.parse(s.deadline);
+        if (Number.isFinite(dlMs)) {
+          serviceTimes.push({ earliest: shiftStart, latest: new Date(dlMs).toISOString(), type: 'soft_end' });
+        }
       }
     }
     if (serviceTimes.length > 0) svc.service_times = serviceTimes;
@@ -277,7 +229,7 @@ export function buildServeRunProblem(
   });
 
   return { version: 1, locations, vehicles: [vehicle], services,
-    options: { objectives: ['min-schedule-completion-time'], avg_mpg: options.avgMpg ?? null } };
+    options: { objectives: [options.objective ?? 'min-schedule-completion-time'], avg_mpg: options.avgMpg ?? null } };
 }
 
 export function buildPatrolBeatProblem(
@@ -285,7 +237,9 @@ export function buildPatrolBeatProblem(
   units: UnitRow[],
   shiftStart: string,
   shiftEnd: string,
+  options: { objective?: 'min-schedule-completion-time' | 'min-total-travel-duration'; circular?: boolean } = {},
 ): V2ProblemDocument {
+  if (units.some(u => u.latitude == null || u.longitude == null)) throw new Error('All units need a current location');
   const locations: V2Location[] = [
     ...units.map((u) => ({
       name: `unit-${u.id}-start`,
@@ -300,13 +254,40 @@ export function buildPatrolBeatProblem(
     })),
   ];
 
-  const vehicles: V2Vehicle[] = units.map((u) => ({
-    name: u.call_sign,
-    routing_profile: 'mapbox/driving',
-    start_location: `unit-${u.id}-start`,
-    earliest_start: shiftStart,
-    latest_end: shiftEnd,
-  }));
+  const vehicles: V2Vehicle[] = units.map((u) => {
+    const v: V2Vehicle = {
+      name: u.call_sign,
+      routing_profile: 'mapbox/driving-traffic',
+      start_location: `unit-${u.id}-start`,
+      earliest_start: shiftStart,
+      latest_end: shiftEnd,
+    };
+    // Circular route: return to start after patrol
+    if (options.circular !== false) {
+      v.end_location = `unit-${u.id}-start`;
+    }
+    if (u.capabilities?.length) v.capabilities = u.capabilities;
+    // Add break at noon for patrol shifts
+    const shiftMs = Date.parse(shiftStart);
+    if (Number.isFinite(shiftMs)) {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Denver',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(new Date(shiftMs));
+      const year = Number(parts.find((p) => p.type === 'year')?.value);
+      const month = Number(parts.find((p) => p.type === 'month')?.value) - 1;
+      const day = Number(parts.find((p) => p.type === 'day')?.value);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+        v.breaks = [{
+          earliest_start: new Date(denverWallClockToUtcMs(year, month, day, 12, 0)).toISOString(),
+          latest_end: new Date(denverWallClockToUtcMs(year, month, day, 13, 0)).toISOString(),
+          duration: 1800,
+        }];
+      }
+    }
+    if (v.breaks) v.breaks = v.breaks.filter(b => Date.parse(b.earliest_start) >= Date.parse(shiftStart) && Date.parse(b.latest_end) <= Date.parse(shiftEnd));
+    return v;
+  });
 
   const services: V2Service[] = beats.map((b) => ({
     name: `beat-${b.id}`,
@@ -314,13 +295,15 @@ export function buildPatrolBeatProblem(
   }));
 
   return { version: 1, locations, vehicles, services,
-    options: { objectives: ['min-total-travel-duration'] } };
+    options: { objectives: [options.objective ?? 'min-total-travel-duration'] } };
 }
 
 export function buildDispatchProblem(
   calls: CallRow[],
   units: UnitRow[],
+  options: { objective?: 'min-schedule-completion-time' | 'min-total-travel-duration' } = {},
 ): V2ProblemDocument {
+  if (units.some(u => u.latitude == null || u.longitude == null)) throw new Error('All units need a current location');
   const locations: V2Location[] = [
     ...units.map((u) => ({
       name: `unit-${u.id}-start`,
@@ -332,18 +315,26 @@ export function buildDispatchProblem(
     })),
   ];
 
-  const vehicles: V2Vehicle[] = units.map((u) => ({
-    name: u.call_sign,
-    routing_profile: 'mapbox/driving-traffic',
-    start_location: `unit-${u.id}-start`,
-  }));
+  const vehicles: V2Vehicle[] = units.map((u) => {
+    const v: V2Vehicle = {
+      name: u.call_sign,
+      routing_profile: 'mapbox/driving-traffic',
+      start_location: `unit-${u.id}-start`,
+    };
+    if (u.capabilities?.length) v.capabilities = u.capabilities;
+    return v;
+  });
 
-  const services: V2Service[] = calls.map((c) => ({
-    name: `call-${c.id}`,
-    location: `call-${c.id}`,
-    duration: serviceDuration(c.priority),
-  }));
+  const services: V2Service[] = calls.map((c) => {
+    const svc: V2Service = {
+      name: `call-${c.id}`,
+      location: `call-${c.id}`,
+      duration: serviceDuration(c.priority),
+    };
+    if (c.requirements?.length) svc.requirements = c.requirements;
+    return svc;
+  });
 
   return { version: 1, locations, vehicles, services,
-    options: { objectives: ['min-schedule-completion-time'] } };
+    options: { objectives: [options.objective ?? 'min-schedule-completion-time'] } };
 }

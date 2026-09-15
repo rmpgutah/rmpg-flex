@@ -36,6 +36,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   // posMarkerRef is the playback dot, refreshed every animation frame. The
   // start + end pins were previously created in a local closure with no ref —
   // they leaked across unmount cycles. markersRef tracks EVERY marker the
@@ -64,6 +65,11 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
         const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, projection: 'mercator', attributionControl: false });
         mapRef.current = map;
         registerMapInstance(map);
+        if (containerRef.current) {
+          const ro = new ResizeObserver(() => map.resize());
+          ro.observe(containerRef.current);
+          resizeObserverRef.current = ro;
+        }
         webglRecoveryCleanupRef.current = attach(map, 'ForensicTrackMap');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
@@ -137,7 +143,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
       posMarkerRef.current = null;
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
-      if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      if (mapRef.current) { resizeObserverRef.current?.disconnect(); resizeObserverRef.current = null; unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       readyRef.current = false;
       setLoaded(false);
     };

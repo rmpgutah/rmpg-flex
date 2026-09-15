@@ -607,7 +607,7 @@ const AuditLogPage: React.FC = () => {
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top Action (30d)</span>
               </div>
               <div className="text-sm font-bold truncate font-mono text-amber-400">
-                {stats.topActions[0]?.action || 'N/A'}
+                {toDisplayLabel(stats.topActions[0]?.action ?? '') || 'N/A'}
               </div>
               <div className="text-[10px] text-rmpg-500 mt-0.5">
                 {stats.topActions[0]?.count ? `${stats.topActions[0].count} occurrences` : ''}
@@ -931,7 +931,7 @@ const AuditLogPage: React.FC = () => {
                     <td className="px-3 py-1.5 whitespace-nowrap">
                       <span className={`font-semibold inline-flex items-center gap-1 ${getActionColor(log.action)}`}>
                         {(() => { const Icon = getActionIcon(log.action); return <Icon className="w-3 h-3" />; })()}
-                        {log.action}
+                        {toDisplayLabel(log.action)}
                       </span>
                     </td>
                     <td className="px-3 py-1.5 whitespace-nowrap">

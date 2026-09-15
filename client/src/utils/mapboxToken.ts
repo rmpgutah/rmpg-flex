@@ -21,6 +21,16 @@ let _serverConfigPromise: Promise<{ accessToken?: string }> | null = null;
 let _fetchFailCount = 0;
 const MAX_FETCH_RETRIES = 3;
 
+// Write-through cache populated after a successful server token fetch.
+// Allows sync callers (getCachedMapboxAccessToken, locationImagery, static
+// image URL builders) to read the server-delivered token without going async.
+let _resolvedTokenCache = '';
+
+/** Synchronously return the most recently resolved token (empty if not yet fetched). */
+export function getSyncCachedToken(): string {
+  return _resolvedTokenCache;
+}
+
 export async function fetchMapboxConfig(): Promise<{ accessToken?: string }> {
   if (_serverConfigPromise) return _serverConfigPromise;
   if (_fetchFailCount >= MAX_FETCH_RETRIES) return {};
@@ -66,10 +76,13 @@ export async function resolveMapboxAccessToken(): Promise<string> {
   const buildTimeToken = (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
   if (buildTimeToken) return buildTimeToken;
   const cfg = await fetchMapboxConfig();
-  return cfg.accessToken || '';
+  const token = cfg.accessToken || '';
+  if (token) _resolvedTokenCache = token;
+  return token;
 }
 
 export function clearMapboxConfigCache(): void {
   _serverConfigPromise = null;
   _fetchFailCount = 0;
+  _resolvedTokenCache = '';
 }

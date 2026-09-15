@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, ShieldAlert, Package, CheckCircle, AlertTriangle, Flag,
@@ -68,7 +69,7 @@ const STATUS_BADGES: Record<string, string> = {
 const EMPTY_FORM = {
   shop_name: '',
   shop_address: '',
-  transaction_date: new Date().toISOString().slice(0, 10),
+  transaction_date: localToday(),
   transaction_type: 'pawn',
   item_description: '',
   item_category: '',
@@ -137,7 +138,7 @@ export default function PawnTrackingPage() {
   // ── Form helpers ───────────────────────────────────────────
   const openNewForm = () => {
     setEditingId(null);
-    setFormData({ ...EMPTY_FORM, transaction_date: new Date().toISOString().slice(0, 10) });
+    setFormData({ ...EMPTY_FORM, transaction_date: localToday() });
     setFormOpen(true);
   };
 

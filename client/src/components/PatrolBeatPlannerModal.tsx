@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Patrol Beat Planner Modal
 // Supervisor+ tool: select beats + units + shift window, submit
@@ -34,7 +35,7 @@ export default function PatrolBeatPlannerModal({ onClose, onSolutionReady }: Pat
     apiFetch<Unit[]>('/dispatch/units')
       .then((r) => { if (!cancelled) setUnits(Array.isArray(r) ? r : []); })
       .catch(() => {});
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
     setShiftStart(`${today}T13:00`);
     setShiftEnd(`${today}T21:00`);
     return () => { cancelled = true; };

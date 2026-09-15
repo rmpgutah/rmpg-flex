@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
+  getBridgeHealth: () => ipcRenderer.invoke('app:bridge-health'),
 
   // ─── System & Diagnostics ───────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('sys:info'),
@@ -281,6 +282,16 @@ contextBridge.exposeInMainWorld('electron', {
   getBattery: () => ipcRenderer.invoke('system:get-battery'),
   getNetwork: () => ipcRenderer.invoke('system:get-network'),
   setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+  getVolume:  ()      => ipcRenderer.invoke('system:get-volume'),
+  setBrightness: (level) => ipcRenderer.invoke('device:set-brightness', level),
+  getBrightness: () => ipcRenderer.invoke('device:get-brightness'),
+
+  // ─── Extended Hardware (Toughbook FZ-55) ──────────────
+  getBatteryDetail: () => ipcRenderer.invoke('sys:battery-detail'),
+  getWwanSignal: () => ipcRenderer.invoke('device:wwan-signal'),
+  getWwanCarrier: () => ipcRenderer.invoke('device:wwan-carrier'),
+  getUsbDevices: () => ipcRenderer.invoke('device:usb-devices'),
+  getFingerprintStatus: () => ipcRenderer.invoke('device:fingerprint-status'),
 
   // ─── WiFi Selector ──────────────────────────────────────
   // Full detail for the currently-connected network (IP, gateway, DNS, channel, etc.)
@@ -412,6 +423,37 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('hardware:barcode-scan', handler);
   },
 
+  // ─── RADAR360 Passive Device Capture ─────────────────────────
+  devicesGetLog:        ()   => ipcRenderer.invoke('device:get-log'),
+  devicesExportLog:     ()   => ipcRenderer.invoke('device:export-log'),
+  devicesClearLog:      ()   => ipcRenderer.invoke('device:clear-log'),
+  devicesDeleteEntry:   (id) => ipcRenderer.invoke('device:delete-entry', id),
+  devicesScanAll:       ()   => ipcRenderer.invoke('device:scan-all'),
+  devicesScanArp:       ()   => ipcRenderer.invoke('device:scan-arp'),
+  devicesScanBluetooth: ()   => ipcRenderer.invoke('device:scan-bt'),
+  devicesScanSsdp:      ()   => ipcRenderer.invoke('device:scan-sd'),
+  devicesScanMdns:      ()   => ipcRenderer.invoke('device:scan-md'),
+  devicesScanNetbios:   ()   => ipcRenderer.invoke('device:scan-nb'),
+
+  // ─── Thermal & smartcard hardware status ────────────────────
+  getThermalStatus:   () => ipcRenderer.invoke('sys:thermal-status'),
+  getSmartcardStatus: () => ipcRenderer.invoke('device:smartcard-status'),
+
+  // ─── Print Queue Management ─────────────────────────────────
+  getPrintQueue:           () => ipcRenderer.invoke('print:get-queue'),
+  cancelPrintJob:          (id) => ipcRenderer.invoke('print:cancel-job', id),
+  resumePrintJob:          (id) => ipcRenderer.invoke('print:resume-job', id),
+  pausePrintJob:           (id) => ipcRenderer.invoke('print:pause-job', id),
+  clearCompletedPrintJobs: () => ipcRenderer.invoke('print:clear-completed'),
+
+  // ─── Screen Capture ─────────────────────────────────────────
+  captureScreen:   ()                   => ipcRenderer.invoke('screen:capture'),
+  saveScreenshot:  (dataUrl, filename)  => ipcRenderer.invoke('screen:save', dataUrl, filename),
+  copyToClipboard: (dataUrl)            => ipcRenderer.invoke('screen:copy-to-clipboard', dataUrl),
+
+  // ─── File Downloads ─────────────────────────────────────────
+  downloadFile: (url, filename) => ipcRenderer.invoke('fs:download-file', url, filename),
+
   // ─── Thermal / connectivity signals ──────────────────────────
   // Fired when the Toughbook's thermal zone exceeds 185°F. No consumer
   // wired yet; exposed so the send isn't dropped with zero listeners.
@@ -426,5 +468,47 @@ contextBridge.exposeInMainWorld('electron', {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on('connectivity:failover', handler);
     return () => ipcRenderer.removeListener('connectivity:failover', handler);
+  },
+
+  // ─── Extended Windows bridge (desktop Settings panel) ────────
+  // Grouped under `winExt` so the renderer hook (useWindowsBridge) can
+  // feature-detect the whole set at once. Every channel is guarded in
+  // main.js via windowsBridgeExtended.js.
+  winExt: {
+    // Display
+    getDisplayModes:     ()               => ipcRenderer.invoke('winext:display-modes'),
+    setResolution:       (width, height)  => ipcRenderer.invoke('winext:set-resolution', width, height),
+    rotateDisplay:       (degrees)        => ipcRenderer.invoke('winext:rotate-display', degrees),
+    getNightLightState:  ()               => ipcRenderer.invoke('winext:night-light-state'),
+    screenshotToPictures:()               => ipcRenderer.invoke('winext:screenshot-to-pictures'),
+    // Audio
+    getMute:             ()               => ipcRenderer.invoke('winext:get-mute'),
+    setMute:             (muted)          => ipcRenderer.invoke('winext:set-mute', muted),
+    playSystemSound:     (name)           => ipcRenderer.invoke('winext:play-system-sound', name),
+    getAudioDevices:     ()               => ipcRenderer.invoke('winext:audio-devices'),
+    setDefaultAudioDevice:(id)            => ipcRenderer.invoke('winext:set-default-audio-device', id),
+    // Network
+    getNetAdapters:      ()               => ipcRenderer.invoke('winext:net-adapters'),
+    toggleWifi:          (enabled)        => ipcRenderer.invoke('winext:toggle-wifi', enabled),
+    getBluetoothDevices: ()               => ipcRenderer.invoke('winext:bluetooth-devices'),
+    toggleBluetooth:     (enabled)        => ipcRenderer.invoke('winext:toggle-bluetooth', enabled),
+    ping:                (host)           => ipcRenderer.invoke('winext:ping', host),
+    // System
+    getProcesses:        ()               => ipcRenderer.invoke('winext:processes'),
+    killProcess:         (pid)            => ipcRenderer.invoke('winext:kill-process', pid),
+    launchApp:           (appId)          => ipcRenderer.invoke('winext:launch-app', appId),
+    getLaunchableApps:   ()               => ipcRenderer.invoke('winext:launchable-apps'),
+    getSystemPerformance:()               => ipcRenderer.invoke('winext:system-performance'),
+    getInstalledApps:    ()               => ipcRenderer.invoke('winext:installed-apps'),
+    setEnvVar:           (name, value)    => ipcRenderer.invoke('winext:set-env-var', name, value),
+    // Filesystem
+    getDrives:           ()               => ipcRenderer.invoke('winext:drives'),
+    openFolder:          (folder)         => ipcRenderer.invoke('winext:open-folder', folder),
+    getRecentFiles:      (limit)          => ipcRenderer.invoke('winext:recent-files', limit),
+    recycleItem:         (target)         => ipcRenderer.invoke('winext:recycle-item', target),
+    // Features
+    getEventLog:         (query)          => ipcRenderer.invoke('winext:event-log', query),
+    getScheduledTasks:   ()               => ipcRenderer.invoke('winext:scheduled-tasks'),
+    sendNativeToast:     (title, body)    => ipcRenderer.invoke('winext:native-toast', title, body),
   },
 });

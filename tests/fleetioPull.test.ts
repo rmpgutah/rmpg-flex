@@ -61,7 +61,13 @@ describe('buildLocalInsertFromFleetio', () => {
       model: '1500 Bighorn',
       color: 'White',
       status: 'in_service',
+      avg_mpg: null,
     });
+  });
+
+  it('maps reported_fuel_economy to avg_mpg when present', () => {
+    const row = buildLocalInsertFromFleetio({ ...fioVehicle(), reported_fuel_economy: 18.5 });
+    expect(row?.avg_mpg).toBe(18.5);
   });
 
   it('returns null when the Fleet.io vehicle has no name', () => {
@@ -82,6 +88,7 @@ describe('buildLocalInsertFromFleetio', () => {
       model: null,
       color: null,
       status: 'in_service',
+      avg_mpg: null,
     });
   });
 });

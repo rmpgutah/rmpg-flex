@@ -43,6 +43,7 @@ import DiligencePanel from './DiligencePanel';
 import ServeJobComments from './ServeJobComments';
 import ServeJobOpsPanel from './ServeJobOpsPanel';
 import ServeJobQuickFields from './ServeJobQuickFields';
+import ServeScheduleRequests from './ServeScheduleRequests';
 import { parseServeJobMeta } from '../../utils/serveJobIntake';
 
 interface ServeJobCardProps {
@@ -373,12 +374,12 @@ export default React.memo(function ServeJobCard({
           </span>
           {opsMeta.venue && opsMeta.venue !== 'none' && (
             <span className="text-[8px] font-bold uppercase font-mono px-1 py-0 border rounded-[2px] text-brand-200 border-brand-700/40 bg-brand-900/20">
-              {(opsMeta.venueLabel || opsMeta.venue).replace(/_/g, ' ')}
+              {opsMeta.venueLabel || formatEnumValue(opsMeta.venue)}
             </span>
           )}
           {opsMeta.addressClass && opsMeta.addressClass !== 'unknown' && (
             <span className="text-[8px] font-mono px-1 py-0 rounded-[2px] border border-rmpg-600/40 text-rmpg-300">
-              {opsMeta.addressClass.replace(/_/g, ' ')}
+              {formatEnumValue(opsMeta.addressClass)}
             </span>
           )}
           {opsMeta.ops?.no_sunday && (
@@ -886,10 +887,15 @@ export default React.memo(function ServeJobCard({
             </div>
           )}
 
+          {/* Subject "schedule a delivery" requests from rmpgutahps.us (migration 0279) */}
+          {job.schedule_requests && job.schedule_requests.length > 0 && (
+            <ServeScheduleRequests requests={job.schedule_requests} onResolved={onOpsSaved} />
+          )}
+
           {/* Notice of Attempt — QR scan evidence (migration 0189) */}
           {job.scans && job.scans.length > 0 && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">
+              <span className="text-[9px] font-bold text-[color:var(--field-label-color)] uppercase tracking-wider">
                 Notice Scans ({job.scans.length})
               </span>
               <div className="mt-1 space-y-1">

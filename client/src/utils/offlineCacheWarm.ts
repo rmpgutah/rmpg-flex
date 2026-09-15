@@ -30,7 +30,10 @@ const WARM_ENDPOINTS: string[] = [
   '/api/patrol/checkpoints?limit=200',
   '/api/process-server?limit=200',
   '/api/admin/clients',
-  '/api/admin/config',
+  // Disposition roster for DispatchPage. NOT /api/admin/config — that is
+  // admin/manager/supervisor-only, so warming it 403'd for every dispatcher
+  // and officer on every login.
+  '/api/dispatch/disposition-codes',
   '/api/records/properties?limit=200',
   '/api/personnel?status=active',
   '/api/automation-rules',

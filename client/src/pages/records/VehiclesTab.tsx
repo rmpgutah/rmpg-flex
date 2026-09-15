@@ -1020,7 +1020,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             if (ev.registration === 'expired') chips.push({ label: 'REG EXPIRED', tone: 'red' });
             else if (ev.registration === 'expiring') chips.push({ label: 'REG EXPIRING', tone: 'gold' });
             if (selectedVehicle.insurance_expiry) {
-              const insExp = new Date(selectedVehicle.insurance_expiry);
+              const insExp = parseTimestamp(selectedVehicle.insurance_expiry);
               const now = new Date();
               const soon = new Date(); soon.setDate(soon.getDate() + 30);
               if (insExp < now) chips.push({ label: 'INSURANCE EXPIRED', tone: 'red' });

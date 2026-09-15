@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  initMapbox, mapboxgl, MAPBOX_STYLE_DARK,
+  initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance,
 } from '../../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
@@ -125,6 +125,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
 
           mapRef.current = map;
           webglRecoveryCleanupRef.current = attach(map, 'TripReplayMap');
+          registerMapInstance(map, MAPBOX_STYLE_DARK);
           setMapReady(true);
         });
 
@@ -143,6 +144,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
         mapRef.current.remove();
         mapRef.current = null;
       }

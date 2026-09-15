@@ -198,13 +198,12 @@ describe('service worker fetch handler — transient failure vs. genuine offline
 describe('service worker fetch handler — requests it must decline', () => {
   // These document the finding from the 2026-07-26 console-log investigation:
   // the cross-origin FetchEvent rejections seen for static.cloudflareinsights.com
-  // and dialer.rmpgutah.us CANNOT originate from this handler, because it never
-  // calls respondWith for them. Locking that in prevents a future "helpful"
-  // refactor from quietly taking ownership of third-party requests.
+  // CANNOT originate from this handler. Dialer is now same-origin at /dialer/*
+  // but the SW must still skip it (served by a Cloudflare Worker, not Pages).
   it.each([
     ['cross-origin telemetry', 'https://static.cloudflareinsights.com/beacon.min.js'],
     ['cross-origin telemetry hashed', 'https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925'],
-    ['cross-origin dialer iframe', 'https://dialer.rmpgutah.us/dialer'],
+    ['same-origin dialer path', 'https://rmpgutah.us/dialer'],
   ])('does not respond to %s', async (_label, url) => {
     vi.useFakeTimers();
     const fetchMock = vi.fn();

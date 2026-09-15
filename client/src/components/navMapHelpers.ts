@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Nav Map View helpers
 // Self-contained helpers owned by NavMapView.tsx:
@@ -253,7 +254,7 @@ export interface TrailPoint {
 function toEpochMs(ts: string | number | null | undefined): number | null {
   if (ts == null) return null;
   if (typeof ts === 'number') return Number.isFinite(ts) ? ts : null;
-  const n = Date.parse(ts);
+  const n = parseTimestamp(ts).getTime();
   return Number.isFinite(n) ? n : null;
 }
 

@@ -321,6 +321,20 @@ const GEO_TABLES: Record<string, { table: string; parentCol?: string; codeCol: s
 };
 
 for (const [path, meta] of Object.entries(GEO_TABLES)) {
+  geography.get(`/${path}`, async (c) => {
+    try {
+      const db = getDb(c.env);
+      const rows = await query<Record<string, unknown>>(
+        db,
+        `SELECT * FROM ${meta.table} WHERE COALESCE(active, 1) = 1 ORDER BY ${meta.parentCol ? `${meta.parentCol}, ` : ''}sort_order, id`
+      );
+      return c.json({ results: rows });
+    } catch (err) {
+      log.error(`GET /${path} failed`, { src: 'src/routes/dispatch/geography.ts' }, err);
+      return c.json({ error: `Failed to get ${path}` }, 500);
+    }
+  });
+
   geography.post(`/${path}`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
     try {
       const db = getDb(c.env);

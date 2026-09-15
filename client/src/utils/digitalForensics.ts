@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ============================================================
 // RMPG Flex — Digital Forensics (Spillman Flex Standard)
 // 10 digital forensic features
@@ -18,10 +19,10 @@ export function extractMetadata(file:FileMetadata): {hasLocation:boolean;timelin
 /* 6: Password Recovery */ export interface PasswordAttempt { hashId:string; hashType:string; attemptCount:number; found:boolean; password:string|null; durationHours:number; method:string; }
 export function estimateCrackTime(hashType:string,complexity:string): {estimatedHours:number;feasible:boolean} { return{estimatedHours:complexity==='simple'?1:complexity==='medium'?72:complexity==='complex'?8760:99999,feasible:complexity!=='complex'}; }
 /* 7: Cloud Extraction */ export interface CloudExtraction { caseNumber:string; provider:string; accountId:string; extractionType:'warrant'|'consent'|'exigent'; requestedDate:string; receivedDate:string|null; dataSize:number; }
-export function trackCloudWarrant(provider:string,caseNumber:string): CloudExtraction { return{caseNumber,provider,accountId:'',extractionType:'warrant',requestedDate:new Date().toISOString().slice(0,10),receivedDate:null,dataSize:0}; }
+export function trackCloudWarrant(provider:string,caseNumber:string): CloudExtraction { return{caseNumber,provider,accountId:'',extractionType:'warrant',requestedDate:localToday(),receivedDate:null,dataSize:0}; }
 /* 8: Mobile Forensics */ export interface MobileExtraction { deviceId:string; extractionType:'logical'|'filesystem'|'physical'; calls:number; messages:number; contacts:number; photos:number; locations:number; apps:number; }
 export function analyzeMobileExtraction(extract:MobileExtraction): {totalArtifacts:number;communicationVolume:number;hasLocationData:boolean} { return{totalArtifacts:extract.calls+extract.messages+extract.contacts+extract.photos+extract.locations+extract.apps,communicationVolume:extract.calls+extract.messages,hasLocationData:extract.locations>0}; }
 /* 9: Forensic Report */ export interface ForensicReport { caseNumber:string; examiner:string; date:string; devices:number; findings:string[]; artifacts:number; conclusions:string; }
-export function generateForensicReport(caseNumber:string,examiner:string,findings:string[]): ForensicReport { return{caseNumber,examiner,date:new Date().toISOString().slice(0,10),devices:0,findings,artifacts:0,conclusions:findings.join('; ')}; }
+export function generateForensicReport(caseNumber:string,examiner:string,findings:string[]): ForensicReport { return{caseNumber,examiner,date:localToday(),devices:0,findings,artifacts:0,conclusions:findings.join('; ')}; }
 /* 10: Lab Case Management */ export interface ForensicLabCase { id:string; caseNumber:string; submittedBy:string; submissionDate:string; priority:'routine'|'expedited'|'stat'; assignedExaminer:string|null; status:string; completionDate:string|null; }
 export function prioritizeLabCase(forensicCase:ForensicLabCase): {priorityScore:number;estimatedCompletion:string} { const score=forensicCase.priority==='stat'?10:forensicCase.priority==='expedited'?5:1; const days=forensicCase.priority==='stat'?3:forensicCase.priority==='expedited'?14:45; const d=new Date();d.setDate(d.getDate()+days); return{priorityScore:score,estimatedCompletion:d.toISOString().slice(0,10)}; }

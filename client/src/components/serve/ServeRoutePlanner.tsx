@@ -4,7 +4,7 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
   Printer, RotateCcw, CalendarDays, AlertTriangle, Pin, Coffee, ExternalLink,
 } from 'lucide-react';
-import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { fetchMapboxDrivingRoute } from '../../utils/mapboxDepartAt';
@@ -1085,6 +1085,7 @@ export default function ServeRoutePlanner({
       });
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
+      registerMapInstance(map, MAPBOX_STYLE_DARK);
       setMapReady(true);
 
       // Rebuild in place if the GPU drops the context. The marker effect
@@ -1097,7 +1098,7 @@ export default function ServeRoutePlanner({
           if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
           markersRef.current = [];
-          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
           setMapReady(false);
           setRouteMapRecoverNonce((n) => n + 1);
         },
@@ -1139,7 +1140,7 @@ export default function ServeRoutePlanner({
       if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
       markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
       markersRef.current = [];
-      if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+      if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
     };
   }, [isOpen, routeMapRecoverNonce]);
 
@@ -1672,12 +1673,22 @@ export default function ServeRoutePlanner({
   // F3: print route sheet — delegates to the unified exportServeMapSheet
   const printRouteSheet = useCallback(() => {
     const selected = stops.filter(s => s.selected);
+    // Compute per-leg haversine distances for the distance column
+    let prevLat: number | null = routeOrigin?.lat ?? null;
+    let prevLng: number | null = routeOrigin?.lng ?? null;
     exportServeMapSheet(selected.map((stop) => {
       const arrivalMs = stopArrivalTimes.get(stop.job.id);
       const etaStr = arrivalMs
         ? formatEtaDenver(arrivalMs, routeDate)
         : null;
       const dwellMin = Math.round(dwellMsForJob(stop.job) / 60_000);
+      const legMi =
+        prevLat != null && prevLng != null &&
+        stop.job.recipient_lat != null && stop.job.recipient_lng != null
+          ? haversineMiles(prevLat, prevLng, stop.job.recipient_lat, stop.job.recipient_lng)
+          : null;
+      prevLat = stop.job.recipient_lat ?? prevLat;
+      prevLng = stop.job.recipient_lng ?? prevLng;
       return {
         id: stop.job.id,
         recipient_name: stop.job.recipient_name,
@@ -1687,9 +1698,18 @@ export default function ServeRoutePlanner({
         status: stop.job.status,
         eta: etaStr,
         bufferMinutes: dwellMin,
+        case_number: stop.job.case_number ?? null,
+        client_name: stop.job.client_name ?? null,
+        attorney_name: stop.job.attorney_name ?? null,
+        attorney_phone: stop.job.attorney_phone ?? null,
+        attorney_email: stop.job.attorney_email ?? null,
+        document_type: stop.job.document_type ?? null,
+        linked_call_number: stop.job.linked_call_number ?? null,
+        call_id: stop.job.call_id ?? null,
+        distanceMiles: legMi,
       };
     })).catch(() => { addToast('Failed to export route sheet.', 'error'); });
-  }, [stops, stopArrivalTimes, routeDate, addToast]);
+  }, [stops, stopArrivalTimes, routeDate, routeOrigin, addToast]);
 
   // F4: split into two days
   const saveSplitRoute = useCallback(async () => {

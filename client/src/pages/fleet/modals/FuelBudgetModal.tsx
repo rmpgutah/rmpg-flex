@@ -1,3 +1,4 @@
+import { localToday } from '../../../utils/dateUtils';
 // ═══════════════════════════════════════════════════════════════
 // RMPG Flex — Fuel Budget Modal
 //
@@ -62,7 +63,7 @@ const EMPTY_BUDGET_FORM: BudgetFormState = {
   periodType: 'monthly',
   amount: '',
   threshold: '80',
-  effectiveFrom: new Date().toISOString().slice(0, 10),
+  effectiveFrom: localToday(),
   effectiveTo: '',
   notes: '',
 };
@@ -95,7 +96,7 @@ export default function FuelBudgetModal({
         periodType: initial.period_type || 'monthly',
         amount: initial.budget_amount != null ? String(initial.budget_amount) : '',
         threshold: initial.alert_threshold_pct != null ? String(initial.alert_threshold_pct) : '80',
-        effectiveFrom: initial.effective_from || new Date().toISOString().slice(0, 10),
+        effectiveFrom: initial.effective_from || localToday(),
         effectiveTo: initial.effective_to || '',
         notes: initial.notes || '',
       });
@@ -103,7 +104,7 @@ export default function FuelBudgetModal({
       setForm({
         ...EMPTY_BUDGET_FORM,
         scope: vehicleId != null ? 'vehicle' : 'fleet',
-        effectiveFrom: new Date().toISOString().slice(0, 10),
+        effectiveFrom: localToday(),
       });
     }
     // Snapshot after 0ms to let state settle

@@ -3,6 +3,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch, executeInChunks, queryInChunks } from '../../utils/db';
 import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
+import { resolveTakeHome } from '../../utils/takeHome';
 import { haversineM } from '../../utils/tripTelemetry';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
@@ -138,12 +139,12 @@ gps.post('/', async (c) => {
     // not rejected — dispatchers may still want to see a suspect point.
     const lastPt = points[points.length - 1];
 
-    // Unit identity: officer → units row. Take-home officers (has_take_home = 1
-    // on the user) bypass the unit requirement and return a sentinel so the
-    // client gets unitId = null but the breadcrumbs still persist.
-    const userRow = await queryFirst<{ has_take_home: number }>(db,
-      'SELECT has_take_home FROM users WHERE id = ?', userId);
-    const isTakeHome = userRow?.has_take_home === 1;
+    // Unit identity: officer → units row. Take-home officers (a take_home
+    // fleet vehicle linked on the user) bypass the unit requirement and return
+    // a sentinel so the client gets unitId = null but the breadcrumbs still
+    // persist. Resolved best-effort: a schema gap here must never 500 the GPS
+    // write path.
+    const isTakeHome = await resolveTakeHome(db, userId).then((t) => t.hasTakeHome).catch(() => false);
 
     // NOTE: keep this critical-path SELECT to columns guaranteed present on
     // every deployed DB. on_foot (migration 0102) is OPTIONAL and only used by
@@ -288,16 +289,6 @@ gps.post('/', async (c) => {
           if (call.latitude != null && call.longitude != null) {
             const distM = haversineM(lastPt.latitude, lastPt.longitude, call.latitude, call.longitude);
             if (distM <= 500) {
-              // Within 500m perimeter. Check if unit has been within perimeter for >= 30s
-              // or has earlier breadcrumbs in the perimeter across 30s.
-              const earlierPings = await query<{ recorded_at: string }>(
-                db,
-                `SELECT recorded_at FROM unit_locations
-                 WHERE unit_id = ? AND recorded_at >= datetime('now', '-5 minutes')
-                 ORDER BY recorded_at DESC LIMIT 10`,
-                unitId,
-              ).catch(() => []);
-              // Retroactive 30 seconds timestamping
               next = 'onscene';
               retroactiveSeconds = 30;
             }
@@ -393,6 +384,10 @@ gps.post('/', async (c) => {
     if (unitId && unit && unit.current_call_id != null
         && lastPt && lastPt.latitude != null && lastPt.longitude != null
         && unit.status === 'onscene') {
+      // Rate-limit departure checks to once per 60s per unit to avoid
+      // redundant haversine + UPDATE work on rapid GPS batches.
+      const departureAllowed = await rateLimitAllow(c.env.KV, `scene-departure:${unitId}`, 1, 60).catch(() => true);
+      if (departureAllowed) {
       try {
         const callId = unit.current_call_id!;
         const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null; call_number: string }>(
@@ -434,6 +429,7 @@ gps.post('/', async (c) => {
       } catch (err) {
         log.warn('[gps-departure] auto scene exit failed (non-fatal)', { err });
       }
+      } // departureAllowed
     }
 
     // ── Geofence entry/exit detection ─────────────────────────

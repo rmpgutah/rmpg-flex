@@ -5,6 +5,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { useAuth } from '../../../context/AuthContext';
 import MileagePromptModal from '../../../components/MileagePromptModal';
+import { useMountedRef } from '../../../hooks/useMountedRef';
 
 // Roles that can use the manager-override path in the mileage modal.
 const MANAGER_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -64,8 +65,7 @@ export default function ShiftCard() {
     | { mode: 'ending'; vehicleLabel: string; previous: number | null }
     | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   const fetchState = useCallback(async () => {
     setError(null);
@@ -264,7 +264,7 @@ export default function ShiftCard() {
       {error && <div className="text-amber-400 text-[11px] mb-2 leading-snug">{error}</div>}
 
       {isActive && (
-        <div className="grid grid-cols-3 grid-keep gap-2 mb-3 px-1">
+        <div className="grid grid-cols-3 gap-2 mb-3 px-1">
           <div className="flex flex-col">
             <span className="text-rmpg-500 text-[9px] uppercase tracking-widest">Hours</span>
             <span className="text-rmpg-100 text-base font-bold font-mono">{hours.toFixed(1)}</span>

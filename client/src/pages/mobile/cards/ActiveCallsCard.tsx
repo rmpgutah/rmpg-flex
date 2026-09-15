@@ -7,6 +7,7 @@ import { useWebSocket } from '../../../context/WebSocketContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+import { useMountedRef } from '../../../hooks/useMountedRef';
 
 // See BolosCard for why we build menus inline (useMenuActions throws without
 // ToastProvider/Router, which the bare-render tests don't mount).
@@ -69,8 +70,7 @@ export default function ActiveCallsCard() {
   const [showDistance, setShowDistance] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   const { status: geoStatus, position } = useGeolocation({ enabled: showDistance });
 
@@ -226,7 +226,7 @@ export default function ActiveCallsCard() {
             onClick={() => setShowDistance((v) => !v)}
             aria-pressed={showDistance}
             className={[
-              'h-8 px-2 text-[10px] uppercase tracking-widest border',
+              'min-h-[44px] px-2 text-[10px] uppercase tracking-widest border',
               showDistance ? 'text-[color:var(--field-label-color)] border-accent-silver-400' : 'text-rmpg-400 border-border-default',
             ].join(' ')}
           >

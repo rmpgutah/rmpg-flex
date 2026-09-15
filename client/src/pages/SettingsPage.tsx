@@ -48,6 +48,7 @@ import type { RadioChannel } from './radio/types';
 import { getPttPrefs, setPttPrefs, keyCodeLabel, type PttPreferences } from '../utils/pttPreferences';
 import { saveAsOrgDefault } from '../utils/settingsSync';
 import { useAuth } from '../context/AuthContext';
+import { formatEnumValue } from '../utils/formatters';
 import {
   applyThemePreference, normalizeThemePreference, writeThemeOverride,
   resolveCurrentTheme, readThemeOverride, isLegacyBlackForced,
@@ -289,8 +290,8 @@ function MyAutomationsPanel() {
               {globalRules.map((r) => (
                 <tr key={r.id} className="border-b border-surface-border last:border-0">
                   <td className="text-[11px] text-text-primary py-[2px] px-3 truncate max-w-[140px]">{r.name}</td>
-                  <td className="text-[11px] text-fg-secondary py-[2px] px-2">{r.trigger_type.replace(/_/g, ' ')}</td>
-                  <td className="text-[11px] text-fg-secondary py-[2px] px-2">{r.action_type.replace(/_/g, ' ')}</td>
+                  <td className="text-[11px] text-fg-secondary py-[2px] px-2">{formatEnumValue(r.trigger_type)}</td>
+                  <td className="text-[11px] text-fg-secondary py-[2px] px-2">{formatEnumValue(r.action_type)}</td>
                   <td className="py-[2px] px-2">
                     <span className={`inline-block w-1.5 h-1.5 rounded-full ${r.enabled ? 'bg-sev-ok' : 'bg-surface-border'}`} />
                   </td>
@@ -312,7 +313,7 @@ function MyAutomationsPanel() {
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.enabled ? 'bg-sev-ok' : 'bg-rmpg-600'}`} />
               <span className="text-[11px] text-text-primary truncate">{r.name}</span>
               <span className="text-[10px] text-fg-muted flex-shrink-0">
-                {r.trigger_type.replace(/_/g, ' ')} → {r.action_type.replace(/_/g, ' ')}
+                {formatEnumValue(r.trigger_type)} → {formatEnumValue(r.action_type)}
               </span>
             </div>
             <div className="flex gap-2 flex-shrink-0 pl-3">

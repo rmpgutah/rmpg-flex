@@ -51,14 +51,14 @@ describe('buildServeRunProblem', () => {
     const svc11 = doc.services.find((s) => s.name === '11');
     expect(svc11?.service_times).toBeDefined();
     expect(svc11?.service_times![0].type).toBe('strict');
-    expect(svc11?.service_times![0].earliest).toContain('09:00');
-    expect(svc11?.service_times![0].latest).toContain('11:00');
+    expect(svc11?.service_times![0].earliest).toBe('2026-08-17T15:00:00.000Z');
+    expect(svc11?.service_times![0].latest).toBe('2026-08-17T17:00:00.000Z');
   });
 
   it('sets service_times from deadline when no time_window', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
     const svc12 = doc.services.find((s) => s.name === '12');
-    expect(svc12?.service_times![0].latest).toBe('2026-08-17T16:00:00Z');
+    expect(svc12?.service_times![0].latest).toBe('2026-08-17T16:00:00.000Z');
     expect(svc12?.service_times![0].type).toBe('soft_end');
   });
 
@@ -93,8 +93,8 @@ describe('buildServeRunProblem', () => {
     const doc = buildServeRunProblem([morning], officer, '2026-08-28T14:00:00.000Z', '2026-08-28T23:00:00.000Z');
     const tw = doc.services[0].service_times![0];
     expect(tw.type).toBe('strict');
-    expect(tw.earliest).toBe('2026-08-28T06:00:00-06:00');
-    expect(tw.latest).toBe('2026-08-28T12:00:00-06:00');
+    expect(tw.earliest).toBe('2026-08-28T12:00:00.000Z');
+    expect(tw.latest).toBe('2026-08-28T18:00:00.000Z');
   });
 
   it('omits a morning window when the shift starts after noon', () => {
@@ -124,7 +124,7 @@ describe('buildServeRunProblem', () => {
   });
 
   it('schedules an unpaid lunch break 12:00–13:00 Denver', () => {
-    const doc = buildServeRunProblem(stops, officer, '2026-08-28T14:00:00.000Z', SHIFT_END);
+    const doc = buildServeRunProblem(stops, officer, '2026-08-28T14:00:00.000Z', '2026-08-28T23:00:00.000Z');
     const brk = doc.vehicles[0].breaks?.[0];
     expect(brk?.duration).toBe(1800);
     expect(brk?.earliest_start).toBeDefined();
@@ -191,9 +191,9 @@ describe('buildPatrolBeatProblem', () => {
     expect(doc.options?.objectives).toContain('min-total-travel-duration');
   });
 
-  it('routing profile is mapbox/driving (not traffic)', () => {
+  it('routing profile is mapbox/driving-traffic', () => {
     const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
-    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving');
+    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving-traffic');
   });
 });
 

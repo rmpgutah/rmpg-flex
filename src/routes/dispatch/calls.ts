@@ -7,6 +7,7 @@ import { getDb, query, queryFirst, queryInChunks, execute, executeInChunks, exec
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
+import { UPDATABLE_CALL_COLUMNS_BASE, UPDATABLE_CALL_COLUMNS_EXT } from './callColumns';
 import { emitAlert } from '../../utils/alertHub';
 import { log } from '../../utils/logger';
 import { recordAudit } from '../../utils/auditLog';
@@ -24,18 +25,8 @@ import {
 } from '../../utils/psoServeCrosslink';
 import { stampCallWeather } from '../../utils/cfsWeatherStamp';
 import { parseWeatherSnapshot } from '../../utils/cfsWeather';
+import { currentCallNumberPrefix, nextCallNumber, withNextCallNumber } from '../../utils/callNumberSeq';
 const calls = new Hono<Env>();
-
-// ── Atomic call-number sequence (C2) ──────────────────────────────────────
-// The sequence table is created once per isolate (boot reconciler pattern used
-// throughout this codebase). INSERT INTO ... DEFAULT VALUES returns a unique,
-// monotonically increasing id under concurrent Workers — no SELECT MAX race.
-let callSeqEnsured = false;
-async function ensureCallNumberSeq(db: D1Database): Promise<void> {
-  if (callSeqEnsured) return;
-  await db.prepare(`CREATE TABLE IF NOT EXISTS call_number_seq (id INTEGER PRIMARY KEY AUTOINCREMENT)`).run();
-  callSeqEnsured = true;
-}
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
@@ -283,14 +274,17 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
     // co-exist; the LIKE here only scans the new format so we don't
     // collide with the old sequence.
-    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
-    const prefix = `CFS${year}-`;
-    // ── Atomic call-number generation (C2) ──
-    // INSERT into the sequence table — AUTOINCREMENT guarantees uniqueness
-    // under concurrent Workers without a MAX read-then-increment race.
-    await ensureCallNumberSeq(db);
-    const seqResult = await db.prepare("INSERT INTO call_number_seq DEFAULT VALUES").run();
-    let callNumber = `${prefix}${String(seqResult.meta.last_row_id).padStart(5, '0')}`;
+    // Generated from MAX(call_number)+1 via the shared helper (also used by
+    // panic.ts and the /split endpoint) — always continues from the highest
+    // existing number for the year rather than an unrelated counter. An
+    // AUTOINCREMENT `call_number_seq` table was used here previously; it
+    // tracked its own counter starting at 1 with no relation to existing
+    // calls_for_service rows, so newly-deployed isolates (or the table's
+    // first creation) restarted numbering at CFS{YY}-00001 even when
+    // higher-numbered calls already existed for the year, immediately
+    // colliding on the UNIQUE constraint.
+    const prefix = currentCallNumberPrefix();
+    let callNumber = await nextCallNumber(db, prefix);
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -417,8 +411,26 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     }
 
     try {
-      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
-      const callId = Number(result.meta.last_row_id);
+      // call_number carries a UNIQUE constraint. A collision here means a
+      // concurrent request grabbed the same MAX(call_number)+1 value —
+      // regenerate and retry rather than 500ing the create.
+      let result: Awaited<ReturnType<typeof execute>> | undefined;
+      const insertSql = `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          result = await execute(db, insertSql, ...bindParams);
+          break;
+        } catch (insertErr) {
+          const raw = String((insertErr as Error)?.message ?? insertErr);
+          if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raw) && /call_number/i.test(raw)) {
+            callNumber = await nextCallNumber(db, prefix);
+            bindParams[0] = callNumber;
+            continue;
+          }
+          throw insertErr;
+        }
+      }
+      const callId = Number(result!.meta.last_row_id);
 
       // Record which run card was applied — to ext (PSO/process-service home).
       // INSERT OR IGNORE then UPDATE matches the rest of the ext write flow.
@@ -783,6 +795,88 @@ calls.get('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'mana
   }
 });
 
+// GET /dispatch/calls/batch?ids=1,2,3 - Lightweight multi-call fetch for serve route planner.
+// Returns only the fields used by ServeJobLinkedCall (not the full call detail with activity
+// log, incidents, units, etc.). Must be registered before /:id or "batch" matches the param.
+calls.get('/batch', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rawIds = (c.req.query('ids') ?? '').split(',').map(Number).filter(Number.isFinite);
+    if (rawIds.length === 0) return c.json([]);
+    // Cap at 100 — D1's bound-parameter limit; callers should chunk if needed.
+    const ids = rawIds.slice(0, 100);
+
+    const calls = await queryInChunks<{
+      id: number; call_number: string; status: string; priority: string;
+      assigned_unit_ids: string | null; pso_requestor_name: string | null;
+      contract_id: string | null; pso_service_windows: string | null;
+      pso_attempt_number: number | null;
+    }>(
+      db, ids,
+      (ph) => `SELECT c.id, c.call_number, c.status, c.priority,
+                      c.assigned_unit_ids, c.pso_requestor_name, c.contract_id,
+                      c.pso_service_windows, c.pso_attempt_number
+               FROM calls_for_service c WHERE c.id IN (${ph})`,
+    );
+
+    // Fetch parent_call_id from the ext table for each call.
+    const extRows = await queryInChunks<{ id: number; parent_call_id: number | null }>(
+      db, ids,
+      (ph) => `SELECT id, parent_call_id FROM calls_for_service_ext WHERE id IN (${ph})`,
+    );
+    const extMap = new Map(extRows.map((r) => [r.id, r.parent_call_id ?? null]));
+
+    // Collect all parent ids and child ids we need to resolve.
+    const parentIds = [...new Set(extRows.map((r) => r.parent_call_id).filter((x): x is number => x != null))];
+    const parentRows = parentIds.length
+      ? await queryInChunks<{ id: number; call_number: string; status: string; pso_attempt_number: number | null }>(
+          db, parentIds,
+          (ph) => `SELECT id, call_number, status, pso_attempt_number FROM calls_for_service WHERE id IN (${ph})`,
+        )
+      : [];
+    const parentMap = new Map(parentRows.map((r) => [r.id, r]));
+
+    // Children are siblings sharing the same parent (return-visit chain).
+    const chainRootIds = [...new Set([...parentIds, ...ids.filter((id) => !extMap.get(id))])];
+    const childRows = chainRootIds.length
+      ? await queryInChunks<{ id: number; call_number: string; status: string; pso_attempt_number: number | null; parent_call_id: number | null }>(
+          db, chainRootIds,
+          (ph) => `SELECT c.id, c.call_number, c.status, c.pso_attempt_number,
+                          ext.parent_call_id
+                   FROM calls_for_service c
+                   LEFT JOIN calls_for_service_ext ext ON ext.id = c.id
+                   WHERE (c.id IN (${ph}) OR ext.parent_call_id IN (${ph}))`,
+        )
+      : [];
+
+    // Build a child list per root call id (grouped by parent or root itself).
+    const childrenByRoot = new Map<number, typeof childRows>();
+    for (const r of childRows) {
+      const root = r.parent_call_id ?? r.id;
+      if (!childrenByRoot.has(root)) childrenByRoot.set(root, []);
+      childrenByRoot.get(root)!.push(r);
+    }
+
+    const result = calls.map((call) => {
+      const parentCallId = extMap.get(call.id) ?? null;
+      const parentCall = parentCallId ? (parentMap.get(parentCallId) ?? null) : null;
+      const root = parentCallId ?? call.id;
+      const siblings = (childrenByRoot.get(root) ?? []).filter((r) => r.id !== call.id);
+      return {
+        ...call,
+        parent_call_id: parentCallId,
+        parent_call: parentCall,
+        child_calls: siblings.map(({ id, call_number, status, pso_attempt_number }) => ({ id, call_number, status, pso_attempt_number })),
+      };
+    });
+
+    return c.json(result);
+  } catch (err) {
+    log.error('GET /dispatch/calls/batch failed', {}, err as Error);
+    return c.json([]);
+  }
+});
+
 // GET /dispatch/calls/:id - Single call
 // Split into multiple narrow queries instead of one wide JOIN because D1
 // caps result sets at 100 columns. calls_for_service is ~93 columns; adding
@@ -889,75 +983,6 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
 // PSO + process-service fields live in calls_for_service_ext (1:1).
 // Keep in sync with migrations/0001_initial.sql + 0003_calls_for_service_extended.sql.
 // Immutable (never updatable): id, call_number, created_at.
-const UPDATABLE_CALL_COLUMNS_BASE = new Set<string>([
-  // base (0001)
-  'incident_type', 'priority', 'status', 'caller_name', 'caller_phone',
-  'location_address', 'property_id', 'latitude', 'longitude', 'description',
-  'notes', 'source', 'assigned_unit_ids', 'unit_call_signs', 'dispatcher_id',
-  // Timeline timestamps — all admin-editable from the dispatch timeline.
-  // created_at was previously omitted, so editing the "Created" time
-  // returned {message:'No changes'} and the client blanked the call.
-  'created_at', 'dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at',
-  'disposition',
-  // geography
-  'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
-  'beat_id', 'beat_name', 'beat_descriptor', 'section_name',
-  // caller / location detail
-  'caller_relationship', 'caller_address', 'cross_street',
-  'location_building', 'location_floor', 'location_room', 'contact_method',
-  // subject / vehicle
-  'num_subjects', 'num_victims', 'subject_description', 'vehicle_description',
-  'direction_of_travel', 'weapons_involved',
-  // scene
-  'scene_safety', 'weather_conditions', 'lighting_conditions',
-  'secondary_type', 'dispatch_code',
-  // response
-  'responding_officer', 'responding_vehicle_id', 'action_taken',
-  // damage
-  'damage_estimate', 'damage_description',
-  // LE coordination
-  'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
-  // tactical flags (base — first 7 added directly to calls_for_service;
-  // 10 more flags overflowed to _ext when base hit the D1 100-col cap)
-  'injuries_reported', 'alcohol_involved', 'drugs_involved', 'domestic_violence',
-  'mental_health_crisis', 'juvenile_involved', 'felony_in_progress',
-  'officer_safety_caution', 'k9_requested', 'ems_requested',
-  // cross-linking
-  'case_id', 'case_number', 'client_id', 'contract_id',
-  // lifecycle
-  'previous_status', 'status_changed_at', 'archived_at', 'received_at',
-  'priority_score', 'response_time_seconds', 'onscene_duration_seconds',
-  'starting_mileage', 'ending_mileage', 'overdue_notified',
-]);
-
-const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
-  // PSO
-  'pso_requestor_name', 'pso_requestor_phone', 'pso_requestor_email',
-  'pso_service_type', 'pso_billing_code', 'pso_authorization',
-  'pso_72hr_deadline', 'pso_72hr_notified', 'pso_service_windows',
-  'pso_attempt_number',
-  // process service
-  'process_service_type', 'process_served_to', 'process_served_address',
-  'process_attempts', 'process_served_at', 'process_service_result',
-  // court (added by migration 0145; this allowlist was never updated to
-  // match, so every court_name edit silently fell into the `skipped`
-  // bucket in the PUT handler below and was never written — the field
-  // "failed to save on reopening" because it was never persisted at all)
-  'court_name',
-  'attorney_name', 'jurisdiction', 'deadline', 'time_window',
-  'service_instructions', 'plaintiff_name',
-  // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
-  // the 100-column D1 cap. New tactical flags should land here too.
-  'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',
-  'body_camera_active', 'photos_taken', 'trespass_issued',
-  'vehicle_pursuit', 'foot_pursuit', 'pinned',
-  // geography — submitted by NewCallModal and the edit panel but were
-  // missing from both column sets so every area_code/area_name edit was
-  // silently dropped into the skipped[] bucket and never written
-  'area_code', 'area_name',
-  // Live/historical scene weather snapshot (migration 0271)
-  'weather_snapshot', 'weather_manual',
-]);
 
 // PUT /dispatch/calls/:id - Update call
 calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
@@ -1296,16 +1321,55 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     let mileageSql = '';
     const extraParams: unknown[] = [];
 
-    const parsedStartMi = starting_mileage != null && Number(starting_mileage) > 0 ? Math.round(Number(starting_mileage) * 10) / 10 : null;
+    let parsedStartMi = starting_mileage != null && Number(starting_mileage) > 0 ? Math.round(Number(starting_mileage) * 10) / 10 : null;
     const parsedEndMi = ending_mileage != null && Number(ending_mileage) > 0 ? Math.round(Number(ending_mileage) * 10) / 10 : null;
 
+    // Server-side safety net: when enroute fires without a starting_mileage (e.g.
+    // the modal was skipped or a direct API call omitted the field), auto-capture
+    // the assigned unit's fleet vehicle live odometer. This keeps the mileage chain
+    // continuous even when the client-side modal is bypassed.
+    if (parsedStartMi == null && status === 'enroute') {
+      try {
+        const { vehicleOdometerForUnit } = await import('../../utils/fleetOdometer');
+        const assignedRow = await queryFirst<{ assigned_unit_ids: string | null }>(
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id,
+        );
+        const unitIds: number[] = JSON.parse(assignedRow?.assigned_unit_ids || '[]');
+        if (unitIds.length > 0) {
+          const odo = await vehicleOdometerForUnit(db, unitIds[0]);
+          if (odo != null) parsedStartMi = odo;
+        }
+      } catch { /* non-fatal */ }
+    }
+
     if (parsedStartMi != null) {
-      mileageSql += ', starting_mileage = ?';
+      // COALESCE: only write if not already set — don't overwrite an officer's
+      // explicit enroute mileage if a second enroute transition fires somehow.
+      mileageSql += ', starting_mileage = COALESCE(starting_mileage, ?)';
       extraParams.push(parsedStartMi);
     }
-    if (parsedEndMi != null) {
+    // Server-side safety net for onscene: if no ending_mileage was passed, derive
+    // it from the fleet vehicle's live odometer (accrued by GPS trip engine).
+    // Only set if the call already has a starting_mileage to derive from.
+    let resolvedEndMi = parsedEndMi;
+    if (resolvedEndMi == null && status === 'onscene') {
+      try {
+        const { vehicleOdometerForUnit } = await import('../../utils/fleetOdometer');
+        const callRow = await queryFirst<{ assigned_unit_ids: string | null; starting_mileage: number | null }>(
+          db, 'SELECT assigned_unit_ids, starting_mileage FROM calls_for_service WHERE id = ?', id,
+        );
+        const unitIds: number[] = JSON.parse(callRow?.assigned_unit_ids || '[]');
+        if (unitIds.length > 0 && callRow?.starting_mileage != null && callRow.starting_mileage > 0) {
+          const odo = await vehicleOdometerForUnit(db, unitIds[0]);
+          if (odo != null && odo > callRow.starting_mileage) {
+            resolvedEndMi = Math.round(odo * 10) / 10;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+    if (resolvedEndMi != null) {
       mileageSql += ', ending_mileage = ?';
-      extraParams.push(parsedEndMi);
+      extraParams.push(resolvedEndMi);
     }
 
     const params: unknown[] = [status];
@@ -1339,6 +1403,8 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
           dispatched: 'dispatched_at',
           enroute:    'enroute_at',
           onscene:    'onscene_at',
+          cleared:    'cleared_at',
+          closed:     'closed_at',
         };
         const tsField = timestampFields[status as keyof typeof timestampFields];
         const tsValue = tsField ? String(updated?.[tsField] ?? '') : '';
@@ -1988,6 +2054,10 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     } catch (err) { log.error('[dispatch] premise auto-push failed', { callId: id, unit_id }, err as Error); }
 
     const updatedCall = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (updatedCall) {
+      try { await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updatedCall }); }
+      catch { log.warn('Broadcast call_updated failed after assign-unit', { callId: id, unitId: unit_id }); }
+    }
     return c.json({ ...(updatedCall ?? {}), message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
   } catch (err) {
     log.error('POST /:id/assign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Assign failed' }, 500); }
@@ -2117,6 +2187,10 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
     // (handleMultiUnitDispatch) feeds this straight into mapDbCall() and splices
     // it into dispatch state — a bare message produced a blank-id corrupted call.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (updated) {
+      try { await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated }); }
+      catch { log.warn('Broadcast call_updated failed after multi-unit dispatch', { callId: id }); }
+    }
     return c.json(updated);
   } catch (err) {
     log.error('POST /:id/dispatch failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Dispatch failed' }, 500); }
@@ -2133,24 +2207,19 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     if (!Array.isArray(splits) || !splits.length) return c.json({ error: 'splits array required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const created: number[] = [];
-    // call_number is NOT NULL UNIQUE — generate a new number for each child
-    const splitYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
-    const splitPrefix = `CFS${splitYear}-`;
-    const nextSplitCallNumber = async () => {
-      const [{ max }] = await query<{ max: string | null }>(
-        db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?", `${splitPrefix}%`,
-      );
-      const seq = max ? String(parseInt(max.slice(splitPrefix.length), 10) + 1).padStart(5, '0') : '00001';
-      return `${splitPrefix}${seq}`;
-    };
+    // call_number is NOT NULL UNIQUE — generate a new number for each child.
+    // Shared helper (also used by manual create + panic) retries on a
+    // UNIQUE-constraint collision instead of failing the split.
+    const splitPrefix = currentCallNumberPrefix();
     for (const s of splits) {
-      const childCallNumber = await nextSplitCallNumber();
-      const result = await execute(db,
-        // No split_from_id on calls_for_service (and it's at the 100-column
-        // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
-        `INSERT INTO calls_for_service (call_number, incident_type, priority, status, location_address, latitude, longitude, description, dispatcher_id, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        childCallNumber, s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, userId ?? null);
+      const { result } = await withNextCallNumber(db, splitPrefix, (childCallNumber) =>
+        execute(db,
+          // No split_from_id on calls_for_service (and it's at the 100-column
+          // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
+          `INSERT INTO calls_for_service (call_number, incident_type, priority, status, location_address, latitude, longitude, description, dispatcher_id, created_at, updated_at)
+           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+          childCallNumber, s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, userId ?? null),
+      );
       const childId = Number(result.meta.last_row_id);
       await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', childId);
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, childId);
@@ -2285,14 +2354,8 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     // "Schedule Return Visit" button) can read the same MAX twice and collide
     // on insert. Recompute and retry a few times on that specific collision
     // rather than surfacing the generic SQLITE_CONSTRAINT 409 to the dispatcher.
-    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
-    const prefix = `CFS${year}-`;
-    const nextCallNumber = async () => {
-      const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);
-      const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
-      return `${prefix}${seq}`;
-    };
-    let newCallNumber = await nextCallNumber();
+    const prefix = currentCallNumberPrefix();
+    let newCallNumber = await nextCallNumber(db, prefix);
 
     // Carry parent notes forward (tagged so the client can badge them
     // "carried from prior visit") + append a system note marking the
@@ -2349,7 +2412,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err ?? '');
         if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raw) && /call_number/i.test(raw)) {
-          newCallNumber = await nextCallNumber();
+          newCallNumber = await nextCallNumber(db, prefix);
           continue;
         }
         throw err;

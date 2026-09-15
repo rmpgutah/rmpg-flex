@@ -1461,7 +1461,7 @@ export interface Warrant {
 
 // --- Notifications ---
 
-export type NotificationType = 'bolo' | 'warrant' | 'dispatch' | 'system' | 'message' | 'credential_expiry' | 'patrol_missed';
+export type NotificationType = 'bolo' | 'warrant' | 'dispatch' | 'system' | 'message' | 'credential_expiry' | 'patrol_missed' | 'serve_qr_scan' | 'serve_schedule_request';
 export type NotificationPriority = 'normal' | 'high' | 'critical';
 
 export interface Notification {
@@ -2241,6 +2241,10 @@ export type WSMessageType =
   | 'serve_attempt'
   | 'serve_created'
   | 'serve_attempt_reminder'
+  | 'serve_qr_scan'
+  | 'serve_qr_location'
+  | 'serve_qr_details'
+  | 'serve_schedule_request'
   // Radio events (for cross-integration)
   | 'radio_check'
   | 'radio_check_ack'
@@ -2256,7 +2260,9 @@ export type WSMessageType =
   // Smart automation engine — fired by server or client-side rule evaluation.
   // Payload: { action_type, rule_id, source:'officer'|'system', fired_at,
   //            trigger_lat?, trigger_lng?, context? }
-  | 'automation_alert';
+  | 'automation_alert'
+  // Desktop force-update push (admin broadcasts to trigger quitAndInstall)
+  | 'force_update';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -2470,6 +2476,9 @@ export interface Department {
 // --- Notification Rules ---
 
 export type NotificationTrigger =
+  | 'optimization_completed'
+  | 'optimization_failed'
+  | 'optimization_stops_dropped'
   | 'call_created_p1'
   | 'call_created_p2'
   | 'warrant_created'
@@ -3177,9 +3186,10 @@ export interface CrmTask {
 
 export interface CrmActivity {
   id: number | string;
-  client_id: number | string;
+  client_id?: number | string;
   client_name?: string;
-  activity_type: 'note' | 'call' | 'email' | 'meeting' | 'invoice' | 'contract_change' | 'site_visit';
+  lead_name?: string;
+  activity_type: 'note' | 'call' | 'email' | 'meeting' | 'invoice' | 'contract_change' | 'site_visit' | 'stage_change' | 'converted';
   subject?: string;
   details?: string;
   created_by?: string;
@@ -3425,6 +3435,8 @@ export interface ServeJob {
   skipTraces?: ServeSkipTrace[];
   /** QR "Notice of Attempt to Serve" scan evidence (migration 0189). */
   scans?: ServeNoticeScan[];
+  /** Subject "schedule a delivery" requests from rmpgutahps.us (migration 0279). List = pending only. */
+  schedule_requests?: ServeScheduleRequest[];
   // Raw JSON blob written by commitIntake. Parsed client-side to extract
   // _intake.address_class.{klass, confirmed} for the scheduling UI.
   parsed_data?: string | null;
@@ -3632,6 +3644,20 @@ export interface ServeNoticeScan {
   touch_capable: boolean;
   is_proxy: boolean;
   is_bot: boolean;
+}
+
+export interface ServeScheduleRequest {
+  id: number;
+  job_id: number | null;
+  job_ref: string;
+  preferred_window: 'morning' | 'afternoon' | 'evening' | 'weekend';
+  contact_method: 'phone' | 'email';
+  contact_value: string;
+  note: string | null;
+  status: 'pending' | 'accepted' | 'declined';
+  resolved_by?: number | null;
+  resolved_at?: string | null;
+  created_at: string;
 }
 
 export interface ServeSkipAddress {

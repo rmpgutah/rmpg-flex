@@ -26,6 +26,7 @@ import type {
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { useSlashFocus } from '../hooks/useSlashFocus';
 import { trainingRecordsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [
@@ -138,8 +139,7 @@ export default function TrainingPage() {
   // Status pre-filter, externally driven by ?status=<status> deep-link.
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   const fetchData = useCallback(async () => {
     setFetchError('');

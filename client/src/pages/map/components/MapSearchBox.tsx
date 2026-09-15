@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 // @ts-expect-error — @mapbox/search-js-react types may be incomplete
 import { SearchBox } from '@mapbox/search-js-react';
+import mapboxgl from 'mapbox-gl';
 import { useMapContext } from '../MapContext';
 
 interface MapSearchBoxProps {
@@ -26,11 +27,9 @@ export default function MapSearchBox({ accessToken }: MapSearchBoxProps) {
     <div className="absolute top-3 left-12 z-10 w-72">
       <SearchBox
         accessToken={accessToken}
+        map={map ?? undefined}
+        mapboxgl={mapboxgl}
         onRetrieve={handleRetrieve}
-        proximity={map ? {
-          lng: map.getCenter().lng,
-          lat: map.getCenter().lat,
-        } : undefined}
         options={{ language: 'en', country: 'US' }}
         theme={{
           variables: {

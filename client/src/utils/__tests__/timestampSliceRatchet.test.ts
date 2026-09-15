@@ -89,3 +89,18 @@ describe('timestamp slicing', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+
+it('uses Mountain today for all client calendar defaults', () => {
+  const offenders: string[] = [];
+  for (const f of walk(SRC)) {
+    if (f.includes('__tests__') || /\.test\.tsx?$/.test(f)) continue;
+    readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+      if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) return;
+      if (/new Date\(\)\.toISOString\(\)\.(?:slice\(0, ?10\)|split\('T'\)\[0\])/.test(line)) {
+        offenders.push(`${f.replace(SRC, 'src')}:${i + 1}`);
+      }
+    });
+  }
+  expect(offenders).toEqual([]);
+});

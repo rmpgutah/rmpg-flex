@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { X, Phone, Radio, AlertTriangle, Activity } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { timeAgo } from '../../utils/statusLabels';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface ActivityEntry {
   id: number | string;
@@ -81,8 +82,8 @@ export default function ActivityFeed({ isOpen, onClose }: ActivityFeedProps) {
           entries.map((entry, i) => {
             const Icon = entryIcon(entry);
             const label = entry.action
-              ? entry.action.replace(/_/g, ' ')
-              : entry.entity_type ?? 'event';
+              ? formatEnumValue(entry.action)
+              : formatEnumValue(entry.entity_type) || 'Event';
             return (
               <div
                 key={entry.id ?? i}

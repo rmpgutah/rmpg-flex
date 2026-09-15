@@ -35,6 +35,26 @@ export function setCurrentUser(callSign: string | undefined): void {
   ctx.currentUserCallSign = callSign;
 }
 
+/**
+ * Called by WebSocketContext after it syncs operational totals from its own
+ * state (active-call count, available-unit count, held-call list).
+ * These can also be coarsely derived from delta events; callers that know
+ * the authoritative totals (e.g. a periodic REST sync) should prefer this.
+ */
+export function setBrainOperationalCounts(
+  activeCallCount: number,
+  availableUnitCount: number,
+  heldCalls?: Array<{ call_number: string; held_since: number }>,
+): void {
+  ctx.activeCallCount    = activeCallCount;
+  ctx.availableUnitCount = availableUnitCount;
+  if (heldCalls !== undefined) ctx.heldCalls = heldCalls;
+}
+
+export function setBrainShiftEndTime(iso: string | undefined): void {
+  ctx.shiftEndTime = iso;
+}
+
 /** Test-only reset. Clears context, stops timer, disables the flag. */
 export function __resetBrainForTest(): void {
   ctx = { transcript: [] };
@@ -77,8 +97,11 @@ function absorbPayloadIntoContext(payload: any): void {
 export function handleDispatchEvent(type: string, payload: any): void {
   if (!isBrainEnabled()) return;
 
+  ctx.lastEventAt = Date.now();
+
   absorbPayloadIntoContext(payload);
   maybeMarkOnScene(type, payload);
+  updateOperationalCounters(type, payload);
 
   // Set the event on ctx only for the duration of rule matching + compose;
   // clear it afterward so timer/state triggers don't see stale event data.
@@ -139,6 +162,25 @@ function tickTimers(): void {
       entityKey: rule.entityKey?.(ctx) ?? 'global',
       cooldownMs: rule.cooldownMs,
     });
+  }
+}
+
+// Coarsely track operational counters from delta events so timer rules
+// (high-call-volume, coverage-gap) have a non-zero basis. These are deltas
+// from WS connect, not authoritative totals — setBrainOperationalCounts()
+// may overwrite them with exact values from a REST sync.
+function updateOperationalCounters(type: string, payload: any): void {
+  if (type === 'call_created') {
+    ctx.activeCallCount = (ctx.activeCallCount ?? 0) + 1;
+  } else if (type === 'call_closed' || type === 'call_deleted' || type === 'call_resolved') {
+    ctx.activeCallCount = Math.max(0, (ctx.activeCallCount ?? 1) - 1);
+  } else if (type === 'unit_status_changed') {
+    const status = String(payload?.status ?? payload?.unit?.status ?? '').toLowerCase();
+    if (status === 'available' || status === 'clear') {
+      ctx.availableUnitCount = (ctx.availableUnitCount ?? 0) + 1;
+    } else if (ctx.availableUnitCount && ctx.availableUnitCount > 0) {
+      ctx.availableUnitCount = ctx.availableUnitCount - 1;
+    }
   }
 }
 

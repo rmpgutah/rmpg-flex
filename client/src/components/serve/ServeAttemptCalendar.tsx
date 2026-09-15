@@ -1,3 +1,4 @@
+import { parseTimestamp, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { useEffect, useState, useCallback } from 'react';
 import { CalendarDays, Bell, BellOff, ChevronRight, AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
@@ -44,7 +45,7 @@ const PRIORITY_CLASS: Record<string, string> = {
 
 function daysUntil(deadline: string | null): number | null {
   if (!deadline) return null;
-  const ms = Date.parse(`${deadline}T23:59:59`) - Date.now();
+  const ms = parseTimestamp(mtDatetimeLocalToUtc(`${deadline}T23:59:59`)).getTime() - Date.now();
   return Math.ceil(ms / 86_400_000);
 }
 

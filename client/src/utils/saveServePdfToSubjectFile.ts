@@ -1,6 +1,5 @@
 import { apiPostForm } from '../hooks/useApi';
 import type jsPDF from 'jspdf';
-import { inferServeFileKind } from './serveAttemptFileMeta';
 
 interface SaveServePdfOptions {
   queueId: number;
@@ -33,7 +32,8 @@ export async function autoSaveServePdfToSubjectFile(options: SaveServePdfOptions
     if (description) fd.append('description', description);
     fd.append('document_type', documentType);
     fd.append('copies', '1');
-    fd.append('kind', inferServeFileKind(file.type, file.name));
+    // Omit 'kind' — server infers per-file via inferServeFileKind, matching
+    // the UploadForm pattern so mixed uploads are always classified correctly.
 
     await apiPostForm(`/process-server/${queueId}/attempts/${attemptId}/files`, fd);
     console.info(`[autoSaveServePdf] Successfully saved ${filename} to attempt #${attemptId} folder.`);

@@ -85,10 +85,10 @@ interface UnitTrail {
 
 export interface PatrolTrackingReportData {
   trails: UnitTrail[];
-  query: {
+  query?: {
     startDate: string | null;
     endDate: string | null;
-    hours: number;
+    hours: number | null;
   };
   total_units: number;
   total_points: number;
@@ -297,10 +297,10 @@ export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, opt
     doc.text(`Unit: ${unitLabel}`, marginX, y);
     y += 14;
 
-    const startLabel = data.query.startDate
+    const startLabel = data.query?.startDate
       ? formatDayOnly(data.query.startDate)
-      : `Last ${data.query.hours} hours`;
-    const endLabel = data.query.endDate ? formatDayOnly(data.query.endDate) : 'now';
+      : `Last ${data.query?.hours ?? 8} hours`;
+    const endLabel = data.query?.endDate ? formatDayOnly(data.query.endDate) : 'now';
     doc.text(`Period: ${startLabel} to ${endLabel}`, marginX, y);
     y += 14;
     doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, y);
@@ -411,10 +411,10 @@ export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, opt
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setFont(PDF_VALUE_FONT, 'normal');
 
-  const startLabel = data.query.startDate
+  const startLabel = data.query?.startDate
     ? formatDate(data.query.startDate)
-    : `LAST ${data.query.hours} HOURS`;
-  const endLabel = data.query.endDate
+    : `LAST ${data.query?.hours ?? 8} HOURS`;
+  const endLabel = data.query?.endDate
     ? formatDate(data.query.endDate)
     : 'NOW';
 

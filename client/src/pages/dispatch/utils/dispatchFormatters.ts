@@ -51,6 +51,13 @@ export function formatElapsed(dateStr: string): string {
  */
 export function formatActivityDetails(details: string): string {
   if (!details) return '--';
+  // If stored as a JSON object (lifecycle events), extract the description field
+  if (details.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(details);
+      if (typeof parsed.description === 'string' && parsed.description) return parsed.description;
+    } catch { /* fall through to plain-text handling */ }
+  }
   // Match pattern: "Updated call XX: field1, field2, ..."
   const match = details.match(/^(Updated call \S+):\s*(.+)$/);
   if (match) {

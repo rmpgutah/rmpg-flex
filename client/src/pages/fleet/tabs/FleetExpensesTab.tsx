@@ -1,3 +1,4 @@
+import { localToday } from '../../../utils/dateUtils';
 // ═══════════════════════════════════════════════════════════════
 // RMPG Flex — Fleet Expenses Tab
 //
@@ -61,7 +62,7 @@ interface FormState {
 }
 
 const emptyForm: FormState = {
-  expense_date: new Date().toISOString().slice(0, 10),
+  expense_date: localToday(),
   category: 'misc',
   amount: '',
   vendor: '',

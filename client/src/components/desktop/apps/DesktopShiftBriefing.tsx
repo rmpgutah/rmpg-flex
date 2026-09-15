@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Radio, AlertTriangle, Shield, Users, CheckCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { formatEnumValue } from '../../../utils/formatters';
 import { briefingBolosToCsv, briefingWarrantsToCsv, unitsBoardToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 interface BoloCall {
@@ -238,7 +239,7 @@ export default function DesktopShiftBriefing({ onClose }: Props) {
             ) : personView.map(p => (
               <div key={p.id} style={itemStyle}>
                 <div style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 600 }}>{personName(p)}</div>
-                {p.flag_type && <div style={{ fontSize: 9, color: 'var(--sev-critical)', textTransform: 'uppercase' }}>{p.flag_type.replace(/_/g, ' ')}</div>}
+                {p.flag_type && <div style={{ fontSize: 9, color: 'var(--sev-critical)', textTransform: 'uppercase' }}>{formatEnumValue(p.flag_type)}</div>}
                 {p.last_known_address && <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{p.last_known_address}</div>}
               </div>
             ))}

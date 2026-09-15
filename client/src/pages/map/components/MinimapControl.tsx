@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { saveMapPref } from '../../../utils/mapPreferences';
 import { applyRmpgBasemap } from '../../../utils/mapboxBasemap';
+import { registerMapInstance, unregisterMapInstance } from '../../../utils/mapboxLoader';
 import { useWebglMapRecovery } from '../../../hooks/useWebglMapRecovery';
 
 interface Props {
@@ -36,6 +37,7 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
     // rebuild just needs a resync (via the parent's next 'move', or
     // immediately here) rather than the captured-camera restore other
     // surfaces use.
+    registerMapInstance(minimap, 'mapbox://styles/mapbox/dark-v11');
     const detachRecovery = attach(minimap, 'MinimapControl');
     minimap.once('load', syncToParent);
 
@@ -43,6 +45,7 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
     return () => {
       parentMap.off('move', syncToParent);
       detachRecovery();
+      unregisterMapInstance(minimap);
       minimap.remove();
     };
   }, [parentMap, rebuildNonce, attach]);

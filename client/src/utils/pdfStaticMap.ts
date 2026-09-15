@@ -221,7 +221,7 @@ async function fetchDrivingRoute(
   token: string,
 ): Promise<DrivingRoute | null> {
   const url =
-    `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+    `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/` +
     `${lng},${lat};${destLng},${destLat}` +
     `?geometries=geojson&overview=simplified&steps=true&access_token=${encodeURIComponent(token)}`;
   const res = await fetchWithTimeout(url, DIRECTIONS_TIMEOUT_MS);

@@ -85,12 +85,54 @@ export function safeRemoveSource(map: MapboxLike | undefined | null, id: string)
 // admin-config row, default value, or theme refactor can't crash the
 // layer. Pair it with a tactical-dark fallback hex so the map stays
 // rendered while the upstream value is repaired.
-/** Return `value` if it's a Mapbox-parseable color, otherwise `fallback`. */
+const CSS_VAR_COLOR_MAP: Record<string, string> = {
+  '--sev-ok': '#22c55e',
+  '--sev-ok-soft': '#86efac',
+  '--sev-critical': '#ef4444',
+  '--sev-critical-soft': '#fca5a5',
+  '--sev-high': '#f97316',
+  '--sev-warn': '#f59e0b',
+  '--sev-warn-soft': '#fbbf24',
+  '--sev-caution': '#facc15',
+  '--sev-info': '#60a5fa',
+  '--sev-special': '#c084fc',
+  '--sev-special-soft': '#a855f7',
+  '--brand-gold': '#d4a017',
+  '--brand-blue': '#5a85b8',
+  '--accent-silver-400': '#9aaabf',
+  '--accent-silver-500': '#7c8fa6',
+  '--accent-silver-600': '#5f738c',
+  '--text-primary': '#e6edf5',
+  '--text-secondary': '#c3d0de',
+  '--text-muted': '#8fa3b8',
+};
+
+/**
+ * Return a Mapbox-parseable color.
+ * If the value is a CSS var reference (e.g. `var(--sev-ok)`), resolves it via
+ * DOM computed style or the fallback lookup table so Mapbox GL shaders never throw
+ * "Could not parse color from value 'var(--...)'".
+ */
 export function safeMapboxColor(value: unknown, fallback: string): string {
   if (typeof value !== 'string') return fallback;
   const s = value.trim();
   if (!s) return fallback;
-  if (s.toLowerCase().startsWith('var(')) return fallback;
+  if (s.toLowerCase().startsWith('var(')) {
+    const match = s.match(/var\(\s*([^,\s)]+)(?:,\s*([^)]+))?\s*\)/);
+    if (match) {
+      const varName = match[1];
+      const inlineFallback = match[2];
+      if (typeof document !== 'undefined' && document.documentElement) {
+        try {
+          const resolved = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+          if (resolved && !resolved.startsWith('var(')) return resolved;
+        } catch {}
+      }
+      if (CSS_VAR_COLOR_MAP[varName]) return CSS_VAR_COLOR_MAP[varName];
+      if (inlineFallback) return safeMapboxColor(inlineFallback, fallback);
+    }
+    return fallback;
+  }
   return s;
 }
 

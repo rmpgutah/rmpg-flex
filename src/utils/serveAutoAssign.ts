@@ -42,9 +42,11 @@ export async function autoAssignServeJob(
     return { assigned: false, officer_id: job.officer_id, officer_name: null, reason: 'already_assigned' };
   }
 
-  // Pick the officer with the lowest open-job count.
-  // Eligibility: role='officer' only; is_active column may not
-  // exist on all D1 installs so we fall back gracefully via COALESCE.
+  // Pick the officer with the lowest open-job count among on-duty officers.
+  // Eligibility: role='officer', must have at least one unit whose status is
+  // not 'off_duty' or 'out_of_service'. Falls back to all role='officer' users
+  // when no unit rows exist (e.g. a fresh install with no units table rows yet),
+  // so new deployments auto-assign rather than silently no-oping.
   const candidates = await query<{ id: number; full_name: string; open_count: number }>(
     db,
     `SELECT u.id, u.full_name,
@@ -54,6 +56,14 @@ export async function autoAssignServeJob(
          ON q.officer_id = u.id
         AND q.status NOT IN ('served','cancelled','failed')
       WHERE u.role = 'officer'
+        AND (
+          EXISTS (
+            SELECT 1 FROM units un
+             WHERE un.officer_id = u.id
+               AND un.status NOT IN ('off_duty','out_of_service')
+          )
+          OR NOT EXISTS (SELECT 1 FROM units WHERE officer_id = u.id)
+        )
       GROUP BY u.id, u.full_name
       ORDER BY open_count ASC, u.id ASC
       LIMIT 1`,

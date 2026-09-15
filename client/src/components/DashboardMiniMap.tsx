@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { Maximize2, Loader2 } from 'lucide-react';
 import { getMapboxToken } from '../utils/mapboxApiKey';
-import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { apiFetch } from '../hooks/useApi';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../pages/map/utils/mapMarkers';
@@ -33,6 +33,7 @@ export default function DashboardMiniMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,17 @@ export default function DashboardMiniMap() {
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error instanceof Error ? e.error.message : 'Map error'); });
         mapRef.current = map;
         webglRecoveryCleanupRef.current = attach(map, 'DashboardMiniMap');
+        // Register with the shared print-swap registry so this map switches to
+        // a light basemap before printing (matching MapboxMiniMap behavior).
+        registerMapInstance(map, 'mapbox://styles/mapbox/dark-v11');
+        // Sync canvas to container size — this widget lives in a fluid flex
+        // layout and can receive its final dimensions after the Map constructor
+        // runs, producing a black zero-size canvas until a resize fires.
+        if (containerRef.current) {
+          const resizeObserver = new ResizeObserver(() => map.resize());
+          resizeObserver.observe(containerRef.current);
+          resizeObserverRef.current = resizeObserver;
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
       }
@@ -97,10 +109,15 @@ export default function DashboardMiniMap() {
 
     return () => {
       cancelled = true;
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
-      mapRef.current?.remove();
-      mapRef.current = null;
+      if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
       setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

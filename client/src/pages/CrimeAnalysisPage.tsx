@@ -25,6 +25,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { crimeOffensesToCsv, crimeHotspotsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 /* ── Custom Tooltip ─────────────────────────────────────────── */
 const ChartTooltip = ({ active, payload, label, formatter }: any) => {
@@ -61,8 +62,7 @@ export default function CrimeAnalysisPage() {
   const [startDate, setStartDate] = useState(searchParams.get('start_date') ?? '');
   const [endDate, setEndDate] = useState(searchParams.get('end_date') ?? '');
 
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   // Strip deep-link params after seeding so the address bar stays tidy.
   useEffect(() => {

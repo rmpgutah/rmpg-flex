@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp, formatDateTime } from '../../../utils/dateUtils';
 import { timelineToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 import { copyToClipboard } from '../../../utils/contextMenuActions';
+import { formatEnumValue } from '../../../utils/formatters';
 
 interface CallInfo {
   id: number;
@@ -100,7 +101,7 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
             id: e.id,
             type: e.action,
             timestamp: e.created_at,
-            label: e.action.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            label: formatEnumValue(e.action),
             detail: e.user_name ?? undefined,
           }));
         }

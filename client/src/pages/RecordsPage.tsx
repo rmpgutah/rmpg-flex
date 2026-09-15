@@ -45,7 +45,7 @@ import DlScanImportModal from '../components/DlScanImportModal';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 // Tab hooks + components
-import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
+import { usePersonsTab, PersonsTabList, PersonsTabDetail, PersonsDashboard, mapDbPerson } from './records/PersonsTab';
 import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from './records/VehiclesTab';
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
@@ -236,9 +236,9 @@ export default function RecordsPage() {
   }, [showArchived, clearError, reportError]);
 
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) setLoadingEvidence(true);
+    if (!options?.silent) { setLoadingEvidence(true); clearError(); }
     try {
-      const res = await apiFetch<{ data: any[]; pagination: { returned?: number; total?: number } }>(`/records/evidence?limit=100000&archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<{ data: any[]; pagination: { returned?: number; total?: number } }>(`/records/evidence?limit=100000&archived=${showArchived}`));
       setEvidence(res?.data || []);
       const pg = res?.pagination as { returned?: number; total?: number } | undefined;
       if (pg && typeof pg.returned === 'number' && typeof pg.total === 'number' && pg.returned < pg.total) {
@@ -246,13 +246,13 @@ export default function RecordsPage() {
       } else {
         setEvidenceTruncated(null);
       }
-    } catch {
-      setEvidence([]);
-      setEvidenceTruncated(null);
+    } catch (err) {
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load evidence', () => { void fetchEvidence(); });
+      if (!options?.silent) { setEvidence([]); setEvidenceTruncated(null); }
     } finally {
       if (!options?.silent) setLoadingEvidence(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -906,6 +906,9 @@ export default function RecordsPage() {
 
       {/* Active TabDetail Content */}
       <div className="records-detail flex-1 overflow-hidden scrollbar-dark">
+        {activeTab === 'persons' && !personsState.selectedPerson && (
+          <PersonsDashboard persons={persons} onSelect={personsState.setSelectedPerson} />
+        )}
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}

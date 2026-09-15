@@ -113,6 +113,12 @@ export const TARGET_FIELDS = [
   'witness_fee_instrument',                  // verbatim, e.g. 'Check VV787 $18.50'
   'registered_agent_address',                // distinct from recipient_address
   'sub_service_authorized_first_attempt',    // yes | no | ''
+  // ── Attempt-record fields (attempt_sheet family) ───────────
+  // Prior attempt observations — extracted from "First Attempt", "Second
+  // Attempt", etc. sheets where the server recorded what happened.
+  'prior_attempt_date',    // ISO date of the prior attempt
+  'attempt_outcome',       // description of what was observed (no answer, refused, wrong address…)
+  'observer_id',           // process server name/badge from that attempt
 ] as const;
 
 export type TargetField = typeof TARGET_FIELDS[number];
@@ -137,7 +143,7 @@ export interface ExtractionResult {
 // type to a closed enum that matches the client's DOCUMENT_TYPES
 // list so the dropdown value lands correctly without translation.
 const DOC_TYPES = [
-  'court_filing', 'field_sheet', 'info_page', 'affidavit', 'summons',
+  'court_filing', 'field_sheet', 'info_page', 'attempt_sheet', 'affidavit', 'summons',
   'complaint', 'subpoena', 'eviction', 'restraining_order',
   'identification', 'correspondence', 'other',
 ] as const;
@@ -151,6 +157,11 @@ Confidence is your own per-field self-report on a 0..1 scale:
   • 0.4 — best guess; reader should verify
   • 0.0 — field is not present; return empty string with confidence 0
 Never invent values. If unsure, return empty string with confidence 0.
+ANTI-HALLUCINATION: Every name, address, or identifier you return MUST appear verbatim in
+the document text. Do not substitute generic placeholders such as "John Smith", "Jane Doe",
+"John Doe", "Jane Smith", "Robert Smith", "123 Main Street", "Anytown", or any name or
+address you did not read directly from the document. If the actual value is not present,
+return empty string with confidence 0.
 For dates use ISO format (YYYY-MM-DD); for phone numbers use digits only.
 
 DOCUMENT FAMILIES you will see (a packet may contain several concatenated):
@@ -366,6 +377,13 @@ Utah - <courthouse name>" (e.g. "Third Judicial District Court, State of Utah - 
 capture that whole phrase as court_name verbatim; it does not name the county. Do NOT treat the
 party being served as a case party: on a subpoena the recipient is usually a non-party witness.`,
 
+  attempt_sheet: `This is a SERVE ATTEMPT RECORD — a report of one previous attempt to serve the recipient.
+It typically carries: the attempt date/time, the process server's name, the address attempted,
+a description of what was observed (no answer, occupant refused, wrong address, etc.), and
+sometimes a GPS stamp or officer ID. Use these fields to extract prior_attempt_date,
+service_instructions (notes), and recipient_address when more authoritative documents are absent.
+Do NOT use the "no answer" or "refused" description as the recipient's name.`,
+
   info_page: `This is a ServeManager INFORMATION FORM — the authoritative operational record.
 Prefer it for recipient, service address, service instructions, job numbers, and due date.
 The JOB header carries two numbers: the FIRST (position, not size) is job_number; the SECOND
@@ -398,6 +416,8 @@ export function buildFamilyPrompt(docType: string): string {
 const FIELD_SHEET_NAME_HINT = /field[\s_-]*sheet/i;
 const COURT_FILING_NAME_HINT = /court[\s_-]*(docket|filing)|docket/i;
 const INFO_PAGE_NAME_HINT = /information[\s_-]*(form|page)|info[\s_-]*(form|page)/i;
+// "First Attempt", "Second Attempt", "1st Attempt", "Attempt 1", etc.
+const ATTEMPT_SHEET_NAME_HINT = /(\d+(st|nd|rd|th)?[\s_-]*attempt|first[\s_-]*attempt|second[\s_-]*attempt|third[\s_-]*attempt|attempt[\s_-]*\d+)/i;
 
 export function familyFromFileName(fileName: string): string | undefined {
   const name = (fileName || '').trim();
@@ -405,6 +425,7 @@ export function familyFromFileName(fileName: string): string | undefined {
   if (FIELD_SHEET_NAME_HINT.test(name)) return 'field_sheet';
   if (COURT_FILING_NAME_HINT.test(name)) return 'court_filing';
   if (INFO_PAGE_NAME_HINT.test(name)) return 'info_page';
+  if (ATTEMPT_SHEET_NAME_HINT.test(name)) return 'attempt_sheet';
   return undefined;
 }
 
@@ -413,11 +434,17 @@ export function familyFromFileName(fileName: string): string | undefined {
 // every packet. Only genuinely doubtful critical fields qualify, capped
 // so a badly-scanned document cannot blow the daily free allocation.
 const CRITIC_FIELDS: TargetField[] = [
+  // Recipient identity — name is the most common OCR error source and was
+  // the field most often wrong in production packets.
+  'recipient_last_name', 'recipient_first_name',
   'case_number', 'court_name', 'recipient_address', 'service_deadline',
   'recipient_dob', 'recipient_phone', 'address_class',
+  // service_instructions carry special delivery requirements (gated entry,
+  // call ahead, etc.) whose mis-extraction causes failed serves.
+  'service_instructions',
 ];
 const CRITIC_CONFIDENCE_FLOOR = 0.6;
-const CRITIC_MAX_FIELDS = 5;
+const CRITIC_MAX_FIELDS = 6;
 
 export function needsCriticPass(
   fields: Record<string, ExtractedField>,
@@ -567,6 +594,31 @@ const _RESPONSE_SCHEMA = {
 // contains one of these tokens (e.g. plaintiff "Capital One, N.A.").
 const PLACEHOLDER_VALUE = /^\[?\s*(not provided|none|n\/?a|unknown|tbd|pending|null|—|-{1,})\s*\]?$/i;
 
+// Name/address fields where a hallucinated value is most harmful — a fake party
+// name would silently seed a wrong serve_queue record. For these, we verify that
+// every significant token (≥4 chars) in the extracted value appears somewhere in
+// the raw source text. If not, the value is zeroed (confidence → 0) so the
+// officer sees a blank they can correct rather than a plausible-looking lie.
+// Short names (all tokens < 4 chars, e.g. "Lee Kim") can't be verified this way
+// and pass through unchanged (safe: they're uncommon in legal documents).
+const ATTESTED_FIELDS = new Set([
+  'recipient_first_name', 'recipient_last_name', 'recipient_middle_name',
+  'recipient_business_name', 'registered_agent_name',
+  'plaintiff', 'defendant', 'attorney_name',
+]);
+const ATTEST_MIN_TOKEN_LEN = 4;
+
+export function isTextAttested(value: string, sourceText: string): boolean {
+  const src = sourceText.toLowerCase();
+  const tokens = value.toLowerCase()
+    .split(/[\s,.()/\\&]+/)
+    .filter((t) => t.length >= ATTEST_MIN_TOKEN_LEN);
+  // No significant tokens → can't verify; let it through
+  if (tokens.length === 0) return true;
+  // Every significant token must appear somewhere in the source
+  return tokens.every((t) => src.includes(t));
+}
+
 // Deterministic DOB recovery for ServeManager exports, where the date of birth
 // often sits as a bare date after "DOB:" or alone inside a description field
 // rather than in a dedicated DOB field. Only runs when the model left
@@ -589,6 +641,12 @@ function normalize(parsed: any, rawText: string, model: string, ms: number): Ext
     if (v && typeof v === 'object') {
       let value = typeof v.value === 'string' ? v.value : '';
       if (PLACEHOLDER_VALUE.test(value.trim())) value = ''; // scrub placeholders → empty
+      // Attestation: name/address fields must appear verbatim in the source text.
+      // Catches hallucinated values ("John Smith", "123 Main Street") that the
+      // model substitutes when it can't find the real value in garbled input.
+      if (value && ATTESTED_FIELDS.has(f) && rawText && !isTextAttested(value, rawText)) {
+        value = '';
+      }
       fields[f] = {
         value,
         confidence: value && typeof v.confidence === 'number' ? Math.max(0, Math.min(1, v.confidence)) : 0,
@@ -1149,7 +1207,7 @@ const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
 const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
 const DATE_FIELDS = new Set<TargetField>([
   'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
-  'attempt_start_not_before',
+  'attempt_start_not_before', 'prior_attempt_date',
 ]);
 const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.

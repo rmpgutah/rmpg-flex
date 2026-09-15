@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useEffect, useMemo, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import {
@@ -287,7 +288,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
                 <button type="button" onClick={() => editor?.chain().focus().setContent(t.html).run()}
                   className="flex-1 text-left">
                   <div className="text-[11px] text-rmpg-200">{t.name}</div>
-                  <div className="text-[9px] text-rmpg-600">{new Date(t.createdAt).toLocaleString()}</div>
+                  <div className="text-[9px] text-rmpg-600">{parseTimestamp(t.createdAt).toLocaleString()}</div>
                 </button>
                 <button aria-label={`Delete template ${t.name}`} type="button" onClick={() => setDeleteTpl({ id: t.id, name: t.name })}
                   className="text-rmpg-600 hover:text-red-400 px-1"><X className="w-3 h-3" /></button>

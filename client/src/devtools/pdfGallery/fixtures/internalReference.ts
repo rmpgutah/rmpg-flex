@@ -130,6 +130,36 @@ export const auditLogFixtures: PdfFixture<AuditLogPdfInput>[] = [
       exportedBy: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      entries: [
+        auditLogEntry(1),
+        {
+          id: 9002,
+          user_id: 7,
+          user_name: 'Dana Whitlock',
+          badge_number: '1102',
+          user_role: 'officer',
+          action: 'delete',
+          entity_type: 'field_photo',
+          entity_id: '883',
+          details: 'Removed duplicate upload from call 2026-004417',
+          ip_address: '10.0.4.22',
+          created_at: '2026-07-15T15:01:44Z',
+        },
+      ],
+      filters: {
+        entityType: 'warrant',
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+      },
+      totalMatching: 2,
+      exportedBy: 'Marcus Reyes',
+    },
+  },
+
 ];
 
 // ── Conversation Transcript (conversationTranscriptPdf.ts) ────
@@ -222,6 +252,32 @@ export const conversationTranscriptFixtures: PdfFixture<ConversationTranscriptIn
         },
       ],
       exportedBy: MAXIMAL_NAME,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      threadId: 'thread-4417',
+      subject: 'Riverton retail corridor coverage',
+      messages: [
+        transcriptMessage(1),
+        {
+          id: 'msg-2',
+          from_user_id: '7',
+          from_user_name: 'Dana Whitlock',
+          to_user_id: '42',
+          to_user_name: 'Marcus Reyes',
+          subject: 'Riverton retail corridor coverage',
+          body: 'Copy, en route — ETA 4 minutes.',
+          priority: 'urgent',
+          is_read: false,
+          is_broadcast: false,
+          thread_id: 'thread-4417',
+          created_at: '2026-07-15T14:24:10Z',
+        },
+      ],
+      exportedBy: 'Marcus Reyes',
     },
   },
 ];
@@ -338,6 +394,38 @@ export const emailThreadFixtures: PdfFixture<EmailThreadPdfInput>[] = [
       exportedBy: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      threadId: 'conv-4417',
+      folder: 'Inbox',
+      messages: [
+        emailMessage(1),
+        {
+          id: 'email-2',
+          conversationId: 'conv-4417',
+          subject: 'RE: Records request — case 2026-004417',
+          fromAddress: 'marcus.reyes@example.gov',
+          fromName: 'Marcus Reyes',
+          toAddresses: [{ email: 'dana.whitlock@example.gov', name: 'Dana Whitlock' }],
+          ccAddresses: [{ email: 'records@example.gov', name: 'Records Unit' }],
+          bodyPreview: 'Received — filing under case 2026-004417.',
+          hasAttachments: true,
+          isRead: false,
+          isFlagged: true,
+          importance: 'high',
+          receivedAt: '2026-07-15T15:01:44Z',
+        },
+      ],
+      attachmentsByMessageId: {
+        'email-1': [
+          { id: 'att-1', name: 'incident-report.pdf', contentType: 'application/pdf', size: 204800, isInline: false },
+        ],
+      },
+      exportedBy: 'Marcus Reyes',
+    },
+  },
 ];
 
 // ── Help Quick Reference Card (helpQuickReferencePdf.ts) ──────
@@ -411,6 +499,40 @@ export const helpQuickReferenceFixtures: PdfFixture<HelpQuickReferenceInput>[] =
       appVersion: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      shortcutGroups: [
+        {
+          title: 'Global',
+          shortcuts: [
+            { keys: ['Ctrl', 'K'], description: 'Open global search' },
+            { keys: ['/'], description: 'Focus the CAD command line' },
+          ],
+        },
+        {
+          title: 'Dispatch',
+          shortcuts: [
+            { keys: ['F8'], description: 'Focus unit status line' },
+          ],
+        },
+      ],
+      priorities: [
+        { level: '1', label: 'Emergency', desc: 'Immediate life-safety response' },
+        { level: '3', label: 'Routine', desc: 'Non-urgent, next-available unit' },
+      ],
+      unitStatuses: [
+        { code: '10-8', label: 'In Service', desc: 'Available for dispatch' },
+        { code: '10-7', label: 'Out of Service', desc: 'Unavailable for dispatch' },
+      ],
+      cadCommands: [
+        { cmd: '.st', desc: 'Set unit status' },
+        { cmd: '.re', desc: 'Request records check' },
+      ],
+      appVersion: '5.8.4',
+    },
+  },
 ];
 
 // ── Knowledge Base Search (knowledgeBaseSearchPdf.ts) ─────────
@@ -464,6 +586,22 @@ export const knowledgeBaseSearchFixtures: PdfFixture<KnowledgeBaseSearchPdfInput
       generatedAt: new Date(YEAR_BOUNDARY), // new-date-ok: YEAR_BOUNDARY is an explicit ISO-8601 UTC literal ending in Z, not a naive server timestamp
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      query: 'UT-7X4K21',
+      results: [
+        { type: 'vehicle', label: 'UT-7X4K21', title: 'Vehicle — UT-7X4K21', subtitle: '2019 Ford F-150, silver', route: '/vehicles/301', recordId: 301 },
+        { type: 'call', label: '2026-004417', title: 'Call 2026-004417', subtitle: '1400 S State St, Salt Lake City, UT', route: '/calls/4417', recordId: 4417 },
+      ],
+      activeTypeFilter: 'vehicle',
+      officerName: 'Marcus Reyes',
+      badgeNumber: '4417',
+      caseNumber: '2026-004417',
+      generatedAt: new Date('2026-07-15T14:23:05Z'),
+    },
+  },
 ];
 
 // ── NCIC Operator Reference Guide (ncicReferencePdf.ts) ───────
@@ -502,6 +640,11 @@ export const ncicReferenceFixtures: PdfFixture<NcicReferenceFixtureInput>[] = [
     variant: 'maximal',
     label: 'Year-boundary generation timestamp',
     input: { now: new Date(YEAR_BOUNDARY) }, // new-date-ok: YEAR_BOUNDARY is an explicit ISO-8601 UTC literal ending in Z, not a naive server timestamp
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { now: new Date('2026-07-15T14:23:05Z') },
   },
 ];
 
@@ -577,6 +720,31 @@ export const statuteFixtures: PdfFixture<StatutePdfOptions>[] = [
         effective_date: '2026-12-31',
       })),
       fileName: MAXIMAL_NAME,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      docTitle: '76-6 · Offenses Against Property',
+      subtitle: '2 sections',
+      sections: [
+        statuteSection(0),
+        {
+          id: 7601,
+          citation: '76-6-206',
+          short_title: 'Burglary of a Vehicle',
+          description: '(1) A person is guilty of burglary of a vehicle who unlawfully enters any vehicle with intent to commit an assault or a theft.',
+          offense_level: 'class_a_misdemeanor',
+          category: 'criminal',
+          subcategory: 'Burglary',
+          plain_summary: 'Entering someone else\'s vehicle without permission, intending to steal from it or assault someone inside.',
+          plain_elements: ['Unlawful entry into a vehicle', 'Intent to commit theft or assault'],
+          effective_date: '2010-05-11',
+          source_url: 'https://le.utah.gov/xcode/Title76/Chapter6/76-6-S206.html',
+        },
+      ],
+      fileName: 'RMPG-Statute-76-6-206',
     },
   },
 ];
@@ -664,6 +832,31 @@ export const taskFixtures: PdfFixture<TaskPdfInput>[] = [
       exportedBy: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      tasks: [
+        taskRow(1),
+        {
+          id: 502,
+          task_title: 'File evidence receipt',
+          priority: 'low',
+          status: 'completed',
+          assigned_to_name: 'Marcus Reyes',
+          assigned_by_name: 'Dana Whitlock',
+          due_date: '2026-07-20',
+          completed_at: '2026-07-19T09:12:00Z',
+        },
+      ],
+      filters: {
+        status: 'open',
+        assignedToName: 'Dana Whitlock',
+      },
+      totalMatching: 2,
+      exportedBy: 'Marcus Reyes',
+    },
+  },
 ];
 
 // ── Dispatch Guide (dispatchGuidePdfGenerator.ts) ─────────────
@@ -678,6 +871,11 @@ export const dispatchGuideFixtures: PdfFixture<DispatchGuidePdfOptions>[] = [
   { variant: 'typical', label: 'Office print target (default letter layout)', input: { printTarget: 'office' } },
   { variant: 'empty', label: 'Required fields only — no printTarget specified', input: {} },
   { variant: 'maximal', label: 'Mobile thermal print target (top-offset layout)', input: { printTarget: 'mobile' } },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { printTarget: 'office' },
+  },
 ];
 
 // ── Web Research Report (webResearchReportPdf.ts) ─────────────
@@ -775,6 +973,34 @@ export const webResearchReportFixtures: PdfFixture<WebResearchFixtureInput>[] = 
       },
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      results: [
+        webResearchResult(1),
+        {
+          id: 702,
+          query: 'Dana Whitlock Salt Lake City',
+          title: 'Public records aggregator profile',
+          url: 'https://example-osint.test/records/402',
+          description: 'Aggregated public-records profile — name and city match only.',
+          type: 'scrape',
+          notes: 'Possible match — verify DOB before relying on this.',
+          linked_entity_type: 'person',
+          linked_entity_id: 401,
+          scraped_content: 'Name: Dana Whitlock. City: Salt Lake City, UT. No DOB listed.',
+          created_at: '2026-07-15T15:01:44Z',
+        },
+      ],
+      ctx: {
+        filter: 'person',
+        officerName: 'Marcus Reyes',
+        badgeNumber: '4417',
+        caseNumber: '2026-004417',
+      },
+    },
+  },
 ];
 
 // ── Pre-Contact Officer Safety Sheet (dlSafetySheet.ts) ───────
@@ -847,4 +1073,25 @@ export const dlSafetySheetFixtures: PdfFixture<SafetySheetInput>[] = [
       officerName: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      ocrResult: { first_name: 'Dana', last_name: 'Whitlock', middle_name: '', dob: '1990-04-17', dl_number: '1234567', dl_state: 'UT' },
+      leFields: [
+        { tag: 'NAM', label: 'Name', value: 'WHITLOCK, DANA' },
+        { tag: 'DOB', label: 'DOB', value: '1990-04-17' },
+      ],
+      scanAlerts: [{ level: 'danger', code: 'WARR', message: 'Active warrant on file' }],
+      scanMatches: [{ id: 401, last_name: 'Whitlock', first_name: 'Dana', active_warrants: 1, total_warrants: 2 }],
+      deepSweep: {
+        sources: [{ key: 'utah_warrants', label: 'Utah Statewide Warrants', danger: true, rows: [{ summary: 'Failure to appear — 2026-004417', danger: true }] }],
+        profile: { person: { probation_parole: 'Active supervision — Salt Lake County' } },
+      },
+      courtRecords: null,
+      fbiRecords: null,
+      officerName: 'Marcus Reyes',
+    },
+  },
 ];
+

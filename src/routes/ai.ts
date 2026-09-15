@@ -20,7 +20,7 @@ import { requireRole } from '../middleware/auth';
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import { log } from '../utils/logger';
 import {
-  rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch,
+  rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch, type NarrativeLengthTarget,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
 } from '../utils/dispatchAi';
 
@@ -581,7 +581,8 @@ ai.post('/analyze', requireRole(...READ_ROLES), async (c) => {
 });
 
 // ─── POST /ai/narrative ─────────────────────────────────────
-// Body: { notes, incident_type?, location_address? }
+// Body: { notes, incident_type?, location_address?, context_type? }
+// context_type: 'serve_attempt' | 'dispatch_narrative' | 'incident' (default)
 // Returns a plain-text narrative paragraph drafted from the caller's
 // notes + context. Powers the NarrativeAssist client component.
 ai.post('/narrative', requireRole(...READ_ROLES), async (c) => {
@@ -590,11 +591,23 @@ ai.post('/narrative', requireRole(...READ_ROLES), async (c) => {
     if (!body.notes || typeof body.notes !== 'string' || body.notes.trim().length < 10) {
       return c.json({ error: 'At least 10 characters of notes required', code: 'NARR_SHORT' }, 400);
     }
+    const contextType = typeof body.context_type === 'string' ? body.context_type : 'incident';
+    const VALID_LENGTHS: NarrativeLengthTarget[] = ['brief', 'standard', 'detailed', 'full_report'];
+    const lengthTarget: NarrativeLengthTarget =
+      VALID_LENGTHS.includes(body.length_target as NarrativeLengthTarget)
+        ? (body.length_target as NarrativeLengthTarget)
+        : 'standard';
+    const paragraphGuidance = typeof body.paragraph_guidance === 'string'
+      ? body.paragraph_guidance.slice(0, 1000)
+      : undefined;
     const result = await narrativeAssist(
       c.env.AI,
       body.notes,
       body.incident_type,
       body.location_address,
+      contextType as 'serve_attempt' | 'dispatch_narrative' | 'incident',
+      lengthTarget,
+      paragraphGuidance,
     );
     return c.json({
       narrative: result.narrative,

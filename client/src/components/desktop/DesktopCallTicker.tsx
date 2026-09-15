@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface TickerCall {
   id: number | string;
@@ -102,7 +103,7 @@ export default function DesktopCallTicker({ onOpenCall }: DesktopCallTickerProps
               </span>
             )}
             <span style={{ fontSize: 10, fontWeight: 600, color: priorityColor(c.priority) }}>
-              {c.incident_type?.replace(/_/g, ' ') ?? 'Call'}
+              {formatEnumValue(c.incident_type) || 'Call'}
             </span>
             <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
               — {c.location_address}

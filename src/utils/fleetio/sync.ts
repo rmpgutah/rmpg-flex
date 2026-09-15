@@ -827,6 +827,30 @@ export function shouldFireUnhealthyAlert(lastAlertedIso: string | null, nowMs: n
   return parsed === null || nowMs - parsed > UNHEALTHY_ALERT_COOLDOWN_MS;
 }
 
+// ─── Inbound field remap ───────────────────────────────────
+// Fleet.io field names don't always match RMPG column names. Remap before
+// partitionInboundFields so both the ownership lookup and the SQL UPDATE use
+// the RMPG column name. Mutates the payload dict in place.
+
+const INBOUND_FIELD_REMAP: Partial<Record<string, Record<string, string>>> = {
+  vehicle: {
+    // Fleet.io sends `reported_fuel_economy` (MPG derived from fuel entries).
+    // RMPG stores this in `avg_mpg` on fleet_vehicles.
+    reported_fuel_economy: 'avg_mpg',
+  },
+};
+
+export function remapInboundPayload(resource: string, payload: Record<string, unknown>): void {
+  const remap = INBOUND_FIELD_REMAP[resource];
+  if (!remap) return;
+  for (const [src, dst] of Object.entries(remap)) {
+    if (Object.prototype.hasOwnProperty.call(payload, src)) {
+      payload[dst] = payload[src];
+      delete payload[src];
+    }
+  }
+}
+
 // ─── applyInbound ─────────────────────────────────────────
 
 export interface ApplyInboundDeps {
@@ -942,6 +966,9 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
     : envelope.payload && typeof envelope.payload === 'object' ? envelope.payload
     : envelope
   ) as Record<string, unknown>;
+  // Remap Fleet.io field names → RMPG column names before ownership lookup and
+  // SQL construction (both use the key verbatim, so the remap must happen here).
+  remapInboundPayload(row.resource, payload);
   const fields = Object.keys(payload);
   const { apply, conflict, unknown } = partitionInboundFields(row.resource, fields);
 

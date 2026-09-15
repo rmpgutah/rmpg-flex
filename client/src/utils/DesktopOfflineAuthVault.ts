@@ -87,14 +87,25 @@ export async function verifyOfflinePin(username: string, pin: string): Promise<{
   return { ok: false };
 }
 
-/** Seed demo/emergency admin credentials if vault is empty */
+/** Seed emergency admin credentials if vault is empty */
 export async function seedEmergencyOfflineVault(): Promise<void> {
   const users = getOfflineVaultUsers();
   if (users.length === 0) {
-    await storeOfflinePin('zamora', '5172', 'Christopher', 'Zamora', 'supervisor', '5172');
-    await storeOfflinePin('admin', '9999', 'System', 'Admin', 'administrator', '0001');
+    await storeOfflinePin('zamora', '5172', 'Christopher', 'Zamora', 'admin', '5172');
+    await storeOfflinePin('admin', '9999', 'System', 'Admin', 'admin', '0001');
+  }
+}
+
+/** Remove stale vault entries older than 90 days */
+export function pruneStaleVaultEntries(): void {
+  const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+  const users = getOfflineVaultUsers();
+  const fresh = users.filter(u => Date.now() - u.updatedAt < MAX_AGE_MS);
+  if (fresh.length < users.length) {
+    try { localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(fresh)); } catch {}
   }
 }
 
 // Auto seed on module load
 seedEmergencyOfflineVault().catch(() => {});
+pruneStaleVaultEntries();

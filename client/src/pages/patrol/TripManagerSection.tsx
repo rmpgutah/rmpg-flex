@@ -1,3 +1,4 @@
+import { toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 // ============================================================
 // TripManagerSection — full trip CRUD for the Patrol surface
 // ============================================================
@@ -55,28 +56,8 @@ const tsLocal = (iso: string | null): string => {
 };
 
 // datetime-local input value (Denver wall clock) ⇄ naive-UTC DB string
-const toInputValue = (iso: string | null): string => {
-  if (!iso) return '';
-  const s = String(iso).replace(' ', 'T');
-  const d = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : `${s}Z`);
-  if (Number.isNaN(d.getTime())) return '';
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(d);
-  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
-};
-const fromInputValue = (v: string): string | null => {
-  if (!v) return null;
-  // Interpret the wall-clock value as America/Denver and store naive UTC.
-  const probe = new Date(`${v}:00Z`);
-  if (Number.isNaN(probe.getTime())) return null;
-  const denverAtProbe = new Date(probe.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-  const offsetMs = probe.getTime() - denverAtProbe.getTime();
-  const utc = new Date(probe.getTime() + offsetMs);
-  return utc.toISOString().slice(0, 19).replace('T', ' ');
-};
+const toInputValue = toDatetimeLocalValue;
+const fromInputValue = (v: string): string | null => mtDatetimeLocalToUtc(v) || null;
 
 interface DraftTrip {
   trip_type: 'patrol' | 'call_response';

@@ -64,6 +64,7 @@ import type {
 } from '../types';
 import { crmAccountsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import { useSlashFocus } from '../hooks/useSlashFocus';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl' | 'deepresearch';
 
@@ -168,8 +169,7 @@ export default function CrmPage() {
   const { user } = useAuth();
   const isIntelUser = INTEL_ROLES.has(user?.role ?? '');
   const clientSearchRef = useRef<HTMLInputElement>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
   useSlashFocus(clientSearchRef);
   // Per-user localStorage key — the prior global 'crm_active_section' key
   // leaked the previous operator's last-viewed tab to the next person who
@@ -1068,7 +1068,7 @@ export default function CrmPage() {
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-rmpg-200">{a.client_name || 'Unknown'}</span>
+                          <span className="font-medium text-rmpg-200">{a.client_name || a.lead_name || 'Unknown'}</span>
                           <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
                         </div>
                         <div className="text-rmpg-300 mt-0.5">

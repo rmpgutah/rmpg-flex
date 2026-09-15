@@ -89,7 +89,6 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { useOptimizationV2 } from '../../hooks/useOptimizationV2';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
@@ -439,7 +438,6 @@ export default function DispatchPage() {
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
-  const dispatchOptimization = useOptimizationV2();
   const [showAssignmentOverlay, setShowAssignmentOverlay] = useState(false);
   const dispatchOpt = useDispatchOptimization();
   const [calls, setCalls] = useState<CallForService[]>([]);
@@ -502,18 +500,12 @@ export default function DispatchPage() {
     ]));
     const unitsBySign = new Map(availableUnits.map((u) => [u.call_sign, Number(u.id)]));
 
-    // Drive both: legacy simple overlay (kept for compat) + new proposal modal
-    await dispatchOptimization.submit({
-      job_type: 'multi_unit_dispatch',
-      call_ids: openCallIds,
-      unit_ids: availableUnitIds,
-    });
-    await dispatchOpt.startOptimization(openCallIds, availableUnitIds);
-  }, [units, calls, dispatchOptimization.submit, dispatchOpt]);
+    await dispatchOpt.startOptimization(openCallIds, availableUnitIds, { callDetails, callAssignments, unitsBySign });
+  }, [units, calls, dispatchOpt]);
 
   useEffect(() => {
-    if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
-  }, [dispatchOptimization.status]);
+    if (dispatchOpt.status === 'complete' && dispatchOpt.solution) setShowAssignmentOverlay(true);
+  }, [dispatchOpt.status, dispatchOpt.solution]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   // Spillman CAD console view (P1 structural replica). Persisted; defaults ON
@@ -1312,10 +1304,12 @@ export default function DispatchPage() {
     apiFetch<any[]>('/admin/call-templates')
       .then((data) => { if (!cancelled) setTemplates((data || []).filter((t: any) => t.is_active !== 0)); })
       .catch(() => { /* silent — template dropdown just stays empty */ });
-    // Fetch disposition codes from admin config
-    apiFetch('/admin/config').then((cfg: any) => {
+    // Fetch admin-configured disposition codes. Read from the dispatch-scoped
+    // endpoint, not /admin/config — that one is admin/manager/supervisor-only,
+    // so dispatchers and officers 403'd and never saw custom codes.
+    apiFetch('/dispatch/disposition-codes').then((cfg: any) => {
       if (cancelled) return;
-      const disps = (cfg.dispositions || [])
+      const disps = ((cfg && cfg.dispositions) || [])
         .filter((d: any) => d.is_active)
         .map((d: any) => {
           try { return JSON.parse(d.config_value); } catch { return null; }
@@ -1686,7 +1680,7 @@ export default function DispatchPage() {
     // Listen for serve queue events — update gold serve status panel in real time
     const unsubServeCreated = subscribe('serve:created', (msg: any) => {
       const data = msg.data || msg;
-      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+      if (data?.call_id && String(selectedCallRef.current?.id) === String(data.call_id)) {
         setServeLink(data);
       }
       // Voice alert: announce return visit scheduled
@@ -1696,7 +1690,7 @@ export default function DispatchPage() {
     });
     const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
       const data = msg.data || msg;
-      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+      if (data?.call_id && String(selectedCallRef.current?.id) === String(data.call_id)) {
         // Refresh serve link to get updated attempt count + status
         const callId = selectedCallRef.current!.id;
         apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
@@ -1787,8 +1781,8 @@ export default function DispatchPage() {
         addToast(`Serve completed${who}`, 'success', 6000);
         // If the linked CFS call is selected, update its status in-place.
         if (data.call_id) {
-          setCalls((prev) => prev.map((c) => c.id === data.call_id ? { ...c, status: 'cleared' as const } : c));
-          setSelectedCall((prev) => (prev && prev.id === data.call_id) ? ({ ...prev, status: 'cleared' as CallForService['status'] }) : prev);
+          setCalls((prev) => prev.map((c) => String(c.id) === String(data.call_id) ? { ...c, status: 'cleared' as const } : c));
+          setSelectedCall((prev) => (prev && String(prev.id) === String(data.call_id)) ? ({ ...prev, status: 'cleared' as CallForService['status'] }) : prev);
         }
       } else if (data.action === 'unit_status_changed' && data.officer_id && data.status) {
         // [F3] PSO officer unit status update keyed by officer_id (not unit id).
@@ -2778,27 +2772,28 @@ export default function DispatchPage() {
     if (newStatus === 'onscene') {
       const call = calls.find((c) => c.id === callId) ?? selectedCall;
       const startMi = call?.starting_mileage ? Number(call.starting_mileage) : null;
-      // Auto-calculate ending mileage from GPS → call location (no popup — "without interference")
-      if (startMi != null && startMi > 0 && call?.latitude && call?.longitude) {
+      // Derive ending mileage from the fleet vehicle's live odometer, which the
+      // GPS trip engine accrues with every fix. This is the authoritative running
+      // odometer at the moment the officer arrives on-scene. The previous approach
+      // computed Haversine(officerPos, callLocation), which is always ~0 miles
+      // when the officer IS on-scene — producing ending_mileage ≈ starting_mileage.
+      if (startMi != null && startMi > 0) {
         try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000, maximumAge: 30000 }),
-          );
-          const toRad = (d: number) => (d * Math.PI) / 180;
-          const R = 3958.8; // Earth radius in miles
-          const dLat = toRad(Number(call.latitude) - pos.coords.latitude);
-          const dLon = toRad(Number(call.longitude) - pos.coords.longitude);
-          const a =
-            Math.sin(dLat / 2) ** 2 +
-            Math.cos(toRad(pos.coords.latitude)) *
-              Math.cos(toRad(Number(call.latitude))) *
-              Math.sin(dLon / 2) ** 2;
-          const distMiles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const endingMileage = Math.round((startMi + distMiles) * 10) / 10;
-          await handleStatusChange(callId, newStatus, { ...extraBody, ending_mileage: endingMileage });
-          return;
+          const firstUnitId = call?.assigned_units?.[0] ?? selectedCall?.assigned_units?.[0];
+          if (firstUnitId) {
+            const res = await apiFetch<{ data?: Array<{ current_mileage?: number | null }> } | Array<{ current_mileage?: number | null }>>(
+              `/fleet?assigned_unit_id=${firstUnitId}`
+            ).catch(() => null);
+            const arr = Array.isArray(res) ? res : ((res as { data?: Array<{ current_mileage?: number | null }> })?.data ?? []);
+            const veh = Array.isArray(arr) ? arr[0] : null;
+            const odo = veh?.current_mileage != null ? Number(veh.current_mileage) : null;
+            if (odo != null && Number.isFinite(odo) && odo > 0 && odo >= startMi) {
+              await handleStatusChange(callId, newStatus, { ...extraBody, ending_mileage: Math.round(odo * 10) / 10 });
+              return;
+            }
+          }
         } catch {
-          // GPS unavailable — proceed without ending mileage
+          // Fleet lookup failed — proceed without ending mileage
         }
       }
     }
@@ -3773,7 +3768,7 @@ export default function DispatchPage() {
         {duplicateWarning && (
           <div
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] flex items-start gap-2 px-3 py-2 max-w-sm w-[90%] text-[11px] font-bold"
-            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgb(0 0 0 / 0.5)' }}
             role="alert"
           >
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -4746,6 +4741,24 @@ export default function DispatchPage() {
                         style={{ color: 'var(--sev-ok)' }}
                       >
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
+                      </button>
+                    )}
+                    {/* Navigate — launch turn-by-turn nav HUD to the call's geocoded location */}
+                    {!isEditing && selectedCall.latitude != null && selectedCall.longitude != null && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        title="Navigate to call location"
+                        style={{ color: 'var(--sev-ok)' }}
+                        onClick={() => {
+                          const params = new URLSearchParams({
+                            lat: String(selectedCall.latitude),
+                            lng: String(selectedCall.longitude),
+                            destination: selectedCall.location || selectedCall.call_number || 'Call',
+                          });
+                          navigate(`/navigation?${params.toString()}`);
+                        }}
+                      >
+                        <Navigation style={{ width: 10, height: 10 }} /> Navigate
                       </button>
                     )}
                     {/* Route Builder — navigate to multi-stop CFS route planner for assigned units */}
@@ -6220,7 +6233,7 @@ export default function DispatchPage() {
                     {involvedPersons.map((p: any) => (
                       <div key={p.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
                         <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{formatEnumValue(p.role)}</span>
                           <span className="font-medium truncate">{p.name}</span>
                           {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
                           {p.id_number && <span className="text-rmpg-400 shrink-0">ID {p.id_number}</span>}
@@ -6317,7 +6330,7 @@ export default function DispatchPage() {
                     {involvedVehicles.map((v: any) => (
                       <div key={v.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
                         <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{formatEnumValue(v.role)}</span>
                           <span className="font-medium truncate">
                             {[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}
                           </span>
@@ -6343,10 +6356,10 @@ export default function DispatchPage() {
                     className="mt-3 rounded-sm shadow-sm"
                     style={{
                       border: selectedCall?.status === 'cleared'
-                        ? '1px solid rgba(34,197,94,0.45)'
+                        ? '1px solid color-mix(in srgb, var(--sev-ok) 45%, transparent)'
                         : '1px solid var(--spm-border)',
                       background: selectedCall?.status === 'cleared'
-                        ? 'color-mix(in srgb, var(--surface-raised) 92%, rgba(34,197,94,0.12))'
+                        ? 'color-mix(in srgb, var(--surface-raised) 92%, var(--sev-ok) 8%)'
                         : 'var(--surface-raised)',
                     }}
                   >
@@ -6355,7 +6368,7 @@ export default function DispatchPage() {
                       className="flex items-center justify-between px-3 py-2 border-b"
                       style={{
                         borderColor: selectedCall?.status === 'cleared'
-                          ? 'rgba(34,197,94,0.3)'
+                          ? 'color-mix(in srgb, var(--sev-ok) 30%, transparent)'
                           : 'var(--spm-border)',
                         background: 'var(--surface-deep)',
                       }}
@@ -6383,7 +6396,7 @@ export default function DispatchPage() {
                             disabled={!callNarrative.trim() || submittingNarrative}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-sm transition-colors shadow-xs"
                             style={{
-                              background: callNarrative.trim() ? 'rgb(22 163 74)' : 'rgba(22,163,74,0.3)',
+                              background: callNarrative.trim() ? 'var(--sev-ok)' : 'color-mix(in srgb, var(--sev-ok) 30%, transparent)',
                               color: 'var(--text-primary)',
                               opacity: submittingNarrative ? 0.5 : 1,
                             }}
@@ -6398,7 +6411,7 @@ export default function DispatchPage() {
 
                     {/* Cleared-state call-to-action strip */}
                     {selectedCall?.status === 'cleared' && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-medium text-green-300" style={{ background: 'rgba(34,197,94,0.07)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}>
+                      <div className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-medium" style={{ color: 'var(--sev-ok)', background: 'color-mix(in srgb, var(--sev-ok) 7%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--sev-ok) 20%, transparent)' }}>
                         <CheckCircle style={{ width: 10, height: 10 }} />
                         CFS Cleared — complete the narrative below and click Submit Narrative to close this call and queue it for archiving.
                       </div>
@@ -6430,6 +6443,17 @@ export default function DispatchPage() {
                             setSelectedCall(prev => prev ? { ...prev, action_taken: callNarrative } : prev);
                           } catch { addToast('Failed to save narrative', 'error'); }
                           finally { setNarrativeSaving(false); }
+                        }}
+                      />
+                      <NarrativeAssist
+                        notes={selectedCall?.description || editData?.description || ''}
+                        incidentType={selectedCall?.incident_type || editData?.incident_type || ''}
+                        locationAddress={selectedCall?.location || editData?.location_address || ''}
+                        mode="dispatch_narrative"
+                        existingText={callNarrative}
+                        onAccept={(narrative) => {
+                          setCallNarrative(narrative);
+                          updateEditField('action_taken', narrative);
                         }}
                       />
                       <div className="flex items-center justify-between text-[9px] text-fg-muted mt-1.5">
@@ -7057,7 +7081,7 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '') || toDisplayLabel(entry.action || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 flex items-center gap-0.5 transition-opacity">
                                 <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[var(--brand-gold)] text-[var(--spm-text-muted)] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
@@ -7392,12 +7416,12 @@ export default function DispatchPage() {
               <button
                 type="button"
                 onClick={handleOptimizeAssignments}
-                disabled={dispatchOptimization.status === 'pending' || dispatchOptimization.status === 'processing'}
+                disabled={dispatchOpt.status === 'pending' || dispatchOpt.status === 'processing'}
                 className="toolbar-btn toolbar-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Optimize unit-to-call assignments with Mapbox V2"
               >
-                {dispatchOptimization.status === 'pending' || dispatchOptimization.status === 'processing'
-                  ? `Optimizing… ${Math.round(dispatchOptimization.elapsedMs / 1000)}s`
+                {dispatchOpt.status === 'pending' || dispatchOpt.status === 'processing'
+                  ? `Optimizing… ${Math.round(dispatchOpt.elapsedMs / 1000)}s`
                   : 'Optimize Assignments'}
               </button>
             )}
@@ -7492,12 +7516,12 @@ export default function DispatchPage() {
               </>
             )}
             {contextMenu.call.status === 'dispatched' && (
-              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { triggerStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
                 <Navigation style={{ width: 12, height: 12 }} /> En Route
               </button>
             )}
             {contextMenu.call.status === 'enroute' && (
-              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
+              <button type="button" className="context-menu-item" onClick={() => { triggerStatusChange(contextMenu.call.id, 'onscene'); setContextMenu(null); }}>
                 <Eye style={{ width: 12, height: 12 }} /> On Scene
               </button>
             )}
@@ -7543,6 +7567,19 @@ export default function DispatchPage() {
             <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setIsEditing(true); setContextMenu(null); }}>
               <Pencil style={{ width: 12, height: 12 }} /> Edit Call
             </button>
+            {contextMenu.call.latitude != null && contextMenu.call.longitude != null && (
+              <button type="button" className="context-menu-item" style={{ color: 'var(--sev-ok)' }} onClick={() => {
+                const params = new URLSearchParams({
+                  lat: String(contextMenu.call.latitude),
+                  lng: String(contextMenu.call.longitude),
+                  destination: contextMenu.call.location || contextMenu.call.call_number || 'Call',
+                });
+                navigate(`/navigation?${params.toString()}`);
+                setContextMenu(null);
+              }}>
+                <Navigation style={{ width: 12, height: 12 }} /> Navigate to Call
+              </button>
+            )}
             <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>
               Copy Call Number
             </button>
@@ -7842,9 +7879,49 @@ export default function DispatchPage() {
               status: c.status,
             })),
             currentUser: user?.full_name || user?.username || 'Dispatch',
+            selectedCallNumber: selectedCall?.call_number ?? null,
           }}
           onAction={(action: CommandAction) => {
             switch (action.type) {
+              case 'ai_command': {
+                // Free-form command already planned by /api/dispatcher/command and
+                // executed by dispatcherCommandClient; apply the console actions.
+                for (const a of action.clientActions) {
+                  switch (a.action) {
+                    case 'select_call': {
+                      const target = calls.find(c => String(c.id) === String(a.payload.call_id));
+                      if (target) { setSelectedCall(target); setDetailTab('info'); }
+                      break;
+                    }
+                    case 'open_new_call':
+                      setTemplateInitialData({
+                        incident_type: a.payload.incident_type as string | undefined,
+                        location: (a.payload.location_address as string | undefined) || '',
+                        description: a.payload.description as string | undefined,
+                      });
+                      setShowNewCallModal(true);
+                      break;
+                    case 'open_ncic':
+                      setNcicInitialQuery({ type: a.payload.type as 'person' | 'vehicle' | 'warrant', query: String(a.payload.query ?? '') });
+                      setShowNcicPanel(true);
+                      break;
+                    case 'navigate':
+                      if (typeof a.payload.path === 'string') navigate(a.payload.path);
+                      break;
+                    case 'refresh':
+                      fetchData();
+                      break;
+                    default:
+                      break;
+                  }
+                }
+                // Read-backs (record checks, unit lists, call status) are spoken like
+                // the typed QP/QV verbs are; confirmations/clarifications too.
+                if (action.reply && /^(lookup|call_status|unit_location|closest|list_)/.test(action.intent)) {
+                  speakDispatcherResponse(action.reply);
+                }
+                break;
+              }
               case 'new_call':
                 if (action.incidentType && action.location) {
                   // Both type + address → Quick Template Dialog (fastest path)
@@ -8339,26 +8416,26 @@ export default function DispatchPage() {
       </div>
 
       {/* Optimize Assignments result overlay — legacy simple view (kept for backwards compat) */}
-      {showAssignmentOverlay && dispatchOptimization.solution && !dispatchOpt.showModal && (
+      {showAssignmentOverlay && dispatchOpt.solution && !dispatchOpt.showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-surface-base border border-rmpg-600 p-4 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col gap-3" style={{ borderRadius: 2 }}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-rmpg-100">Optimized Assignments</span>
               <button
                 type="button"
-                onClick={() => { setShowAssignmentOverlay(false); dispatchOptimization.reset(); }}
+                onClick={() => { setShowAssignmentOverlay(false); dispatchOpt.reset(); }}
                 className="text-rmpg-400 hover:text-rmpg-100 text-xs"
               >
                 Dismiss
               </button>
             </div>
-            {dispatchOptimization.solution.dropped.services.length > 0 && (
+            {dispatchOpt.solution!.dropped.services.length > 0 && (
               <div className="text-xs text-amber-400">
-                ⚠ {dispatchOptimization.solution.dropped.services.length} call(s) could not be assigned
+                ⚠ {dispatchOpt.solution!.dropped.services.length} call(s) could not be assigned
               </div>
             )}
             <div className="overflow-y-auto flex-1 space-y-3">
-              {dispatchOptimization.solution.routes.map((route: V2Route) => (
+              {dispatchOpt.solution!.routes.map((route: V2Route) => (
                 <div key={route.vehicle} className="bg-surface-raised p-2" style={{ borderRadius: 2 }}>
                   <div className="text-xs font-semibold text-rmpg-200 mb-1">{route.vehicle}</div>
                   {route.stops

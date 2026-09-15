@@ -3,32 +3,13 @@ import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap, F
 import { useOptionalDesktopSystem, type FocusAssistLevel } from '../../context/DesktopSystemContext';
 import WifiSelector from './WifiSelector';
 
-const VOLUME_KEY = 'rmpg_desktop_volume';
-
-function getStoredVolume(): number {
-  try { return Math.min(100, Math.max(0, parseInt(localStorage.getItem(VOLUME_KEY) ?? '100', 10))); }
-  catch { return 100; }
-}
-
-function applyVolume(pct: number) {
-  const v = pct / 100;
-  document.querySelectorAll<HTMLMediaElement>('audio, video').forEach(el => { el.volume = v; });
-  try { localStorage.setItem(VOLUME_KEY, String(pct)); } catch { /* silent */ }
-}
-
 const UNIT_STATUSES = ['available', 'busy', 'on-call', 'traffic-stop', 'out-of-service'];
 
 export default function DesktopQuickSettings({ onClose, open }: { onClose: () => void; open?: boolean }) {
-  const [volume, setVolume] = useState(getStoredVolume);
   const [battery, setBattery] = useState<{ percent: number | null; charging: boolean } | null>(null);
   const [network, setNetwork] = useState<{ ssid: string | null; signal: number | null } | null>(null);
   const [wifiSelectorOpen, setWifiSelectorOpen] = useState(false);
   const isElectron = !!(window as any).electron?.isElectron;
-
-  const handleVolume = useCallback((v: number) => {
-    setVolume(v);
-    applyVolume(v);
-  }, []);
 
   useEffect(() => {
     if (open === false) return;
@@ -38,7 +19,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
   }, [open]);
 
   const ctx = useOptionalDesktopSystem();
-  const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, focusAssist = 'off', brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setFocusAssist = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
+  const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, focusAssist = 'off', brightness = 100, volume = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setFocusAssist = () => {}, setBrightness = () => {}, setVolume = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
 
   return (
     <div
@@ -141,10 +122,10 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
         <div style={{ position: 'relative' }}>
           <button
             type="button"
-            onClick={() => isElectron ? setWifiSelectorOpen(v => !v) : undefined}
+            onClick={() => setWifiSelectorOpen(v => !v)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              background: 'none', border: 'none', cursor: isElectron ? 'pointer' : 'default',
+              background: 'none', border: 'none', cursor: 'pointer',
               padding: 0, textAlign: 'left',
             }}
             aria-label="Wi-Fi settings"
@@ -156,9 +137,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
             {network?.signal != null && (
               <span style={{ fontSize: 9, color: 'var(--text-secondary)', flexShrink: 0 }}>{network.signal}%</span>
             )}
-            {isElectron && (
-              <ChevronRight className="w-3 h-3" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-            )}
+            <ChevronRight className="w-3 h-3" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
           </button>
           {wifiSelectorOpen && (
             <WifiSelector onClose={() => setWifiSelectorOpen(false)} />
@@ -175,7 +154,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
             <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Volume</span>
             <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{volume}%</span>
           </div>
-          <input type="range" min={0} max={100} value={volume} onChange={e => handleVolume(Number(e.target.value))} style={{ width: '100%', height: 4 }} aria-label="Volume" />
+          <input type="range" min={0} max={100} value={volume} onChange={e => setVolume(Number(e.target.value))} style={{ width: '100%', height: 4 }} aria-label="Volume" />
         </div>
 
         {/* Brightness */}

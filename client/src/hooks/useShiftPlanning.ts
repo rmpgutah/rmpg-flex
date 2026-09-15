@@ -98,7 +98,7 @@ export function useShiftPlanning() {
   const assignedFeatures = useMemo(() => {
     const set = new Set<string>();
     if (activePlan) {
-      for (const a of activePlan.assignments) {
+      for (const a of (activePlan.assignments ?? [])) {
         set.add(`${a.layerId}::${a.featureKey}`);
       }
     }
@@ -258,10 +258,38 @@ export function useShiftPlanning() {
     clearSelection();
   }, [activePlanId, pendingFeatures, officers, units, clearSelection]);
 
+  const addAssignment = useCallback((assignment: Omit<AreaAssignment, 'id'>) => {
+    if (!activePlanId) return;
+    const newAssignment: AreaAssignment = {
+      ...assignment,
+      id: `aa_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    };
+    setPlans((prev) => prev.map((p) => {
+      if (p.id !== activePlanId) return p;
+      return {
+        ...p,
+        assignments: [...(p.assignments ?? []), newAssignment],
+        updatedAt: new Date().toISOString(),
+      };
+    }));
+  }, [activePlanId]);
+
+  const updateAssignment = useCallback((assignmentId: string, patch: Partial<AreaAssignment>) => {
+    if (!activePlanId) return;
+    setPlans((prev) => prev.map((p) => {
+      if (p.id !== activePlanId) return p;
+      return {
+        ...p,
+        assignments: (p.assignments ?? []).map((a) => a.id === assignmentId ? { ...a, ...patch } : a),
+        updatedAt: new Date().toISOString(),
+      };
+    }));
+  }, [activePlanId]);
+
   const removeAssignment = useCallback((assignmentId: string) => {
     setPlans((prev) => prev.map((p) =>
       p.id === activePlanId
-        ? { ...p, assignments: p.assignments.filter((a) => a.id !== assignmentId), updatedAt: new Date().toISOString() }
+        ? { ...p, assignments: (p.assignments ?? []).filter((a) => a.id !== assignmentId), updatedAt: new Date().toISOString() }
         : p
     ));
   }, [activePlanId]);
@@ -272,6 +300,75 @@ export function useShiftPlanning() {
         ? { ...p, assignments: [], updatedAt: new Date().toISOString() }
         : p
     ));
+  }, [activePlanId]);
+
+  const loadStandardBeats = useCallback(() => {
+    if (!activePlanId) return;
+    const standardBeats: Omit<AreaAssignment, 'id'>[] = [
+      {
+        layerId: 'beat',
+        featureKey: 'BEAT_CENTRAL_01',
+        label: 'Central Metro Beat 1',
+        properties: { district: 'Central', priority: 'high' },
+        officerIds: [],
+        officerNames: [],
+        unitIds: [],
+        unitCallSigns: [],
+        color: '#eab308',
+        notes: 'Downtown commercial core & transit hub patrol',
+      },
+      {
+        layerId: 'beat',
+        featureKey: 'BEAT_NORTH_02',
+        label: 'North Sector Beat 2',
+        properties: { district: 'North', priority: 'normal' },
+        officerIds: [],
+        officerNames: [],
+        unitIds: [],
+        unitCallSigns: [],
+        color: '#3b82f6',
+        notes: 'Northern industrial corridor & residential grid',
+      },
+      {
+        layerId: 'beat',
+        featureKey: 'BEAT_SOUTH_03',
+        label: 'South Valley Beat 3',
+        properties: { district: 'South', priority: 'normal' },
+        officerIds: [],
+        officerNames: [],
+        unitIds: [],
+        unitCallSigns: [],
+        color: '#10b981',
+        notes: 'South arterial patrol & retail parks',
+      },
+      {
+        layerId: 'beat',
+        featureKey: 'BEAT_INTERSTATE_04',
+        label: 'I-15 Corridor & Express Beat 4',
+        properties: { district: 'Highway', priority: 'high' },
+        officerIds: [],
+        officerNames: [],
+        unitIds: [],
+        unitCallSigns: [],
+        color: '#a855f7',
+        notes: 'Freeway connector visibility, rapid incident response',
+      },
+    ];
+
+    setPlans((prev) => prev.map((p) => {
+      if (p.id !== activePlanId) return p;
+      const createdAssignments: AreaAssignment[] = standardBeats.map((b) => ({
+        ...b,
+        id: `aa_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        shiftStart: SHIFT_TYPES[p.shiftType]?.defaultStart ?? '06:00',
+        shiftEnd: SHIFT_TYPES[p.shiftType]?.defaultEnd ?? '14:00',
+      }));
+      return {
+        ...p,
+        assignments: [...(p.assignments ?? []), ...createdAssignments],
+        updatedAt: new Date().toISOString(),
+      };
+    }));
   }, [activePlanId]);
 
   // ── Toggle selection mode ──────────────────────────────────
@@ -290,15 +387,16 @@ export function useShiftPlanning() {
 
   const getCoverageStats = useCallback(() => {
     if (!activePlan) return { assigned: 0, total: 0, officers: 0, units: 0 };
+    const assignments = activePlan.assignments ?? [];
     const uniqueOfficers = new Set<string>();
     const uniqueUnits = new Set<string>();
-    for (const a of activePlan.assignments) {
-      a.officerIds.forEach((id) => uniqueOfficers.add(id));
-      a.unitIds.forEach((id) => uniqueUnits.add(id));
+    for (const a of assignments) {
+      if (Array.isArray(a.officerIds)) a.officerIds.forEach((id) => uniqueOfficers.add(id));
+      if (Array.isArray(a.unitIds)) a.unitIds.forEach((id) => uniqueUnits.add(id));
     }
     return {
-      assigned: activePlan.assignments.length,
-      total: activePlan.assignments.length, // could compare to total features
+      assigned: assignments.length,
+      total: assignments.length, // could compare to total features
       officers: uniqueOfficers.size,
       units: uniqueUnits.size,
     };
@@ -363,8 +461,11 @@ export function useShiftPlanning() {
     // Assignments
     assignedFeatures,
     assignAreasToOfficers,
+    addAssignment,
+    updateAssignment,
     removeAssignment,
     removeAllAssignments,
+    loadStandardBeats,
 
     // Personnel
     officers,

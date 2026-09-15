@@ -3,14 +3,19 @@ import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { DIALER_CONNECT_PATH, DIALER_HOST_ID, DIALER_PLACE_CALL_EVENT, normalizeDialTarget } from './dialerConnect';
+import { isIframeDialerForced } from '../dialer/dialerFlags';
 
-export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
-/** Authenticated Dial Connect. Never `/dialer-embed` — that page is cookieless
- *  and cannot register the dispatcher Twilio Client the IVR actually Dials. */
+// Dial Connect is now served at rmpgutah.us/dialer (same origin as the
+// RMPG Flex SPA) via a Cloudflare Worker path route. The iframe is
+// same-origin, so postMessage needs no targetOrigin restriction.
+export const DIALER_ORIGIN = 'https://rmpgutah.us';
+/** Authenticated Dial Connect at its new same-origin path. */
 export const DIALER_APP_URL = `${DIALER_ORIGIN}/dialer`;
 export const DIALER_WINDOW_NAME = 'rmpg-dial-connect';
-export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
+// Defined in ./dialerConnect (plain constants module) so the native softphone
+// can import them without pulling in — or being blocked by mocks of — this panel.
+export { DIALER_PLACE_CALL_EVENT, normalizeDialTarget } from './dialerConnect';
 export const DIALER_CHROME_EVENT = 'rmpg-flex:dialer-chrome';
 export const DIALER_IFRAME_ALLOW = 'microphone *; autoplay *; clipboard-write';
 export const DIALER_PANEL_WIDTH_PX = 900;
@@ -21,6 +26,10 @@ export const DIALER_PANEL_HEIGHT = `${DIALER_PANEL_HEIGHT_PX}px`;
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
 const TOAST_DURATION_MS = 7_000;
+/** Twilio Voice tokens last 1 h by default. Reload the iframe 5 min before
+ *  expiry so the fresh page fetch gets a new token and avoids error 20104.
+ *  If your Twilio token TTL is set shorter, reduce this value accordingly. */
+const TWILIO_TOKEN_LIFETIME_MS = 55 * 60 * 1_000;
 
 type DialConnectMessage =
   | { source: 'dial-connect'; type: 'call_status'; callSid: string; status: string; from?: string; to?: string; durationSeconds?: number; transcript?: string; recordingUrl?: string }
@@ -94,25 +103,19 @@ export function dialerIframeParkStyle(): CSSProperties {
   };
 }
 
-export function normalizeDialTarget(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
-  const digits = trimmed.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (digits.length === 10) return `+1${digits}`;
-  return digits ? `+${digits}` : '';
-}
-
 let dialerWindow: Window | null = null;
 
-/** Named top-level `/dialer` (no feature-string popup chrome — less likely to be blocked). */
+/** Named pop-out window (no feature-string popup chrome — less likely to be blocked).
+ *  Native softphone by default (`/dialer-connect?popout=1`); the legacy Dial
+ *  Connect app only under the `rmpg_dialer_iframe=1` kill-switch. */
 export function openDialerWindow(): Window | null {
   if (typeof window === 'undefined') return null;
   if (dialerWindow && !dialerWindow.closed) {
     dialerWindow.focus();
     return dialerWindow;
   }
-  dialerWindow = window.open(DIALER_APP_URL, DIALER_WINDOW_NAME);
+  const url = isIframeDialerForced() ? DIALER_APP_URL : `${window.location.origin}${DIALER_CONNECT_PATH}?popout=1`;
+  dialerWindow = window.open(url, DIALER_WINDOW_NAME);
   return dialerWindow;
 }
 
@@ -163,6 +166,9 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const iframeSrcRef = useRef(DIALER_APP_URL);
   const popupRef = useRef<Window | null>(null);
+  const connectedAtRef   = useRef(0);      // ms timestamp of first successful heartbeat this session
+  const activeCallRef    = useRef(false);  // true while a call is ringing / in-progress
+  const reloadPendingRef = useRef(false);  // reload deferred because a call was active at the expiry mark
 
   const onDialerPage = location.pathname === DIALER_CONNECT_PATH;
 
@@ -221,12 +227,35 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       flushSync(() => {
         setLastSeen(Date.now());
         setConnected(true);
+        if (connectedAtRef.current === 0) {
+          connectedAtRef.current = Date.now();
+        }
         if (message.type === 'call_status' && message.status === 'ringing') {
           addToast('ringing', `Inbound call from ${message.from ?? 'unknown number'}`);
         } else if (message.type === 'duress_alert') {
           addToast('duress', `Duress alert: ${message.dispatcherName}`);
         }
       });
+
+      // Track active-call state so we don't reload mid-call.
+      if (message.type === 'call_status') {
+        if (message.status === 'ringing' || message.status === 'in-progress') {
+          activeCallRef.current = true;
+        } else if (INGEST_STATUSES.has(message.status)) {
+          activeCallRef.current = false;
+          if (reloadPendingRef.current) {
+            // The call that was blocking the refresh just ended — reload now.
+            reloadPendingRef.current = false;
+            const frame = iframeRef.current;
+            if (frame) {
+              connectedAtRef.current = 0;
+              setConnected(false);
+              setLastSeen(0);
+              frame.src = `${DIALER_APP_URL}?_r=${Date.now()}`;
+            }
+          }
+        }
+      }
 
       if (message.type === 'call_status' && message.status === 'ringing') {
         if (!poppedOut) revealDialer();
@@ -252,12 +281,29 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           recordingUrl: message.recordingUrl,
           durationSeconds: message.durationSeconds,
         });
-      } else if (message.type === 'recording_ready' || message.type === 'transcript_ready') {
+      } else if (message.type === 'recording_ready') {
+        // Forward everything Dial Connect knows about the call. These events are
+        // the only source of numbers/direction/duration for calls whose status
+        // event was missed, and they deliberately carry NO status so the Worker
+        // never flips a `missed`/`failed` row to `completed`.
         ingestDialConnect({
-          type: 'call_status',
-          callSid: 'callSid' in message ? message.callSid : undefined,
-          recordingUrl: 'recordingUrl' in message ? message.recordingUrl : undefined,
-          transcript: 'transcript' in message ? message.transcript : undefined,
+          type: 'recording_ready',
+          callSid: message.callSid ?? message.call_sid,
+          recordingUrl: message.recordingUrl,
+          transcript: message.transcript,
+          from: message.from,
+          to: message.to,
+          direction: message.direction,
+          startedAt: message.startedAt,
+          endedAt: message.endedAt,
+          durationSeconds: message.durationSeconds,
+          agentName: message.dispatcherName,
+        });
+      } else if (message.type === 'transcript_ready') {
+        ingestDialConnect({
+          type: 'transcript_ready',
+          callSid: message.callSid,
+          transcript: message.transcript,
         });
       } else if (message.type === 'duress_alert') {
         if (!poppedOut) revealDialer();
@@ -281,6 +327,27 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     }, HEARTBEAT_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [lastSeen]);
+
+  // Proactive Twilio token refresh: reload the iframe ~5 min before the 1-hour token expires.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (connectedAtRef.current === 0) return;
+      if (Date.now() - connectedAtRef.current < TWILIO_TOKEN_LIFETIME_MS) return;
+      if (activeCallRef.current) {
+        // Queue the reload — it fires in handleMessage when the call ends.
+        reloadPendingRef.current = true;
+        return;
+      }
+      const frame = iframeRef.current;
+      if (!frame) return;
+      connectedAtRef.current = 0;
+      reloadPendingRef.current = false;
+      setConnected(false);
+      setLastSeen(0);
+      frame.src = `${DIALER_APP_URL}?_r=${Date.now()}`;
+    }, HEARTBEAT_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []); // intentional: refs are stable, state setters are stable
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -358,7 +425,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
             const toastStyle = {
               background: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--surface-raised)',
               borderColor: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--sev-ok)',
-              color: toast.kind === 'duress' ? '#fff' : 'var(--text-primary)',
+              color: 'var(--text-primary)',
             } as const;
             const body = (
               <>

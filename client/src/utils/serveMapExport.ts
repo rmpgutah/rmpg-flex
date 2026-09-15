@@ -17,6 +17,16 @@ export interface QueueMapItemForExport {
   status?: string | null;
   eta?: string | null;
   bufferMinutes?: number | null;
+  // Enhanced fields — linked CFS / case data
+  case_number?: string | null;
+  client_name?: string | null;
+  attorney_name?: string | null;
+  attorney_phone?: string | null;
+  attorney_email?: string | null;
+  document_type?: string | null;
+  linked_call_number?: string | null;
+  call_id?: number | null;
+  distanceMiles?: number | null;      // leg distance from previous stop
 }
 
 // Priority display config — colour bands match the serve queue UI
@@ -38,6 +48,9 @@ function truncateToFit(doc: jsPDF, text: string, maxWidth: number): string {
   return t + '…';
 }
 
+// Row height expanded to fit two detail lines
+const ROW_H = 22;
+
 function drawTableRow(
   doc: jsPDF,
   y: number,
@@ -47,87 +60,171 @@ function drawTableRow(
 ): number {
   const lx = LAYOUT.PAGE_MARGIN;
   const rw = pageW - 2 * LAYOUT.PAGE_MARGIN;
-  const rowH = 10;
   const cfg = priorityConfig(item.priority);
 
   // Alternating row tint
   if (idx % 2 === 0) {
     doc.setFillColor(240, 244, 248);
-    doc.rect(lx, y, rw, rowH, 'F');
+    doc.rect(lx, y, rw, ROW_H, 'F');
   }
 
-  // Priority badge — left column, 22mm wide
-  const badgeW = 22;
+  // ── Left spine: priority badge (full row height) ──
+  const badgeW = 18;
   doc.setFillColor(...cfg.bg);
-  doc.rect(lx, y, badgeW, rowH, 'F');
+  doc.rect(lx, y, badgeW, ROW_H, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setTextColor(...cfg.text);
-  doc.text(cfg.label, lx + badgeW / 2, y + rowH / 2 + 0.8, { align: 'center' });
+  doc.text(cfg.label, lx + badgeW / 2, y + ROW_H / 2 + 0.8, { align: 'center' });
 
-  // Row number
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(130, 140, 150);
-  doc.text(String(idx + 1), lx + badgeW + 3, y + rowH / 2 + 0.8);
+  // ── Stop # (sequence in drive order) ──
+  const seqX = lx + badgeW + 2.5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(34, 64, 95);
+  doc.text(`#${idx + 1}`, seqX, y + 7);
 
-  // Recipient name — bold
-  const nameX = lx + badgeW + 10;
-  const deadlineW = 28;
-  const nameW = rw - badgeW - 10 - deadlineW - 4;
+  // ── Job ID pill (CFS number) ──
+  const jobLabel = `JOB ${item.id}`;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  const jobLabelW = doc.getTextWidth(jobLabel) + 3;
+  doc.setFillColor(34, 64, 95);
+  doc.roundedRect(seqX, y + 8.5, jobLabelW, 4.5, 0.8, 0.8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.text(jobLabel, seqX + 1.5, y + 11.8);
 
+  // Linked CFS call number (below job pill)
+  if (item.linked_call_number || item.call_id) {
+    const cfsLabel = item.linked_call_number
+      ? `CFS #${item.linked_call_number}`
+      : `CFS #${item.call_id}`;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(80, 100, 120);
+    doc.text(cfsLabel, seqX, y + 18.5);
+  }
+
+  // ── Distance from previous stop ──
+  if (item.distanceMiles != null && item.distanceMiles > 0) {
+    const distLabel = `${item.distanceMiles.toFixed(1)} mi`;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(120, 130, 145);
+    doc.text(distLabel, seqX, y + 21.5);
+  }
+
+  // ── Main content area ──
+  const contentX = lx + badgeW + 26;
+  const rightColW = 40;
+  const contentW = rw - badgeW - 26 - rightColW - 2;
+
+  // Recipient name — bold, line 1
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const nameStr = truncateToFit(doc, item.recipient_name || '(name not set)', nameW);
-  doc.text(nameStr, nameX, y + 3.5);
+  const nameStr = truncateToFit(doc, item.recipient_name || '(name not set)', contentW);
+  doc.text(nameStr, contentX, y + 4.5);
 
-  // Address — smaller, below name
+  // Address — line 2
   if (item.recipient_address) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.setTextColor(100, 115, 130);
-    doc.text(item.recipient_address, nameX, y + 7.2, { maxWidth: nameW });
+    doc.setTextColor(90, 105, 120);
+    doc.text(truncateToFit(doc, item.recipient_address, contentW), contentX, y + 9);
   }
 
-  // ETA + buffer — just left of deadline
-  if (item.eta || item.bufferMinutes) {
-    const etaX = lx + rw - deadlineW - 30;
+  // Document type — line 3 (small label + value)
+  if (item.document_type) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(110, 120, 135);
+    doc.text(`Doc: ${item.document_type}`, contentX, y + 13.2);
+  }
+
+  // Case number — line 3 (right of doc type) or standalone line 3
+  if (item.case_number) {
+    const caseLabel = `Case: ${item.case_number}`;
+    const caseX = item.document_type
+      ? contentX + Math.min(doc.getTextWidth(`Doc: ${item.document_type}`) + 6, contentW * 0.5)
+      : contentX;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(34, 64, 95);
+    doc.text(truncateToFit(doc, caseLabel, contentW - (caseX - contentX)), caseX, y + 13.2);
+  }
+
+  // Client / attorney — line 4
+  const clientParts: string[] = [];
+  if (item.client_name) clientParts.push(item.client_name);
+  if (item.attorney_name) clientParts.push(`Atty: ${item.attorney_name}`);
+  if (clientParts.length > 0) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(90, 100, 115);
-    if (item.eta) {
-      doc.text(`ETA ${item.eta}`, etaX, y + 3.2);
-    }
-    if (item.bufferMinutes) {
-      doc.text(`~${item.bufferMinutes} min dwell`, etaX, y + 7.2);
-    }
+    doc.text(truncateToFit(doc, clientParts.join('  ·  '), contentW), contentX, y + 17.2);
   }
 
-  // Deadline or served date — right-aligned
-  const dueX = lx + rw - deadlineW;
+  // Attorney contact (phone / email) — line 5 or same as line 4 if client was empty
+  const contactParts: string[] = [];
+  if (item.attorney_phone) contactParts.push(item.attorney_phone);
+  if (item.attorney_email) contactParts.push(item.attorney_email);
+  if (contactParts.length > 0) {
+    const contactY = clientParts.length > 0 ? y + 20.8 : y + 17.2;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(6);
+    doc.setTextColor(70, 90, 115);
+    doc.text(truncateToFit(doc, contactParts.join('  ·  '), contentW), contentX, contactY);
+  }
+
+  // ── Right column: ETA / deadline / status ──
+  const rightX = lx + rw - rightColW;
+
   if (item.status === 'served') {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(34, 139, 34);
-    doc.text('SERVED', dueX, y + 5);
-  } else if (item.deadline) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(90, 100, 115);
-    doc.text('DUE', dueX, y + 3.2);
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(item.deadline, dueX, y + 7.2);
+    doc.setTextColor(34, 139, 34);
+    doc.text('SERVED', rightX, y + 7);
+  } else {
+    // ETA
+    if (item.eta) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(90, 100, 115);
+      doc.text('ETA', rightX, y + 4);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(item.eta, rightX, y + 9);
+    }
+
+    // Dwell estimate
+    if (item.bufferMinutes) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(110, 120, 135);
+      doc.text(`~${item.bufferMinutes} min dwell`, rightX, y + 13);
+    }
+
+    // Deadline
+    if (item.deadline) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(90, 100, 115);
+      doc.text('DUE', rightX, y + 17);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(truncateToFit(doc, item.deadline, rightColW - 1), rightX, y + 21);
+    }
   }
 
   // Bottom rule
-  doc.setDrawColor(210, 218, 226);
-  doc.setLineWidth(0.2);
-  doc.line(lx, y + rowH, lx + rw, y + rowH);
+  doc.setDrawColor(200, 210, 220);
+  doc.setLineWidth(0.25);
+  doc.line(lx, y + ROW_H, lx + rw, y + ROW_H);
 
-  return y + rowH;
+  return y + ROW_H;
 }
 
 export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promise<void> {
@@ -172,11 +269,10 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_INVERTED as [number, number, number]);
-    doc.text('PRIORITY', lx + 2, y + 4);
-    doc.text('#', lx + 24, y + 4);
-    doc.text('RECIPIENT / ADDRESS', lx + 32, y + 4);
-    doc.text('ETA / DWELL', pageW - lx - 54, y + 4);
-    doc.text('DEADLINE', pageW - lx - 24, y + 4);
+    doc.text('PRI', lx + 2, y + 4);
+    doc.text('STOP / JOB', lx + 21, y + 4);
+    doc.text('RECIPIENT · ADDRESS · CASE', lx + 48, y + 4);
+    doc.text('ETA / DEADLINE', pageW - lx - 36, y + 4);
     return y + 6;
   };
 
@@ -196,7 +292,7 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
   doc.setFontSize(8);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.text(
-    `${items.length} job${items.length !== 1 ? 's' : ''} total   ·   ${urgentCount} URGENT   ·   ${rushCount} RUSH   ·   ${normalCount} NORMAL   ·   ${routineCount} ROUTINE   ·   Generated ${dateStr}`,
+    `${items.length} stop${items.length !== 1 ? 's' : ''} total   ·   ${urgentCount} URGENT   ·   ${rushCount} RUSH   ·   ${normalCount} NORMAL   ·   ${routineCount} ROUTINE   ·   Generated ${dateStr}`,
     lx + 3, y + 5,
   );
   y += 10;
@@ -211,26 +307,22 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     return;
   }
 
-  // Visit order is the drive sequence. Do not re-sort by priority — that
-  // printed a different run than the officer is driving.
+  // Visit order is the drive sequence. Do not re-sort by priority.
   const sorted = [...items];
 
   y = drawColumnHeaders(y);
 
-  // We'll do two passes: first to count pages, then to render.
-  // Simpler: estimate rows per page then paginate.
   const footerY = pageH - LAYOUT.PAGE_MARGIN - LAYOUT.FOOTER_HEIGHT - 2;
-  const rowH = 10;
 
   let estimatedPages = 1;
   let simY = y;
   for (let i = 0; i < sorted.length; i++) {
-    if (simY + rowH > footerY) { estimatedPages++; simY = drawHeader() + 2; simY = drawColumnHeaders(simY); }
-    simY += rowH;
+    if (simY + ROW_H > footerY) { estimatedPages++; simY = drawHeader() + 2; simY = drawColumnHeaders(simY); }
+    simY += ROW_H;
   }
 
   for (let i = 0; i < sorted.length; i++) {
-    if (y + rowH > footerY) {
+    if (y + ROW_H > footerY) {
       drawFooter(estimatedPages);
       doc.addPage();
       pageNum++;

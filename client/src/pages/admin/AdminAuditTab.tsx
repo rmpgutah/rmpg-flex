@@ -141,7 +141,7 @@ export default function AdminAuditTab({
           aria-label="Filter by action type"
         >
           <option value="">All Actions</option>
-          {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
+          {uniqueActions.map(a => <option key={a} value={a}>{toDisplayLabel(a)}</option>)}
         </select>
         <div className="flex items-center gap-1.5">
           <input id="ff-adminaudittab-2"

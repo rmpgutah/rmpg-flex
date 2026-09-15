@@ -115,7 +115,7 @@ export function useMapMatchTrace(
 
     try {
       const data = await mapboxMapMatch(tracePointsRef.current, {
-        profile: 'driving',
+        profile: 'driving-traffic',
       });
 
       if (data.matchings?.length > 0) {

@@ -1481,12 +1481,22 @@ cases.get('/export/csv', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    const idsParam = c.req.query('ids');
     const dateFrom = c.req.query('date_from');
     const dateTo = c.req.query('date_to');
     const where: string[] = ['1=1'];
     const params: unknown[] = [];
-    if (dateFrom) { where.push('opened_date >= ?'); params.push(dateFrom); }
-    if (dateTo) { where.push('opened_date <= ?'); params.push(dateTo); }
+
+    if (idsParam) {
+      const ids = idsParam.split(',').map(Number).filter(Number.isFinite).slice(0, 500);
+      if (ids.length > 0) {
+        where.push(`c.id IN (${ids.map(() => '?').join(',')})`);
+        params.push(...ids);
+      }
+    } else {
+      if (dateFrom) { where.push('c.opened_date >= ?'); params.push(dateFrom); }
+      if (dateTo) { where.push('c.opened_date <= ?'); params.push(dateTo); }
+    }
 
     const rows = await query<Record<string, unknown>>(
       db,

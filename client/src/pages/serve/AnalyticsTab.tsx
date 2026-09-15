@@ -1,3 +1,4 @@
+import { localToday } from '../../utils/dateUtils';
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { BarChart3, RefreshCw, Target, TrendingUp, TrendingDown, Users } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
@@ -356,8 +357,10 @@ export default function AnalyticsTab() {
     try {
       const d = await apiFetch<{ total: number; first_attempt_served: number; rate: number }>('/serve/stats/first-attempt-rate');
       setFirstAttemptRate(d);
-    } catch {}
-  }, []);
+    } catch {
+      addToast('Could not load first-attempt rate', 'error');
+    }
+  }, [addToast]);
   useEffect(() => { fetchFirstAttemptRate(); }, [fetchFirstAttemptRate, refreshKey]);
 
   // [25] Attempt velocity sparkline
@@ -366,8 +369,10 @@ export default function AnalyticsTab() {
     try {
       const d = await apiFetch<{ last_7_days: number; prior_7_days: number; trend: number }>('/serve/stats/velocity');
       setVelocity(d);
-    } catch {}
-  }, []);
+    } catch {
+      addToast('Could not load attempt velocity', 'error');
+    }
+  }, [addToast]);
   useEffect(() => { fetchVelocity(); }, [fetchVelocity, refreshKey]);
 
   // [29] Client breakdown table
@@ -376,8 +381,10 @@ export default function AnalyticsTab() {
     try {
       const d = await apiFetch<Array<{ client: string; total: number; served: number; failed: number; active: number }>>('/serve/client-breakdown');
       setClientBreakdown(d);
-    } catch {}
-  }, []);
+    } catch {
+      addToast('Could not load client breakdown', 'error');
+    }
+  }, [addToast]);
   useEffect(() => { fetchClientBreakdown(); }, [fetchClientBreakdown, refreshKey]);
 
   const refreshAll = () => setRefreshKey((k) => k + 1);
@@ -448,7 +455,7 @@ export default function AnalyticsTab() {
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.setAttribute('download', `serve_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `serve_export_${localToday()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

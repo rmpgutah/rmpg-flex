@@ -87,8 +87,8 @@ export function detectDrugTrends(seizures:Array<{drugType:string;date:string;qua
   for (const s of seizures) { if (!byDrug.has(s.drugType)) byDrug.set(s.drugType,[]); byDrug.get(s.drugType)!.push(s); }
   const trends:DrugTrend[] = [];
   for (const [drug, data] of byDrug) {
-    const recent = data.filter(d=>new Date(d.date)>new Date(Date.now()-90*86400000));
-    const older = data.filter(d=>new Date(d.date)<=new Date(Date.now()-90*86400000)&&new Date(d.date)>new Date(Date.now()-180*86400000));
+    const recent = data.filter(d=>parseTimestamp(d.date)>new Date(Date.now()-90*86400000));
+    const older = data.filter(d=>parseTimestamp(d.date)<=new Date(Date.now()-90*86400000)&&parseTimestamp(d.date)>new Date(Date.now()-180*86400000));
     const trend: 'increasing'|'stable'|'decreasing' = recent.length>older.length*1.2?'increasing':recent.length<older.length*0.8?'decreasing':'stable';
     const avgPrice = data.length>0?Math.round(data.reduce((s,d)=>s+d.price,0)/data.length):0;
     trends.push({ drugType:drug, period:'Q2 2026', incidents:recent.length, seizuresQuantity:recent.reduce((s,d)=>s+d.quantity,0), streetPrice:avgPrice, purityAvg:0, trend, source:'Field seizures' });

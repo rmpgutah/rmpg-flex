@@ -55,7 +55,7 @@ crime.get('/slc', async (c) => {
   const limit = clampInt(c.req.query('limit'), 1500, 50, 2000);
   const cacheKey = `crime:slc:d${days}:l${limit}`;
 
-  const cached = await c.env.KV.get(cacheKey).catch(() => null);
+  const cached = c.env.KV ? await c.env.KV.get(cacheKey).catch(() => null) : null;
   if (cached) {
     return new Response(cached, { headers: { 'content-type': 'application/json', 'x-cache': 'HIT' } });
   }
@@ -98,7 +98,9 @@ crime.get('/slc', async (c) => {
       .filter((x: CrimeIncident | null): x is CrimeIncident => x !== null);
 
     const payload = JSON.stringify({ source: 'slc', count: incidents.length, incidents, cachedAt: new Date().toISOString() });
-    await c.env.KV.put(cacheKey, payload, { expirationTtl: SLC_CACHE_TTL }).catch(() => {});
+    if (c.env.KV) {
+      await c.env.KV.put(cacheKey, payload, { expirationTtl: SLC_CACHE_TTL }).catch(() => {});
+    }
     return new Response(payload, { headers: { 'content-type': 'application/json', 'x-cache': 'MISS' } });
   } catch {
     // Never break the map — an upstream hiccup just yields an empty SLC layer.
@@ -177,7 +179,7 @@ crime.get('/crashes', async (c) => {
   const limit = clampInt(c.req.query('limit'), 2000, 50, 4000);
   const cacheKey = `crime:crash:d${days}:l${limit}`;
 
-  const cached = await c.env.KV.get(cacheKey).catch(() => null);
+  const cached = c.env.KV ? await c.env.KV.get(cacheKey).catch(() => null) : null;
   if (cached) {
     return new Response(cached, { headers: { 'content-type': 'application/json', 'x-cache': 'HIT' } });
   }
@@ -221,7 +223,9 @@ crime.get('/crashes', async (c) => {
       .filter((x: CrimeIncident | null): x is CrimeIncident => x !== null);
 
     const payload = JSON.stringify({ source: 'crash', count: incidents.length, incidents, cachedAt: new Date().toISOString() });
-    await c.env.KV.put(cacheKey, payload, { expirationTtl: CRASH_CACHE_TTL }).catch(() => {});
+    if (c.env.KV) {
+      await c.env.KV.put(cacheKey, payload, { expirationTtl: CRASH_CACHE_TTL }).catch(() => {});
+    }
     return new Response(payload, { headers: { 'content-type': 'application/json', 'x-cache': 'MISS' } });
   } catch {
     return c.json({ source: 'crash', incidents: [], error: 'fetch failed' });
@@ -278,7 +282,7 @@ function mmddyyyy(d: Date): string {
 }
 
 async function ccmToken(env: Env['Bindings']): Promise<string | null> {
-  const cached = await env.KV.get(CCM_TOKEN_KEY).catch(() => null);
+  const cached = env.KV ? await env.KV.get(CCM_TOKEN_KEY).catch(() => null) : null;
   if (cached) return cached;
   try {
     const r = await fetch(`${CCM_API}/auth/newToken`, { headers: CCM_HEADERS });
@@ -286,7 +290,9 @@ async function ccmToken(env: Env['Bindings']): Promise<string | null> {
     const j = (await r.json()) as any;
     const jwt = j?.data?.jwt;
     if (typeof jwt !== 'string' || jwt.length < 20) return null;
-    await env.KV.put(CCM_TOKEN_KEY, jwt, { expirationTtl: CCM_TOKEN_TTL }).catch(() => {});
+    if (env.KV) {
+      await env.KV.put(CCM_TOKEN_KEY, jwt, { expirationTtl: CCM_TOKEN_TTL }).catch(() => {});
+    }
     return jwt;
   } catch {
     return null;
@@ -340,7 +346,7 @@ crime.get('/regional', async (c) => {
   const days = clampInt(c.req.query('days'), 30, 1, 120);
   const cacheKey = `crime:ccm:d${days}`;
 
-  const cached = await c.env.KV.get(cacheKey).catch(() => null);
+  const cached = c.env.KV ? await c.env.KV.get(cacheKey).catch(() => null) : null;
   if (cached) {
     return new Response(cached, { headers: { 'content-type': 'application/json', 'x-cache': 'HIT' } });
   }
@@ -406,7 +412,9 @@ crime.get('/regional', async (c) => {
   });
   // Cache even an empty result briefly so a transient upstream block doesn't make
   // every MDT re-hammer the feed; a real result is good for 2h.
-  await c.env.KV.put(cacheKey, payload, { expirationTtl: incidents.length ? 2 * 60 * 60 : 10 * 60 }).catch(() => {});
+  if (c.env.KV) {
+    await c.env.KV.put(cacheKey, payload, { expirationTtl: incidents.length ? 2 * 60 * 60 : 10 * 60 }).catch(() => {});
+  }
   return new Response(payload, { headers: { 'content-type': 'application/json', 'x-cache': 'MISS' } });
 });
 

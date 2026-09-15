@@ -72,6 +72,7 @@ import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
 import { useMapboxResponseTime } from '../../hooks/useMapboxResponseTime';
 import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
 import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
+import { useHistoricalCfsPins } from '../../hooks/useHistoricalCfsPins';
 import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
 import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapboxServeJobs } from '../../hooks/useMapboxServeJobs';
@@ -116,7 +117,6 @@ import MapRightDock from './components/MapRightDock';
 import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './hooks/useLayerBindings';
 import { useEnRouteEta } from './hooks/useEnRouteEta';
 import { useMapWelfare } from './hooks/useMapWelfare';
-import { useMapBeatOverlay } from './hooks/useMapBeatOverlay';
 import { useLayerFavorites } from './hooks/useLayerFavorites';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
@@ -206,6 +206,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [activeTab, setActiveTab]       = usePersistedTab('rmpg_mapbox_sidebar', 'units', ['units', 'calls'] as const);
   const [mapStyle, setMapStyleId]       = usePersistedState<MapStyleId>('rmpg_mapbox_style', 'dark');
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
+  const [compassFollow, setCompassFollow] = usePersistedState('rmpg_mapbox_compass_follow', false);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
   const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
   // showMeasureMenu / showDrawMenu drive the distance/area and polygon/polyline/circle
@@ -386,6 +387,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const responseTime = useMapboxResponseTime(mapLoaded ? mapRef.current : null);
   const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
   const historyCalls = useMapboxHistoryCalls(mapLoaded ? mapRef.current : null);
+  const cfsAddressPins = useHistoricalCfsPins(mapLoaded ? mapRef.current : null);
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
   const [identifyEnabled, setIdentifyEnabled] = useState(false);
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
@@ -442,6 +444,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [responseTimeEnabled, setResponseTimeEnabled] = useState(false);
   const [safetyZonesEnabled, setSafetyZonesEnabled] = useState(false);
   const [historyCallsEnabled, setHistoryCallsEnabled] = useState(false);
+  const [cfsAddressPinsEnabled, setCfsAddressPinsEnabled] = useState(false);
 
   useEffect(() => {
     if (incidentsEnabled) incidentsLayer.fetchIncidents();
@@ -518,6 +521,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (historyCallsEnabled) historyCalls.fetchHistory();
     else historyCalls.clear();
   }, [historyCallsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (cfsAddressPinsEnabled) cfsAddressPins.fetchPins();
+    else cfsAddressPins.clear();
+  }, [cfsAddressPinsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (repeatAddressesEnabled) repeatAddresses.fetchRepeats();
@@ -1171,17 +1179,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // Logic extracted to useMapWelfare hook (see hooks/useMapWelfare.ts)
   useMapWelfare({ map: mapRef.current, mapLoaded, units });
 
-  // ── Beat Boundary Overlay ──────────────────────────────────────────────────
-  // Logic extracted to useMapBeatOverlay hook (see hooks/useMapBeatOverlay.ts)
-  useMapBeatOverlay({
-    map: mapRef.current,
-    mapLoaded,
-    // Beat GeoJSON is managed by useGeoJsonLayers, not held as state here.
-    // This seam accepts a beats array for future per-beat marker logic.
-    beats: [],
-    beatLayerVisible: geoJsonLayers.layerStates['beat']?.visible ?? false,
-  });
-
   // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
   // Depend on `findClosestUnit` itself, not the whole `routing` object -- useMapRouting
   // returns a plain object literal (not memoized), so `routing` is a new reference on
@@ -1254,8 +1251,25 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       addToast('GPS position not available', 'warning');
       return;
     }
-    map.flyTo({ center: [gps.longitude, gps.latitude], zoom: 16, duration: 800 });
-  }, [gps.latitude, gps.longitude, addToast]);
+    const heading = (gps as any).headingSmoothed ?? (gps as any).course ?? (gps as any).heading;
+    map.flyTo({
+      center: [gps.longitude, gps.latitude],
+      zoom: 16,
+      duration: 800,
+      ...(typeof heading === 'number' ? { bearing: heading } : {}),
+    });
+  }, [gps.latitude, gps.longitude, gps, addToast]);
+
+  // Compass-follow: continuously rotate the map to match GPS heading.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !compassFollow) return;
+    const heading = (gps as any).headingSmoothed ?? (gps as any).course ?? (gps as any).heading;
+    if (typeof heading !== 'number') return;
+    if (gps.latitude == null || gps.longitude == null) return;
+    map.easeTo({ bearing: heading, center: [gps.longitude, gps.latitude], duration: 500 });
+  }, [(gps as any).headingSmoothed, (gps as any).course, (gps as any).heading,
+      gps.latitude, gps.longitude, compassFollow, mapLoaded]);
 
   // ── Isochrone Overlay ── extracted to useMapIsochrone hook ─────────────────
 
@@ -1306,6 +1320,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     incidents: { active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), loading: incidentsLayer.loading, error: incidentsLayer.error },
     'repeat-addresses': { active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), loading: repeatAddresses.loading, error: repeatAddresses.error },
     selfpos: { active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v) },
+    'compass-follow': { active: compassFollow as boolean, onToggle: () => setCompassFollow((v: boolean) => !v) },
     'serve-jobs': { active: serveJobsEnabled, onToggle: () => setServeJobsEnabled((v) => !v), loading: serveJobs.loading, error: serveJobs.error },
     'optim-routes': { active: optimRoutes.visible, onToggle: optimRoutes.toggle, loading: optimRoutes.loading, error: optimRoutes.error },
 
@@ -1322,6 +1337,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`,
     },
     'call-history': { active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), loading: historyCalls.loading, error: historyCalls.error },
+    'cfs-address-pins': { active: cfsAddressPinsEnabled, onToggle: () => setCfsAddressPinsEnabled((v) => !v), loading: cfsAddressPins.loading, error: cfsAddressPins.error },
     'speed-heatmap': { active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), loading: speedHeatmap.loading, error: speedHeatmap.error },
     'speed-violations': { active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), loading: speedViolationsLayer.loading, error: speedViolationsLayer.error },
     'pursuit-segments': { active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), loading: pursuitSegmentsLayer.loading, error: pursuitSegmentsLayer.error },
@@ -1411,7 +1427,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Drawing & Tracking ──
     draw: { active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu((v) => !v) },
     'gl-draw': { active: glDraw.enabled, onToggle: () => glDraw.toggle() },
-    'draw-geofence': { active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence') },
+    'draw-geofence': { active: activeFloatingTool === 'draw-geofence', onToggle: () => {
+      // Only one MapboxDraw instance can exist per map (both register 'mapbox-gl-draw-cold').
+      // Disable the gl-draw hook before the geofence tool mounts its own draw control.
+      if (activeFloatingTool !== 'draw-geofence') glDraw.disable();
+      setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence');
+    } },
     'gps-replay': { active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay') },
     'speed-analytics': { active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), loading: speedZoneStats.loading },
 
@@ -1444,7 +1465,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     optimRoutes.visible, optimRoutes.toggle, optimRoutes.loading, optimRoutes.error,
     incidentHeatmap, beatCoverage,
     heatmap, populateAndToggleHeatmap, heatmapMode,
-    historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
+    historyCallsEnabled, historyCalls.loading, historyCalls.error, cfsAddressPinsEnabled, cfsAddressPins.loading, cfsAddressPins.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
     speedViolationsLayer.error, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading,
     pursuitSegmentsLayer.error, responseTimeEnabled, responseTime.loading, responseTime.error,

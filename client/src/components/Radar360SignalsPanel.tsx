@@ -459,9 +459,6 @@ function SignalRingDisplay({ signals, radiusMi }: { signals: SignalDetection[]; 
 
 // ── Main component ────────────────────────────────────────
 
-// rfScan is exposed by desktop/preload.js via contextBridge under window.electronAPI.
-// The Window interface is extended by DesktopPerfMon.tsx (the largest declaration);
-// we access it through a loose cast so we don't conflict with that declaration.
 type ElectronWithRfScan = { rfScan?: (opts: { lat?: number; lng?: number; deviceId?: string; callId?: number }) => Promise<{
   ok: boolean; signals?: unknown[]; scan_session_id?: string; error?: string;
   counts?: { wifi: number; bt_classic: number; ble: number; cell: number };
@@ -469,7 +466,7 @@ type ElectronWithRfScan = { rfScan?: (opts: { lat?: number; lng?: number; device
 
 function getElectronApi(): ElectronWithRfScan | undefined {
   if (typeof window === 'undefined') return undefined;
-  return (window as unknown as { electronAPI?: ElectronWithRfScan }).electronAPI;
+  return (window as unknown as { electron?: ElectronWithRfScan }).electron;
 }
 
 const TYPES: SignalType[] = ['wifi_ap', 'bt_classic', 'ble', 'cell_tower'];

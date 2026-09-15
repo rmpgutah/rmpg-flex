@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Search, X, Monitor, Users, FileText, AlertTriangle, Car } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { NavFunction } from '../../data/navCatalog';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface PaletteResult {
   type: 'module' | 'call' | 'person' | 'unit' | 'warrant';
@@ -93,7 +94,7 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
 
         if (calls.status === 'fulfilled' && Array.isArray(calls.value)) {
           for (const c of calls.value.slice(0, 5)) {
-            apiResults.push({ type: 'call', id: c.id, primary: c.incident_type?.replace(/_/g, ' ') ?? 'Call', secondary: c.location_address, path: `/dispatch?call=${c.id}` });
+            apiResults.push({ type: 'call', id: c.id, primary: formatEnumValue(c.incident_type) || 'Call', secondary: c.location_address, path: `/dispatch?call=${c.id}` });
           }
         }
         if (persons.status === 'fulfilled' && Array.isArray(persons.value)) {

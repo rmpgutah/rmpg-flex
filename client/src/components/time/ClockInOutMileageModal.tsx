@@ -59,11 +59,12 @@ export default function ClockInOutMileageModal({
         .catch(() => {});
     }
 
-    // Load available vehicles
-    apiFetch<VehicleOption[]>('/fleet/vehicles')
-      .then((data: VehicleOption[]) => {
-        if (!cancelled && Array.isArray(data)) {
-          setVehicles(data);
+    // Load available vehicles — fleet endpoint returns a paginated envelope
+    apiFetch<{ data: VehicleOption[] } | VehicleOption[]>('/fleet')
+      .then((resp) => {
+        if (!cancelled) {
+          const data = Array.isArray(resp) ? resp : ((resp as any).data ?? []);
+          if (Array.isArray(data)) setVehicles(data);
         }
       })
       .catch(() => {});

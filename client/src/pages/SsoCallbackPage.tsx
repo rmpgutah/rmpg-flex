@@ -56,7 +56,7 @@ export default function SsoCallbackPage() {
       <div className="text-center">
         {error ? (
           <>
-            <p className="text-sm mb-2" style={{ color: '#ef7a7a' }}>{error}</p>
+            <p className="text-sm mb-2" style={{ color: 'var(--sev-critical-soft)' }}>{error}</p>
             <a href="/login" className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Back to login</a>
           </>
         ) : (

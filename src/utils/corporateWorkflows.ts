@@ -424,6 +424,19 @@ export async function autoCompileShiftDar(
   }
 
   const activitiesNarrative = narrativeParts.join('\n');
+
+  // Idempotency guard: if a DAR already exists for this officer + shift date,
+  // return it instead of creating a duplicate. Two code paths (MDT "End Shift"
+  // and personnel clock-out) can both trigger this function concurrently.
+  const existing = await queryFirst<{ id: number; dar_number: string }>(
+    db,
+    `SELECT id, dar_number FROM daily_activity_reports WHERE officer_id = ? AND shift_date = ? LIMIT 1`,
+    officerId, shiftDate,
+  ).catch(() => null);
+  if (existing) {
+    return { id: existing.id, dar_number: existing.dar_number };
+  }
+
   const year = new Date().getFullYear().toString().slice(-2);
   const maxRow = await queryFirst<{ m: string | null }>(
     db,
@@ -439,11 +452,22 @@ export async function autoCompileShiftDar(
       (dar_number, officer_id, shift_date, shift_start, shift_end, status,
        calls_handled, incidents_created, citations_issued, patrols_completed,
        activities_narrative, created_at)
-     VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, datetime('now'))`,
+     VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(officer_id, shift_date) DO NOTHING`,
     number, officerId, shiftDate, shiftInfo.shift_start, shiftInfo.shift_end,
     JSON.stringify(calls), JSON.stringify(incidents), JSON.stringify(citations), JSON.stringify(patrols),
     activitiesNarrative,
   );
+
+  if (!r.meta?.last_row_id) {
+    // Conflict — another request won the race. Return the existing DAR.
+    const fallback = await queryFirst<{ id: number; dar_number: string }>(
+      db,
+      `SELECT id, dar_number FROM daily_activity_reports WHERE officer_id = ? AND shift_date = ? LIMIT 1`,
+      officerId, shiftDate,
+    ).catch(() => null);
+    return fallback ? { id: fallback.id, dar_number: fallback.dar_number } : null;
+  }
 
   return { id: Number(r.meta.last_row_id), dar_number: number };
 }

@@ -1,3 +1,4 @@
+import { localToday } from '../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Process Server Field Suite
 // Mobile-first page for managing serve jobs, route planning,
@@ -12,7 +13,7 @@ import {
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
   FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
-  Settings,
+  Settings, Phone, ExternalLink,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import { computeArrivalsInOrder } from '../components/serve/ServeRoutePlanner';
@@ -39,7 +40,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import CorporateLinkageStrip from '../components/CorporateLinkageStrip';
 import { formatServerAssignLabel, type CorporateServer } from '../utils/corporateOpsClient';
-import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { toDisplayLabel, formatEnumValue } from '../utils/formatters';
@@ -806,14 +807,18 @@ export default function ServePage() {
     try {
       const data = await apiFetch<any>('/process-server/deadlines');
       setDeadlines(data);
-    } catch { /* ignore */ }
+    } catch {
+      addToast('Could not load deadlines — please try again', 'error');
+    }
   };
 
   const handleLoadSuccessRates = async () => {
     try {
       const data = await apiFetch<any>('/process-server/success-rates?days=90');
       setSuccessRates(data);
-    } catch { /* ignore */ }
+    } catch {
+      addToast('Could not load success rates — please try again', 'error');
+    }
   };
 
   // ── Serve settings (mileage rate, etc.) ───────────────────────────
@@ -826,6 +831,7 @@ export default function ServePage() {
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const serveMapResizeObserverRef = useRef<ResizeObserver | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   // Outlives re-renders/zoom changes so a cluster's on-screen position, once
   // computed for a given set of member job ids, never re-averages — see
@@ -834,6 +840,7 @@ export default function ServePage() {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const mapFlyToTargetRef = useRef<[number, number] | null>(null);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
   const [isServeMapRecovering, setIsServeMapRecovering] = useState(false);
@@ -894,22 +901,27 @@ export default function ServePage() {
     setLoading(true);
     setFetchError('');
     try {
-      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
+      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}&limit=500`);
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
-      // Fetch linked dispatch calls for jobs that have call_id
-      const jobsWithCalls = fetchedJobs.filter((j: any) => j.call_id);
-      if (jobsWithCalls.length > 0) {
+      // Batch-fetch linked dispatch calls — one request regardless of job count.
+      const callIds = [...new Set(fetchedJobs.filter((j: any) => j.call_id).map((j: any) => j.call_id as number))];
+      if (callIds.length > 0) {
         const callMap: Record<number, any> = {};
-        await Promise.all(
-          jobsWithCalls.map(async (j: any) => {
-            try {
-              const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
-              if (call) callMap[j.id] = call;
-            } catch { /* linked call not found */ }
-          })
-        );
+        try {
+          // D1 bound-param cap is 100; chunk if the queue is unusually large.
+          const CHUNK = 90;
+          const callById = new Map<number, any>();
+          for (let i = 0; i < callIds.length; i += CHUNK) {
+            const chunk = callIds.slice(i, i + CHUNK);
+            const batch = await apiFetch<any[]>(`/dispatch/calls/batch?ids=${chunk.join(',')}`);
+            (batch ?? []).forEach((c: any) => callById.set(c.id, c));
+          }
+          fetchedJobs.forEach((j: any) => {
+            if (j.call_id && callById.has(j.call_id)) callMap[j.id] = callById.get(j.call_id);
+          });
+        } catch { /* linked calls non-critical */ }
         setLinkedCalls(callMap);
       } else {
         setLinkedCalls({});
@@ -928,6 +940,13 @@ export default function ServePage() {
     } catch {
       // stats are non-critical
     }
+  }, [selectedDate]);
+
+  // Reset the status filter when the user navigates to a different date so
+  // that a "served" or "in_progress" filter from the previous day doesn't
+  // silently hide all jobs on the new day.
+  useEffect(() => {
+    setStatusFilter('all');
   }, [selectedDate]);
 
   const refreshJobs = useCallback(() => {
@@ -1140,6 +1159,26 @@ export default function ServePage() {
     }
   }, [addToast, refreshJobs]);
 
+  const handleSetPriority = useCallback(async (job: ServeJob, priority: ServeJob['priority']) => {
+    setJobs(prev => prev.map(j => j.id === job.id ? { ...j, priority } : j));
+    try {
+      await apiFetch(`/process-server/${job.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...job, priority }),
+      });
+      addToast(`Priority set to ${toDisplayLabel(priority)}`, 'success');
+    } catch {
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, priority: job.priority } : j));
+      addToast('Could not update priority', 'error');
+    }
+  }, [addToast]);
+
+  const handleShowOnMap = useCallback((job: ServeJob) => {
+    if (!job.recipient_lat || !job.recipient_lng) return;
+    mapFlyToTargetRef.current = [job.recipient_lng, job.recipient_lat];
+    setActiveTab('Map');
+  }, []);
+
   const handleDeleteJob = useCallback((job: ServeJob) => {
     setDeleteJob(job);
   }, []);
@@ -1244,13 +1283,28 @@ export default function ServePage() {
   }, [refreshJobs, fetchSavedRoute, selectedDate]);
 
   // ── Optimization V2 ───────────────────────────────────────────────────
-  const pendingJobIds = useMemo(
-    () => jobs.filter(j => j.status !== 'served' && j.status !== 'archived' && j.status !== 'failed').map(j => j.id),
+  const pendingJobs = useMemo(
+    () => jobs.filter(j => j.status !== 'served' && j.status !== 'archived' && j.status !== 'failed'),
     [jobs],
+  );
+  // Server requires every job to have geocoords — split before submitting
+  const pendingJobIds = useMemo(
+    () => pendingJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null).map(j => j.id),
+    [pendingJobs],
+  );
+  const missingCoordsCount = useMemo(
+    () => pendingJobs.filter(j => j.recipient_lat == null || j.recipient_lng == null).length,
+    [pendingJobs],
   );
 
   const handleOptimizeRouteV2 = useCallback(async () => {
     if (!user?.id || !savedRoute?.id || !pendingJobIds.length) return;
+    if (missingCoordsCount > 0) {
+      addToast(
+        `${missingCoordsCount} job${missingCoordsCount > 1 ? 's' : ''} skipped — no GPS coordinates (geocode the address first)`,
+        'warning',
+      );
+    }
     const now = new Date(); // new-date-ok — wall-clock shift window
     const shiftStart = now.toISOString();
     const shiftEnd = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(); // new-date-ok — 8h shift window
@@ -1262,7 +1316,7 @@ export default function ServePage() {
       shift_end: shiftEnd,
       ref_id: savedRoute?.id ?? null,
     });
-  }, [user?.id, savedRoute?.id, pendingJobIds, optimization]);
+  }, [user?.id, savedRoute?.id, pendingJobIds, missingCoordsCount, optimization, addToast]);
 
   useEffect(() => {
     if (optimization.status === 'complete') {
@@ -1381,11 +1435,15 @@ export default function ServePage() {
           method: 'PUT',
           body: JSON.stringify({
             ...formData,
+            serve_date: formData.serve_date || selectedDate,
             address_class: formData.address_class,
             address_class_confirmed: formData.address_class_confirmed,
             ops: formOps,
           }),
         });
+        // Optimistically update the job in place so it stays visible during the
+        // background refresh and doesn't disappear if the sort order changes.
+        setJobs(prev => prev.map(j => j.id === editJob.id ? { ...j, ...formData, serve_date: formData.serve_date || selectedDate } as unknown as ServeJob : j));
       } else {
         await apiFetch('/process-server', {
           method: 'POST',
@@ -1574,10 +1632,7 @@ export default function ServePage() {
   // Filtered Jobs
   // ══════════════════════════════════════════════════════════════════════
 
-  // ── Feature 29: Multi-key sort ──
-  type SortKey = 'urgency' | 'priority' | 'date' | 'name' | 'fee';
-  const [sortKey, setSortKey] = useState<SortKey>('urgency');
-  // ── Feature 1: Priority Queue Sort (kept for backwards compat) ──
+  // ── Feature 1: Sort by deadline urgency ──
   const [sortByUrgency, setSortByUrgency] = useState(false);
   // ── Feature 33: Serve-type filter ──
   const [serveTypeFilter, setServeTypeFilter] = useState<string>('all');
@@ -1638,7 +1693,10 @@ export default function ServePage() {
           total: data.subtotal ?? 0,
         },
       });
-    } catch { setCostEstimate(null); }
+    } catch {
+      setCostEstimate(null);
+      addToast('Could not load cost estimate — please try again', 'error');
+    }
   };
 
   const filteredJobs = useMemo(() => {
@@ -1856,6 +1914,12 @@ export default function ServePage() {
       };
 
       mapRef.current = map;
+      registerMapInstance(map, MAPBOX_STYLE_DARK);
+      if (mapContainerRef.current) {
+        const ro = new ResizeObserver(() => map.resize());
+        ro.observe(mapContainerRef.current);
+        serveMapResizeObserverRef.current = ro;
+      }
       const jobPopup = new mapboxgl.Popup({ offset: 25, closeButton: false });
       // Attach on 'open' rather than at construction: the popup's container
       // element does not exist until it is added to the map.
@@ -1929,7 +1993,9 @@ export default function ServePage() {
     markersRef.current = [];
     try { popupRef.current?.remove(); } catch { /* gone */ }
     popupRef.current = null;
-    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+    serveMapResizeObserverRef.current?.disconnect();
+    serveMapResizeObserverRef.current = null;
+    if (mapRef.current) { unregisterMapInstance(mapRef.current); try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
   }, []);
 
   // Update markers when jobs change or map becomes ready
@@ -2096,6 +2162,14 @@ export default function ServePage() {
   useEffect(() => {
     if (mapReady) updateMapMarkers();
   }, [mapReady, updateMapMarkers]);
+
+  // Fly to a job after "Show on map" switches the tab and the map becomes ready.
+  useEffect(() => {
+    if (!mapReady || !mapFlyToTargetRef.current) return;
+    const [lng, lat] = mapFlyToTargetRef.current;
+    mapFlyToTargetRef.current = null;
+    mapRef.current?.easeTo({ center: [lng, lat], zoom: Math.max(mapZoom, 15), duration: 600 });
+  }, [mapReady, mapZoom]);
 
   // Fit bounds to the job set — deliberately its own effect, NOT folded into
   // updateMapMarkers above. updateMapMarkers is keyed on mapZoom (so it can
@@ -2311,11 +2385,23 @@ export default function ServePage() {
     if (jobTarget) {
       pendingJobIdRef.current = null;
       const hit = jobs.find((j) => String(j.id) === String(jobTarget));
-      if (!hit) {
-        addToast(`Serve job ${jobTarget} not in the current view (try clearing the date filter)`, 'warning');
-      } else {
+      if (hit) {
         setActiveTab('Queue');
         setExpandedJobId(hit.id);
+      } else {
+        apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobTarget}`)
+          .then((fetched) => {
+            if (fetched?.id) {
+              setJobs((prev: ServeJob[]) => prev.some((j: ServeJob) => j.id === fetched.id) ? prev : [fetched, ...prev]);
+              setActiveTab('Queue');
+              setExpandedJobId(fetched.id);
+            } else {
+              addToast(`Serve job ${jobTarget} not found`, 'warning');
+            }
+          })
+          .catch(() => {
+            addToast(`Serve job ${jobTarget} not found`, 'warning');
+          });
       }
     }
 
@@ -2370,21 +2456,32 @@ export default function ServePage() {
     const addr = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    const PRIORITY_LEVELS: ServeJob['priority'][] = ['routine', 'normal', 'rush', 'urgent'];
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(canManage ? [m.action('Clone job', () => handleCloneJob(job.id), { icon: <Copy size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      // Quick priority escalation — submenu with all priority levels, current one checked
+      ...(!isClosed && canManage ? [{
+        label: 'Set priority',
+        icon: <Zap size={12} />,
+        submenu: PRIORITY_LEVELS.map(p => m.action(
+          `${toDisplayLabel(p)}${job.priority === p ? ' ✓' : ''}`,
+          () => handleSetPriority(job, p),
+          { icon: <Zap size={11} /> }
+        )),
+      } as ContextMenuItem] : []),
       m.action('Print Job Sheet (PS-300)', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
       m.action('Print Leave-Behind (PS-314)', () => handleLeaveBehind(job.id), { icon: <ScrollText size={12} /> }),
-      ...(job.attempt_count > 0 && job.status !== 'served' ? [
+      ...(job.attempt_count > 0 && !isClosed ? [
         m.action('Preview Notice of Attempt', () => setNoticePreviewJobId(job.id), { icon: <FileWarning size={12} /> }),
         m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
       ] : []),
       ...(job.status === 'served' ? [
         m.action('Affidavit of Service', () => handleAffidavitOfService(job.id), { icon: <FileSignature size={12} /> }),
       ] : []),
-      ...(job.attempt_count > 0 && job.status !== 'served' ? [
+      ...(job.attempt_count > 0 && !isClosed ? [
         m.action('Affidavit of Non-Service', () => handleAffidavitOfNonService(job.id), { icon: <ScrollText size={12} /> }),
       ] : []),
       // Manage Attempts submenu — edit or delete individual attempts
@@ -2410,10 +2507,21 @@ export default function ServePage() {
         setSelectedJobIds(prev => new Set(prev).add(job.id));
         setRoutePlannerOpen(true);
       }, { icon: <Route size={12} /> }),
+      // Show on map — switches to Map tab and flies to the job's coordinates.
+      ...(job.recipient_lat && job.recipient_lng
+        ? [m.action('Show on map', () => handleShowOnMap(job), { icon: <MapPin size={12} /> })]
+        : []),
+      // Open linked dispatch call in a new tab when available.
+      ...(job.call_id
+        ? [m.action('Open linked call', () => window.open(`/dispatch?call=${job.call_id}`, '_blank'), { icon: <ExternalLink size={12} /> })]
+        : []),
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),
       m.copyId(job.id),
       m.copyCoords(job.recipient_lat, job.recipient_lng),
+      ...(addr ? [m.copy('Copy address', addr)] : []),
+      ...(job.case_number ? [m.copy('Copy case number', job.case_number)] : []),
+      ...(job.recipient_phone ? [m.copy('Copy phone', job.recipient_phone, <Phone size={12} />)] : []),
       ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
       m.separator(),
       m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
@@ -2752,7 +2860,7 @@ export default function ServePage() {
                       type="date"
                       value={bulkDeadlineDate}
                       onChange={(e) => setBulkDeadlineDate(e.target.value)}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={localToday()}
                       className="mt-1 block w-full px-2 py-1 text-[10px] bg-surface-sunken border border-rmpg-600 rounded-[2px] text-rmpg-100 focus:outline-none focus:ring-1 focus:ring-rmpg-400/50"
                     />
                   </label>
@@ -3229,6 +3337,7 @@ export default function ServePage() {
                       type="button"
                       onClick={handleOptimizeRouteV2}
                       disabled={optimization.status === 'pending' || optimization.status === 'processing' || !pendingJobIds.length || !savedRoute?.id}
+                      title={missingCoordsCount > 0 ? `${missingCoordsCount} job${missingCoordsCount > 1 ? 's' : ''} without coordinates will be skipped` : undefined}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Optimize Route with Mapbox V2"
                     >
@@ -3605,6 +3714,7 @@ export default function ServePage() {
             officerId={Number(user.id)}
             sharedJobs={jobs}
             onJobsChange={setJobs}
+            serveRouteId={savedRoute?.id ?? undefined}
             routeOrderIds={(() => {
               if (savedRoute?.optimized_order_json) {
                 try {
@@ -4459,7 +4569,7 @@ export default function ServePage() {
                   onChange={(e) => setFormData((p) => ({ ...p, ops: { ...ensureServeJobOps(p.ops), documents_to_serve: e.target.value } }))}
                   rows={2}
                   placeholder="20 DAY SUMMONS; VERIFIED COMPLAINT; …"
-                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">

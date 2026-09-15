@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { formatEnumValue } from '../utils/formatters';
 import { alertTemplatesToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 interface NotificationTemplate {
   id: number;
@@ -81,8 +82,7 @@ export default function AlertsPage() {
   const [filterCategory, setFilterCategory] = useState<string>(initialCategoryParam);
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');

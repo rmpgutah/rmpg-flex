@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import WebCompanyBrowserPage from './WebCompanyBrowserPage';
 
 vi.mock('../hooks/useApi', () => ({
@@ -46,7 +46,7 @@ describe('WebCompanyBrowserPage', () => {
   it('sends an authenticate frame once the socket opens', async () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onopen?.();
+    act(() => { FakeWebSocket.instances[0].onopen?.(); });
     const sent = FakeWebSocket.instances[0].sent.map((s) => JSON.parse(s));
     expect(sent).toContainEqual({ type: 'authenticate', token: 'fake-jwt-token' });
   });
@@ -64,21 +64,21 @@ describe('WebCompanyBrowserPage', () => {
   it('shows an inline error banner on an error message', async () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'error', message: 'Navigation failed' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'error', message: 'Navigation failed' }) }); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Navigation failed'));
   });
 
   it('shows a session-ended state on a session_ended message', async () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) }); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/session ended/i));
   });
 
   it('shows an inline error banner when the WebSocket itself errors', async () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onerror?.();
+    act(() => { FakeWebSocket.instances[0].onerror?.(); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Unable to start browser session, try again.'));
   });
 
@@ -86,16 +86,16 @@ describe('WebCompanyBrowserPage', () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     FakeWebSocket.instances[0].readyState = 3; // CLOSED
-    FakeWebSocket.instances[0].onclose?.();
+    act(() => { FakeWebSocket.instances[0].onclose?.(); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Unable to start browser session, try again.'));
   });
 
   it('does not show an error banner on a graceful close after session_ended', async () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'session_ended', reason: 'idle_timeout' }) }); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/session ended/i));
-    FakeWebSocket.instances[0].onclose?.();
+    act(() => { FakeWebSocket.instances[0].onclose?.(); });
     const alerts = screen.queryAllByRole('alert');
     expect(alerts).toHaveLength(1);
   });
@@ -111,7 +111,7 @@ describe('WebCompanyBrowserPage', () => {
     const { container } = render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     // Drive the tab to a real URL so the canvas appears (not the new-tab page)
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://example.com' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://example.com' }) }); });
     await waitFor(() => {});
     const canvas = container.querySelector('canvas') as HTMLCanvasElement;
     if (!canvas) return;
@@ -128,7 +128,7 @@ describe('WebCompanyBrowserPage', () => {
   it('sends a type message on key down for a printable character', async () => {
     const { container } = render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://example.com' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://example.com' }) }); });
     await waitFor(() => {});
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
@@ -140,7 +140,7 @@ describe('WebCompanyBrowserPage', () => {
   it('sends a scroll message on wheel', async () => {
     const { container } = render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://example.com' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://example.com' }) }); });
     await waitFor(() => {});
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
@@ -165,7 +165,7 @@ describe('WebCompanyBrowserPage', () => {
   it('updates the address bar when a url_changed message is received', async () => {
     render(<WebCompanyBrowserPage />);
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://google.com' }) });
+    act(() => { FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: 'url_changed', url: 'https://google.com' }) }); });
     await waitFor(() => {
       const addressBar = screen.getByRole('textbox', { name: /address/i });
       expect((addressBar as HTMLInputElement).value).toBe('https://google.com');

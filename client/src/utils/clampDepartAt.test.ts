@@ -15,6 +15,19 @@ describe('clampDepartAtForMapbox', () => {
   });
 });
 
+// apiFetch's GET coalescing always calls res.clone() on the raw fetch response so
+// concurrent callers each get an independent body stream. Mock responses must
+// include clone() or the coalescing path throws and the request is silently swallowed.
+function mockResponse(opts: { ok: boolean; status?: number; body?: object }) {
+  const make = (): object => ({
+    ok: opts.ok,
+    status: opts.status ?? (opts.ok ? 200 : 500),
+    json: async () => opts.body ?? {},
+    clone: () => make(),
+  });
+  return make();
+}
+
 describe('fetchMapboxDrivingRoute', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -22,11 +35,11 @@ describe('fetchMapboxDrivingRoute', () => {
 
   it('retries without depart_at after a 422', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 422 })
-      .mockResolvedValueOnce({
+      .mockResolvedValueOnce(mockResponse({ ok: false, status: 422 }))
+      .mockResolvedValueOnce(mockResponse({
         ok: true,
-        json: async () => ({ routes: [{ duration: 600, distance: 1000, legs: [] }] }),
-      });
+        body: { routes: [{ duration: 600, distance: 1000, legs: [] }] },
+      }));
     vi.stubGlobal('fetch', fetchMock);
 
     const route = await fetchMapboxDrivingRoute(

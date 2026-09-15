@@ -1325,6 +1325,11 @@ reports.get('/patrol-tracking', async (c) => {
       total_units: trails.length,
       total_points: points.length,
       generated_at: new Date().toISOString(),
+      query: {
+        startDate: startDate ?? null,
+        endDate: endDate ?? null,
+        hours: startDate ? null : Math.max(1, Math.min(72, Number(hoursParam) || 8)),
+      },
     });
   } catch (err) {
     console.error('[reports] GET /patrol-tracking failed:', err);

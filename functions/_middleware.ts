@@ -16,10 +16,11 @@
 //
 // If DevTools attributes the flood to dialer-embed:1 / beacon.min.js /
 // cdn-cgi/challenge-platform, that document is Dial Connect
-// (https://dialer.rmpgutah.us), not this Pages app. This middleware cannot
-// set headers on that origin. Fix there:
-//   A. Same Observatory / Transform Rule / Custom Headers locations, but on
-//      the dialer.rmpgutah.us hostname (or the dispatch-app Pages project)
+// (now at rmpgutah.us/dialer, same zone). This middleware does set headers
+// for all Pages responses, but the Cloudflare Worker that serves /dialer/*
+// sets its own CSP via next.config.ts headers(). Fix there:
+//   A. Same Observatory / Transform Rule / Custom Headers locations, now on
+//      the /dialer/* Worker route
 //   B. Disable Cloudflare Web Analytics on that host (beacon.min.js) or
 //      allow https://static.cloudflareinsights.com in THAT app's script-src
 //      and connect-src
@@ -79,12 +80,11 @@ const ALLOWED_CONNECT = [
   // Mapillary street-level imagery lookup (client/src/utils/locationImagery.ts)
   // — same silent-block pattern as the RainViewer tile host above.
   'https://graph.mapillary.com',
-  // Cloudflare Web Analytics (beacon.min.js) is omitted on purpose.
-  // Operator networks (and this workstation) refuse
-  // static.cloudflareinsights.com — allowing it in CSP lets CF inject the
-  // tag and the browser then logs net::ERR_CONNECTION_REFUSED on every
-  // login document. Strip the tag (HTMLRewriter + SW) and keep the host
-  // out of script-src/connect-src so a leftover tag cannot fetch.
+  // Cloudflare Web Analytics beacon. Cloudflare injects this at the CDN
+  // edge AFTER the Pages function runs, so HTMLRewriter stripping is
+  // ineffective and the browser logs CSP violations. Allowing the host
+  // here is the only reliable fix.
+  'https://static.cloudflareinsights.com',
   'https://challenges.cloudflare.com',
   // TensorFlow.js COCO-SSD (forensic dashcam AI vehicle tracking): the ESM
   // module CDN + the model-weights origin.
@@ -107,16 +107,14 @@ const ALLOWED_CONNECT = [
 
 const FULL_CSP = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://challenges.cloudflare.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://challenges.cloudflare.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
   `style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com`,
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,
   `connect-src ${ALLOWED_CONNECT}`,
-  // dialer.rmpgutah.us: DialerPanel's embedded Dial Connect iframe (see
-  // client/src/components/DialerPanel.tsx) -- without this the browser
-  // blocks the embed outright, even though the meta-tag CSP in index.html
-  // allows it, because this HTTP header enforces alongside it.
-  `frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us`,
+  // Dial Connect is now at rmpgutah.us/dialer (same origin) — 'self' already
+  // covers the iframe. No separate domain entry needed.
+  `frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com`,
   `media-src 'self' blob: data:`,
   `worker-src 'self' blob:`,
   `child-src 'self' blob:`,
@@ -144,7 +142,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // blocks Twilio Voice inside DialerPanel's cross-origin iframe.
   out.headers.set(
     'Permissions-Policy',
-    'camera=(self), microphone=(self "https://dialer.rmpgutah.us"), geolocation=(self), autoplay=(self "https://dialer.rmpgutah.us"), payment=()',
+    // Dial Connect is same-origin now; plain (self) is sufficient.
+    'camera=(self), microphone=(self), geolocation=(self), autoplay=(self), payment=()',
   );
 
   // Prevent the browser (and Cloudflare edge) from caching HTML responses.
@@ -159,15 +158,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const ct = out.headers.get('Content-Type') ?? '';
   if (ct.includes('text/html')) {
     out.headers.set('Cache-Control', 'no-store, max-age=0');
-    // CF Web Analytics injects <script src="…/beacon.min.js/…"> into HTML.
-    // Drop it here when the tag is already in the origin document. Edge
-    // injection that happens AFTER this middleware is still blocked by CSP
-    // (host not in script-src) and stripped again by the service worker.
-    return new HTMLRewriter()
-      .on('script[src*="cloudflareinsights"]', { element(el) { el.remove(); } })
-      .on('script[src*="beacon.min.js"]', { element(el) { el.remove(); } })
-      .on('script[data-cf-beacon]', { element(el) { el.remove(); } })
-      .transform(out);
+    return out;
   }
 
   return out;

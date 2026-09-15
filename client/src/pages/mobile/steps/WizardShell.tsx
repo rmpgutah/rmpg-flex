@@ -51,7 +51,7 @@ export default function WizardShell({
   return (
     <div ref={shellRef} className="min-h-screen bg-white flex flex-col" style={{ height: '100dvh' }}>
       {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-gray-200 px-4 pt-3 pb-3 flex-shrink-0">
+      <header className="bg-white border-b border-gray-200 px-4 pb-3 flex-shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))' }}>
         <div className="max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             {onBack ? (

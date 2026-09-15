@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../../utils/dateUtils';
 import React, { useEffect, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
@@ -67,8 +68,8 @@ export default function TimeEntryEditModal({
   const calculatedHours = useMemo(() => {
     if (!form.clockIn) return null;
     if (!form.clockOut) return null;
-    const start = new Date(form.clockIn).getTime();
-    const end = new Date(form.clockOut).getTime();
+    const start = parseTimestamp(mtDatetimeLocalToUtc(form.clockIn)).getTime();
+    const end = parseTimestamp(mtDatetimeLocalToUtc(form.clockOut)).getTime();
     if (isNaN(start) || isNaN(end)) return null;
     const hrs = (end - start) / (1000 * 60 * 60);
     return hrs >= 0 ? hrs : null;

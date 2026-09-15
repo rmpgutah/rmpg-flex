@@ -114,6 +114,16 @@ describe('authMiddleware — token purpose enforcement', () => {
     expect(await callWith(token)).toBe(401);
   });
 
+  it('rejects a forced-password-change token', async () => {
+    const token = await sign(claims({ type: 'pwd_change' }), JWT_SECRET);
+    expect(await callWith(token)).toBe(401);
+  });
+
+  it('rejects an unknown typed token while preserving legacy untyped tokens', async () => {
+    const token = await sign(claims({ type: 'magic_link' }), JWT_SECRET);
+    expect(await callWith(token)).toBe(401);
+  });
+
   it('rejects a scoped pso-mobile token (privilege escalation)', async () => {
     // mobileCfs mints this from a QR code PRINTED on paperwork handed to
     // clients. It carries no `type`, so it must be caught by the `scope`

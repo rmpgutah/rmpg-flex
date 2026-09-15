@@ -1,5 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { getDeletedIcons, emptyRecycleBin, restoreDeletedIcon, type DeletedIcon } from '../../utils/recycleBinPreferences';
+import React, { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import {
+  emptyRecycleBin,
+  getRecycleBinSnapshot,
+  parseDeletedIcons,
+  restoreDeletedIcon,
+  subscribeRecycleBin,
+} from '../../utils/recycleBinPreferences';
 
 interface DesktopRecycleBinProps {
   /** Called when an icon is restored from the bin so DesktopPage can re-pin it. */
@@ -28,16 +34,21 @@ function TrashIcon({ full }: { full: boolean }) {
 }
 
 export default function DesktopRecycleBin({ onRestore }: DesktopRecycleBinProps) {
-  const [items, setItems] = useState<DeletedIcon[]>(() => getDeletedIcons());
+  // The bin lives in localStorage and is mutated from outside this component
+  // (DesktopPage's unpin handler). Subscribe to it as an external store rather
+  // than re-reading it from an effect. The previous implementation,
+  //   useEffect(() => { setItems(getDeletedIcons()); });
+  // had no dependency array and `getDeletedIcons()` returns a fresh array on
+  // every call, so every render scheduled another state update: an unbounded
+  // render loop that pinned a CPU core in production and ran the desktop
+  // vitest suite out of heap (8 GB, ~60 min) in CI. The snapshot here is the
+  // raw storage string, which is `Object.is`-stable while storage is
+  // unchanged, so React re-renders only on a real write.
+  const raw = useSyncExternalStore(subscribeRecycleBin, getRecycleBinSnapshot, getRecycleBinSnapshot);
+  const items = useMemo(() => parseDeletedIcons(raw), [raw]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [, forceRerender] = useState(0);
-
-  // Refresh the item list whenever the component re-renders due to icon deletion externally.
-  useEffect(() => {
-    setItems(getDeletedIcons());
-  });
 
   // Close context menu / popover on outside click.
   useEffect(() => {
@@ -54,31 +65,26 @@ export default function DesktopRecycleBin({ onRestore }: DesktopRecycleBinProps)
 
   const full = items.length > 0;
 
+  // The store mutators below dispatch the change event themselves, which is
+  // what re-renders this component — no local mirror state to keep in sync.
   function handleRestoreAll() {
-    const current = getDeletedIcons();
-    current.forEach(i => {
+    items.forEach(i => {
       restoreDeletedIcon(i.path);
       onRestore(i.path, i.label);
     });
-    setItems([]);
     setContextMenu(null);
     setPopoverOpen(false);
-    forceRerender(n => n + 1);
   }
 
   function handleEmpty() {
     emptyRecycleBin();
-    setItems([]);
     setContextMenu(null);
     setPopoverOpen(false);
-    forceRerender(n => n + 1);
   }
 
   function handleRestoreOne(path: string, label: string) {
     restoreDeletedIcon(path);
-    setItems(getDeletedIcons());
     onRestore(path, label);
-    forceRerender(n => n + 1);
   }
 
   return (

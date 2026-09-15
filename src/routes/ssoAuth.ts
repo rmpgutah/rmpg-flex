@@ -15,7 +15,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, queryFirst } from '../utils/db';
-import { issueLoginTokens } from './auth';
+import { mintLoginTokens } from './auth';
 import { readDialerOidcEndpoints, generateCodeVerifier, codeChallengeS256 } from '../utils/sso';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
@@ -174,7 +174,7 @@ ssoAuth.get('/callback', async (c) => {
     );
     if (!user) return loginFailedRedirect(c);
 
-    const bundle = await issueLoginTokens(c, db, user);
+    const bundle = await mintLoginTokens(c, db, user);
     const exchangeCode = crypto.randomUUID();
     await c.env.KV.put(`sso_exchange:${exchangeCode}`, JSON.stringify(bundle), {
       expirationTtl: EXCHANGE_TTL_SECONDS,

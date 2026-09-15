@@ -76,6 +76,42 @@ describe('/api/dispatch/calls broadcasts', () => {
     expect(payload.call.held_at).toBeNull();
   });
 
+  // assign-unit and multi-unit dispatch are the two hottest dispatch mutations
+  // and were the only ones with no broadcast at all: a peer console saw a call
+  // stay 'pending' with no unit until its next poll.
+  it('POST /:id/assign-unit emits dispatch_update { action: "call_updated" } with the updated call', async () => {
+    const { db } = recordingDb([
+      { match: /SELECT assigned_unit_ids, call_number, status, latitude, longitude FROM calls_for_service WHERE id = \?/, rows: [{ assigned_unit_ids: '[]', call_number: 'CFS-2026-0009', status: 'pending', latitude: null, longitude: null }] },
+      { match: /SELECT current_call_id, queued_call_ids, call_sign FROM units WHERE id = \?/, rows: [{ current_call_id: null, queued_call_ids: '[]', call_sign: 'D190' }] },
+      { match: /SELECT id, call_sign FROM units WHERE id IN/, rows: [{ id: 5, call_sign: 'D190' }] },
+      { match: /SELECT \* FROM calls_for_service WHERE id = \?/, rows: [{ id: 9, status: 'dispatched', assigned_unit_ids: '[5]' }] },
+    ]);
+    const request = buildApp(db);
+    const res = await request('/api/dispatch/calls/9/assign-unit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: 5, confirm: 1 }),
+    });
+    expect(res.status).toBe(200);
+    const updates = emitAlertSpy.mock.calls.filter(([, t, p]) => t === 'dispatch_update' && (p as { action: string }).action === 'call_updated');
+    expect(updates).toHaveLength(1);
+    expect((updates[0][2] as { call: Record<string, unknown> }).call).toMatchObject({ id: 9, status: 'dispatched' });
+  });
+
+  it('POST /:id/dispatch emits dispatch_update { action: "call_updated" } with the updated call', async () => {
+    const { db } = recordingDb([
+      { match: /SELECT assigned_unit_ids FROM calls_for_service WHERE id = \?/, rows: [{ assigned_unit_ids: '[]' }] },
+      { match: /SELECT id, call_sign FROM units WHERE id IN/, rows: [{ id: 5, call_sign: 'D190' }, { id: 6, call_sign: 'D191' }] },
+      { match: /SELECT \* FROM calls_for_service WHERE id = \?/, rows: [{ id: 9, status: 'dispatched', assigned_unit_ids: '[5,6]' }] },
+    ]);
+    const request = buildApp(db);
+    const res = await request('/api/dispatch/calls/9/dispatch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_ids: [5, 6] }),
+    });
+    expect(res.status).toBe(200);
+    const updates = emitAlertSpy.mock.calls.filter(([, t, p]) => t === 'dispatch_update' && (p as { action: string }).action === 'call_updated');
+    expect(updates).toHaveLength(1);
+    expect((updates[0][2] as { call: Record<string, unknown> }).call).toMatchObject({ id: 9, status: 'dispatched' });
+  });
+
   it('mergedCallRow returns null when the call no longer exists → no broadcast', async () => {
     // Concurrent DELETE between the UPDATE and the re-fetch: the broadcast
     // helper returns null and the handler skips the emit (verified by the

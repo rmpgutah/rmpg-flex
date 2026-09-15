@@ -33,6 +33,7 @@ import { kbHitsToCsv, downloadTextFile } from '../utils/rmsListExport';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
+import FlexDocsPanel from '../components/FlexDocsPanel';
 
 const TYPE_ICON: Record<string, LucideIcon> = {
   call: Phone, person: User, vehicle: Car, warrant: Shield, citation: Receipt,
@@ -61,6 +62,16 @@ export default function KnowledgeBasePage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const [params, setParams] = useSearchParams();
+
+  // Mode: 'records' (default — the audited system-wide record search below) or
+  // 'docs' (Ask Flex: SOPs/runbooks via /api/knowledge, see FlexDocsPanel).
+  // Persisted in the URL (?mode=docs) so a docs link is shareable like ?q=.
+  const mode: 'records' | 'docs' = params.get('mode') === 'docs' ? 'docs' : 'records';
+  const setMode = (m: 'records' | 'docs') => {
+    const next = new URLSearchParams(params);
+    if (m === 'docs') next.set('mode', 'docs'); else next.delete('mode');
+    setParams(next, { replace: true });
+  };
 
   // Role gates: print (admin|manager), focus-shortcut (any authenticated)
   const canPrint = !!(
@@ -333,6 +344,21 @@ export default function KnowledgeBasePage() {
         <BookOpen className="w-5 h-5 text-brand-400" />
         <h1 className="text-[13px] font-bold uppercase tracking-widest text-rmpg-100">Knowledge Base</h1>
         <span className="text-[10px] text-rmpg-500">— system-wide search</span>
+        <div className="flex items-center border ml-2" style={{ borderRadius: 2, borderColor: 'var(--border-default)' }} role="tablist" aria-label="Knowledge base mode">
+          {(['records', 'docs'] as const).map((m) => {
+            const active = mode === m;
+            return (
+              <button
+                key={m} type="button" role="tab" aria-selected={active} onClick={() => setMode(m)}
+                className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                style={{
+                  color: active ? 'var(--surface-base)' : 'var(--text-secondary)',
+                  background: active ? 'var(--brand-500)' : 'transparent',
+                }}
+              >{m === 'records' ? 'Records' : 'Docs & SOPs'}</button>
+            );
+          })}
+        </div>
         <button
           type="button"
           className="toolbar-btn ml-2"
@@ -354,6 +380,9 @@ export default function KnowledgeBasePage() {
         )}
       </div>
 
+      {mode === 'docs' && <FlexDocsPanel />}
+
+      {mode === 'records' && (<>
       {/* Search box */}
       <div
         className="flex items-center gap-3 px-3 py-2.5 bg-surface-raised border border-rmpg-600"
@@ -534,6 +563,8 @@ export default function KnowledgeBasePage() {
       </div>
 
       {/* ConfirmDialog — guards the "Clear recent searches" action */}
+      </>)}
+
       <ConfirmDialog
         isOpen={clearConfirm}
         onClose={() => setClearConfirm(false)}

@@ -445,6 +445,26 @@ export default function DlSearchPage() {
               dl_endorsements: (parsed as any).dl_endorsements || '',
               address: (parsed as any).address || '', city: (parsed as any).city || '',
               state: (parsed as any).state || '', zip: (parsed as any).zip || '',
+              // AAMVA-specific fields for scan-log columns + persons_ext backfill.
+              raw_aamva_text: (parsed as any).raw_aamva_text ?? null,
+              aamva_version: (parsed as any).aamva_version ?? null,
+              card_type: (parsed as any).card_type ?? null,
+              is_real_id: (parsed as any).is_real_id ?? null,
+              is_organ_donor: (parsed as any).is_organ_donor ?? null,
+              is_veteran: (parsed as any).is_veteran ?? null,
+              issuer_id: (parsed as any).issuer_id || null,
+              non_resident_indicator: (parsed as any).non_resident_indicator ?? null,
+              limited_duration_doc: (parsed as any).limited_duration_doc ?? null,
+              place_of_birth: (parsed as any).place_of_birth || null,
+              name_prefix: (parsed as any).name_prefix || null,
+              card_revision_date: (parsed as any).card_revision_date || null,
+              dl_hazmat_expiry: (parsed as any).dl_hazmat_expiry || null,
+              under_18_until: (parsed as any).under_18_until || null,
+              under_21_until: (parsed as any).under_21_until || null,
+              raw_aamva_elements: (parsed as any).raw_aamva_elements ?? null,
+              address2: (parsed as any).address2 || null,
+              decode_passes: (parsed as any).decode_passes ?? null,
+              decode_ms: (parsed as any).decode_ms ?? null,
               raw_record: JSON.stringify(parsed),
               findings: {
                 sweep_total: sweep.total,
@@ -688,7 +708,7 @@ export default function DlSearchPage() {
 
   // Shared barcode pipeline — used by photo upload, the live camera
   // scanner, recent-scan replay, and phone-relay receipt.
-  const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean }): Promise<boolean> => {
+  const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean; decodePasses?: number; decodeMs?: number }): Promise<boolean> => {
     try {
       const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock, describeRestrictions, describeEndorsements, describeClass } = await importWithRetry(() => import('../utils/aamvaParser'));
       if (!looksLikeAamva(rawText)) return false;
@@ -734,6 +754,26 @@ export default function DlSearchPage() {
           organ_donor: parsed.is_organ_donor === null ? '' : parsed.is_organ_donor ? 'YES' : 'NO',
           veteran: parsed.is_veteran === null ? '' : parsed.is_veteran ? 'YES' : 'NO',
           scan_method: 'PDF417 BARCODE',
+          // AAMVA persistence fields — sent to scan-log and persons_ext backfill.
+          raw_aamva_text: rawText,
+          aamva_version: String(parsed.aamva_version ?? ''),
+          card_type: parsed.card_type,
+          is_real_id: parsed.is_real_id,
+          is_organ_donor: parsed.is_organ_donor,
+          is_veteran: parsed.is_veteran,
+          issuer_id: parsed.issuer_id || '',
+          non_resident_indicator: parsed.non_resident_indicator,
+          limited_duration_doc: parsed.limited_duration_doc,
+          place_of_birth: parsed.place_of_birth || '',
+          name_prefix: parsed.name_prefix || '',
+          card_revision_date: parsed.card_revision_date || '',
+          dl_hazmat_expiry: parsed.dl_hazmat_expiry || '',
+          under_18_until: parsed.under_18_until || '',
+          under_21_until: parsed.under_21_until || '',
+          raw_aamva_elements: JSON.stringify(parsed.raw_elements ?? {}),
+          address2: parsed.address2 || '',
+          decode_passes: opts?.decodePasses ?? null,
+          decode_ms: opts?.decodeMs ?? null,
         };
       setUploadedRecord(null);
       setShowFullReadout(false);
@@ -778,7 +818,7 @@ export default function DlSearchPage() {
     try {
       const { decodePdf417 } = await importWithRetry(() => import('../utils/pdf417Decoder'));
       const decoded = await decodePdf417(file);
-      if (decoded && await processBarcodeText(decoded.text)) {
+      if (decoded && await processBarcodeText(decoded.text, { decodePasses: decoded.passes, decodeMs: decoded.decodeMs })) {
         setOcrLoading(false);
         return;
       }

@@ -1,27 +1,32 @@
 # Desktop Tests — runs the Electron desktop app's local `node --test` suite
-# (desktop/__tests__ + desktop/security/__tests__) on every PR/push touching
-# desktop/. Mirrors the "Desktop tests" step of .husky/pre-push — until now
-# that hook was the ONLY place these tests ran; desktop-release.yml only
-# builds/publishes the Windows installer on version tags and never calls
-# `npm test`, so a contributor bypassing pre-push (--no-verify) shipped with
-# zero CI coverage for desktop/.
+# (desktop/__tests__ + desktop/security/__tests__) on every PR touching desktop/.
+# Mirrors the [5/5] "Desktop tests" stage of .husky/pre-push — until now that
+# hook was the ONLY place these tests ran; a contributor bypassing pre-push
+# (--no-verify) shipped with zero CI coverage for desktop/.
 #
-# Scoped to desktop/** via path filters (unlike pr-tests.yml's jobs, which
-# always run) since this suite only exercises code under desktop/.
+# NOT in pr-tests.yml: path-filtered to desktop/** and uses a separate runner
+# from the vitest/jsdom jobs, so it doesn't slow down every PR.
 #
-# Runs on windows-latest because the desktop app is a Windows-first Electron
-# app — native modules (serialport, node-hid, usb-detection) and
-# platform-specific IPC handlers (WMI, PowerShell, reg.exe) only exercise
-# their real code paths on Windows. ubuntu runners skip all Windows-gated
-# code paths, giving zero coverage of the actual deployment target.
+# NOT the client-desktop-tests job in pr-tests.yml — that job runs
+# vitest.desktop.config.ts (a jsdom suite inside client/). This job runs
+# `node --test` inside desktop/ itself, which is the Electron app's own unit
+# suite covering DB, sync, camera, hardware, and IPC logic.
+#
+# Runs on windows-latest: the desktop app is a Windows-first Electron app.
+# Native modules (serialport, node-hid, usb-detection) and platform-specific
+# IPC handlers (WMI, PowerShell, reg.exe) only exercise their real code paths on
+# Windows. Ubuntu runners skip all Windows-gated code paths, giving zero coverage
+# of the actual deployment target.
+#
+# ABI note: npm ci's postinstall runs electron-rebuild, leaving better-sqlite3
+# compiled for Electron's ABI. The DB-backed tests run under plain `node --test`
+# (Node's ABI) and fail with NODE_MODULE_VERSION mismatch without a rebuild.
+# The CI runner is ephemeral — no Electron-ABI restore is needed after the test
+# (unlike the pre-push hook which must restore it for `npm start` to keep working).
 name: Desktop Tests
 
 on:
   pull_request:
-    branches: [main]
-    paths:
-      - 'desktop/**'
-  push:
     branches: [main]
     paths:
       - 'desktop/**'
@@ -34,23 +39,33 @@ permissions:
   contents: read
 
 jobs:
-  desktop-tests:
-    name: Desktop tests (Windows)
+  desktop-node-tests:
+    name: Desktop Node tests (Windows)
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - run: cd desktop && npm ci
+
+      # Skip downloading the Electron binary — we only need native module
+      # compilation (electron-rebuild), not a running Electron process.
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-      # npm ci's postinstall runs electron-rebuild, leaving better-sqlite3 built
-      # for Electron's ABI. The DB-backed tests run under plain `node --test`
-      # (Node's ABI), so without this they fail with a NODE_MODULE_VERSION
-      # mismatch — mirrors the same rebuild .husky/pre-push does locally.
-      - run: cd desktop && npm rebuild better-sqlite3
-      - run: cd desktop && npm test
+
+      # Rebuild better-sqlite3 for the Node ABI so `node --test` can load it.
+      # Runner is ephemeral — Electron-ABI restore is not needed afterward.
+      - name: Rebuild better-sqlite3 for Node ABI
+        working-directory: desktop
+        run: npm rebuild better-sqlite3
+
+      - name: Run desktop Node tests
+        working-directory: desktop
+        run: npm test

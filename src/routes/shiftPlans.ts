@@ -799,6 +799,17 @@ sp.post('/shift-plans/templates', async (c) => {
   return c.json({ data: created }, 201);
 });
 
+// DELETE /shift-plans/templates/:id — delete a template
+sp.delete('/shift-plans/templates/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await execute(db, 'DELETE FROM shift_plan_templates WHERE id = ?', id);
+  return c.json({ success: true });
+});
+
 // POST /shift-plans/apply-template/:templateId — apply a template to a date range
 sp.post('/shift-plans/apply-template/:templateId', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');

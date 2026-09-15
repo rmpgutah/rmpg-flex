@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo } from '../../../types';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, mtDatetimeLocalToUtc } from '../../../utils/dateUtils';
 
 export interface OfficerWithStatus extends Omit<UserType, 'status'> {
   status: string;
@@ -69,18 +69,20 @@ export function mapSchedule(row: any): Schedule {
   const startTime = row.start_time || '00:00:00';
   const endTime = row.end_time || '00:00:00';
 
-  const shiftStart = shiftDate ? `${shiftDate}T${startTime}` : '';
+  // Stored times are Denver wall-clock — convert to UTC so parseTimestamp()
+  // and toLocaleString(timeZone:'America/Denver') round-trip correctly.
+  const shiftStart = shiftDate ? mtDatetimeLocalToUtc(`${shiftDate}T${startTime}`) : '';
   let shiftEnd = '';
   if (shiftDate) {
+    let endDateStr = shiftDate;
     if (endTime <= startTime) {
-      const nextDay = parseTimestamp(shiftDate);
-      nextDay.setDate(nextDay.getDate() + 1);
+      // Cross-midnight shift: end time is on the next calendar day (Denver local).
+      const [y, mo, d] = shiftDate.split('-').map(Number);
+      const next = new Date(y, mo - 1, d + 1); // new-date-ok — integer args, not a server string
       const pad = (n: number) => String(n).padStart(2, '0');
-      const nextDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
-      shiftEnd = `${nextDateStr}T${endTime}`;
-    } else {
-      shiftEnd = `${shiftDate}T${endTime}`;
+      endDateStr = `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
     }
+    shiftEnd = mtDatetimeLocalToUtc(`${endDateStr}T${endTime}`);
   }
 
   return {

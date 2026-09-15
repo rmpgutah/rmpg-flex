@@ -1,10 +1,21 @@
 # Apply one D1 migration file to live `rmpg-flex` and mark it tracked.
 #
-# Why this exists: `deploy.yml` runs `wrangler d1 migrations apply --remote`
-# against EVERY untracked file. That aborts at the first bare ALTER that
-# already exists on live (today: 0227 starting_mileage), so later files
-# like 0270 never run. This workflow executes a single file via
-# `d1 execute --file` — the same path as scripts/apply-migration.sh.
+# Why this exists (ORIGINAL, now FIXED): deploy.yml used to run
+# `wrangler d1 migrations apply --remote` across every untracked file, which
+# aborted at the first bare ALTER already present on live (0227
+# starting_mileage), so later files never ran while the deploy still went
+# green. deploy.yml no longer does that — it runs
+# scripts/d1PendingMigrations.ts (statement-by-statement, duplicate-column
+# tolerated, blocking) followed by scripts/check-migration-drift.sh, so the
+# routine path is self-healing and needs no manual step.
+#
+# So this workflow is now the ESCAPE HATCH, not the normal path. Reach for it
+# when the drift check goes red, during an emergency hotfix, or to repair a
+# d1_migrations tracker row. It is safe to re-run: a duplicate-column /
+# already-exists error is treated as an idempotent re-apply, and the final
+# step prints the file's d1_migrations row so a no-op is obvious
+# (changed_db: false). Prefer it over scripts/apply-migration.sh, which
+# prompts on stdin and therefore hangs in non-interactive shells.
 #
 # Usage:
 #   gh workflow run apply-d1-migration.yml -f filename=0270_tesseract_box_page_number.sql
@@ -19,14 +30,12 @@ on:
         required: true
         type: string
         default: 0270_tesseract_box_page_number.sql
-  # First-merge bootstrap: opening/updating a PR that adds this workflow
-  # applies 0270 so we do not wait for a second dispatch after it lands on main.
-  pull_request:
-    paths:
-      - '.github/workflows/apply-d1-migration.yml'
+  # pull_request trigger intentionally removed: this workflow writes directly to
+  # live production D1 via wrangler d1 execute --remote, so it must only run on
+  # explicit workflow_dispatch — never automatically on a PR open/update.
 
 concurrency:
-  group: apply-d1-${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
+  group: apply-d1-${{ github.event.inputs.filename }}
   cancel-in-progress: false
 
 permissions:
@@ -34,7 +43,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -52,7 +61,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          FILENAME: ${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
+          FILENAME: ${{ github.event.inputs.filename }}
         run: |
           set -euo pipefail
           case "$FILENAME" in
@@ -85,6 +94,6 @@ jobs:
           echo "Tracking $FILENAME in d1_migrations..."
           npx wrangler d1 execute rmpg-flex --remote \
             --command "INSERT OR IGNORE INTO d1_migrations (name, applied_at) VALUES ('${FILENAME}', datetime('now'))"
-          echo "Verifying tesseract_box_annotations.page_number..."
+          echo "Verifying $FILENAME is tracked in d1_migrations..."
           npx wrangler d1 execute rmpg-flex --remote \
-            --command "SELECT cid, name, type, dflt_value FROM pragma_table_info('tesseract_box_annotations') WHERE name = 'page_number'"
+            --command "SELECT name, applied_at FROM d1_migrations WHERE name = '${FILENAME}'"

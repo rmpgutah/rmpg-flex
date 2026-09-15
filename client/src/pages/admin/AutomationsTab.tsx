@@ -4,6 +4,7 @@ import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import AutomationRuleEditor from '../../components/AutomationRuleEditor';
 import { formatDateTime } from '../../utils/dateUtils';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface Rule {
   id: number;
@@ -234,8 +235,8 @@ export default function AutomationsTab() {
               {rules.map((rule) => (
                 <tr key={rule.id} className="border-t border-surface-border hover:bg-surface-raised/30">
                   <td className="py-[2px] px-2 text-text-primary">{rule.name}</td>
-                  <td className="py-[2px] px-2 text-text-secondary">{rule.trigger_type.replace(/_/g, ' ')}</td>
-                  <td className="py-[2px] px-2 text-text-secondary">{rule.action_type.replace(/_/g, ' ')}</td>
+                  <td className="py-[2px] px-2 text-text-secondary">{formatEnumValue(rule.trigger_type)}</td>
+                  <td className="py-[2px] px-2 text-text-secondary">{formatEnumValue(rule.action_type)}</td>
                   <td className="py-[2px] px-2 text-text-muted">
                     {rule.scope}{rule.scope_id ? ` #${rule.scope_id}` : ''}
                   </td>
@@ -324,7 +325,7 @@ export default function AutomationsTab() {
                 <p className="text-[11px] font-semibold text-text-primary">{tpl.name}</p>
                 <p className="text-[10px] text-text-muted mt-0.5">{tpl.description}</p>
                 <p className="text-[10px] text-text-secondary mt-1">
-                  {tpl.trigger_type.replace(/_/g, ' ')} → {tpl.action_type.replace(/_/g, ' ')}
+                  {formatEnumValue(tpl.trigger_type)} → {formatEnumValue(tpl.action_type)}
                 </p>
               </div>
               <button

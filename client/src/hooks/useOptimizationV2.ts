@@ -15,6 +15,10 @@ export interface UseOptimizationV2 {
   solution: V2Solution | null;
   elapsedMs: number;
   error: string | null;
+  avgMpg: number | null;
+  routeCount: number;
+  totalDistanceMeters: number;
+  totalDurationSeconds: number;
   reset(): void;
 }
 
@@ -23,11 +27,13 @@ export function useOptimizationV2(): UseOptimizationV2 {
   const [solution, setSolution] = useState<V2Solution | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [avgMpg, setAvgMpg] = useState<number | null>(null);
 
   const jobIdRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startMsRef = useRef<number>(0);
   const mountedRef = useRef(true);
+  const generationRef = useRef(0);
 
   const clearPolling = useCallback(() => {
     if (intervalRef.current != null) {
@@ -38,11 +44,13 @@ export function useOptimizationV2(): UseOptimizationV2 {
 
   const reset = useCallback(() => {
     clearPolling();
+    generationRef.current += 1;
     jobIdRef.current = null;
     setStatus('idle');
     setSolution(null);
     setElapsedMs(0);
     setError(null);
+    setAvgMpg(null);
   }, [clearPolling]);
 
   // Clear interval and mark unmounted on cleanup
@@ -50,22 +58,33 @@ export function useOptimizationV2(): UseOptimizationV2 {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      generationRef.current += 1;
       clearPolling();
     };
   }, [clearPolling]);
 
   const startPolling = useCallback((jobId: string) => {
     startMsRef.current = Date.now();
+    const generation = generationRef.current;
+    let inFlight = false;
 
     intervalRef.current = setInterval(async () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || generation !== generationRef.current || inFlight) return;
+      if (Date.now() - startMsRef.current > 11 * 60_000) {
+        clearPolling();
+        setStatus('error');
+        setError('timed_out');
+        return;
+      }
+      inFlight = true;
       setElapsedMs(Date.now() - startMsRef.current);
       try {
         const result = await pollOptimizationJob(jobId);
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || generation !== generationRef.current) return;
         if (result.status === 'complete') {
           clearPolling();
           setSolution(result.solution ?? null);
+          setAvgMpg(result.avg_mpg ?? null);
           setStatus('complete');
         } else if (result.status === 'error') {
           clearPolling();
@@ -76,15 +95,17 @@ export function useOptimizationV2(): UseOptimizationV2 {
         }
       } catch {
         // Transient network error — keep polling
-      }
+      } finally { inFlight = false; }
     }, POLL_INTERVAL_MS);
   }, [clearPolling]);
 
   const submit = useCallback(async (params: SubmitParams) => {
     reset();
     setStatus('pending');
+    const generation = generationRef.current;
     try {
       const resp = await submitOptimizationJob(params);
+      if (!mountedRef.current || generation !== generationRef.current) return;
       if (resp.skipped || !resp.job_id) {
         setError(resp.code ?? 'not_configured');
         setStatus('error');
@@ -94,10 +115,25 @@ export function useOptimizationV2(): UseOptimizationV2 {
       setStatus('processing');
       startPolling(resp.job_id);
     } catch (err: unknown) {
+      if (!mountedRef.current || generation !== generationRef.current) return;
       setError(err instanceof Error ? err.message : 'Submit failed');
       setStatus('error');
     }
   }, [reset, startPolling]);
+
+  // Memoize computed route summaries from solution
+  const routeCount = useMemo(() => solution?.routes.length ?? 0, [solution]);
+  const totalDistanceMeters = useMemo(
+    () => solution?.routes.reduce((acc, r) => {
+      const lastStop = r.stops[r.stops.length - 1];
+      return acc + (r.distance ?? lastStop?.odometer ?? 0);
+    }, 0) ?? 0,
+    [solution],
+  );
+  const totalDurationSeconds = useMemo(
+    () => solution?.routes.reduce((acc, r) => acc + (r.duration ?? 0), 0) ?? 0,
+    [solution],
+  );
 
   // Memoize the returned object so callers get a stable reference between
   // renders. Without this, every render creates a new object — any useCallback
@@ -105,7 +141,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
   // DispatchPage) is recreated every render, and any child component with that
   // callback in a useEffect dep re-runs the effect every render.
   return useMemo(
-    () => ({ submit, status, solution, elapsedMs, error, reset }),
-    [submit, status, solution, elapsedMs, error, reset],
+    () => ({ submit, status, solution, elapsedMs, error, avgMpg, routeCount, totalDistanceMeters, totalDurationSeconds, reset }),
+    [submit, status, solution, elapsedMs, error, avgMpg, routeCount, totalDistanceMeters, totalDurationSeconds, reset],
   );
 }

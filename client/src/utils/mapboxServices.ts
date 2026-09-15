@@ -104,7 +104,7 @@ export async function getIsochrone(
   lng: number,
   lat: number,
   minutes: number[] = [5, 10],
-  profile: 'driving' | 'walking' | 'cycling' = 'driving',
+  profile: 'driving' | 'driving-traffic' | 'walking' | 'cycling' = 'driving-traffic',
 ) {
   const mins = minutes.join(',');
   return apiFetch<{ features: IsochroneContour[] }>(
@@ -116,7 +116,7 @@ export async function getIsochrone(
 
 export async function getMatrix(
   coordinates: [number, number][],
-  profile: 'driving' | 'driving-traffic' | 'walking' | 'cycling' = 'driving',
+  profile: 'driving' | 'driving-traffic' | 'walking' | 'cycling' = 'driving-traffic',
   options?: { sources?: number[]; destinations?: number[] },
 ) {
   const coords = coordinates.map(([lng, lat]) => `${lng},${lat}`).join(';');
@@ -134,7 +134,7 @@ export async function getMatrix(
 
 export async function getOptimizedRoute(
   waypoints: [number, number][],
-  profile: 'driving' | 'driving-traffic' = 'driving',
+  profile: 'driving' | 'driving-traffic' = 'driving-traffic',
   source: 'first' | 'any' = 'any',
   destination: 'last' | 'any' = 'any',
   roundtrip = false,
@@ -154,7 +154,7 @@ export async function getOptimizedRoute(
 
 export async function matchToRoad(
   coordinates: [number, number][],
-  profile: 'driving' | 'walking' | 'cycling' = 'driving',
+  profile: 'driving' | 'driving-traffic' | 'walking' | 'cycling' = 'driving-traffic',
 ) {
   return apiFetch<MapMatchResult>(`/mapbox/map-matching`, {
     method: 'POST',

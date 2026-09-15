@@ -107,10 +107,11 @@ files.get('/:id/file-folders', async (c) => {
   const intake = await query<{
     id: number; file_name: string | null; file_type: string | null; size_bytes: number | null;
     page_count: number | null; doc_type: string | null; confidence: number | null;
-    status: string | null; created_at: string | null;
+    status: string | null; created_at: string | null; has_file: number;
   }>(
     db,
-    `SELECT id, file_name, file_type, size_bytes, page_count, doc_type, confidence, status, created_at
+    `SELECT id, file_name, file_type, size_bytes, page_count, doc_type, confidence, status, created_at,
+            (r2_key IS NOT NULL) AS has_file
        FROM serve_intake_documents
       WHERE serve_queue_id = ?
       ORDER BY id DESC`,

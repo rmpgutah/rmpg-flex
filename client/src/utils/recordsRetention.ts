@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ============================================================
 // RMPG Flex — Records Retention (Spillman Flex Standard)
 // 10 retention features: retention schedules, destruction
@@ -24,7 +25,7 @@ export const RETENTION_SCHEDULES: Record<string, RetentionSchedule> = {
 export function getRetentionSchedule(recordType:string): RetentionSchedule { return RETENTION_SCHEDULES[recordType]||{recordType:'General',retentionYears:5,statutoryBasis:'Agency Policy',triggerEvent:'created_date',destructionMethod:'shred',requiresApproval:true}; }
 /* FEATURE 82: Destruction Workflow */
 export interface DestructionRequest { id:string; recordsType:string; quantity:number; retentionMet:boolean; triggerDate:string; requestedBy:string; approvedBy:string|null; destructionDate:string|null; method:string; witness:string|null; certificateOnFile:boolean; }
-export function approveDestruction(request:DestructionRequest, approver:string): DestructionRequest { return { ...request, approvedBy:approver, destructionDate:new Date().toISOString().slice(0,10) }; }
+export function approveDestruction(request:DestructionRequest, approver:string): DestructionRequest { return { ...request, approvedBy:approver, destructionDate:localToday() }; }
 /* FEATURE 83: Legal Holds */
 export interface LegalHold { id:string; caseNumber:string; holdType:'litigation'|'investigation'|'audit'|'appeal'|'FOIA'; recordsAffected:string[]; issuedBy:string; issuedDate:string; releaseDate:string|null; status:'active'|'released'; }
 export function checkLegalHolds(recordType:string, holds:LegalHold[]): { onHold:boolean; activeHolds:LegalHold[] } { const active=holds.filter(h=>h.status==='active'&&h.recordsAffected.includes(recordType)); return { onHold:active.length>0, activeHolds:active }; }
@@ -36,7 +37,7 @@ export interface DigitizationProject { id:string; recordType:string; physicalRec
 export function calculateDigitizationProgress(projects:DigitizationProject[]): { totalRecords:number; digitized:number; progressPct:number } { const total=projects.reduce((s,p)=>s+p.physicalRecords,0); const digitized=projects.reduce((s,p)=>s+p.digitizedRecords,0); return { totalRecords:total, digitized, progressPct:total>0?Math.round(digitized/total*100):0 }; }
 /* FEATURE 86: Compliance Auditing */
 export interface RetentionAudit { id:string; auditDate:string; auditor:string; recordsReviewed:number; compliant:number; nonCompliant:number; findings:string[]; overallResult:'pass'|'fail'|'needs_improvement'; }
-export function conductRetentionAudit(records:Array<{retentionMet:boolean}>): RetentionAudit { const compliant=records.filter(r=>r.retentionMet).length; const nonCompliant=records.length-compliant; const rate=records.length>0?compliant/records.length:0; return { id:`audit-${Date.now()}`,auditDate:new Date().toISOString().slice(0,10),auditor:'',recordsReviewed:records.length,compliant,nonCompliant,findings:nonCompliant>0?[`${nonCompliant} records past retention deadline`]:[],overallResult:rate>=0.95?'pass':rate>=0.80?'needs_improvement':'fail' }; }
+export function conductRetentionAudit(records:Array<{retentionMet:boolean}>): RetentionAudit { const compliant=records.filter(r=>r.retentionMet).length; const nonCompliant=records.length-compliant; const rate=records.length>0?compliant/records.length:0; return { id:`audit-${Date.now()}`,auditDate:localToday(),auditor:'',recordsReviewed:records.length,compliant,nonCompliant,findings:nonCompliant>0?[`${nonCompliant} records past retention deadline`]:[],overallResult:rate>=0.95?'pass':rate>=0.80?'needs_improvement':'fail' }; }
 /* FEATURE 87: Retention Policy Management */
 export interface RetentionPolicy { id:string; policyName:string; effectiveDate:string; lastReviewed:string; nextReview:string; approvedBy:string; status:'active'|'under_review'|'superseded'; }
 export function checkPolicyReviewStatus(policies:RetentionPolicy[]): { total:number; overdue:number } { const now=new Date(); return { total:policies.length, overdue:policies.filter(p=>parseTimestamp(p.nextReview)<now).length }; }

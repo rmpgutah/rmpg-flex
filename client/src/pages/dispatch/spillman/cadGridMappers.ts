@@ -55,7 +55,7 @@ export function cadUnitColor(status: string | null | undefined): string {
 }
 
 export function timeHHMM(iso: string | null | undefined): string {
-  if (!iso || Number.isNaN(new Date(iso).getTime())) return '';
+  if (!iso || Number.isNaN(parseTimestamp(iso).getTime())) return '';
   const d = parseTimestamp(iso);
   return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
 }

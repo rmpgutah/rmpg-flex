@@ -86,7 +86,7 @@ function zoneOffsetMs(d: Date): number {
 }
 
 /**
- * Returns today's date as "YYYY-MM-DD" in the browser's local timezone.
+ * Returns today's date as "YYYY-MM-DD" in Mountain Time.
  * Avoids the `.toISOString().split('T')[0]` pattern which uses UTC and
  * produces incorrect dates near midnight in non-UTC timezones.
  */
@@ -125,35 +125,21 @@ export function dateToLocalYMD(d: Date): string {
  * A fixed -7h was also wrong half the year — MDT is UTC-6, not -7.)
  */
 export function parseTimestamp(dateStr: string | null | undefined): Date {
-  if (!dateStr) return new Date();
+  if (dateStr == null) return new Date();
 
-  // Already has timezone info (T with + or -, or Z suffix) — parse directly
-  if (dateStr.includes('T') && (dateStr.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateStr))) {
-    return new Date(dateStr);
+  const raw = dateStr.trim();
+  // Normalize the SQLite separator before checking the suffix: an explicit
+  // offset on a space-separated timestamp must never receive a second Z.
+  const normalized = raw.replace(/^(\d{4}-\d{2}-\d{2})[ t]/i, '$1T');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)) {
+    return new Date(/[zZ]$|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : normalized + 'Z');
   }
-
-  // Naive "YYYY-MM-DD HH:MM:SS" — server stores these as UTC wall-clock.
-  // Append 'Z' so JS parses as UTC; the browser then renders in the
-  // viewer's local timezone (DST-aware).
-  if (dateStr.includes(' ') && !dateStr.includes('T')) {
-    return new Date(dateStr.replace(' ', 'T') + 'Z');
+  // Calendar dates belong to Denver, regardless of the device timezone.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(mtDatetimeLocalToUtc(raw + 'T00:00:00').replace(' ', 'T') + 'Z');
   }
-  // Same for naive ISO without offset ("2025-01-15T14:30:00") — treat as UTC.
-  if (dateStr.includes('T') && !dateStr.includes('Z') && !/[+-]\d{2}:?\d{2}$/.test(dateStr)
-      && /\d{2}:\d{2}/.test(dateStr)) {
-    return new Date(dateStr + 'Z');
-  }
-
-  // Date-only "YYYY-MM-DD" — append T00:00:00 to force LOCAL timezone parsing
-  // Without this, `new Date('2026-03-28')` is parsed as UTC midnight, which
-  // in Mountain Time (UTC-7) becomes 2026-03-27T17:00:00 — the PREVIOUS day.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return new Date(dateStr + 'T00:00:00');
-  }
-
-  // Other formats — let the browser handle it
-  const result = new Date(dateStr);
-  return isNaN(result.getTime()) ? new Date() : result;
+  // Invalid values stay invalid so timers cannot mistake them for "now".
+  return new Date(raw);
 }
 
 /**
@@ -327,11 +313,11 @@ export function isPast(dateStr: string | null | undefined): boolean {
 }
 
 /**
- * Get the start and end of today in Mountain Time (as naive wall-clock strings).
+ * Get the UTC storage bounds of the current Mountain calendar day.
  */
 export function todayRange(): { start: string; end: string } {
-  const today = localToday(); // MT "YYYY-MM-DD"
-  return { start: `${today}T00:00:00`, end: `${today}T23:59:59` };
+  const today = localToday();
+  return { start: mtDatetimeLocalToUtc(`${today}T00:00:00`), end: mtDatetimeLocalToUtc(`${today}T23:59:59`) };
 }
 
 /**
@@ -355,11 +341,27 @@ export function toDatetimeLocalValue(dateStr: string | null | undefined): string
  */
 export function mtDatetimeLocalToUtc(localStr: string | null | undefined): string {
   if (!localStr) return '';
-  const naive = localStr.length === 16 ? `${localStr}:00` : localStr; // ensure seconds
+  const raw = localStr.trim().replace(' ', 'T');
+  const naive = raw.length === 10 ? `${raw}T00:00:00`
+    : raw.length === 16 ? `${raw}:00` : raw.replace(/\.\d+$/, '');
   // Provisional instant: treat the wall-clock as if it were UTC, then subtract
   // the actual Mountain Time offset at that instant to get the true UTC time.
   const provisional = new Date(`${naive}Z`);
   if (isNaN(provisional.getTime())) return '';
-  const utc = new Date(provisional.getTime() - zoneOffsetMs(provisional));
-  return utc.toISOString().replace('T', ' ').slice(0, 19);
+  // Resolve at the resulting instant, not at the provisional UTC wall clock.
+  // On transition days those instants can have different DST offsets.
+  // Prefer the earlier occurrence of a repeated fall-back wall clock.
+  const offsets = new Set([
+    zoneOffsetMs(new Date(provisional.getTime() - 86400000)),
+    zoneOffsetMs(new Date(provisional.getTime() + 86400000)),
+  ]);
+  const candidates = [...offsets].map(offset => provisional.getTime() - offset).sort((a, b) => a - b);
+  for (const ms of candidates) {
+    const candidate = new Date(ms);
+    const p = zoneParts(candidate);
+    const wall = `${p.year}-${pad2(p.month)}-${pad2(p.day)}T${pad2(p.hour)}:${pad2(p.minute)}:${pad2(p.second)}`;
+    if (wall === naive) return candidate.toISOString().replace('T', ' ').slice(0, 19);
+  }
+  // Nonexistent spring-forward times cannot be saved as another wall clock.
+  return '';
 }

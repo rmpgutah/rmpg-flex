@@ -116,14 +116,19 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
   const [interfaces, setInterfaces] = useState<NetworkInterface[] | null>(null);
   const [ifaceLoading, setIfaceLoading] = useState(false);
 
-  const refreshInterfaces = useCallback(() => {
-    if (!window.electronAPI?.sysNetworkInterfaces) {
+  const refreshInterfaces = useCallback(async () => {
+    const el = (window as any).electron;
+    if (!el?.getNetworkInterfaces) {
       setInterfaces([]);
       return;
     }
     setIfaceLoading(true);
-    const result = window.electronAPI.sysNetworkInterfaces();
-    setInterfaces(result ?? []);
+    try {
+      const result = await el.getNetworkInterfaces();
+      setInterfaces(result ?? []);
+    } catch {
+      setInterfaces([]);
+    }
     setIfaceLoading(false);
   }, []);
 
@@ -336,7 +341,7 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
               >CSV</button>
             )}
 
-            {!window.electronAPI?.sysNetworkInterfaces && (
+            {!(window as any).electron?.getNetworkInterfaces && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 0' }}>
                 Network interface details require the desktop app.
               </div>

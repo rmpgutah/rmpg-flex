@@ -88,7 +88,12 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
   function isNightShift(s: Schedule): boolean {
     if (!s.shift_start) return false;
-    const hour = parseTimestamp(s.shift_start).getHours();
+    const d = parseTimestamp(s.shift_start);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver', hour: '2-digit', hour12: false,
+    }).formatToParts(d);
+    const h = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+    const hour = h === 24 ? 0 : h;
     return hour >= 18 || hour < 6;
   }
 

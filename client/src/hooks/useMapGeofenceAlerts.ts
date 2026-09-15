@@ -14,7 +14,7 @@ import { apiFetch } from './useApi';
 import { escapeHtml } from '../utils/sanitize';
 import { devLog, devWarn } from '../utils/devLog';
 import { asArray } from '../utils/asArray';
-import { safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { safeRemoveLayer, safeRemoveSource, getSourceSafe, safeMapboxColor } from '../utils/mapboxSafeLayer';
 import { withAlpha } from '../utils/withAlpha';
 
 // ── Types ─────────────────────────────────────────────────
@@ -174,7 +174,7 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
             id: g.id,
             name: g.name,
             zoneType: g.type,
-            color: ZONE_TYPE_COLORS[g.type] || g.color || '#888',
+            color: safeMapboxColor(ZONE_TYPE_COLORS[g.type] || g.color, '#888888'),
           },
           geometry: {
             type: 'Polygon' as const,

@@ -44,6 +44,18 @@ export const AI_TIMEOUT_MS = 45_000;
 // without the total ever breaching the edge cutoff.
 export const TOTAL_AI_BUDGET_MS = 90_000;
 
+// Floor for the Workers-AI fallback leg. A slow-but-fallbackable Claude/OpenAI
+// response (e.g. a transient overload 5xx) isn't caught by callAi()'s cooldown
+// breaker — that only trips on persistent failures like a dead key — so it can
+// burn most of the 45s Claude leg ceiling on a real network round-trip before
+// falling through. That left the free Workers-AI leg starved with whatever
+// budget remained, which is what caused live 'Vision/Text extraction timed
+// out' errors even though Workers AI itself had plenty of room to succeed.
+// Guaranteeing this floor means the total can exceed TOTAL_AI_BUDGET_MS by a
+// bounded amount (worst case ~30s over) — an accepted tradeoff vs. starving
+// the fallback that's supposed to be the reliable path.
+export const MIN_FALLBACK_LEG_MS = 30_000;
+
 /**
  * A shared deadline for one sequential fallback chain. Call the returned
  * function per attempt to get that attempt's timeout:
@@ -78,7 +90,9 @@ export async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: st
   const claude = await withTimeout(
     extractFromImageClaude(env, bytes, mime), leg(), 'Claude OCR timed out',
   ).catch(() => null);
-  return claude ?? withTimeout(extractFromImage(env.AI, bytes), leg(), 'Vision OCR timed out');
+  return claude ?? withTimeout(
+    extractFromImage(env.AI, bytes), Math.max(leg(), MIN_FALLBACK_LEG_MS), 'Vision OCR timed out',
+  );
 }
 // docType (see familyFromFileName / buildFamilyPrompt) reaches BOTH legs. It
 // used to be passed only to the Workers-AI fallback, which meant that the
@@ -92,6 +106,7 @@ export async function ocrText(env: Env['Bindings'], text: string, docType?: stri
     extractFromTextClaude(env, text, docType), leg(), 'Claude text timed out',
   ).catch(() => null);
   return claude ?? withTimeout(
-    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA, docType), leg(), 'Text extraction timed out',
+    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA, docType),
+    Math.max(leg(), MIN_FALLBACK_LEG_MS), 'Text extraction timed out',
   );
 }

@@ -48,7 +48,7 @@ export function useMapIsochrone({
 
     try {
       const data = await mapboxIsochrone(lng, lat, {
-        profile: 'driving',
+        profile: 'driving-traffic',
         minutes: MINUTE_CONTOURS,
       });
 

@@ -150,7 +150,35 @@ jobs:
     runs-on: ubuntu-latest
     # 2026-09-04: suite consistently hits 25 min across PRs #4111/#4112/#4113.
     # No new tests added — runner growth + existing suite depth. Raised to 35.
-    timeout-minutes: 35
+    # 2026-09-04: OOM at 8192 MB on two consecutive runs (heap hit ~8080 MB of
+    # active data; 24 jsdom environments in parallel each hold 300–500 MB).
+    # Raised to 12288 to match client-tests; parallelism capped at 2 forks in
+    # vitest.desktop.config.ts to bound peak RSS across concurrent environments.
+    # 2026-09-04: maxForks:2 serialises the suite but OOM still hits the ceiling
+    # because one heavy test file alone exceeds it (same pattern as client-tests
+    # which was fixed by raising 8192→12288). Reverted maxForks, raised to 14336.
+    # ubuntu-latest is 16 GB; 14336 leaves ~1.7 GB for the OS and sibling processes.
+    # 2026-09-05: full parallelism at 14336 MB takes >60 min wall-clock (suite
+    # cancelled at the ceiling on two consecutive runs — 35 min and 60 min). Root
+    # cause: 24 heavy jsdom forks competing for RAM on a 2-4 vCPU runner causes
+    # GC contention that slows every file. Reverted to maxForks:2 in
+    # vitest.desktop.config.ts to bound peak RSS; raised timeout to 90 min so
+    # the semi-serialized suite completes (Run 2 at maxForks:2+12288 MB passed
+    # 23/24 files in 57 min — 14336 MB covers the one file that OOM'd).
+    # 2026-09-05: maxForks:2+14336 MB consistently takes ~90 min wall-clock and
+    # hit the 90 min ceiling twice (runner loss at 82 min, timeout at 90 min).
+    # Raised to 120 min to give the semi-serialized suite room to complete.
+    # 2026-09-08: ROOT CAUSE FOUND — none of the above was runner growth or
+    # suite depth. DesktopRecycleBin refreshed its state from a dependency-less
+    # useEffect with a fresh array each call, so any test that mounted
+    # DesktopPage re-rendered forever under act() until V8 hit the heap limit
+    # (~8 GB, ~60 min) and vitest reported the file as neither passed nor
+    # failed (23/24 files "passed"). Fixed in the component
+    # (useSyncExternalStore) and pinned by DesktopRecycleBin.test.tsx; the
+    # `poolOptions.forks.maxForks` cap was also a no-op on Vitest 4 (removed
+    # option) and is now `maxWorkers: 2`. The suite takes ~30 s. Ceiling
+    # lowered to 30 min so a future hang reports in minutes, not hours.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -161,7 +189,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.desktop.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=14336
 
   client-build:
     name: Client build
@@ -223,15 +251,28 @@ jobs:
       # Raised 2026-09-04 from 466,000: merge commit on catch-any-cleanup PR
       # shuffled bundle module IDs by 1 B (466,001 vs 466,000). No new eager
       # imports; ceiling raised 1 KB to restore headroom.
-      # Raised 2026-09-15 from 467,000: softphone (PR #4366) and Dispatcher
-      # Command Engine (PR #4370) both added eager imports that pushed the
-      # CI artifact (with VITE_MAPBOX_ACCESS_TOKEN embedded) to ~467.3 KB.
-      # Local build measures 466,010 B; CI adds ~1.3 KB for the token.
-      # Ceiling raised to 470,000 B (~2.7 KB headroom over estimated CI size).
+      # Raised 2026-09-08 from 467,000: the desktop Settings panel PR gave the
+      # lazy DesktopPage chunk its first stylesheet, so the entry's preload
+      # manifest gained one `DesktopPage-<hash>.css` filename (+36 B,
+      # 466,995 → 467,031). Module count unchanged at 109; no new eager
+      # imports. Ceiling raised 1 KB to restore headroom.
+      # 468,000 → 472,000: useMapRouting.ts (41.3 KB source, +~1.2 KB raw)
+      # pulled eagerly after the turn-by-turn nav HUD (#4205) added it to the
+      # App import graph. Module count now 110. No new split opportunities
+      # without restructuring the nav subsystem; ceiling raised to match.
+      # 472,000 → 476,000: entry drifted to 474,968 B locally / 475,178 B in
+      # CI (token embedded) before this PR — regression from a prior merge
+      # (#4231 dispatch-ai wiring). This PR's 2-file change touches only lazy
+      # chunks; raising ceiling to restore headroom without adding eager imports.
+      # 476,000 → 478,000: native softphone (Dial Connect port P1). The Twilio
+      # runtime, provider, toasts and keypad are all lazy (client/src/dialer/
+      # NativeDialerRuntime.tsx); the only eager additions are the ~2 KB
+      # SoftphoneContext shell + DialerMount so pages can read call state
+      # without remounting when the runtime chunk arrives. Measured 476,039 B.
       # If a change legitimately needs more, raise this deliberately in the
       # same PR and say why; do not silently bump it. `node scripts/measure-entry.mjs`
       # (no flag) prints the top 25 eager modules, which is usually enough to
       # see what got pulled in.
       - name: Assert entry chunk under ceiling
         working-directory: client
-        run: node scripts/measure-entry.mjs --max-raw 470000
+        run: node scripts/measure-entry.mjs --max-raw 478000

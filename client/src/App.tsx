@@ -11,6 +11,7 @@ import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
+import GpsUploader from './components/GpsUploader';
 import CorporateFleetShell from './components/CorporateFleetShell';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
@@ -222,6 +223,7 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const OsintPortalPage = lazyRetry(() => import('./pages/osint/OsintPortalPage'));
 const DeviceScannerPage = lazyRetry(() => import('./pages/DeviceScannerPage'));
+const SignalIntelligencePage = lazyRetry(() => import('./pages/SignalIntelligencePage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const OidcCallbackPage = lazyRetry(() => import('./pages/OidcCallbackPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
@@ -590,9 +592,21 @@ function AppRoutes() {
           >
             {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
                 renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
-                page's own header has a Close button back to /map. */}
+                page's own header has a Close button back to /map. NavigationPage
+                mounts its own useGpsTracking({ capture: true }) so no GpsUploader. */}
             <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
-            <Route path="/desktop" element={<RouteErrorBoundary><DesktopPage /></RouteErrorBoundary>} />
+
+            {/* Outside-Layout routes that need GPS breadcrumb uploading.
+                Layout mounts useGpsTracking({ upload: true }) for its children;
+                NavigationPage mounts its own. These routes had NEITHER — the
+                NavTripProvider's tracker is read-only (upload: false), so mobile
+                officers and field-camera users never POSTed breadcrumbs to
+                /dispatch/gps. GpsUploader fills that gap. */}
+            <Route element={<><GpsUploader /><Outlet /></>}>
+              <Route path="/desktop" element={<RouteErrorBoundary><DesktopPage /></RouteErrorBoundary>} />
+              <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
+              <Route path="/field-camera" element={<RouteErrorBoundary><FieldCameraPage /></RouteErrorBoundary>} />
+            </Route>
 
             {/* Protected routes with Layout */}
             <Route element={<Layout />}>
@@ -632,8 +646,6 @@ function AppRoutes() {
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
             <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
-            <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
-            <Route path="/field-camera" element={<RouteErrorBoundary><FieldCameraPage /></RouteErrorBoundary>} />
             <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
             <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />
@@ -735,6 +747,7 @@ function AppRoutes() {
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/osint" element={<RouteErrorBoundary><OsintPortalPage /></RouteErrorBoundary>} />
             <Route path="/device-scanner" element={<AdminRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/signal-intelligence" element={<RouteErrorBoundary><SignalIntelligencePage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />

@@ -22,6 +22,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
+import { getCachedMapboxAccessToken } from '../utils/mapboxApiKey';
 import {
   snapToRoute,
   type RouteInfo,
@@ -188,10 +189,25 @@ export function useNavGuidanceEngine() {
       // at all; the MAPBOX_ACCESS_TOKEN secret stays server-side. Uses the
       // same auth (rmpg_token bearer) as every other apiFetch call.
       const coordStr = `${origin.lng},${origin.lat};${dest.lng},${dest.lat}`;
-      const data = await apiFetch<{ routes?: any[]; excludedZoneWarning?: boolean }>(
-        `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
-        `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
-      );
+      const directionsParams = `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`;
+      let data: { routes?: any[]; excludedZoneWarning?: boolean };
+      try {
+        data = await apiFetch<{ routes?: any[]; excludedZoneWarning?: boolean }>(
+          `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}${directionsParams}`,
+        );
+      } catch (proxyErr: any) {
+        if (proxyErr?.code === 'MAPBOX_TOKEN_UNSET' || proxyErr?.status === 503) {
+          const clientToken = getCachedMapboxAccessToken();
+          if (!clientToken) throw proxyErr;
+          const resp = await fetch(
+            `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${encodeURIComponent(coordStr)}?geometries=geojson&overview=full&steps=true&annotations=congestion&access_token=${clientToken}`,
+          );
+          if (!resp.ok) throw new Error(`Mapbox directions ${resp.status}`);
+          data = await resp.json();
+        } else {
+          throw proxyErr;
+        }
+      }
       const route = data.routes?.[0];
       if (!route) throw new Error('No route found');
       if (gen !== genRef.current) return null; // guidance changed mid-fetch — discard

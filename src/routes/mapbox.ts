@@ -69,6 +69,25 @@ function fail(c: any, err: any, label: string) {
   return c.json({ error: `Mapbox ${label} failed`, code: 'MAPBOX_UPSTREAM_ERROR', detail: err instanceof Error ? err instanceof Error ? err.message : String(err) : String(err), upstream: err?.body?.message }, status);
 }
 
+// Normalize Mapbox Geocoding v6 feature to v5-compatible shape (place_name,
+// center, text, place_type, relevance) so existing callers need no changes.
+function normalizeV6Feature(f: any): any {
+  const props = f.properties ?? {};
+  const coords = props.coordinates ?? {};
+  const lng = coords.longitude ?? f.geometry?.coordinates?.[0] ?? 0;
+  const lat = coords.latitude ?? f.geometry?.coordinates?.[1] ?? 0;
+  return {
+    id: props.mapbox_id ?? f.id ?? '',
+    place_name: props.full_address ?? props.place_formatted ?? props.name ?? '',
+    center: [lng, lat] as [number, number],
+    place_type: props.feature_type ? [props.feature_type] : [],
+    relevance: props.relevance ?? 1,
+    text: props.name ?? '',
+    geometry: f.geometry ?? { type: 'Point', coordinates: [lng, lat] },
+    properties: props,
+  };
+}
+
 // ── Geocoding ──────────────────────────────────────────────
 // GET /api/mapbox/geocode?q=&limit=&types=&proximity=&country=  → { features: [...] }
 mapbox.get('/geocode', async (c) => {
@@ -84,8 +103,9 @@ mapbox.get('/geocode', async (c) => {
   if (types) params.set('types', types);
   if (proximity) params.set('proximity', proximity);
   try {
-    const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?${params}`);
-    return c.json({ features: data?.features ?? [] });
+    const data = await mbFetch(`${MB}/search/geocode/v6/forward?${params}&q=${encodeURIComponent(q)}`);
+    const features = (data?.features ?? []).map(normalizeV6Feature);
+    return c.json({ features });
   } catch (err) { return fail(c, err, 'geocode'); }
 });
 
@@ -97,9 +117,41 @@ mapbox.get('/reverse-geocode', async (c) => {
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const params = new URLSearchParams({ access_token: tk, limit: '1' });
   try {
-    const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
-    return c.json({ features: data?.features ?? [] });
+    const data = await mbFetch(`${MB}/search/geocode/v6/reverse?${params}&longitude=${encodeURIComponent(lng)}&latitude=${encodeURIComponent(lat)}`);
+    const features = (data?.features ?? []).map(normalizeV6Feature);
+    const results = features.map((f: any) => ({
+      name: f.text || f.place_name || '',
+      full_address: f.place_name || '',
+      latitude: f.center?.[1] ?? 0,
+      longitude: f.center?.[0] ?? 0,
+      place_type: (f.place_type || [])[0] || '',
+      relevance: f.relevance ?? 0,
+    }));
+    return c.json({ features, results });
   } catch (err) { return fail(c, err, 'reverse-geocode'); }
+});
+
+// GET /api/mapbox/geocode/reverse alias for reverse-geocode
+mapbox.get('/geocode/reverse', async (c) => {
+  const tk = token(c);
+  if (!tk) return tokenMissing(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const limit = c.req.query('limit') || '1';
+  const params = new URLSearchParams({ access_token: tk, limit });
+  try {
+    const data = await mbFetch(`${MB}/search/geocode/v6/reverse?${params}&longitude=${encodeURIComponent(lng)}&latitude=${encodeURIComponent(lat)}`);
+    const features = (data?.features ?? []).map(normalizeV6Feature);
+    const results = features.map((f: any) => ({
+      name: f.text || f.place_name || '',
+      full_address: f.place_name || '',
+      latitude: f.center?.[1] ?? 0,
+      longitude: f.center?.[0] ?? 0,
+      place_type: (f.place_type || [])[0] || '',
+      relevance: f.relevance ?? 0,
+    }));
+    return c.json({ features, results });
+  } catch (err) { return fail(c, err, 'geocode/reverse'); }
 });
 
 // ── Directions ─────────────────────────────────────────────
@@ -182,7 +234,7 @@ mapbox.get('/isochrone', async (c) => {
   if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
-  const profile = c.req.query('profile') || 'driving';
+  const profile = c.req.query('profile') || 'driving-traffic';
   const minutes = c.req.query('minutes') || '5,10';
   const params = new URLSearchParams({ access_token: tk, contours_minutes: minutes, polygons: c.req.query('polygons') || 'true' });
   try {
@@ -198,7 +250,7 @@ mapbox.get('/matrix', async (c) => {
   if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
-  const profile = c.req.query('profile') || 'driving';
+  const profile = c.req.query('profile') || 'driving-traffic';
   const params = new URLSearchParams({ access_token: tk, annotations: c.req.query('annotations') || 'duration,distance' });
   const sources = c.req.query('sources'); const destinations = c.req.query('destinations');
   if (sources) params.set('sources', sources);
@@ -216,7 +268,7 @@ mapbox.get('/optimization', async (c) => {
   if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
-  const profile = c.req.query('profile') || 'driving';
+  const profile = c.req.query('profile') || 'driving-traffic';
   const params = new URLSearchParams({
     access_token: tk,
     source: c.req.query('source') || 'any',
@@ -246,7 +298,7 @@ mapbox.post('/map-matching', async (c) => {
   try { body = await c.req.json(); } catch { return c.json({ error: 'invalid JSON body' }, 400); }
   const coords = Array.isArray(body?.coordinates) ? body.coordinates : [];
   if (coords.length < 2) return c.json({ error: 'at least 2 coordinates are required' }, 400);
-  const profile = body?.profile || 'driving';
+  const profile = body?.profile || 'driving-traffic';
   const coordStr = coords.map((p: number[]) => `${p[0]},${p[1]}`).join(';');
   const params = new URLSearchParams({ access_token: tk, geometries: 'geojson', overview: 'full' });
   try {
@@ -349,11 +401,9 @@ mapbox.get('/boundaries', async (c) => {
 });
 
 /**
- * Resolve county / municipality for a point from Geocoding v5 `context`.
+ * Resolve county / municipality for a point via Geocoding v6 reverse lookup.
  *
- * Mapbox context entries are typed by an `id` PREFIX (`district.1234`,
- * `place.5678`), so match on the prefix before the dot — an exact-equality
- * check against "district" never matches anything.
+ * v6 context is an object keyed by feature_type — look up by key directly.
  *
  * `district` is the county in the US ("Salt Lake County"); `place` is the
  * incorporated city ("Millcreek"); `locality` is a neighbourhood or
@@ -369,25 +419,26 @@ async function reverseGeocodeJurisdiction(
     types: 'address,place,district,locality,neighborhood',
   });
   const data = await mbFetch(
-    `${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`,
+    `${MB}/search/geocode/v6/reverse?${params}&longitude=${encodeURIComponent(lng)}&latitude=${encodeURIComponent(lat)}`,
   );
   const feature = (data?.features ?? [])[0];
   if (!feature) return null;
 
-  // The matched feature itself counts as context — reverse-geocoding a
-  // point inside a city returns that city as the FEATURE, with only the
-  // county above it in `context`. Reading `context` alone loses it.
-  const entries: Array<{ id?: string; text?: string }> = [
-    { id: feature.id, text: feature.text },
-    ...(feature.context ?? []),
-  ];
-  const byType = (t: string) =>
-    entries.find((e) => typeof e.id === 'string' && e.id.split('.')[0] === t)?.text ?? null;
+  // v6: context lives in feature.properties.context as an object keyed by
+  // feature_type ('district', 'place', 'locality', …), each with a `name`.
+  const props = feature.properties ?? {};
+  const ctx = props.context ?? {};
+  const byType = (t: string): string | null =>
+    ctx[t]?.name ?? null;
+
+  // Fallback: if the top-level feature IS the type we want, use its name.
+  const featureType = props.feature_type ?? '';
+  const featureName = props.name ?? '';
 
   return {
-    county: byType('district'),
-    municipality: byType('place'),
-    place: byType('locality') ?? byType('neighborhood'),
+    county: byType('district') ?? (featureType === 'district' ? featureName : null),
+    municipality: byType('place') ?? (featureType === 'place' ? featureName : null),
+    place: byType('locality') ?? byType('neighborhood') ?? (featureType === 'locality' ? featureName : null),
   };
 }
 
@@ -473,7 +524,7 @@ mapbox.get('/token-status', async (c) => {
   let valid = false;
   try {
     // A cheap geocode probe confirms the token is accepted by Mapbox.
-    await mbFetch(`${MB}/geocoding/v5/mapbox.places/denver.json?access_token=${encodeURIComponent(tk)}&limit=1`);
+    await mbFetch(`${MB}/search/geocode/v6/forward?access_token=${encodeURIComponent(tk)}&q=denver&limit=1`);
     valid = true;
   } catch { valid = false; }
   return c.json({ configured: true, valid, tokenPrefix: tk.slice(0, 8) });

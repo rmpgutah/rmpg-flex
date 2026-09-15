@@ -145,23 +145,29 @@ describe('DesktopPage', () => {
   });
 
   it('Reset to Default clears sticky notes and the following debounced PUT reflects the reset state', async () => {
-    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
-    fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-    fireEvent.click(screen.getByText('New Sticky Note'));
-    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
-
-    fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-    fireEvent.click(screen.getByText('FlexOS Settings…'));
-    fireEvent.click(screen.getByText('Desktop & Icons'));
-    fireEvent.click(screen.getByText('Reset to Default'));
-    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
-
-    // Reset's real effect: the note is actually gone, not just "confirmed".
-    expect(screen.queryByLabelText('Delete note')).not.toBeInTheDocument();
-
+    // Fake timers must be installed BEFORE the state changes that schedule the
+    // 800 ms debounce. This test used to call `vi.useFakeTimers()` only after
+    // the Reset click, so the debounce it then tried to advance had already
+    // been scheduled on a real timer and never fired inside the test — the
+    // PUT was undefined. It went unnoticed because DesktopPage.test.tsx
+    // couldn't run to completion at all (see DesktopRecycleBin.test.tsx).
     vi.useFakeTimers();
     try {
+      render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+      fireEvent.click(screen.getByText('New Sticky Note'));
+      expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+
+      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+      fireEvent.click(screen.getByText('FlexOS Settings…'));
+      fireEvent.click(screen.getByText('Desktop & Icons'));
+      fireEvent.click(screen.getByText('Reset to Default'));
       apiFetchMock.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      // Reset's real effect: the note is actually gone, not just "confirmed".
+      expect(screen.queryByLabelText('Delete note')).not.toBeInTheDocument();
+
       await act(async () => { await vi.advanceTimersByTimeAsync(800); });
 
       const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/user/preferences' && c[1]?.method === 'PUT');

@@ -778,7 +778,28 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10632 -> 10630: dispatch narrative & mileage modals migrated to design tokens.
   // 10631 -> 10644: forensic audit sweep added muted-text classes to new components
   //   (WelfareCheckModal, PersonnelDetailPanel, PdfPreviewModal et al.).
-  const PIN = 10644;
+  // 10644 -> 10662: rebuilt ScheduleDetailTab and DeploymentDetailTab with full
+  //   UX (stats, grouping, cards) using existing rmpg-token patterns.
+  // 10662 -> 10664: feat(serve-intake) PR #4130 multi-folder job queue added
+  //   new intake form surfaces using rmpg-token patterns.
+  // 10664 -> 10612: Dialer Connect redesign (softphone layout, archive chips)
+  //   migrated DialerConnectPage entirely off text-rmpg-300..600 onto
+  //   text-fg-secondary / text-fg-muted / placeholder-fg-muted.
+  // 10612 -> 10610: Radar360 PR #4147 re-pinned to the scanned count. Note the
+  //   post-merge guardrail on the PRECEDING commit (#4145, issue #4146) counted
+  //   10614 > 10612 — the two PRs never saw each other's tree, and #4147 landed
+  //   the fix before anyone triaged the issue. Verified scan of this tree: 10610.
+  // 10610 -> 10604: Mapbox Optimization V2 panel & history card migrated to
+  //   text-fg-secondary / text-fg-muted.
+  // 10604 -> 10598: ShiftPlansPage assignment builder & empty state migrated to
+  //   text-fg-secondary / text-fg-muted / placeholder-fg-muted.
+  // 10598 -> 10600: 2 utilities introduced in audio fix (#4209); tracked, not migrated.
+  // 10600 -> 10599: 1 occurrence removed in workflow-enhancements branch.
+  // 10599 -> 10628: Subject File advanced organization (PersonsTab group-by,
+  //   clickable stats tiles, expanded filter chips, section navigator,
+  //   PersonsDashboard panel) uses rmpg-token patterns for secondary labels
+  //   and muted control text; tracked, not migrated.
+  const PIN = 10628;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

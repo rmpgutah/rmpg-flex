@@ -1,3 +1,4 @@
+import { localToday } from '../../utils/dateUtils';
 // ============================================================
 // MileageAuditTab — admin mileage correction / audit / chain
 // rewrite UI for the Patrol page.
@@ -57,6 +58,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { renderPdfV2, downloadPdfV2 } from '../../utils/pdf/v2';
 import { tripLogSchema, type TripLogData } from '../../utils/pdf/v2/forms/tripLog';
+import { useMountedRef } from '../../hooks/useMountedRef';
 
 type ChainRow = {
   id: number;
@@ -122,7 +124,7 @@ type FixSuggestions = {
   candidates: Array<{ value: number; source: string; label: string; detail: string }>;
 };
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
+const todayIso = (): string => localToday();
 const daysAgoIso = (n: number): string =>
   new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -155,8 +157,7 @@ export default function MileageAuditTab() {
   // Guard against setState on unmounted component — the refresh
   // callback does multiple async apiFetch calls; if the user switches
   // tabs or navigates between them, setState fires on a dead component.
-  const mountedRef = useRef(true);
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  const mountedRef = useMountedRef();
 
   // Reference data (officers, units)
   const [officers, setOfficers] = useState<Array<{ id: number; full_name: string }>>([]);
@@ -376,7 +377,7 @@ export default function MileageAuditTab() {
       if (to) params.set('to', to);
       const data = await apiFetch<TripLogData>(`/patrol/trip-log/generate?${params}`);
       setTripLog(data);
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = localToday();
       const namePart = data.meta.officer_name || 'officer';
       const unitPart = data.meta.unit_call_sign ? `_${data.meta.unit_call_sign}` : '';
       const filename = `PS-211_trip_log_${namePart.replace(/\s+/g, '_')}${unitPart}_${stamp}.pdf`;

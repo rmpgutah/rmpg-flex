@@ -1,3 +1,4 @@
+import { parseTimestamp, formatDateTime } from '../../utils/dateUtils';
 // ============================================================
 // RMPG Flex — Admin → Fleet.io Health tab (Fleet.io PR 4b)
 // ------------------------------------------------------------
@@ -463,14 +464,14 @@ function KpiCell({ label, value, tone = 'normal' }: { label: string; value: numb
 }
 
 function TimestampCell({ label, iso }: { label: string; iso: string | null }) {
-  const stale = iso ? (Date.now() - new Date(iso + 'Z').getTime() > 2 * 60 * 60 * 1000) : false;
+  const stale = iso ? (Date.now() - parseTimestamp(iso).getTime() > 2 * 60 * 60 * 1000) : false;
   return (
     <div className="rounded-sm border border-rmpg-700 bg-surface-raised p-2">
       <div className="text-[9px] uppercase tracking-wide text-rmpg-500">{label}</div>
       {iso ? (
         <>
           <div className={`text-[10px] font-mono ${stale ? 'text-amber-400' : 'text-rmpg-100'}`}>
-            <Clock className="w-2.5 h-2.5 inline mr-1" /> {iso}
+            <Clock className="w-2.5 h-2.5 inline mr-1" /> {formatDateTime(iso)}
           </div>
           <div className={`text-[9px] mt-0.5 ${stale ? 'text-amber-400' : 'text-rmpg-400'}`}>
             {stale ? `⚠ ${relTime(iso)} ago (>2h)` : `${relTime(iso)} ago`}
@@ -515,7 +516,7 @@ export function relTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   // SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" without timezone;
   // treat as UTC. Z forces JS to parse as UTC.
-  const t = new Date(iso.includes('T') ? iso : iso + 'Z').getTime();
+  const t = parseTimestamp(iso).getTime();
   if (!Number.isFinite(t)) return '—';
   const diff = Math.max(0, Date.now() - t);
   if (diff < 60_000) return 'just now';

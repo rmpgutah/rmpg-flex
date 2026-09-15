@@ -24,7 +24,7 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 
 const inputCls =
   'w-full bg-white border border-gray-600 rounded-sm px-3 py-2.5 ' +
-  'text-[15px] text-white placeholder:text-gray-500 focus:outline-none ' +
+  'text-base text-white placeholder:text-gray-500 focus:outline-none ' +
   'focus:border-blue-400';
 
 const selectCls = inputCls;
@@ -382,7 +382,7 @@ export default function Step2Identity({
                     type="button"
                     onClick={onCompleteManual}
                     disabled={!manualComplete}
-                    className="w-full py-3 rounded-sm font-semibold text-[14px] bg-blue-600 text-white disabled:opacity-40 active:opacity-80"
+                    className="w-full min-h-[44px] py-3 rounded-sm font-semibold text-[14px] bg-blue-600 text-white disabled:opacity-40 active:opacity-80"
                   >
                     Confirm ID information
                   </button>
@@ -405,7 +405,7 @@ export default function Step2Identity({
                 key={txt}
                 type="button"
                 onClick={() => setAddressCurrent(val)}
-                className={`flex-1 py-3 rounded-sm border-2 text-[14px] font-semibold transition-colors ${
+                className={`flex-1 min-h-[44px] py-3 rounded-sm border-2 text-[14px] font-semibold transition-colors ${
                   addressCurrent === val
                     ? 'border-blue-500 bg-blue-900 text-blue-300'
                     : 'border-gray-600 bg-transparent text-gray-300'

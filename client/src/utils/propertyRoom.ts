@@ -1,3 +1,4 @@
+import { localToday } from './dateUtils';
 // ============================================================
 // RMPG Flex — Property Room Management (Spillman Flex Standard)
 // 10 property room features: intake processing, barcode
@@ -65,7 +66,7 @@ export function validateCustodyChain(transfers:CustodyTransfer[]): { gaps:Custod
 /* FEATURE 66: Release Authorization */
 export interface PropertyRelease { id:string; evidenceIds:string[]; releaseTo:string; releaseToId:string; authorizedBy:string; authorizationDate:string; releaseDate:string|null; itemsReturned:number; itemsHeld:number; reason:string; signatureObtained:boolean; }
 export function authorizePropertyRelease(evidenceIds:string[], recipient:string, recipientId:string, authorizer:string): PropertyRelease {
-  return { id:`rel-${Date.now()}`, evidenceIds, releaseTo:recipient, releaseToId:recipientId, authorizedBy:authorizer, authorizationDate:new Date().toISOString().slice(0,10), releaseDate:null, itemsReturned:0, itemsHeld:0, reason:'', signatureObtained:false };
+  return { id:`rel-${Date.now()}`, evidenceIds, releaseTo:recipient, releaseToId:recipientId, authorizedBy:authorizer, authorizationDate:localToday(), releaseDate:null, itemsReturned:0, itemsHeld:0, reason:'', signatureObtained:false };
 }
 
 /* FEATURE 67: Auction Management */
@@ -81,7 +82,7 @@ export function calculateAuctionResults(auction:PropertyAuction): { sellThroughR
 /* FEATURE 68: Destruction Workflow */
 export interface DestructionOrder { id:string; evidenceIds:string[]; authorizedBy:string; authorizationDate:string; destructionDate:string|null; method:string; witnessRequired:boolean; witnesses:string[]; disposalCompany:string|null; certificateNumber:string|null; }
 export function approveDestruction(evidenceIds:string[], authorizer:string, method:string, witnessRequired:boolean): DestructionOrder {
-  return { id:`dest-${Date.now()}`, evidenceIds, authorizedBy:authorizer, authorizationDate:new Date().toISOString().slice(0,10), destructionDate:null, method, witnessRequired, witnesses:[], disposalCompany:null, certificateNumber:null };
+  return { id:`dest-${Date.now()}`, evidenceIds, authorizedBy:authorizer, authorizationDate:localToday(), destructionDate:null, method, witnessRequired, witnesses:[], disposalCompany:null, certificateNumber:null };
 }
 
 /* FEATURE 69: Digital Evidence Management */

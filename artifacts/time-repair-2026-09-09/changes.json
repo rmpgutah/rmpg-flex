@@ -1,0 +1,612 @@
+[
+  {
+    "table": "time_entries",
+    "id": 8,
+    "column": "clock_in_local",
+    "old": "2026-06-08 05:54:00",
+    "new": "2026-06-07T23:54:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-08 05:54:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 8,
+    "column": "clock_out_local",
+    "old": "2026-06-08 08:18:00",
+    "new": "2026-06-08T02:18:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-08 08:18:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 14,
+    "column": "clock_in_local",
+    "old": "2026-06-09 14:52:00",
+    "new": "2026-06-09T08:52:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-09 14:52:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 14,
+    "column": "clock_out_local",
+    "old": "2026-06-09 15:41:00",
+    "new": "2026-06-09T09:41:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-09 15:41:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 15,
+    "column": "clock_in_local",
+    "old": "2026-06-09 19:36:00",
+    "new": "2026-06-09T13:36:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-09 19:36:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 15,
+    "column": "clock_out_local",
+    "old": "2026-06-09 21:38:00",
+    "new": "2026-06-09T15:38:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-09 21:38:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 15,
+    "column": "break_start_local",
+    "old": null,
+    "new": "2026-06-09T14:51:36",
+    "guard_column": "break_start",
+    "guard_value": "2026-06-09 20:51:36",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 16,
+    "column": "clock_in_local",
+    "old": "2026-06-11 01:47:00",
+    "new": "2026-06-10T19:47:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-11 01:47:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 16,
+    "column": "clock_out_local",
+    "old": "2026-06-11 02:28:00",
+    "new": "2026-06-10T20:28:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-11 02:28:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 17,
+    "column": "clock_in_local",
+    "old": "2026-06-11 09:16:00",
+    "new": "2026-06-11T03:16:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-11 09:16:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 17,
+    "column": "clock_out_local",
+    "old": "2026-06-11 12:22:00",
+    "new": "2026-06-11T06:22:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-11 12:22:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 19,
+    "column": "clock_in_local",
+    "old": "2026-06-12 00:43:00",
+    "new": "2026-06-11T18:43:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-12 00:43:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 19,
+    "column": "clock_out_local",
+    "old": "2026-06-12 01:43:00",
+    "new": "2026-06-11T19:43:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-12 01:43:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 24,
+    "column": "clock_in_local",
+    "old": "2026-06-13 03:41:00",
+    "new": "2026-06-12T21:41:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-13 03:41:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 27,
+    "column": "clock_in_local",
+    "old": "2026-06-15 17:38:00",
+    "new": "2026-06-15T11:38:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-15 17:38:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 29,
+    "column": "clock_in_local",
+    "old": "2026-06-19 01:33:00",
+    "new": "2026-06-18T19:33:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-19 01:33:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 29,
+    "column": "clock_out_local",
+    "old": "2026-06-19 02:53:00",
+    "new": "2026-06-18T20:53:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-19 02:53:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 30,
+    "column": "clock_in_local",
+    "old": "2026-06-24T20:20:41",
+    "new": "2026-06-24T20:20:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-06-25 02:20:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 30,
+    "column": "clock_out_local",
+    "old": "2026-06-26T23:51:01",
+    "new": "2026-06-24T21:14:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-06-25 03:14:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 36,
+    "column": "clock_in_local",
+    "old": "2026-07-15T20:19:02",
+    "new": "2026-07-15T20:19:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-07-16 02:19:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 36,
+    "column": "clock_out_local",
+    "old": "2026-07-16T12:11:30",
+    "new": "2026-07-15T21:38:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-07-16 03:38:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 37,
+    "column": "clock_in_local",
+    "old": "2026-07-18T11:25:16",
+    "new": "2026-07-18T11:25:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-07-18 17:25:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 37,
+    "column": "clock_out_local",
+    "old": "2026-07-18T12:19:20",
+    "new": "2026-07-18T12:19:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-07-18 18:19:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 50,
+    "column": "clock_in_local",
+    "old": "2026-07-25T03:26:43",
+    "new": "2026-07-25T03:26:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-07-25 09:26:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 50,
+    "column": "clock_out_local",
+    "old": "2026-07-25T07:43:02",
+    "new": "2026-07-25T04:06:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-07-25 10:06:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 53,
+    "column": "clock_in_local",
+    "old": "2026-07-26T23:54:35",
+    "new": "2026-07-26T23:54:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-07-27 05:54:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 53,
+    "column": "clock_out_local",
+    "old": "2026-07-27T07:15:03",
+    "new": "2026-07-27T00:45:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-07-27 06:45:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 55,
+    "column": "clock_in_local",
+    "old": "2026-07-27T11:50:18",
+    "new": "2026-07-27T11:50:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-07-27 17:50:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 55,
+    "column": "clock_out_local",
+    "old": "2026-07-28T16:32:03",
+    "new": "2026-07-27T12:36:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-07-27 18:36:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 61,
+    "column": "clock_in_local",
+    "old": "2026-08-01T22:37:32",
+    "new": "2026-08-01T22:37:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-02 04:37:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 62,
+    "column": "clock_out_local",
+    "old": "2026-08-05T13:58:42",
+    "new": "2026-08-05T01:58:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-05 07:58:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 64,
+    "column": "clock_in_local",
+    "old": "2026-08-07T16:47:31",
+    "new": "2026-08-07T16:07:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-07 22:07:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 64,
+    "column": "clock_out_local",
+    "old": "2026-08-07T17:16:58",
+    "new": "2026-08-07T17:16:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-07 23:16:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 65,
+    "column": "clock_in_local",
+    "old": "2026-08-08T08:47:35",
+    "new": "2026-08-08T08:47:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-08 14:47:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 65,
+    "column": "clock_out_local",
+    "old": "2026-08-08T11:28:02",
+    "new": "2026-08-08T09:58:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-08 15:58:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 68,
+    "column": "clock_in_local",
+    "old": "2026-08-12T07:42:51",
+    "new": "2026-08-12T07:42:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-12 13:42:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 68,
+    "column": "clock_out_local",
+    "old": "2026-08-12T21:52:24",
+    "new": "2026-08-12T18:59:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-13 00:59:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 68,
+    "column": "break_start_local",
+    "old": "2026-08-12T12:39:30",
+    "new": null,
+    "guard_column": "break_start",
+    "guard_value": null,
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 71,
+    "column": "clock_in_local",
+    "old": "2026-08-13T21:52:14",
+    "new": "2026-08-13T20:43:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-14 02:43:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 71,
+    "column": "clock_out_local",
+    "old": "2026-08-13T21:52:16",
+    "new": "2026-08-13T21:38:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-14 03:38:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 79,
+    "column": "clock_in_local",
+    "old": "2026-08-20T01:43:08",
+    "new": "2026-08-19T13:37:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-19 19:37:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 79,
+    "column": "clock_out_local",
+    "old": null,
+    "new": "2026-08-19T17:28:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-19 23:28:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 83,
+    "column": "clock_in_local",
+    "old": "2026-08-24T00:44:40",
+    "new": "2026-09-02T06:22:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-09-02 12:22:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 83,
+    "column": "clock_out_local",
+    "old": "2026-09-02T10:14:28",
+    "new": "2026-09-02T10:14:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-09-02 16:14:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 87,
+    "column": "clock_in_local",
+    "old": "2026-08-28T23:49:00",
+    "new": "2026-08-28T19:31:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-29 01:31:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 87,
+    "column": "clock_out_local",
+    "old": null,
+    "new": "2026-08-28T20:45:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-29 02:45:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 94,
+    "column": "clock_in_local",
+    "old": "2026-08-31T11:00:11",
+    "new": "2026-08-31T10:53:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-08-31 16:53:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 94,
+    "column": "clock_out_local",
+    "old": "2026-08-31T15:12:06",
+    "new": "2026-08-31T15:12:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-08-31 21:12:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 95,
+    "column": "clock_in_local",
+    "old": "2026-09-01T22:08:19",
+    "new": "2026-09-01T21:15:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-09-02 03:15:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 95,
+    "column": "clock_out_local",
+    "old": "2026-09-01T22:11:43",
+    "new": "2026-09-01T22:11:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-09-02 04:11:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 97,
+    "column": "clock_in_local",
+    "old": "2026-09-03T10:28:25",
+    "new": "2026-09-03T10:23:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-09-03 16:23:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 98,
+    "column": "clock_in_local",
+    "old": "2026-09-03T23:38:46",
+    "new": "2026-09-03T23:28:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-09-04 05:28:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 98,
+    "column": "clock_out_local",
+    "old": "2026-09-04T04:44:23",
+    "new": "2026-09-04T01:24:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-09-04 07:24:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 101,
+    "column": "clock_in_local",
+    "old": "2026-09-04T20:09:01",
+    "new": "2026-09-04T15:03:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-09-04 21:03:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 101,
+    "column": "clock_out_local",
+    "old": "2026-09-04T21:33:08",
+    "new": "2026-09-04T21:07:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-09-05 03:07:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 102,
+    "column": "clock_in_local",
+    "old": "2026-09-05T15:41:21",
+    "new": "2026-09-05T15:41:00",
+    "guard_column": "clock_in",
+    "guard_value": "2026-09-05 21:41:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "time_entries",
+    "id": 102,
+    "column": "clock_out_local",
+    "old": "2026-09-05T19:37:45",
+    "new": "2026-09-05T20:32:00",
+    "guard_column": "clock_out",
+    "guard_value": "2026-09-06 02:32:00",
+    "reason": "Rebuild Denver display copy from unchanged canonical UTC timestamp"
+  },
+  {
+    "table": "unit_trips",
+    "id": 248,
+    "column": "start_time",
+    "old": "2026-06-10 19:47:00",
+    "new": "2026-06-11 01:47:00",
+    "guard_column": "updated_at",
+    "guard_value": "2026-06-21 03:58:19",
+    "reason": "Denver wall clock saved as UTC; corroborated by trip creation/GPS timestamps and time entry 16"
+  },
+  {
+    "table": "unit_trips",
+    "id": 248,
+    "column": "end_time",
+    "old": "2026-06-10 20:28:00",
+    "new": "2026-06-11 02:28:00",
+    "guard_column": "updated_at",
+    "guard_value": "2026-06-21 03:58:19",
+    "reason": "Denver wall clock saved as UTC; corroborated by trip creation/GPS timestamps and time entry 16"
+  },
+  {
+    "table": "unit_trips",
+    "id": 249,
+    "column": "start_time",
+    "old": "2026-06-10 19:53:00",
+    "new": "2026-06-11 01:53:00",
+    "guard_column": "updated_at",
+    "guard_value": "2026-07-02 09:06:10",
+    "reason": "Denver wall clock saved as UTC; corroborated by trip creation/GPS timestamps and time entry 16"
+  },
+  {
+    "table": "unit_trips",
+    "id": 249,
+    "column": "end_time",
+    "old": "2026-06-10 20:29:00",
+    "new": "2026-06-11 02:29:00",
+    "guard_column": "updated_at",
+    "guard_value": "2026-07-02 09:06:10",
+    "reason": "Denver wall clock saved as UTC; corroborated by trip creation/GPS timestamps and time entry 16"
+  }
+]

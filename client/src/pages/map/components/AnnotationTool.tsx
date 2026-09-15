@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { X } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../../../utils/mapboxSafeLayer';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe, safeMapboxColor } from '../../../utils/mapboxSafeLayer';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import IconButton from '../../../components/IconButton';
 
@@ -80,7 +80,7 @@ export default function AnnotationTool({ map, onClose }: Props) {
         features: annotations.map(a => ({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
-          properties: { id: a.id, title: a.title, color: a.color },
+          properties: { id: a.id, title: a.title, color: safeMapboxColor(a.color, '#d4a017') },
         })),
       });
     }

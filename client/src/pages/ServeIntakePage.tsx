@@ -6,7 +6,7 @@ import { aamvaToServeOverrides } from '../utils/scanIdToRecipient';
 import { useToast } from '../components/ToastProvider';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiPostForm } from '../hooks/useApi';
 import { useNavigate, useSearchParams } from 'react-router';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -18,9 +18,11 @@ import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDef
 import type { FieldVerdict } from '../types/serveIntakeJudge';
 import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
 import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
-import { toDisplayLabel } from '../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../utils/formatters';
+import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import { importWithRetry } from '../utils/importWithRetry';
 import QualityReviewPanel from '../components/serve-intake/QualityReviewPanel';
+import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -180,6 +182,7 @@ const DOCUMENT_TYPES = [
   { value: 'court_filing', label: 'Court Filing / Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
+  { value: 'attempt_sheet', label: 'Attempt Record', color: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
   { value: 'summons', label: 'Summons & Complaint', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
@@ -359,6 +362,7 @@ async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
 
 export default function ServeIntakePage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [pendingJobs, setPendingJobs] = useState<FolderGroup[]>([]);
   const [confirmRemoveFileIdx, setConfirmRemoveFileIdx] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   // Upload telemetry. `uploadPhase` distinguishes the byte-transfer phase
@@ -623,17 +627,22 @@ export default function ServeIntakePage() {
       // 'auto' → the server's Claude-vision engine classifies the image (ID card /
       // license plate / serve document) AND extracts its fields in one call.
       formData.append('docType', docType);
-      const token = localStorage.getItem('rmpg_token');
-      const resp = await fetch('/api/ocr/scan-document', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      if (resp.ok) {
-        return await resp.json();
-      }
-    } catch (err) { console.warn("[ServeIntakePage] operation failed:", err); }
-    return null;
+      // apiPostForm (not raw fetch) so an access token that expired mid-shift
+      // transparently refreshes and retries once instead of 401ing forever —
+      // a raw fetch here silently returned null on every rasterized page of a
+      // scanned PDF, leaving every review field blank with no error shown
+      // (the row still renders a green "extracted" checkmark either way,
+      // since that only reflects rasterization, not OCR, succeeding).
+      // timeoutMs: the server's own OCR pipeline retries across Claude ->
+      // OpenAI -> Workers AI under a 90s total budget (TOTAL_AI_BUDGET_MS in
+      // serveIntakeOcr.ts) before giving up — apiPostForm's 60s default
+      // aborted the client side first, surfacing a false TimeoutError on
+      // every large/slow scan even though the server would've come back.
+      return await apiPostForm<OcrScanResult>('/ocr/scan-document', formData, { timeoutMs: 100_000 });
+    } catch (err) {
+      console.warn("[ServeIntakePage] operation failed:", err);
+      return null;
+    }
   }, []);
 
   // Server-side field extraction for born-digital PDFs. The client already
@@ -647,24 +656,19 @@ export default function ServeIntakePage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('client_text', text);
-      const token = localStorage.getItem('rmpg_token');
-      const resp = await fetch('/api/serve-intake/scan-document', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      if (!resp.ok) {
-        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
-        return;
-      }
-      const scanResult: OcrScanResult = await resp.json();
+      // apiPostForm, not raw fetch — see ocrScanImage above for why: a
+      // mid-shift expired token must transparently refresh, not 401 forever.
+      // timeoutMs: match ocrScanImage's — the server budget is 90s.
+      const scanResult = await apiPostForm<OcrScanResult>('/serve-intake/scan-document', formData, { timeoutMs: 100_000 });
       if (scanResult?.fields) {
         setFiles(prev => prev.map(f =>
           f.file === file ? { ...f, ocrResult: scanResult } : f,
         ));
+      } else {
+        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
       }
     } catch {
-      // Network/timeout failure — still surface it rather than silently
+      // Network/timeout/auth failure — still surface it rather than silently
       // leaving a false-positive "extracted" checkmark (see ocrScanFailed doc).
       setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
     }
@@ -696,6 +700,7 @@ export default function ServeIntakePage() {
       let type = 'info_page';
       let scanned = false;
       let pageCount = 0;
+      let ocrScanFailedForFile = false;
 
       if (isPdf) {
         const extracted = await extractPdfText(file);
@@ -703,7 +708,8 @@ export default function ServeIntakePage() {
         pageCount = extracted.pages;
         const name = file.name.toLowerCase();
         type = name.includes('court') || name.includes('docket') ? 'court_filing'
-          : name.includes('field') ? 'field_sheet'
+          : name.includes('field') && name.includes('sheet') ? 'field_sheet'
+          : /(\d+(st|nd|rd|th)?[\s_-]*attempt|first[\s_-]*attempt|second[\s_-]*attempt|third[\s_-]*attempt|attempt[\s_-]*\d+)/i.test(name) ? 'attempt_sheet'
           : name.includes('affidavit') ? 'affidavit'
           : name.includes('summons') ? 'summons'
           : name.includes('complaint') ? 'complaint'
@@ -711,6 +717,7 @@ export default function ServeIntakePage() {
           : name.includes('eviction') || name.includes('unlawful') ? 'eviction'
           : name.includes('restraining') || name.includes('protective') ? 'restraining_order'
           : name.includes('id') || name.includes('passport') || name.includes('license') ? 'identification'
+          : name.includes('information') || name.includes('info') ? 'info_page'
           : 'info_page';
 
         // Scanned PDF (no usable text layer): rasterize its pages to images
@@ -721,8 +728,10 @@ export default function ServeIntakePage() {
         // gets pre-filled from the scanned content — same path as dropped images.
         if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
           const pages = await rasterizePdf(file);
+          let anyPageOcrSucceeded = false;
           for (let p = 0; p < pages.length; p++) {
             const pageOcr = await ocrScanImage(pages[p], type);
+            if (pageOcr?.fields && Object.keys(pageOcr.fields).length > 0) anyPageOcrSucceeded = true;
             newFiles.push({
               name: pages[p].name,
               type,
@@ -735,8 +744,13 @@ export default function ServeIntakePage() {
           }
           // A scanned PDF that rasterized OK isn't an error — its OCR rides on
           // the derived images. Mark it so the row shows "Scan OCR" + a green
-          // check instead of a misleading ⚠️ "no text" warning.
+          // check instead of a misleading ⚠️ "no text" warning. But rasterizing
+          // is not the same as OCR succeeding — if every page's Vision OCR call
+          // failed (expired token, network, server error), the review panel
+          // silently shows a green check with every field blank and no
+          // indication anything went wrong. Surface that as a real failure.
           scanned = pages.length > 0;
+          if (pages.length > 0 && !anyPageOcrSucceeded) ocrScanFailedForFile = true;
         } else {
           // Born-digital PDF with a text layer: queue for server-side LLM
           // field extraction so the review panel pre-fills with extracted values.
@@ -756,7 +770,9 @@ export default function ServeIntakePage() {
         if (scan) {
           ocrResult = scan;
           type = scan.documentType === 'court_docket' ? 'court_filing'
+            : scan.documentType === 'court_filing' ? 'court_filing'
             : scan.documentType === 'field_sheet' ? 'field_sheet'
+            : scan.documentType === 'attempt_sheet' ? 'attempt_sheet'
             : 'info_page';
           text = scan.rawText || '';
         }
@@ -767,6 +783,7 @@ export default function ServeIntakePage() {
         status: text.length > 50 || ocrResult?.success || scanned ? 'extracted' : 'error',
         scanned,
         ocrResult,
+        ocrScanFailed: ocrScanFailedForFile,
         file,
         size: file.size,
         pages: pageCount || undefined,
@@ -787,12 +804,21 @@ export default function ServeIntakePage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    // Expand any dropped folders. filesFromDrop must read the entry list
-    // before the first await (the DataTransfer is invalidated after), so we
-    // hand it the event's dataTransfer synchronously and resolve async.
-    filesFromDrop(e.dataTransfer).then((files) => {
-      if (files.length > 0) handleFiles(files);
-      else setError('No PDF or image files found in what you dropped. If you dropped a folder, its files should load automatically — otherwise drop the documents directly.');
+    // Use extractFolderGroups so each dropped top-level folder becomes its
+    // own job. The DataTransfer item list must be captured synchronously here
+    // (it's invalidated after the event handler returns); the async walk
+    // happens inside extractFolderGroups after entries are already snapshotted.
+    const isPdf = (f: File) => f.type === 'application/pdf' || f.type.startsWith('image/');
+    extractFolderGroups(e.dataTransfer, isPdf).then((groups) => {
+      if (groups.length === 0) {
+        setError('No PDF or image files found in what you dropped. If you dropped a folder, its files should load automatically — otherwise drop the documents directly.');
+        return;
+      }
+      // Load the first group immediately; queue the rest as pending jobs.
+      handleFiles(groups[0].files);
+      if (groups.length > 1) {
+        setPendingJobs(prev => [...prev, ...groups.slice(1)]);
+      }
     }).catch(() => {
       if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
     });
@@ -815,6 +841,23 @@ export default function ServeIntakePage() {
   // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
   // (derivedFrom === the removed file's name) so they don't upload orphaned.
   // Gated to canManage — non-managers cannot remove documents.
+  const loadNextJob = useCallback(() => {
+    if (pendingJobs.length === 0) return;
+    const [next, ...rest] = pendingJobs;
+    setFiles([]);
+    setResult(null);
+    setEditOverrides({});
+    setOcrSourced(new Set());
+    setJudgeVerdicts({});
+    setDetectedDefendants([]);
+    setSelectedDefendants([]);
+    setSelectedClientId(null);
+    setMissingFieldValues({});
+    setMissingFieldSaved(false);
+    setPendingJobs(rest);
+    handleFiles(next.files);
+  }, [pendingJobs, handleFiles]);
+
   const removeFile = (idx: number) => setFiles(prev => {
     const target = prev[idx];
     return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
@@ -844,8 +887,9 @@ export default function ServeIntakePage() {
   //
   // This replaces the legacy /intake path that POSTed in-browser pdfjs
   // text — that path could not handle scanned/image-only PDFs or phone
-  // photos of paperwork. Falls back to the legacy path on multipart
-  // failure (e.g. all files exceed the per-file 25 MB cap).
+  // photos of paperwork. The legacy path is used only when no File blobs are
+  // available; a failed multipart upload must fail visibly so Intake never
+  // creates a record without its source documents.
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
     if (detectedDefendants.length > 1 && selectedDefendants.length === 0) {
@@ -1160,7 +1204,7 @@ export default function ServeIntakePage() {
       >
         <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
-        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
+        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — drop multiple job folders at once to queue them</p>
         <p className="text-[9px] text-rmpg-600 mt-2">
           <span>click to browse files</span>
           <span className="mx-1 text-rmpg-700">·</span>
@@ -1168,7 +1212,7 @@ export default function ServeIntakePage() {
             type="button"
             className="underline hover:text-rmpg-400 transition-colors"
             onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
-          >or pick a folder</button>
+          >{files.length > 0 ? 'add another folder' : 'pick a folder'}</button>
         </p>
         <input id="ff-serveintakepage-0"
           ref={fileInputRef}
@@ -1189,6 +1233,24 @@ export default function ServeIntakePage() {
         />
       </div>
 
+      {/* Pending job queue banner — shown whenever there are more folders queued */}
+      {pendingJobs.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-brand-400/10 border border-brand-400/30 rounded-sm text-[10px]">
+          <Upload size={12} className="text-brand-400 flex-shrink-0" />
+          <span className="text-brand-300 font-semibold">{pendingJobs.length} folder{pendingJobs.length > 1 ? 's' : ''} queued:</span>
+          <span className="text-rmpg-400 truncate">{pendingJobs.map(j => j.name).join(', ')}</span>
+          {!processing && (
+            <button
+              type="button"
+              onClick={loadNextJob}
+              className="ml-auto flex-shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase bg-brand-400/20 hover:bg-brand-400/40 text-brand-300 border border-brand-400/40 rounded-sm transition-colors"
+            >
+              Load next job →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Empty state — no files loaded, not processing, no completed result */}
       {!processing && !result && files.length === 0 && (
         <p className="text-center text-[10px] text-rmpg-600 py-2">
@@ -1200,14 +1262,37 @@ export default function ServeIntakePage() {
 
       {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
-          <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
-            {visibleFiles.length} Document{visibleFiles.length > 1 ? 's' : ''} Loaded
-            <span className="text-rmpg-600 font-normal ml-2">
-              {totalBytes > 0
-                ? `(${formatBytes(totalBytes)} total · OCR confidence per document)`
-                : '(OCR confidence shown per document)'}
-            </span>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex-1">
+              {visibleFiles.length} Document{visibleFiles.length > 1 ? 's' : ''} Loaded
+              <span className="text-rmpg-600 font-normal ml-2">
+                {totalBytes > 0
+                  ? `(${formatBytes(totalBytes)} total · OCR confidence per document)`
+                  : '(OCR confidence shown per document)'}
+              </span>
+            </p>
+            {visibleFiles.length > 1 && !processing && !result && (
+              <button
+                type="button"
+                title="Queue each document as its own separate service job — use for multiple recipients at the same address"
+                onClick={() => {
+                  const visible = files.filter(f => !f.derivedFrom);
+                  if (visible.length < 2) return;
+                  // Keep first document in the current job; queue the rest individually.
+                  const derived = files.filter(f => f.derivedFrom && f.derivedFrom === visible[0].name);
+                  setFiles([visible[0], ...derived]);
+                  const newJobs: FolderGroup[] = visible.slice(1).map(f => ({
+                    name: f.name,
+                    files: [f.file, ...files.filter(d => d.derivedFrom === f.name).map(d => d.file)].filter((x): x is File => x != null),
+                  }));
+                  setPendingJobs(prev => [...newJobs, ...prev]);
+                }}
+                className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase border border-rmpg-600 hover:border-brand-400/50 hover:text-brand-300 text-rmpg-500 rounded-sm transition-colors"
+              >
+                <Upload size={9} /> Split into separate jobs
+              </button>
+            )}
+          </div>
           {/* Show only the files the user actually dropped. Rasterized scan
               pages (derivedFrom) are internal Vision-OCR inputs — they still
               ride along in the upload payload, but listing them made one
@@ -1375,8 +1460,13 @@ export default function ServeIntakePage() {
                           id={`ff-intake-override-${key}`}
                           type="text"
                           value={editOverrides[key] ?? ''}
-                          onChange={e => overrideField(key, e.target.value)}
-                          placeholder="—"
+                          onChange={e => {
+                            const val = key === 'recipient_phone'
+                              ? formatPhoneInput(e.target.value)
+                              : e.target.value;
+                            overrideField(key, val);
+                          }}
+                          placeholder={key === 'recipient_phone' ? '(###) ###-####' : '—'}
                           className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                         />
                         {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
@@ -1409,11 +1499,16 @@ export default function ServeIntakePage() {
                   Street
                   {ocrSourced.has('recipient_address') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
                 </label>
-                <input
-                  id="ff-intake-override-recipient_address"
-                  type="text"
+                <AddressAutocomplete
                   value={editOverrides['recipient_address'] ?? ''}
-                  onChange={e => overrideField('recipient_address', e.target.value)}
+                  onChange={v => overrideField('recipient_address', v)}
+                  onSelect={(addr: ParsedAddress) => {
+                    overrideField('recipient_address', addr.street || addr.formatted);
+                    if (addr.city)  overrideField('recipient_city',  addr.city);
+                    if (addr.state) overrideField('recipient_state', addr.state);
+                    if (addr.zip)   overrideField('recipient_zip',   addr.zip);
+                  }}
+                  fillWith="street"
                   placeholder="—"
                   className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('recipient_address') ? 'border-brand-700' : 'border-border-subtle'}`}
                 />
@@ -1527,8 +1622,13 @@ export default function ServeIntakePage() {
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => overrideField(key, e.target.value)}
-                    placeholder="—"
+                    onChange={e => {
+                      const val = key === 'attorney_phone'
+                        ? formatPhoneInput(e.target.value)
+                        : e.target.value;
+                      overrideField(key, val);
+                    }}
+                    placeholder={key === 'attorney_phone' ? '(###) ###-####' : '—'}
                     className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
                   {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
@@ -2075,9 +2175,17 @@ export default function ServeIntakePage() {
                 Log First Attempt
               </button>
             )}
+            {pendingJobs.length > 0 && (
+              <button
+                onClick={loadNextJob}
+                className="toolbar-btn justify-center py-2 border-brand-400/50 text-brand-300 hover:bg-brand-400/10 col-span-2"
+              >
+                Next Job ({pendingJobs.length} remaining) →
+              </button>
+            )}
             <button
               onClick={() => setConfirmReset(true)}
-              className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
+              className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null && pendingJobs.length === 0 ? 'col-span-2' : ''}`}
             >
               Process Another Set of Documents
             </button>
@@ -2104,7 +2212,7 @@ export default function ServeIntakePage() {
       <ConfirmDialog
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
-        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); }}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); setPendingJobs([]); }}
         title="Start New Intake?"
         message="This will clear all loaded documents and results."
         confirmLabel="Clear & Start New"

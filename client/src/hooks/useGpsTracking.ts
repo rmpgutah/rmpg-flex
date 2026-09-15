@@ -1264,11 +1264,20 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';
+            // Watch is still alive (error ≠ silent death) — reset so the
+            // heartbeat doesn't treat this as a stale-watch restart.
+            lastCallbackTimeRef.current = Date.now();
             // On desktop Electron without GPS hardware, start IP fallback
             startIpFallbackPoller();
             break;
           case err.TIMEOUT:
             msg = 'Location request timed out. Retrying...';
+            // TIMEOUT means the browser's geolocation subsystem responded — it
+            // just couldn't deliver a fix in time (normal on weak cellular
+            // signal). Reset the heartbeat clock so the watchdog knows the
+            // watch is still live and doesn't immediately restart it, which
+            // would cause the recurring "No position callback in Xs" warnings.
+            lastCallbackTimeRef.current = Date.now();
             // On desktop Electron, start IP fallback in case GPS never resolves
             startIpFallbackPoller();
             break;
@@ -1570,10 +1579,24 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-start tracking when app returns to foreground (handles mobile app resume)
+  // Re-start tracking when app returns to foreground (handles mobile app resume).
+  // Uses the same permission-then-gesture strategy as the heartbeat: calling
+  // watchPosition from a non-gesture context while permission is 'prompt' makes
+  // the browser silently withhold callbacks on mobile.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !isTracking) {
+      if (document.visibilityState !== 'visible' || isTracking) return;
+
+      if (IS_WINDOWS_ELECTRON) { startTracking(); return; }
+
+      const permApi = (navigator as any).permissions;
+      if (permApi?.query) {
+        permApi.query({ name: 'geolocation' }).then((res: any) => {
+          if (res.state === 'granted') startTracking();
+          // 'prompt' or 'denied': wait for next user gesture (the auto-start
+          // effect's listeners handle this — don't duplicate them here).
+        }).catch(() => startTracking());
+      } else {
         startTracking();
       }
     };

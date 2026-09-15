@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ServeAttempt } from '../../../types';
 
 const apiFetchMock = vi.fn().mockResolvedValue({});
@@ -54,16 +54,18 @@ function savedBody(): Record<string, unknown> {
   return JSON.parse((call[1] as { body: string }).body);
 }
 
-function renderModal() {
-  return render(
-    <EditServeAttemptModal
-      isOpen
-      onClose={() => {}}
-      queueId={88}
-      attempt={attempt}
-      onSaved={() => {}}
-    />,
-  );
+async function renderModal() {
+  await act(async () => {
+    render(
+      <EditServeAttemptModal
+        isOpen
+        onClose={() => {}}
+        queueId={88}
+        attempt={attempt}
+        onSaved={() => {}}
+      />,
+    );
+  });
 }
 
 describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
@@ -73,15 +75,15 @@ describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
     localStorage.clear();
   });
 
-  it('shows the stored UTC timestamp as Mountain-Time wall-clock', () => {
-    renderModal();
+  it('shows the stored UTC timestamp as Mountain-Time wall-clock', async () => {
+    await renderModal();
     const input = screen.getByLabelText(/attempted at/i) as HTMLInputElement;
     // 13:35Z on 2026-07-27 is 07:35 MDT (UTC-6).
     expect(input.value).toBe('2026-07-27T07:35');
   });
 
   it('converts the edited Mountain-Time value back to UTC on save', async () => {
-    renderModal();
+    await renderModal();
     const input = screen.getByLabelText(/attempted at/i);
     fireEvent.change(input, { target: { value: '2026-07-27T09:15' } });
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
@@ -92,7 +94,7 @@ describe('EditServeAttemptModal — attempt_at timezone round-trip', () => {
   });
 
   it('round-trips a value unchanged when the operator does not touch it', async () => {
-    renderModal();
+    await renderModal();
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => expect(savedBody).not.toThrow());
@@ -114,16 +116,16 @@ describe('EditServeAttemptModal — scroll containment', () => {
     localStorage.clear();
   });
 
-  it('caps the panel height and lays it out as a flex column', () => {
-    renderModal();
+  it('caps the panel height and lays it out as a flex column', async () => {
+    await renderModal();
     const panel = document.querySelector('.panel-beveled') as HTMLElement;
     expect(panel).toBeTruthy();
     expect(panel.className).toContain('max-h-[90vh]');
     expect(panel.className).toContain('flex-col');
   });
 
-  it('gives the body its own scroll container so the footer stays reachable', () => {
-    renderModal();
+  it('gives the body its own scroll container so the footer stays reachable', async () => {
+    await renderModal();
     const panel = document.querySelector('.panel-beveled') as HTMLElement;
     const scroller = panel.querySelector('.overflow-y-auto') as HTMLElement;
     expect(scroller).toBeTruthy();
@@ -132,8 +134,8 @@ describe('EditServeAttemptModal — scroll containment', () => {
     expect(scroller.className).toContain('flex-1');
   });
 
-  it('keeps the action row out of the scrolling region', () => {
-    renderModal();
+  it('keeps the action row out of the scrolling region', async () => {
+    await renderModal();
     const save = screen.getByRole('button', { name: /save/i });
     const footer = save.parentElement as HTMLElement;
     expect(footer.className).toContain('shrink-0');

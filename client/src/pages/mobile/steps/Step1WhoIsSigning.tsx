@@ -66,7 +66,7 @@ function PremisesButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 py-3 rounded-sm border-2 text-[13px] font-medium capitalize transition-colors ${
+      className={`flex-1 min-h-[44px] py-3 rounded-sm border-2 text-[13px] font-medium capitalize transition-colors ${
         selected
           ? 'border-blue-500 bg-blue-900 text-blue-300'
           : 'border-gray-600 bg-transparent text-gray-300'
@@ -85,7 +85,7 @@ function CheckRow({
       type="button"
       onClick={() => onChange(!checked)}
       aria-pressed={checked}
-      className="w-full flex items-start gap-3 text-left p-3 rounded-sm bg-gray-50 border border-gray-700 active:opacity-80"
+      className="w-full min-h-[44px] flex items-start gap-3 text-left p-3 rounded-sm bg-gray-50 border border-gray-700 active:opacity-80"
     >
       <span
         className={`mt-0.5 shrink-0 w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-colors ${
@@ -110,7 +110,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 const inputCls =
   'w-full bg-white border border-gray-600 rounded-sm px-3 py-2.5 ' +
-  'text-[15px] text-white placeholder:text-gray-500 focus:outline-none ' +
+  'text-base text-white placeholder:text-gray-500 focus:outline-none ' +
   'focus:border-blue-400';
 
 // ── Props ─────────────────────────────────────────────────────────────

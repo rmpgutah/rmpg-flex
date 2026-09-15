@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { parseTimestamp } from '../utils/dateUtils';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
-import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, Loader2 } from 'lucide-react';
+import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, Loader2, QrCode, CalendarClock } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import type { Notification, NotificationType } from '../types';
@@ -33,14 +33,16 @@ interface NotificationTypeConfig {
 // Notification Type → Icon / LED mapping
 // ============================================================
 
-const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig> = {
-  dispatch:          { icon: Radio,          ledColor: 'led-red',   iconColor: 'text-red-400' },
-  warrant:           { icon: Shield,         ledColor: 'led-amber', iconColor: 'text-amber-400' },
-  bolo:              { icon: AlertTriangle,  ledColor: 'led-red',   iconColor: 'text-red-400' },
-  message:           { icon: Mail,           ledColor: 'led-green', iconColor: 'text-rmpg-400' },
-  system:            { icon: Bell,           ledColor: 'led-green', iconColor: 'text-green-400' },
-  credential_expiry: { icon: Clock,          ledColor: 'led-amber', iconColor: 'text-amber-400' },
-  patrol_missed:     { icon: MapPin,         ledColor: 'led-red',   iconColor: 'text-red-400' },
+const NOTIFICATION_TYPE_CONFIG: Record<string, NotificationTypeConfig> = {
+  dispatch:               { icon: Radio,          ledColor: 'led-red',   iconColor: 'text-red-400' },
+  warrant:                { icon: Shield,         ledColor: 'led-amber', iconColor: 'text-amber-400' },
+  bolo:                   { icon: AlertTriangle,  ledColor: 'led-red',   iconColor: 'text-red-400' },
+  message:                { icon: Mail,           ledColor: 'led-green', iconColor: 'text-rmpg-400' },
+  system:                 { icon: Bell,           ledColor: 'led-green', iconColor: 'text-green-400' },
+  credential_expiry:      { icon: Clock,          ledColor: 'led-amber', iconColor: 'text-amber-400' },
+  patrol_missed:          { icon: MapPin,         ledColor: 'led-red',   iconColor: 'text-red-400' },
+  serve_qr_scan:          { icon: QrCode,         ledColor: 'led-green', iconColor: 'text-green-400' },
+  serve_schedule_request: { icon: CalendarClock,  ledColor: 'led-amber', iconColor: 'text-amber-400' },
 };
 
 // ============================================================
@@ -126,8 +128,10 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   // on a frame shape nothing produced, so the badge only updated on reload. The
   // list itself refreshes when the dropdown is opened.
   useEffect(() => {
-    const unsubscribe = subscribe('notification', () => { refreshUnread(); });
-    return unsubscribe;
+    const unsub1 = subscribe('notification', () => { refreshUnread(); });
+    const unsub2 = subscribe('serve_qr_scan', () => { refreshUnread(); });
+    const unsub3 = subscribe('serve_schedule_request', () => { refreshUnread(); });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [subscribe, refreshUnread]);
 
   // ----------------------------------------------------------
@@ -392,7 +396,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                     className="absolute right-0 top-full mt-1 bg-surface-sunken border border-rmpg-600 z-50 shadow-lg"
                     style={{ minWidth: 140 }}
                   >
-                    {['all', 'dispatch', 'warrant', 'bolo', 'message', 'system', 'credential_expiry', 'patrol_missed'].map((type) => (
+                    {['all', 'dispatch', 'warrant', 'bolo', 'message', 'serve_qr_scan', 'serve_schedule_request', 'system', 'credential_expiry', 'patrol_missed'].map((type) => (
                       <button type="button"
                         key={type}
                         onClick={() => { setFilterType(type); setShowFilter(false); }}
@@ -492,7 +496,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                     >
                       {typeof notification.title === 'string' ? notification.title : JSON.stringify(notification.title)}
                     </div>
-                    {notification.body && (
+                    {(notification.body || notification.message) && (
                       <div
                         className="text-rmpg-300 truncate"
                         style={{
@@ -501,7 +505,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                           marginTop: '1px',
                         }}
                       >
-                        {typeof notification.body === 'string' ? notification.body : JSON.stringify(notification.body)}
+                        {typeof (notification.body || notification.message) === 'string' ? (notification.body || notification.message) : JSON.stringify(notification.body || notification.message)}
                       </div>
                     )}
                     <div

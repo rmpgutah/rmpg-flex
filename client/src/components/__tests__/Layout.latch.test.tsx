@@ -154,7 +154,6 @@ describe('Layout — UserProfileModal mount latch', () => {
 
   it('never mounts UserProfileModal until the profile modal is opened, then latches it mounted after close', async () => {
     const user = userEvent.setup();
-    renderLayout();
 
     // Let any pending microtasks/macrotasks settle — React.lazy() resolves
     // its dynamic import() asynchronously (even though the mocked module
@@ -165,6 +164,7 @@ describe('Layout — UserProfileModal mount latch', () => {
     // meaningful: it only passes when the gate genuinely kept the modal out
     // of the tree, not when we just checked too early.
     await act(async () => {
+      renderLayout();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 

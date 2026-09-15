@@ -1,3 +1,4 @@
+import { localToday } from '../../utils/dateUtils';
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload, Cpu, Accessibility, Play, Trash2 } from 'lucide-react';
 import { getStartupWindows, setStartupWindows, type StartupWindow } from '../../utils/startupPreferences';
@@ -166,19 +167,17 @@ export default function DesktopSettingsApp({
   const [healthLastPolled, setHealthLastPolled] = useState<Date | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
 
-  const refreshDeviceHealth = useCallback(() => {
+  const refreshDeviceHealth = useCallback(async () => {
     setHealthLoading(true);
-    type ElectronAPI = {
-      sysBattery?: () => { percent: number; charging: boolean } | null;
-      sysTpmStatus?: () => { present: boolean; enabled: boolean; ready: boolean } | null;
-      sysNetworkInterfaces?: () => Array<{ name: string; ipv4?: string; status?: string }>;
-    };
-    const ea = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
-    if (ea?.sysBattery) setBatteryInfo(ea.sysBattery() ?? null);
-    if (ea?.sysTpmStatus) setTpmInfo(ea.sysTpmStatus() ?? null);
-    if (ea?.sysNetworkInterfaces) {
-      setHealthInterfaces((ea.sysNetworkInterfaces() ?? []).map((i) => ({ name: i.name, ipv4: i.ipv4 })));
-    }
+    const el = (window as any).electron;
+    try {
+      if (el?.getBatteryStatus) setBatteryInfo(await el.getBatteryStatus() ?? null);
+      if (el?.getTpmStatus) setTpmInfo(await el.getTpmStatus() ?? null);
+      if (el?.getNetworkInterfaces) {
+        const ifaces = await el.getNetworkInterfaces() ?? [];
+        setHealthInterfaces(ifaces.map((i: any) => ({ name: i.name, ipv4: i.ipv4 })));
+      }
+    } catch { /* offline-tolerant */ }
     setHealthLastPolled(new Date());
     setHealthLoading(false);
   }, []);
@@ -282,7 +281,7 @@ export default function DesktopSettingsApp({
       night_light_enabled: localStorage.getItem('rmpg_night_light_enabled') ?? null,
       auto_hide_taskbar: isTaskbarAutoHideEnabled(),
     };
-    const date = new Date().toISOString().slice(0, 10);
+    const date = localToday();
     const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -331,7 +330,7 @@ export default function DesktopSettingsApp({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `flexos-config-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `flexos-config-${localToday()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setSnapshotMsg('Snapshot downloaded.');
@@ -705,7 +704,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-appearance' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset this category to default
                 </button>
@@ -770,7 +769,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-layout' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset to Default
                 </button>
@@ -817,7 +816,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-snap' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset this category to default
                 </button>
@@ -871,7 +870,7 @@ export default function DesktopSettingsApp({
                   type="button"
                   onClick={() => setSettingsConfirm({ kind: 'reset-taskbar' })}
                   className="text-[10px] px-2 py-1 w-full"
-                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                 >
                   Reset this category to default
                 </button>
@@ -966,13 +965,12 @@ export default function DesktopSettingsApp({
                     const on = e.target.checked;
                     setUsbMonitoringOn(on);
                     localStorage.setItem('rmpg_usb_monitoring', on ? '1' : '0');
-                    const api = (window as { electronAPI?: { usbMonitoring?: (enabled: boolean) => void } }).electronAPI;
-                    api?.usbMonitoring?.(on);
+                    // USB monitoring toggle — no IPC handler exists yet; placeholder for future hardware integration
                   }}
                 />
                 Enable USB monitoring
               </label>
-              {!(window as { electronAPI?: unknown }).electronAPI && (
+              {!(window as any).electron?.isElectron && (
                 <p className="text-[10px] mb-1" style={{ color: 'var(--sev-warn)' }}>Requires desktop app</p>
               )}
               <div className="text-[10px] mb-1" style={{ color: 'var(--text-secondary)' }}>Whitelist (VendorID:ProductID, one per line):</div>
@@ -1173,7 +1171,7 @@ export default function DesktopSettingsApp({
               {/* Battery */}
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Battery</div>
-                {!(window as unknown as { electronAPI?: { sysBattery?: unknown } }).electronAPI?.sysBattery ? (
+                {!(window as any).electron?.getBatteryStatus ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Battery info requires the desktop app.</p>
                 ) : batteryInfo ? (
                   <div style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', gap: 12 }}>
@@ -1190,7 +1188,7 @@ export default function DesktopSettingsApp({
               {/* TPM */}
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>TPM</div>
-                {!(window as unknown as { electronAPI?: { sysTpmStatus?: unknown } }).electronAPI?.sysTpmStatus ? (
+                {!(window as any).electron?.getTpmStatus ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>TPM status requires the desktop app.</p>
                 ) : tpmInfo ? (
                   <div style={{ display: 'flex', gap: 12, fontSize: 11 }}>
@@ -1215,7 +1213,7 @@ export default function DesktopSettingsApp({
               {/* Network */}
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Network Interfaces</div>
-                {!(window as unknown as { electronAPI?: { sysNetworkInterfaces?: unknown } }).electronAPI?.sysNetworkInterfaces ? (
+                {!(window as any).electron?.getNetworkInterfaces ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Interface list requires the desktop app.</p>
                 ) : !healthInterfaces ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Press Refresh All to load.</p>

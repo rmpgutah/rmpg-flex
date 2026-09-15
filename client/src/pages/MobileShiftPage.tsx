@@ -386,7 +386,7 @@ export default function MobileShiftPage() {
 
           {/* FUEL */}
           <Section title="Fuel level">
-            <div className="grid grid-cols-5 grid-keep gap-1">
+            <div className="grid grid-cols-5 gap-1">
               {FUEL_LEVELS.map((lvl) => (
                 <button key={lvl} type="button"
                   onClick={() => setFuel(lvl)}
@@ -422,7 +422,7 @@ export default function MobileShiftPage() {
                     {(['ok', 'missing', 'damaged'] as EquipmentState[]).map((s) => (
                       <button key={s} type="button" onClick={() => setEquipState(it.key, s)}
                         className={[
-                          'min-w-[56px] h-9 border text-[10px] uppercase tracking-wider font-bold',
+                          'min-w-[56px] min-h-[44px] border text-[10px] uppercase tracking-wider font-bold',
                           cur === s
                             ? s === 'ok' ? 'border-green-600 bg-green-950/40 text-green-300'
                               : s === 'missing' ? 'border-amber-600 bg-amber-950/40 text-amber-300'
@@ -465,8 +465,8 @@ export default function MobileShiftPage() {
 // ── Sub-components ─────────────────────────────────────────────────────────
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-surface-sunken text-rmpg-100">
-      <div className="max-w-[480px] mx-auto p-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+    <div className="min-h-[100dvh] bg-surface-sunken text-rmpg-100">
+      <div className="max-w-[480px] mx-auto p-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
         {children}
       </div>
     </div>

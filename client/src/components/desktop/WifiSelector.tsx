@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Wifi, WifiOff, RefreshCw, Lock, Unlock, ChevronRight, ChevronDown, X, Router } from 'lucide-react';
+import { getDesktopRuntimeState } from '../../utils/desktopRuntime';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,7 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
   const [expanded,   setExpanded]   = useState<Set<number>>(new Set());
 
   const ref = useRef<HTMLDivElement>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
@@ -183,13 +185,23 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
 
+  useEffect(() => () => { if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current); }, []);
+
+  const hasWifiIpc = !!el?.wifiScanNetworks;
+  const desktopRuntime = getDesktopRuntimeState(el);
+
   const loadDetail = useCallback(async () => {
     if (!el?.wifiGetDetail) return;
     try { setDetail(await el.wifiGetDetail()); } catch { /* silent */ }
   }, [el]);
 
   const scan = useCallback(async () => {
-    if (!el?.wifiScanNetworks) return;
+    if (!el?.wifiScanNetworks) {
+      setStatusMsg(desktopRuntime === 'bridge-unavailable'
+        ? 'FlexOS is running, but its native system bridge did not load. Restart FlexOS to restore WiFi scanning.'
+        : 'WiFi scanning requires the FlexOS desktop app with system permissions.');
+      return;
+    }
     setScanning(true);
     setStatusMsg(null);
     setExpanded(new Set());
@@ -198,14 +210,18 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
         el.wifiScanNetworks(),
         el.wifiListProfiles?.() ?? Promise.resolve([]),
       ]);
-      setNetworks((nets as ScannedNetwork[]).sort((a, b) => b.signal - a.signal));
+      const sorted = (nets as ScannedNetwork[]).sort((a, b) => b.signal - a.signal);
+      setNetworks(sorted);
       setProfiles(profs as string[]);
+      if (sorted.length === 0) {
+        setStatusMsg('No networks in range. Move closer to an access point or check WiFi hardware.');
+      }
     } catch (err) {
-      setStatusMsg('Scan failed: ' + (err instanceof Error ? err.message : 'unknown'));
+      setStatusMsg('Scan failed: ' + (err instanceof Error ? err.message : 'unknown error — check WiFi adapter.'));
     } finally {
       setScanning(false);
     }
-  }, [el]);
+  }, [desktopRuntime, el]);
 
   useEffect(() => { loadDetail(); scan(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -217,7 +233,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
       const res = await el.wifiConnect(profileName) as { ok: boolean; reason?: string };
       if (res.ok) {
         setStatusMsg(`Connecting to "${profileName}"…`);
-        setTimeout(() => { loadDetail(); setStatusMsg(null); }, 3000);
+        if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+        statusTimerRef.current = setTimeout(() => { loadDetail(); setStatusMsg(null); }, 3000);
       } else {
         setStatusMsg(`Failed: ${res.reason ?? 'unknown'}`);
       }
@@ -235,7 +252,8 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
     try {
       await el.wifiDisconnect();
       setStatusMsg('Disconnected.');
-      setTimeout(() => { loadDetail(); setStatusMsg(null); }, 1500);
+      if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = setTimeout(() => { loadDetail(); setStatusMsg(null); }, 1500);
     } catch (err) {
       setStatusMsg('Error: ' + (err instanceof Error ? err.message : 'unknown'));
     } finally {
@@ -410,14 +428,24 @@ export default function WifiSelector({ onClose }: { onClose: () => void }) {
           );
         })}
 
-        {!scanning && networks.length === 0 && (
-          <div style={{ padding: '8px 10px', fontSize: 9, color: 'var(--text-secondary)' }}>No networks found. Click ↺ to scan.</div>
+        {!scanning && networks.length === 0 && !statusMsg && (
+          <div style={{ padding: '8px 10px', fontSize: 9, color: 'var(--text-secondary)' }}>
+            {hasWifiIpc
+              ? 'No networks found. Click ↺ to scan.'
+              : desktopRuntime === 'bridge-unavailable'
+                ? 'FlexOS native integration is unavailable. Restart FlexOS.'
+                : 'WiFi management requires the FlexOS desktop app.'}
+          </div>
         )}
       </div>
 
       {/* Footer */}
       <div style={{ padding: '4px 10px 6px', borderTop: '1px solid var(--border-subtle)', fontSize: 8, color: 'var(--text-muted)', flexShrink: 0 }}>
-        Click a network row to inspect RF details · Saved profiles connect directly · New networks require OS credentials
+        {hasWifiIpc
+          ? 'Click a network row to inspect RF details · Saved profiles connect directly · New networks require OS credentials'
+          : desktopRuntime === 'bridge-unavailable'
+            ? 'FlexOS detected · Native system bridge unavailable · Restart FlexOS'
+            : 'WiFi scanning requires FlexOS desktop app · Browser shows connection status only'}
       </div>
     </div>
   );

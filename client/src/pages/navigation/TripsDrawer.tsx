@@ -1,3 +1,4 @@
+import { parseTimestamp } from '../../utils/dateUtils';
 // ============================================================
 // TRIPS drawer — the "TRIPS" overlay on the NAVIGATE screen.
 //
@@ -38,7 +39,7 @@ interface Props {
 // (space, no zone) shape from the API by normalizing to ISO-UTC before parsing.
 function parseMs(iso: string | null | undefined): number | null {
   if (!iso) return null;
-  const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
+  const t = parseTimestamp(iso).getTime();
   return Number.isFinite(t) ? t : null;
 }
 function fmtClock(iso: string | null | undefined): string {

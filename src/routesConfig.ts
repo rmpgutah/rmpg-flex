@@ -81,9 +81,10 @@ import serveBilling from './routes/serveBilling';
 import invoices from './routes/invoices';
 import useOfForce from './routes/useOfForce';
 import notificationsInbox from './routes/notificationsInbox';
-import community from './routes/community';
+import community, { communityReports } from './routes/community';
 import intel from './routes/intel';
 import intelAi from './routes/intelAi';
+import knowledge from './routes/knowledge';
 import { intelReports, intelSources } from './routes/intel/development';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
@@ -111,6 +112,7 @@ import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
 import incidentsRouter from './routes/incidents';
+import adasis from './routes/adasis';
 import audit from './routes/audit';
 import auditEmit from './routes/auditEmit';
 import auditByEntity from './routes/auditByEntity';
@@ -143,6 +145,7 @@ import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import deliveriesWebhook from './routes/deliveriesWebhook';
 import driverPerformance from './routes/driverPerformance';
 import legalDataHunter from './routes/legalDataHunter';
 import webBrowser from './routes/webBrowser';
@@ -155,6 +158,7 @@ import tesseractTraining from './routes/tesseractTraining';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
+import dispatcherCommand from './routes/dispatcherCommand';
 import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
@@ -201,6 +205,8 @@ import serveManagerRoutes, { serveManagerWebhookRouter } from './routes/serveMan
 import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
 import { serveQrScan } from './routes/serveQrScan';
 import stubs from './routes/stubs';
+import publicDiagnostics from './routes/publicDiagnostics';
+import publicUpdates from './routes/publicUpdates';
 import voicePersona from './routes/voicePersona';
 import mobileCfs, { cfsQr } from './routes/mobileCfs';
 import firecrawlTools from './routes/firecrawlTools';
@@ -208,6 +214,8 @@ import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
 import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
+import dialerVoice from './routes/dialerVoice';
+import dialerConnectImport from './routes/dialerConnectImport';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -328,7 +336,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
-    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
+    note: 'Sign in with Dialer (rmpgutah.us/dialer OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
@@ -446,6 +454,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
     note: 'Voice dialogue agent (/dialogue) + dispatch read-aloud (/read-aloud) for the AI dispatcher.' },
+  { prefix: '/api/dispatcher', router: dispatcherCommand, auth: 'required',
+    note: 'Dispatcher Command Engine: POST /command turns free-form typed/spoken instructions into validated CAD steps (rules → callAi planner → catalog/compile); POST /command/:id/result records outcomes; GET /command/recent (supervisor+). Design: docs/superpowers/specs/2026-09-14-dispatcher-command-engine-design.md' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
   { prefix: '/api/mdt', router: mdt, auth: 'required' },
@@ -481,6 +491,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // all conflicted on this exact slot — that's how this rule got
   // codified. None of the prefixes here have ordering invariants
   // with each other (no shared trie roots), so alphabetical is safe.
+  // ── ADASIS v3 Electronic Horizon ──────────────────────────
+  { prefix: '/api/adasis', router: adasis, auth: 'required',
+    note: 'ADASIS v3 Electronic Horizon: Provider, Consumer, and Query endpoints for vehicle telematics and dispatch map' },
+
   { prefix: '/api/animal-control', router: animalControl, auth: 'required',
     note: 'AnimalControlPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/cases', router: cases, auth: 'required',
@@ -622,6 +636,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Internal Affairs module: complaints, investigations, early intervention flags' },
   { prefix: '/api/alarms', router: alarms, auth: 'required',
     note: 'Alarm management: permit tracking, false alarm reduction, billing, verification' },
+  { prefix: '/api/alarm-tracking', router: alarms, auth: 'required',
+    note: 'Alarm tracking compatibility alias for AlarmTrackingPage' },
   { prefix: '/api/accreditation', router: accreditation, auth: 'required',
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
   { prefix: '/api/accreditations', router: accreditations, auth: 'required',
@@ -651,8 +667,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'InvoicesPage summary tile (/stats) over the invoices table. Full CRUD lives under /api/billing/invoices.' },
   { prefix: '/api/use-of-force', router: useOfForce, auth: 'required',
     note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
+  { prefix: '/api/community-reports', router: communityReports, auth: 'required',
+    note: 'Community reports / tips management for CommunityPortalPage (public_tips backing table)' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
+  { prefix: '/api/knowledge', router: knowledge, auth: 'required',
+    note: 'RMPG Flex knowledge base (Cloudflare AI Search "flex-search", binding FLEX_SEARCH): POST /search (chunks+citations), POST /ask (RAG answer w/ citations), GET /health. Same-origin façade so SPA/desktop/kiosk avoid the public endpoint\'s host allow-list. Internal roles only.' },
   { prefix: '/api/intel/ai', router: intelAi, auth: 'required',
     note: 'Intel AI engine (Claude): POST /ask (NL search w/ citations), /extract (entities+links from narrative), /summarize (dossier). Gated on anthropic_api_key → 503 when unset. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
   { prefix: '/api/intel/reports', router: intelReports, auth: 'required',
@@ -738,6 +758,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // when MAPBOX_ACCESS_TOKEN is unset. Mounted before the bare /api routers.
   { prefix: '/api/mapbox/optimization-v2', router: optimizationV2, auth: 'required',
     note: 'Mapbox Optimization V2 async engine. POST /submit builds + submits a V2 problem; GET /:jobId polls + writes back to serve_routes on completion; GET / lists jobs. Supervisor+ to submit; any authed role to poll. 200 {skipped:true} when token unset.' },
+  { prefix: '/api/mapbox-optimization', router: optimizationV2, auth: 'required',
+    note: 'Alias for /api/mapbox/optimization-v2' },
   { prefix: '/api/mapbox', router: mapbox, auth: 'required',
     note: 'Server-side Mapbox proxy; 503 when MAPBOX_ACCESS_TOKEN secret is unset' },
 
@@ -857,12 +879,20 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Longer ingest prefix FIRST so Hono does not let the parent router steal POST /ingest.
   { prefix: '/api/dialer-connect/ingest', router: dialerConnectIngest, auth: 'public',
     note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
+  { prefix: '/api/deliveries/webhook', router: deliveriesWebhook, auth: 'public',
+    note: 'rmpgutahps.us delivery-scheduler push (piece 1/3). HMAC via RMPG_FLEX_WEBHOOK_SECRET (x-rmpg-flex-hmac-sha256). 200 not_configured when unset.' },
+  // Longer prefix FIRST (same reason as /ingest above).
+  { prefix: '/api/dialer-connect/import', router: dialerConnectImport, auth: 'required',
+    note: 'Admin/manager: copy the full Dial Connect history (calls, voicemails, callbacks, contacts, SMS) into the Flex archive via dispatch-app\'s service-key export. Idempotent.' },
   { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
     note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
+  { prefix: '/api/dialer', router: dialerVoice, auth: 'required',
+    note: 'Native softphone: Twilio token, presence, call controls and SSE proxied server-to-server to Dial Connect (dispatch-app) as the linked dispatcher (users.dialer_oidc_sub).' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },
-  { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
+  { prefix: '/api/diagnostics', router: publicDiagnostics, auth: 'public',
+    note: 'Narrow public UI-freeze telemetry endpoint; isolated so authenticated compatibility routes cannot acquire public aliases.' },
   // Dedicated empty-state router (not `stubs`) so its catch-all `*`
   // handlers can't leak onto the other prefixes `stubs` is mounted at.
   // Firecrawl is unprovisioned — every list returns [], mutations return
@@ -872,7 +902,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/mobile', router: mobileCfs, auth: 'public' },
   { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
   { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
-  { prefix: '/api/updates', router: stubs, auth: 'public' },
+  { prefix: '/api/updates', router: publicUpdates, auth: 'public',
+    note: 'Narrow public Android update check; isolated so authenticated compatibility routes cannot acquire public aliases.' },
   { prefix: '/api/voice-persona', router: voicePersona, auth: 'required' },
 
   // Officer Wallet ID — digital badge / QR-verifiable ID. Auth required on every
