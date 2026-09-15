@@ -129,6 +129,32 @@ describe('call controls', () => {
   });
 });
 
+describe('DND', () => {
+  it('GET /dnd relays the upstream flag', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ dnd: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await makeApp(linked).request('/api/dialer/dnd', {}, E());
+    expect(await res.json()).toEqual({ dnd: true });
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('https://dialer.test/api/users/me/dnd');
+  });
+
+  it('PATCH /dnd validates and forwards as PATCH', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ dnd: false }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await makeApp(linked).request('/api/dialer/dnd', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dnd: false }),
+    }, E());
+    expect(res.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(String(init.body))).toEqual({ dnd: false });
+    const bad = await makeApp(linked).request('/api/dialer/dnd', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dnd: 'yes' }),
+    }, E());
+    expect(bad.status).toBe(400);
+  });
+});
+
 describe('GET /api/dialer/stream', () => {
   it('returns the upstream event stream body untouched', async () => {
     const body = ': connected\n\ndata: {"type":"call_status"}\n\n';

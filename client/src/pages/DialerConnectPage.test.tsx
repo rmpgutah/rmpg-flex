@@ -27,7 +27,7 @@ let device: MockDevice | null = null;
 function renderPage() {
   return render(
     <MemoryRouter>
-      <SoftphoneProvider createDevice={(t) => { device = new MockDevice(t); return device; }}>
+      <SoftphoneProvider createDevice={(t) => { device = new MockDevice(t); return device; }} streamEnabled={false}>
         <DialerConnectPage />
       </SoftphoneProvider>
     </MemoryRouter>,

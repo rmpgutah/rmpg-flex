@@ -35,7 +35,7 @@ export async function upstream(
   c: Ctx,
   sub: string,
   path: string,
-  init: { method: 'GET' | 'POST' | 'PUT'; body?: unknown; stream?: boolean } = { method: 'GET' },
+  init: { method: 'GET' | 'POST' | 'PUT' | 'PATCH'; body?: unknown; stream?: boolean } = { method: 'GET' },
 ): Promise<Response> {
   const base = (c.env.DIAL_CONNECT_API_BASE || DEFAULT_BASE).replace(/\/$/, '');
   const headers: Record<string, string> = {
@@ -105,6 +105,24 @@ dialerVoice.get('/presence', async (c) => {
   const r = await withSub(c);
   if ('res' in r) return r.res;
   return relay(c, await upstream(c, r.sub, '/api/voice/presence'));
+});
+
+// Do Not Disturb drops the dispatcher out of every ring group (inbound goes
+// straight to voicemail while it is on), so the softphone must be able to
+// show and clear it.
+dialerVoice.get('/dnd', async (c) => {
+  const r = await withSub(c);
+  if ('res' in r) return r.res;
+  return relay(c, await upstream(c, r.sub, '/api/users/me/dnd'));
+});
+
+const dndSchema = z.object({ dnd: z.boolean() });
+dialerVoice.patch('/dnd', async (c) => {
+  const r = await withSub(c);
+  if ('res' in r) return r.res;
+  const parsed = dndSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Invalid request', details: parsed.error.flatten() }, 400);
+  return relay(c, await upstream(c, r.sub, '/api/users/me/dnd', { method: 'PATCH', body: parsed.data }));
 });
 
 const e164 = (raw: string): string => {
