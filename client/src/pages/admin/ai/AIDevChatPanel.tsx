@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { apiHttpBase } from '../../../utils/apiOrigin';
 import { asArray } from '../../../utils/asArray';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -319,7 +320,10 @@ export default function AIDevChatPanel() {
       // Get auth token
       const token = localStorage.getItem('rmpg_token');
 
-      const response = await fetch('/api/ai/dev-chat/chat/stream', {
+      // Stays a raw fetch (apiFetch buffers the whole body, which would defeat
+      // streaming), but routes through apiHttpBase() so it resolves correctly
+      // from every host the SPA is served on, not just the Pages origin.
+      const response = await fetch(`${apiHttpBase()}/api/ai/dev-chat/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
