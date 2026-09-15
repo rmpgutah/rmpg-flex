@@ -684,6 +684,10 @@ const API_ROUTES: RouteRule[] = [
   // ingest must appear first so its broader prefix match is explicit.
   { kind: 'prefix', value: '/api/dialer-connect/ingest' },
   { kind: 'prefix', value: '/api/dialer-connect' },
+  // Native softphone proxy (src/routes/dialerVoice.ts): Twilio token, presence,
+  // DND, call controls and the SSE stream. Without this rule the legacy Worker
+  // answered 405 to every authenticated token request (2026-09-14).
+  { kind: 'prefix', value: '/api/dialer' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {
