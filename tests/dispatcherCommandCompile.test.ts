@@ -1,7 +1,7 @@
 // compile.ts is the boundary between "what was asked" and "what may hit the API".
 import { describe, it, expect } from 'vitest';
 import { compileToolCall, collectRefs, isAllowedPath, COMMAND_EDITABLE_COLUMNS, CompileError, type ResolvedRefs } from '../src/utils/dispatcherCommand/compile';
-import { validateToolCall } from '../src/utils/dispatcherCommand/catalog';
+import { validateToolCall, TOOLS } from '../src/utils/dispatcherCommand/catalog';
 import { pickCall, pickUnit, levenshtein } from '../src/utils/dispatcherCommand/resolve';
 
 const refs: ResolvedRefs = {
@@ -24,15 +24,27 @@ describe('compileToolCall — writes', () => {
     const [step] = compile('assign_units', { call: '42', units: ['12', '14'] });
     expect(step).toMatchObject({ method: 'POST', path: '/dispatch/calls/7/dispatch', body: { unit_ids: [3, 4] } });
   });
-  it('clearing is destructive, en route is not; disposition normalised', () => {
+  // OPERATOR POLICY (2026-09-14): the Y/N confirmation gate is reserved for
+  // TRUE DELETES. Status changes, unassign and redispatch are all recoverable
+  // from the board, so they execute immediately.
+  it('clearing a call is NOT gated; disposition normalised', () => {
     const [clear] = compile('set_call_status', { call: '42', status: 'cleared', disposition: 'Gone On Arrival' });
-    expect(clear).toMatchObject({ path: '/dispatch/calls/7/status', destructive: true, body: { status: 'cleared', disposition: 'gone_on_arrival' } });
+    expect(clear).toMatchObject({ path: '/dispatch/calls/7/status', destructive: false, body: { status: 'cleared', disposition: 'gone_on_arrival' } });
     const [enr] = compile('set_call_status', { call: '42', status: 'enroute' });
     expect(enr).toMatchObject({ destructive: false });
   });
-  it('unassign and redispatch are destructive', () => {
-    expect(compile('unassign_unit', { call: '42', unit: '12' })[0]).toMatchObject({ path: '/dispatch/calls/7/unassign-unit', destructive: true, body: { unit_id: 3 } });
-    expect(compile('redispatch', { call: '42' })[0]).toMatchObject({ path: '/dispatch/calls/7/redispatch', destructive: true });
+  it('unassign and redispatch are NOT gated (reversible)', () => {
+    expect(compile('unassign_unit', { call: '42', unit: '12' })[0]).toMatchObject({ path: '/dispatch/calls/7/unassign-unit', destructive: false, body: { unit_id: 3 } });
+    expect(compile('redispatch', { call: '42' })[0]).toMatchObject({ path: '/dispatch/calls/7/redispatch', destructive: false });
+  });
+  it('delete_call is the gated operation', () => {
+    expect(compile('delete_call', { call: '42' }, 'admin')[0]).toMatchObject({ method: 'DELETE', path: '/dispatch/calls/7', destructive: true });
+  });
+  it('a true delete is the ONLY thing that raises the confirmation gate', () => {
+    // Guards the policy itself: if a future tool is marked destructive, this
+    // fails and forces a deliberate decision rather than a silent widening.
+    const gated = Object.values(TOOLS).filter(t => t.destructive).map(t => t.name);
+    expect(gated).toEqual(['delete_call']);
   });
   it('set_priority → /escalate', () => {
     expect(compile('set_priority', { call: 'selected call', priority: 'P1' })[0]).toMatchObject({ path: '/dispatch/calls/9/escalate', body: { new_priority: 'P1' } });

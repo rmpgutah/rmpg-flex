@@ -22,8 +22,8 @@ export interface ResolvedRefs {
 export const ALLOWED_PATHS: RegExp[] = [
   /^\/dispatch\/calls$/,
   /^\/dispatch\/calls\/\d+$/,
-  /^\/dispatch\/calls\/\d+\/(status|dispatch|unassign-unit|hold|resume|escalate|redispatch)$/,
-  /^\/dispatch\/units\/\d+\/status$/,
+  /^\/dispatch\/calls\/\d+\/(status|dispatch|unassign-unit|hold|resume|escalate|redispatch|undo-redispatch|archive|unarchive|merge-into|split|le-notification|promote-to-incident)$/,
+  /^\/dispatch\/units\/\d+\/(status|mileage)$/,
   /^\/comms\/bolos$/,
 ];
 
@@ -39,7 +39,11 @@ export const COMMAND_EDITABLE_COLUMNS = new Set<string>(
       'status_changed_at', 'archived_at', 'priority_score', 'notes'].includes(c)),
 );
 
-const DESTRUCTIVE_CALL_STATUSES = new Set(['cleared', 'closed', 'cancelled']);
+// NOTE: clearing / closing / cancelling a call used to raise the confirmation
+// gate. Per operator policy (2026-09-14) the Y/N turn is reserved for TRUE
+// DELETES only — a status is re-settable from the board, so gating the single
+// most common radio transmission ("clear me from 42") behind a confirmation
+// turn bought nothing and cost a round-trip on every call. See ToolDef.destructive.
 
 export class CompileError extends Error {
   constructor(message: string) { super(message); this.name = 'CompileError'; }
@@ -108,9 +112,8 @@ export function compileToolCall(call: ValidatedToolCall, refs: ResolvedRefs, aut
       const c = needCall(refs, p.call);
       const body: Record<string, unknown> = { status: p.status };
       if (p.disposition) body.disposition = String(p.disposition).trim().toLowerCase().replace(/\s+/g, '_');
-      const destructive = DESTRUCTIVE_CALL_STATUSES.has(p.status);
       return [
-        http('POST', `/dispatch/calls/${c.id}/status`, `${c.call_number} → ${String(p.status).toUpperCase()}${body.disposition ? ` (${body.disposition})` : ''}`, body, destructive),
+        http('POST', `/dispatch/calls/${c.id}/status`, `${c.call_number} → ${String(p.status).toUpperCase()}${body.disposition ? ` (${body.disposition})` : ''}`, body),
         client('refresh', {}, 'Refresh board'),
       ];
     }
@@ -126,7 +129,7 @@ export function compileToolCall(call: ValidatedToolCall, refs: ResolvedRefs, aut
       const c = needCall(refs, p.call);
       const u = needUnit(refs, p.unit);
       return [
-        http('POST', `/dispatch/calls/${c.id}/unassign-unit`, `Remove ${u.call_sign} from ${c.call_number}`, { unit_id: u.id }, true),
+        http('POST', `/dispatch/calls/${c.id}/unassign-unit`, `Remove ${u.call_sign} from ${c.call_number}`, { unit_id: u.id }),
         client('refresh', {}, 'Refresh board'),
       ];
     }
@@ -164,7 +167,68 @@ export function compileToolCall(call: ValidatedToolCall, refs: ResolvedRefs, aut
     }
     case 'redispatch': {
       const c = needCall(refs, p.call);
-      return [http('POST', `/dispatch/calls/${c.id}/redispatch`, `Re-dispatch ${c.call_number}`, {}, true), client('refresh', {}, 'Refresh board')];
+      return [http('POST', `/dispatch/calls/${c.id}/redispatch`, `Re-dispatch ${c.call_number}`, {}), client('refresh', {}, 'Refresh board')];
+    }
+    case 'undo_redispatch': {
+      const c = needCall(refs, p.call);
+      return [http('POST', `/dispatch/calls/${c.id}/undo-redispatch`, `Undo return visit on ${c.call_number}`, {}), client('refresh', {}, 'Refresh board')];
+    }
+    case 'archive_call': {
+      const c = needCall(refs, p.call);
+      return [http('POST', `/dispatch/calls/${c.id}/archive`, `Archive ${c.call_number}`), client('refresh', {}, 'Refresh board')];
+    }
+    case 'unarchive_call': {
+      const c = needCall(refs, p.call);
+      return [http('POST', `/dispatch/calls/${c.id}/unarchive`, `Restore ${c.call_number} to the board`), client('refresh', {}, 'Refresh board')];
+    }
+    case 'merge_calls': {
+      const src = needCall(refs, p.call);
+      const target = needCall(refs, p.into);
+      if (src.id === target.id) throw new CompileError('cannot merge a call into itself');
+      return [
+        http('POST', `/dispatch/calls/${src.id}/merge-into`, `Merge ${src.call_number} into ${target.call_number}`, { target_call_id: target.id }),
+        client('refresh', {}, 'Refresh board'),
+      ];
+    }
+    case 'split_call': {
+      const c = needCall(refs, p.call);
+      const splits = (p.splits as Array<Record<string, unknown>>).map(s => {
+        const out: Record<string, unknown> = {
+          incident_type: String(s.incident_type).trim().toLowerCase().replace(/\s+/g, '_'),
+        };
+        if (s.description) out.description = s.description;
+        if (s.location_address) out.location_address = s.location_address;
+        return out;
+      });
+      return [
+        http('POST', `/dispatch/calls/${c.id}/split`, `Split ${c.call_number} into ${splits.map(s => String(s.incident_type)).join(', ')}`, { splits }),
+        client('refresh', {}, 'Refresh board'),
+      ];
+    }
+    case 'notify_agency': {
+      const c = needCall(refs, p.call);
+      const body: Record<string, unknown> = {};
+      if (p.agency) body.agency = String(p.agency).trim();
+      if (p.case_number) body.case_number = String(p.case_number).trim();
+      return [
+        http('POST', `/dispatch/calls/${c.id}/le-notification`, `${c.call_number}: notified ${body.agency ?? 'Local PD'}${body.case_number ? ` (case ${body.case_number})` : ''}`, body),
+        client('refresh', {}, 'Refresh board'),
+      ];
+    }
+    case 'promote_to_incident': {
+      const c = needCall(refs, p.call);
+      return [http('POST', `/dispatch/calls/${c.id}/promote-to-incident`, `Promote ${c.call_number} to an incident report`, {}), client('refresh', {}, 'Refresh board')];
+    }
+    case 'set_unit_mileage': {
+      const u = needUnit(refs, p.unit);
+      return [http('PUT', `/dispatch/units/${u.id}/mileage`, `${u.call_sign} odometer → ${Number(p.mileage).toLocaleString()} mi`, { mileage: Number(p.mileage) })];
+    }
+    case 'delete_call': {
+      const c = needCall(refs, p.call);
+      return [
+        http('DELETE', `/dispatch/calls/${c.id}`, `PERMANENTLY DELETE ${c.call_number}`, undefined, true),
+        client('refresh', {}, 'Refresh board'),
+      ];
     }
     case 'select_call': {
       const c = needCall(refs, p.call);
@@ -195,6 +259,9 @@ export function collectRefs(calls: ValidatedToolCall[]): { callRefs: string[]; u
   for (const c of calls) {
     const p = c.params as Record<string, unknown>;
     if (typeof p.call === 'string') callRefs.add(p.call);
+    // merge_calls carries a SECOND call ref. Without this the target never
+    // reaches the resolver and every merge dies in needCall().
+    if (typeof p.into === 'string') callRefs.add(p.into);
     if (typeof p.unit === 'string') unitRefs.add(p.unit);
     if (Array.isArray(p.units)) for (const u of p.units) if (typeof u === 'string') unitRefs.add(u);
   }
