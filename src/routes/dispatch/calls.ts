@@ -26,6 +26,7 @@ import {
 import { stampCallWeather } from '../../utils/cfsWeatherStamp';
 import { parseWeatherSnapshot } from '../../utils/cfsWeather';
 import { currentCallNumberPrefix, nextCallNumber, withNextCallNumber } from '../../utils/callNumberSeq';
+import { likePattern } from '../../utils/d1Like';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
@@ -133,7 +134,7 @@ calls.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'ad
     if (endDate) { where += ' AND c.created_at <= ?'; params.push(endDate); }
     if (search) {
       where += " AND (c.call_number LIKE ? OR c.incident_type LIKE ? OR c.location_address LIKE ? OR c.description LIKE ?)";
-      const s = `%${search.slice(0, 48)}%`; params.push(s, s, s, s);
+      const s = likePattern(search); params.push(s, s, s, s);
     }
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
@@ -634,7 +635,7 @@ calls.get('/check-duplicate', requireRole('officer', 'dispatcher', 'supervisor',
         WHERE ${ACTIVE_CALL_WHERE}
           AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
         ORDER BY created_at DESC LIMIT 10
-      `, `%${normalized.slice(0, 48)}%`);
+      `, likePattern(normalized));
       textResults.push(...rows);
     }
 

@@ -23,10 +23,73 @@ import {
   rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch, type NarrativeLengthTarget,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
 } from '../utils/dispatchAi';
+import { getAiUsageStats, getAiActivity, logAiActivity } from '../utils/aiActivity';
+import {
+  buildProviderChain, callConfiguredAi, EXTERNAL_PROVIDERS,
+  type ChatMessage, type StoredProviderConfig,
+} from '../utils/configuredAi';
 
 const ai = new Hono<Env>();
 
 const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+
+// ── Usage metering ───────────────────────────────────────────
+// Every AI-consuming endpoint records one ai_activity_log row, which is what
+// GET /stats and GET /activity read. Done as middleware rather than eight
+// hand-edited handlers so a new AI endpoint only has to add its path here,
+// and so no handler's success path can silently forget to meter.
+//
+// Keyed by the sub-path BELOW /api/ai. Dev chat is deliberately absent: it
+// meters itself with the resolved provider/model, and metering it here too
+// would double-count every turn.
+const METERED_PATHS: Record<string, string> = {
+  '/suggest-units': 'suggest-units',
+  '/analyze': 'analyze',
+  '/narrative': 'narrative',
+  '/smart-search': 'smart-search',
+  '/refine': 'refine',
+  '/extract-fields': 'extract-fields',
+  '/prompt-test': 'prompt-test',
+  '/cleanup/scan': 'cleanup-scan',
+  '/cleanup/fix': 'cleanup-fix',
+};
+
+/** Body keys that hold the user's actual prompt, in priority order. */
+const PROMPT_KEYS = ['message', 'notes', 'query', 'text', 'prompt', 'user_message'];
+
+ai.use('*', async (c, next) => {
+  // c.req.path is the FULL mounted path; strip the mount prefix to match the
+  // table above. Anything not listed passes through unmetered.
+  const sub = c.req.path.replace(/^\/api\/ai/, '') || '/';
+  const taskType = METERED_PATHS[sub];
+  if (!taskType) return next();
+
+  // Parse the body BEFORE the handler. Hono caches the parsed body on the
+  // request, so the handler's own c.req.json() gets the cached value rather
+  // than a second (already-consumed) read.
+  let prompt: string | null = null;
+  if ((c.req.header('content-type') ?? '').includes('application/json')) {
+    try {
+      const body = await c.req.json<Record<string, unknown>>();
+      for (const k of PROMPT_KEYS) {
+        if (typeof body?.[k] === 'string' && (body[k] as string).trim()) { prompt = body[k] as string; break; }
+      }
+    } catch { /* malformed body — the handler will reject it; still worth metering */ }
+  }
+
+  const started = Date.now();
+  await next();
+
+  const status = c.res?.status ?? 500;
+  await logAiActivity(getDb(c.env), {
+    taskType,
+    latencyMs: Date.now() - started,
+    status: status >= 400 ? 'error' : 'success',
+    prompt,
+    error: status >= 400 ? `HTTP ${status}` : null,
+    userId: (c.get('userId') as number | undefined) ?? null,
+  }, safeExecutionCtx(c));
+});
 
 // ── Config storage helpers (system_config, category 'integrations') ──
 // Same DELETE-then-INSERT upsert pattern used by clearpathGps.ts/traccar.ts
@@ -319,14 +382,11 @@ ai.post('/prompt-test', requireRole('admin', 'manager', 'supervisor'), async (c)
   }
 });
 
-ai.get('/stats', (c) => c.json({
-  requestsToday: 0,
-  requestsThisWeek: 0,
-  requestsThisMonth: 0,
-  avgResponseMs: 0,
-  cacheHitRate: 0,
-  totalRequests: 0,
-}));
+// GET /ai/stats — real counters derived from ai_activity_log (migration
+// 0291). Was a hardcoded all-zeros object, which made AdminAISettingsTab's
+// usage tiles permanently read "0" no matter how much AI traffic ran.
+// Degrades to zeros (never 500s) when the table is unavailable.
+ai.get('/stats', async (c) => c.json(await getAiUsageStats(getDb(c.env))));
 
 ai.get('/status', (c) => c.json({
   provider: 'workers-ai',
@@ -374,12 +434,12 @@ ai.get('/health', async (c) => {
   }
 });
 
-ai.get('/activity', (c) => c.json([] as Array<{
-  id: number; task_type: string; provider: string; latency_ms: number;
-  status: string; prompt_preview: string; created_at: string;
-}>));
-
-ai.get('/dev-chat/history', (c) => c.json([]));
+// GET /ai/activity — real recent-call feed for AIActivityPanel and the
+// AICommandCenterPanel ticker. `limit` is clamped inside getAiActivity().
+ai.get('/activity', async (c) => {
+  const limit = Number.parseInt(c.req.query('limit') ?? '25', 10);
+  return c.json(await getAiActivity(getDb(c.env), Number.isFinite(limit) ? limit : 25));
+});
 
 // ============================================================
 // GET /ai/test/:provider — connectivity probe (admin/manager)
@@ -832,6 +892,357 @@ ai.post('/cleanup/fix', requireRole('admin', 'manager', 'supervisor'), async (c)
     log.error('[AI] cleanup/fix failed', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Fix failed' }, 500);
   }
+});
+
+// ============================================================
+// AI Dev Chat — POST /dev-chat/chat, POST /dev-chat/chat/stream,
+//               GET /dev-chat/history[/:sessionId], DELETE /dev-chat/history/:id
+// ============================================================
+// AIDevChatPanel.tsx has called these four endpoints since it shipped; none of
+// them existed, so the panel's entire chat function 404'd — including its own
+// "fall back to non-streaming" path, which called the other missing endpoint.
+//
+// Provider: whichever one the admin selected in AIProvidersPanel, resolved per
+// request from system_config via resolveDevChatChain() and executed by
+// src/utils/configuredAi.ts. Workers AI is the terminal fallback.
+//
+// Scoping: every read and delete is filtered by user_id. These transcripts can
+// contain operational CAD detail, so one admin does not get to read another's
+// session — an unknown id and someone else's id both return 404 so the
+// endpoint never confirms that a session it won't show you exists.
+//
+// Storage tables live in migration 0291_ai_activity_log.sql and are reconciled
+// at runtime (below) so a deploy that lands ahead of the migration degrades to
+// a clean error instead of 500ing every request.
+// ============================================================
+
+/**
+ * Hono THROWS on `c.executionCtx` when there is no ExecutionContext -- route-level
+ * tests drive handlers via app.request(), which has none -- so optional chaining
+ * does not help: the getter throws before the `?.` is ever evaluated.
+ * Same guard as src/routes/alpr.ts:577.
+ */
+function safeExecutionCtx(c: any): { waitUntil(p: Promise<unknown>): void } | undefined {
+  try { return c.executionCtx; } catch { return undefined; }
+}
+
+const DEV_CHAT_SYSTEM_PROMPT = [
+  'You are the RMPG Flex engineering assistant, embedded in the admin console of a',
+  'police CAD/RMS running on Cloudflare Workers (Hono + D1) with a React 18 + Vite SPA.',
+  'Answer questions about the system concisely and concretely.',
+  'You have NO access to the repository, the filesystem, or live records — reason only',
+  'from the conversation and any context block the operator supplies. If you do not know',
+  'something, say so plainly rather than inventing a file path, table, or endpoint.',
+].join(' ');
+
+/** Max prior turns replayed to the provider. Keeps the prompt bounded. */
+const DEV_CHAT_HISTORY_TURNS = 12;
+const DEV_CHAT_MAX_MESSAGE = 8000;
+
+let devChatTablesReady = false;
+async function ensureDevChatTables(db: D1Database): Promise<boolean> {
+  if (devChatTablesReady) return true;
+  try {
+    await execute(db, `CREATE TABLE IF NOT EXISTS ai_dev_chat_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_key TEXT NOT NULL UNIQUE,
+      user_id INTEGER,
+      title TEXT,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    await execute(db, `CREATE TABLE IF NOT EXISTS ai_dev_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      provider TEXT,
+      latency_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    devChatTablesReady = true;
+    return true;
+  } catch (err) {
+    log.error('[ai] dev-chat table reconcile failed', { src: 'ai.ts' }, err as Error);
+    return false;
+  }
+}
+
+/**
+ * Resolve the provider chain from the admin panel's saved configuration.
+ * This is what makes AIProvidersPanel's dropdown actually mean something —
+ * before this, every endpoint hard-coded Workers AI.
+ */
+async function resolveDevChatChain(db: D1Database) {
+  const top = await getJsonConfig(db, 'ai.config', {
+    provider: 'workers-ai', autoFallback: true, features: DEFAULT_FEATURES,
+  });
+  const stored: Record<string, StoredProviderConfig> = {};
+  for (const name of EXTERNAL_PROVIDERS) {
+    const raw = await getConfigValue(db, `ai.provider.${name}`);
+    if (!raw) continue;
+    try { stored[name] = JSON.parse(raw) as StoredProviderConfig; } catch { /* malformed row — treat as unconfigured */ }
+  }
+  return buildProviderChain(String(top.provider ?? 'workers-ai'), top.autoFallback !== false, stored);
+}
+
+interface DevChatInput { message: string; sessionKey: string; context?: string; }
+
+/** Shared validation for both the streaming and non-streaming handlers. */
+function readDevChatBody(body: Record<string, unknown>):
+  { ok: true; value: DevChatInput } | { ok: false; error: string; code: string } {
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!message) return { ok: false, error: 'A message is required', code: 'CHAT_NO_MESSAGE' };
+  if (message.length > DEV_CHAT_MAX_MESSAGE) {
+    return { ok: false, error: `Message too long (max ${DEV_CHAT_MAX_MESSAGE} chars)`, code: 'CHAT_TOO_LONG' };
+  }
+  const sessionKey = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+  if (!sessionKey) return { ok: false, error: 'A sessionId is required', code: 'CHAT_NO_SESSION' };
+  const context = typeof body.context === 'string' && body.context.trim() ? body.context.trim() : undefined;
+  return { ok: true, value: { message, sessionKey, context } };
+}
+
+/** Upsert the session row and return its numeric id. */
+async function openDevChatSession(db: D1Database, sessionKey: string, userId: number | null, firstMessage: string): Promise<number | null> {
+  const existing = await queryFirst<{ id: number }>(db,
+    'SELECT id FROM ai_dev_chat_sessions WHERE session_key = ? LIMIT 1', sessionKey);
+  if (existing) return existing.id;
+  await execute(db,
+    `INSERT OR IGNORE INTO ai_dev_chat_sessions (session_key, user_id, title) VALUES (?, ?, ?)`,
+    sessionKey, userId, firstMessage.slice(0, 120));
+  const row = await queryFirst<{ id: number }>(db,
+    'SELECT id FROM ai_dev_chat_sessions WHERE session_key = ? LIMIT 1', sessionKey);
+  return row?.id ?? null;
+}
+
+async function appendDevChatMessage(
+  db: D1Database, sessionId: number, role: 'user' | 'assistant',
+  content: string, provider?: string | null, latencyMs?: number | null,
+): Promise<void> {
+  await execute(db,
+    `INSERT INTO ai_dev_chat_messages (session_id, role, content, provider, latency_ms)
+     VALUES (?, ?, ?, ?, ?)`,
+    sessionId, role, content, provider ?? null, latencyMs ?? null);
+  await execute(db,
+    `UPDATE ai_dev_chat_sessions
+        SET message_count = message_count + 1, updated_at = datetime('now')
+      WHERE id = ?`, sessionId);
+}
+
+async function loadDevChatContext(db: D1Database, sessionId: number): Promise<ChatMessage[]> {
+  const rows = await query<{ role: string; content: string }>(db,
+    `SELECT role, content FROM ai_dev_chat_messages
+      WHERE session_id = ? ORDER BY id DESC LIMIT ?`,
+    sessionId, DEV_CHAT_HISTORY_TURNS);
+  return rows.reverse().map((r) => ({
+    role: r.role === 'assistant' ? 'assistant' as const : 'user' as const,
+    content: r.content,
+  }));
+}
+
+/**
+ * Everything both handlers share: validate, persist the user turn, call the
+ * chain, persist the answer, meter it. Returns a discriminated result so the
+ * streaming handler can emit an error frame where the JSON handler returns a
+ * status code.
+ */
+async function runDevChatTurn(c: any, input: DevChatInput): Promise<
+  { ok: true; content: string; provider: string; latencyMs: number }
+  | { ok: false; error: string; status: number; code: string }
+> {
+  const db = getDb(c.env);
+  const userId = (c.get('userId') as number | undefined) ?? null;
+
+  if (!(await ensureDevChatTables(db))) {
+    return { ok: false, error: 'Dev chat storage is unavailable', status: 503, code: 'CHAT_STORAGE_UNAVAILABLE' };
+  }
+
+  const sessionId = await openDevChatSession(db, input.sessionKey, userId, input.message);
+  if (sessionId == null) {
+    return { ok: false, error: 'Could not open chat session', status: 500, code: 'CHAT_SESSION_FAILED' };
+  }
+
+  // Load prior turns BEFORE appending this one, then append — so the model
+  // sees the history exactly once, not with the current message duplicated.
+  const history = await loadDevChatContext(db, sessionId);
+  await appendDevChatMessage(db, sessionId, 'user', input.message);
+
+  const messages: ChatMessage[] = [
+    ...history,
+    {
+      role: 'user',
+      content: input.context
+        ? `${input.message}\n\n--- operator-supplied context ---\n${input.context}`
+        : input.message,
+    },
+  ];
+
+  const started = Date.now();
+  try {
+    const chain = await resolveDevChatChain(db);
+    const result = await callConfiguredAi(c.env, chain, {
+      messages,
+      system: DEV_CHAT_SYSTEM_PROMPT,
+      maxTokens: 2048,
+      temperature: 0.4,
+    });
+    await appendDevChatMessage(db, sessionId, 'assistant', result.content, result.provider, result.latencyMs);
+    await logAiActivity(db, {
+      taskType: 'dev-chat', provider: result.provider, model: result.model,
+      latencyMs: result.latencyMs, status: result.fellBack ? 'fallback' : 'success',
+      prompt: input.message, userId,
+    }, safeExecutionCtx(c));
+    return { ok: true, content: result.content, provider: result.provider, latencyMs: result.latencyMs };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error('[ai] dev-chat provider failure', { src: 'ai.ts', sessionKey: input.sessionKey }, err as Error);
+    await logAiActivity(db, {
+      taskType: 'dev-chat', latencyMs: Date.now() - started, status: 'error',
+      prompt: input.message, error: message, userId,
+    }, safeExecutionCtx(c));
+    return { ok: false, error: message, status: 502, code: 'CHAT_PROVIDER_FAILED' };
+  }
+}
+
+ai.post('/dev-chat/chat', requireRole('admin', 'manager'), async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const parsed = readDevChatBody(body);
+  if (!parsed.ok) return c.json({ error: parsed.error, code: parsed.code }, 400);
+
+  const result = await runDevChatTurn(c, parsed.value);
+  if (!result.ok) return c.json({ error: result.error, code: result.code }, result.status as 500);
+  return c.json({ content: result.content, provider: result.provider, latencyMs: result.latencyMs });
+});
+
+// Streaming variant. The provider calls are not themselves streamed (neither
+// env.AI.run nor the panel's fallback path needs token-level streaming to be
+// correct), so this emits the completed answer in chunks at a readable cadence
+// and then a `done` frame. That matches exactly what AIDevChatPanel parses:
+// `data: {"token": "..."}` frames, then `data: {"done": true, "latencyMs": n}`,
+// with `data: {"error": "..."}` on failure. A 400 is returned as ordinary JSON
+// (not a stream) so the panel's `!response.ok` branch can read it.
+const STREAM_CHUNK_CHARS = 24;
+
+ai.post('/dev-chat/chat/stream', requireRole('admin', 'manager'), async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const parsed = readDevChatBody(body);
+  if (!parsed.ok) return c.json({ error: parsed.error, code: parsed.code }, 400);
+  const input = parsed.value;
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+  const send = (payload: unknown) => writer.write(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+
+  const pump = (async () => {
+    try {
+      await send({ thinking: true });
+      const result = await runDevChatTurn(c, input);
+      if (!result.ok) {
+        await send({ error: result.error });
+        await send({ done: true, latencyMs: 0 });
+        return;
+      }
+      await send({ thinking_done: true });
+      for (let i = 0; i < result.content.length; i += STREAM_CHUNK_CHARS) {
+        await send({ token: result.content.slice(i, i + STREAM_CHUNK_CHARS) });
+      }
+      await send({ done: true, latencyMs: result.latencyMs, provider: result.provider });
+    } catch (err) {
+      log.error('[ai] dev-chat stream failed', { src: 'ai.ts' }, err as Error);
+      await send({ error: err instanceof Error ? err.message : 'Stream failed' }).catch(() => {});
+      await send({ done: true, latencyMs: 0 }).catch(() => {});
+    } finally {
+      await writer.close().catch(() => { /* client already disconnected */ });
+    }
+  })();
+
+  // Keep the isolate alive until the stream is fully written even if the
+  // response object is returned first.
+  safeExecutionCtx(c)?.waitUntil(pump);
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+});
+
+// GET /dev-chat/history — session list for the panel's sidebar.
+ai.get('/dev-chat/history', requireRole('admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  if (!(await ensureDevChatTables(db))) return c.json([]);
+  try {
+    const rows = await query<{
+      session_id: string; started_at: string; message_count: number;
+      first_message: string | null; last_message: string | null;
+    }>(db, `
+      SELECT s.session_key AS session_id,
+             s.created_at  AS started_at,
+             s.message_count,
+             (SELECT m.content FROM ai_dev_chat_messages m
+               WHERE m.session_id = s.id AND m.role = 'user'
+               ORDER BY m.id ASC LIMIT 1)  AS first_message,
+             (SELECT m.content FROM ai_dev_chat_messages m
+               WHERE m.session_id = s.id
+               ORDER BY m.id DESC LIMIT 1) AS last_message
+        FROM ai_dev_chat_sessions s
+       WHERE s.user_id IS ?
+       ORDER BY s.updated_at DESC
+       LIMIT 50`, userId);
+    return c.json(rows.map((r) => ({
+      session_id: r.session_id,
+      started_at: r.started_at,
+      message_count: r.message_count,
+      first_message: r.first_message ?? '',
+      last_message: r.last_message ?? '',
+    })));
+  } catch (err) {
+    log.error('[ai] dev-chat history failed', { src: 'ai.ts' }, err as Error);
+    return c.json([]);
+  }
+});
+
+// GET /dev-chat/history/:sessionId — one transcript.
+ai.get('/dev-chat/history/:sessionId', requireRole('admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  const sessionKey = c.req.param('sessionId') ?? '';
+  if (!(await ensureDevChatTables(db))) return c.json({ error: 'Not found', code: 'CHAT_NOT_FOUND' }, 404);
+
+  const session = await queryFirst<{ id: number }>(db,
+    'SELECT id FROM ai_dev_chat_sessions WHERE session_key = ? AND user_id IS ? LIMIT 1',
+    sessionKey, userId);
+  // Someone else's session and a nonexistent one answer identically, so this
+  // never confirms the existence of a transcript the caller may not read.
+  if (!session) return c.json({ error: 'Not found', code: 'CHAT_NOT_FOUND' }, 404);
+
+  const rows = await query<{ id: number; role: string; content: string; latency_ms: number | null; created_at: string }>(db,
+    `SELECT id, role, content, latency_ms, created_at
+       FROM ai_dev_chat_messages WHERE session_id = ? ORDER BY id ASC LIMIT 500`, session.id);
+  return c.json(rows);
+});
+
+// DELETE /dev-chat/history/:sessionId — drop a transcript.
+ai.delete('/dev-chat/history/:sessionId', requireRole('admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  const sessionKey = c.req.param('sessionId') ?? '';
+  if (!(await ensureDevChatTables(db))) return c.json({ error: 'Not found', code: 'CHAT_NOT_FOUND' }, 404);
+
+  const session = await queryFirst<{ id: number }>(db,
+    'SELECT id FROM ai_dev_chat_sessions WHERE session_key = ? AND user_id IS ? LIMIT 1',
+    sessionKey, userId);
+  if (!session) return c.json({ error: 'Not found', code: 'CHAT_NOT_FOUND' }, 404);
+
+  // Messages first: if the second statement fails, orphaned messages are worse
+  // than an empty session row (D1 has no cascade here).
+  await execute(db, 'DELETE FROM ai_dev_chat_messages WHERE session_id = ?', session.id);
+  await execute(db, 'DELETE FROM ai_dev_chat_sessions WHERE id = ?', session.id);
+  return c.json({ success: true });
 });
 
 export default ai;

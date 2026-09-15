@@ -6,6 +6,7 @@ import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query } from './db';
 import { personFlagsForIds } from './intelQueryFlags';
+import { likePattern } from './d1Like';
 
 export interface QueryHit {
   type: string; id: number; label: string; snippet: string;
@@ -20,8 +21,11 @@ export interface QueryParams {
   since?: string; until?: string; limit?: number;
 }
 
-const esc = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
-const like = (s: string) => `%${esc(s).slice(0, 48)}%`;
+// Escaping must precede the byte measurement (it adds a byte per
+// metacharacter) and the cut must fall between escape pairs, never inside
+// one -- a dangling '\' is an error under this file's `ESCAPE '\'` clauses,
+// not a wider match. likePattern owns both rules.
+const like = (s: string) => likePattern(s, { escape: true });
 
 export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ results: QueryHit[]; facets: Facets }> {
   const limit = Math.min(p.limit || 50, 100);

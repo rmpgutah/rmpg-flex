@@ -27,6 +27,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
+import { likePattern } from '../../utils/d1Like';
 
 const subjects = new Hono<Env>();
 
@@ -60,7 +61,7 @@ subjects.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer',
   // D1 rejects LIKE patterns over 50 chars ("LIKE pattern too complex"), so the
   // wildcarded term must stay ≤48 — a longer paste would otherwise throw and the
   // catch below would silently return no subjects.
-  const like = `%${q.slice(0, 48)}%`;
+  const like = likePattern(q);
   const exact = q;
   const prefix = q.toLowerCase();
   const results: SubjectResult[] = [];

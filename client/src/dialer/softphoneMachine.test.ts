@@ -39,3 +39,31 @@ describe('softphone reducer', () => {
     expect(reduce(reduce(INITIAL, { type: 'ERROR', message: 'x' }), { type: 'RESET' })).toEqual(INITIAL);
   });
 });
+
+describe('control-action failures are non-fatal', () => {
+  const live = () => at(INITIAL, { type: 'REGISTERED' }, { type: 'DIALING', to: '+18015551212' }, { type: 'ACCEPTED', callSid: 'CA1', connectedAt: 1 });
+
+  test('CONTROL_FAILED surfaces a notice without leaving in_call or touching the call', () => {
+    const s = reduce(live(), { type: 'CONTROL_FAILED', message: 'Caller leg not found in conference' });
+    expect(s).toMatchObject({ status: 'in_call', callSid: 'CA1', connectedAt: 1, held: false, error: null });
+    expect(s.notice).toBe('Caller leg not found in conference');
+  });
+
+  test('a failed hold leaves held false and the call controllable afterwards', () => {
+    const failed = reduce(live(), { type: 'CONTROL_FAILED', message: 'nope' });
+    const retried = reduce(failed, { type: 'HELD', held: true });
+    expect(retried).toMatchObject({ status: 'in_call', held: true });
+  });
+
+  test('NOTICE_CLEARED and the end of the call clear the notice', () => {
+    const failed = reduce(live(), { type: 'CONTROL_FAILED', message: 'nope' });
+    expect(reduce(failed, { type: 'NOTICE_CLEARED' }).notice).toBeNull();
+    expect(reduce(failed, { type: 'DISCONNECTED' }).notice).toBeNull();
+    expect(reduce(failed, { type: 'DIALING', to: '+1' }).notice).toBeNull();
+  });
+
+  test('ERROR is still fatal for device-level failures', () => {
+    const s = reduce(live(), { type: 'ERROR', message: 'device gone' });
+    expect(s).toMatchObject({ status: 'error', error: 'device gone', notice: null });
+  });
+});

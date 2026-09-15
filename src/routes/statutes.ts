@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, queryInChunks } from '../utils/db';
 import { log } from '../utils/logger';
+import { likePattern } from '../utils/d1Like';
 
 const statutes = new Hono<Env>();
 
@@ -59,7 +60,9 @@ statutes.get('/', async (c) => {
     const binds: unknown[] = [];
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
-      const safe = q.slice(0, 48); binds.push(`${safe}%`, `%${safe}%`, `%${safe}%`);
+      // A prefix pattern spends ONE wildcard, so its needle budget is one
+      // byte larger than the two-wildcard contains patterns beside it.
+      binds.push(likePattern(q, { match: 'prefix' }), likePattern(q), likePattern(q));
     }
     if (category && category !== 'all') { where.push('category = ?'); binds.push(category); }
 
@@ -108,7 +111,9 @@ statutes.get('/search', async (c) => {
     }
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
-      const safe = q.slice(0, 48); binds.push(`${safe}%`, `%${safe}%`, `%${safe}%`);
+      // A prefix pattern spends ONE wildcard, so its needle budget is one
+      // byte larger than the two-wildcard contains patterns beside it.
+      binds.push(likePattern(q, { match: 'prefix' }), likePattern(q), likePattern(q));
     }
     if (category && category !== 'all') { where.push('category = ?'); binds.push(category); }
     if (level) { where.push('offense_level = ?'); binds.push(level); }

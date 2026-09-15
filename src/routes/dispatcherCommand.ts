@@ -148,7 +148,7 @@ async function runServerRead(env: Bindings, db: D1Database, call: ValidatedToolC
              WHERE active = 1 AND (expires_at IS NULL OR expires_at >= datetime('now'))
                AND UPPER(address) LIKE ?
              ORDER BY alert_level = 'critical' DESC, alert_level = 'warning' DESC, created_at DESC LIMIT 5`,
-        likePattern(address, { upperCase: true }),
+        likePattern(address.trim(), { caseFold: 'upper' }),
       ).catch(() => []);
       if (!rows.length) return `No premise alerts on file for ${address}.`;
       return `${rows.length} premise alert${rows.length > 1 ? 's' : ''} at ${address}: ` +

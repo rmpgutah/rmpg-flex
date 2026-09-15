@@ -6,6 +6,7 @@ import { query, queryFirst } from '../db';
 import { mapSkipTracerRecordsToProfiles, normalizeResponse } from '../personIntel/adapters/skiptracer';
 import { enrichVehicleRecord, type EnrichEnv } from '../vehicleEnrichment/enrichChain';
 import { decodeVin } from '../vehicleEnrichment/client';
+import { likePattern } from '../d1Like';
 
 export interface VehicleRecord {
   year?: string;
@@ -245,19 +246,19 @@ async function searchLocalPersons(db: D1Database, params: V2SearchParams): Promi
 
   if (type === 'phone') {
     const digits = q.replace(/\D/g, '').slice(-10);
-    const wild = `%${digits.slice(0, 48)}%`;
+    const wild = likePattern(digits);
     rows = await query<PersonRow>(db,
       `SELECT id, first_name, middle_name, last_name, dob, phone, email, address, city, state, zip, ssn_last4, ssn_full
          FROM persons WHERE replace(replace(replace(phone, '-', ''), '(', ''), ')', '') LIKE ?
          ORDER BY last_name, first_name LIMIT ?`, wild, limit);
   } else if (type === 'email') {
-    const wild = `%${q.slice(0, 48)}%`;
+    const wild = likePattern(q);
     rows = await query<PersonRow>(db,
       `SELECT id, first_name, middle_name, last_name, dob, phone, email, address, city, state, zip, ssn_last4, ssn_full
          FROM persons WHERE email LIKE ?
          ORDER BY last_name, first_name LIMIT ?`, wild, limit);
   } else if (type === 'address') {
-    const wild = `%${q.slice(0, 48)}%`;
+    const wild = likePattern(q);
     rows = await query<PersonRow>(db,
       `SELECT id, first_name, middle_name, last_name, dob, phone, email, address, city, state, zip, ssn_last4, ssn_full
          FROM persons WHERE address LIKE ? OR city LIKE ? OR zip LIKE ?
@@ -271,13 +272,13 @@ async function searchLocalPersons(db: D1Database, params: V2SearchParams): Promi
     ).join(' AND ');
     const binds: unknown[] = [];
     for (const t of tokens) {
-      const wild = `%${t.slice(0, 48)}%`;
+      const wild = likePattern(t);
       binds.push(wild, wild, wild, wild, wild);
     }
     let sql = `SELECT id, first_name, middle_name, last_name, dob, phone, email, address, city, state, zip, ssn_last4, ssn_full
                  FROM persons WHERE ${where}`;
     if (params.dob) { sql += ' AND dob = ?'; binds.push(params.dob); }
-    if (params.city) { sql += ' AND city LIKE ?'; binds.push(`%${params.city.slice(0, 48)}%`); }
+    if (params.city) { sql += ' AND city LIKE ?'; binds.push(likePattern(params.city)); }
     if (params.state) { sql += ' AND upper(state) = ?'; binds.push(params.state.toUpperCase()); }
     if (params.ssn_last4) { sql += ' AND (ssn_last4 = ? OR ssn_full LIKE ?)'; binds.push(params.ssn_last4, `%${params.ssn_last4}`); }
     sql += ' ORDER BY last_name, first_name LIMIT ?';

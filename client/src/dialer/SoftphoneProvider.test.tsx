@@ -16,6 +16,8 @@ function Probe() {
       <span data-testid="status">{s.status}</span>
       <span data-testid="remote">{s.remoteNumber ?? ''}</span>
       <span data-testid="error">{s.error ?? ''}</span>
+      <span data-testid="notice">{s.notice ?? ''}</span>
+      <span data-testid="held">{String(s.held)}</span>
       <button onClick={() => { void s.dial('8015551212'); }}>dial</button>
       <button onClick={() => s.answer()}>answer</button>
       <button onClick={() => s.hangup()}>hangup</button>
@@ -126,5 +128,40 @@ describe('SoftphoneProvider', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  test('a rejected hold keeps the call live and reports it as a notice, not a fatal error', async () => {
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/dialer/token') return { token: 'tok', identity: 'dispatcher_abc', expiresAt: new Date(Date.now() + 3600_000).toISOString() };
+      if (path === '/dialer/dnd') return init?.method === 'PATCH' ? JSON.parse(String(init.body)) : { dnd: false };
+      if (path === '/dialer/voice/hold') throw Object.assign(new Error('Caller leg not found in conference'), { status: 409 });
+      return {};
+    });
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('ready'));
+    await act(async () => { device!.simulateIncoming('+18015550000', 'CAcaller1'); });
+    await act(async () => { screen.getByText('answer').click(); });
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('in_call'));
+
+    await act(async () => { screen.getByText('hold').click(); });
+
+    await waitFor(() => expect(screen.getByTestId('notice').textContent).toBe('Caller leg not found in conference'));
+    expect(screen.getByTestId('status').textContent).toBe('in_call');
+    expect(screen.getByTestId('error').textContent).toBe('');
+    expect(screen.getByTestId('held').textContent).toBe('false');
+  });
+
+  test('a failed DND toggle does not tear down the softphone', async () => {
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/dialer/token') return { token: 'tok', identity: 'dispatcher_abc', expiresAt: new Date(Date.now() + 3600_000).toISOString() };
+      if (path === '/dialer/dnd' && init?.method === 'PATCH') throw new Error('upstream unavailable');
+      if (path === '/dialer/dnd') return { dnd: false };
+      return {};
+    });
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('dnd').textContent).toBe('false'));
+    await act(async () => { screen.getByText('toggle-dnd').click(); });
+    await waitFor(() => expect(screen.getByTestId('notice').textContent).toBe('upstream unavailable'));
+    expect(screen.getByTestId('status').textContent).toBe('ready');
   });
 });

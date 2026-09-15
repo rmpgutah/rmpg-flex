@@ -92,6 +92,7 @@ import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../utils/encryptedR2';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
+import { likePattern } from '../utils/d1Like';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -1793,7 +1794,7 @@ si.get('/', async (c) => {
   if (priority) { where.push('priority = ?'); args.push(priority); }
   if (search) {
     where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
-    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    const s = likePattern(search);
     args.push(s, s, s);
   }
   const sql = `

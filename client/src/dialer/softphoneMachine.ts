@@ -4,7 +4,14 @@ export type SoftphoneStatus =
 
 export interface SoftphoneSnapshot {
   status: SoftphoneStatus;
+  /** Fatal: the softphone is unusable until `retry` (device/registration/carrier). */
   error: string | null;
+  /**
+   * Non-fatal: one control action (hold, transfer, recording, DND…) was refused
+   * upstream. The call is still live and every control stays usable — never
+   * promote one of these to `error`, which tears the in-call UI down.
+   */
+  notice: string | null;
   callSid: string | null;
   remoteNumber: string | null;
   direction: 'inbound' | 'outbound' | null;
@@ -21,6 +28,8 @@ export type SoftphoneEvent =
   | { type: 'UNLINKED' }
   | { type: 'PASSIVE' }
   | { type: 'ERROR'; message: string }
+  | { type: 'CONTROL_FAILED'; message: string }
+  | { type: 'NOTICE_CLEARED' }
   | { type: 'INCOMING'; from: string; callSid: string | null }
   | { type: 'DIALING'; to: string }
   | { type: 'ACCEPTED'; callSid: string | null; connectedAt: number }
@@ -32,11 +41,12 @@ export type SoftphoneEvent =
   | { type: 'RESET' };
 
 export const INITIAL: SoftphoneSnapshot = {
-  status: 'offline', error: null, callSid: null, remoteNumber: null, direction: null,
+  status: 'offline', error: null, notice: null, callSid: null, remoteNumber: null, direction: null,
   connectedAt: null, muted: false, held: false, recording: false, waitingFrom: null,
 };
 
 const CLEARED_CALL = {
+  notice: null,
   callSid: null, remoteNumber: null, direction: null, connectedAt: null,
   muted: false, held: false, recording: false, waitingFrom: null,
 } as const;
@@ -47,7 +57,9 @@ export function reduce(s: SoftphoneSnapshot, e: SoftphoneEvent): SoftphoneSnapsh
     case 'REGISTERED': return { ...s, status: 'ready', error: null };
     case 'UNLINKED': return { ...INITIAL, status: 'unlinked' };
     case 'PASSIVE': return { ...INITIAL, status: 'passive' };
-    case 'ERROR': return { ...s, status: 'error', error: e.message };
+    case 'ERROR': return { ...s, status: 'error', error: e.message, notice: null };
+    case 'CONTROL_FAILED': return { ...s, notice: e.message };
+    case 'NOTICE_CLEARED': return { ...s, notice: null };
     case 'INCOMING':
       if (s.status === 'in_call' || s.status === 'call_waiting') return { ...s, status: 'call_waiting', waitingFrom: e.from };
       return { ...s, status: 'incoming', remoteNumber: e.from, callSid: e.callSid, direction: 'inbound' };
