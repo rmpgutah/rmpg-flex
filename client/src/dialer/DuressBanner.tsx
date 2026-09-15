@@ -15,7 +15,8 @@ export default function DuressBanner() {
       style={{ background: 'var(--sev-critical)', color: 'var(--text-primary)' }}
       role="alert"
     >
-      <AlertTriangle className="w-4 h-4" /> Duress alert: {lastDuress.name} · {new Date(lastDuress.at).toLocaleTimeString()}
+      {/* `at` is an epoch-ms number captured client-side, not a server string. */}
+      <AlertTriangle className="w-4 h-4" /> Duress alert: {lastDuress.name} · {new Date(lastDuress.at).toLocaleTimeString() /* new-date-ok */}
       <button type="button" aria-label="Dismiss duress alert" className="ml-auto" onClick={() => setDismissedAt(lastDuress.at)}>
         <X className="w-4 h-4" />
       </button>
