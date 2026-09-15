@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Brain, Loader2 } from 'lucide-react';
+import { apiFetch } from '../hooks/useApi';
 
 interface AISearchButtonProps {
   query: string;
@@ -17,22 +18,15 @@ export default function AISearchButton({ query, searchType, onFiltersExtracted }
     setIsLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch('/api/ai/smart-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ query: query.trim(), searchType }),
-      });
-      if (!res.ok) {
-        if (res.status === 503 || res.status === 501) {
-          setAiUnavailable(true);
-          setError('AI unavailable');
-        } else {
-          setError('Search failed');
-        }
-        return;
-      }
-      const data = await res.json();
+      // apiFetch (not a bare fetch) so this call gets the shared token
+      // refresh, retry/timeout and 401 handling every other API call has.
+      const data = await apiFetch<{ available?: boolean; filters?: Record<string, string> }>(
+        '/ai/smart-search',
+        {
+          method: 'POST',
+          body: JSON.stringify({ query: query.trim(), searchType }),
+        },
+      );
       if (data.available && data.filters) {
         onFiltersExtracted(data.filters);
       } else {
