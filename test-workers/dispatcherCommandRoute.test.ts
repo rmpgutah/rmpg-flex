@@ -106,6 +106,30 @@ describe('POST /api/dispatcher/command — deterministic path (no AI)', () => {
   });
 });
 
+describe('board-wide writes (admin/manager only, no confirmation gate)', () => {
+  it('close all → force-close-all for an admin, and is NOT gated', async () => {
+    const { json } = await command(ADMIN, { text: 'close all' });
+    expect(json.ok).toBe(true);
+    expect(json.needs_confirmation).toBe(false);
+    expect(json.steps[0]).toMatchObject({ method: 'POST', path: '/dispatch/calls/force-close-all', destructive: false });
+    expect(json.steps[0].summary).toContain('ALL');
+  });
+  it('bulk reassign resolves every call ref against real rows', async () => {
+    const { json } = await command(ADMIN, { text: 'reassign 42 and 142 to 12' });
+    expect(json.steps[0]).toMatchObject({
+      path: '/dispatch/calls/bulk-reassign',
+      body: { call_ids: [7001, 7002], unit_id: 301 },
+    });
+  });
+  it('a dispatcher is refused both', async () => {
+    const close = await command(DISPATCHER, { text: 'close all' });
+    expect(close.json.reply).toMatch(/may not/i);
+    expect(close.json.steps).toEqual([]);
+    const bulk = await command(DISPATCHER, { text: 'reassign 42 and 142 to 12' });
+    expect(bulk.json.steps).toEqual([]);
+  });
+});
+
 describe('confirmation round-trip', () => {
   // Policy (2026-09-14): only a TRUE DELETE raises the gate. Routine writes —
   // clearing a call, unassigning a unit — now execute immediately.

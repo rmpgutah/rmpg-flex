@@ -46,6 +46,20 @@ describe('compileToolCall — writes', () => {
     const gated = Object.values(TOOLS).filter(t => t.destructive).map(t => t.name);
     expect(gated).toEqual(['delete_call']);
   });
+  it('bulk_reassign resolves every call ref and de-dupes ids', () => {
+    // '42' and 'selected call' are distinct refs; both must reach the resolver.
+    const [step] = compile('bulk_reassign', { calls: ['42', 'selected call', '42'], unit: '12' }, 'admin');
+    expect(step).toMatchObject({ method: 'POST', path: '/dispatch/calls/bulk-reassign', destructive: false, body: { call_ids: [7, 9], unit_id: 3 } });
+  });
+  it('force_close_all says ALL out loud in the summary', () => {
+    const [step] = compile('force_close_all', { disposition: 'End Of Shift' }, 'admin');
+    expect(step).toMatchObject({ method: 'POST', path: '/dispatch/calls/force-close-all', destructive: false, body: { disposition: 'end_of_shift' } });
+    expect(step.summary).toContain('ALL');
+  });
+  it('board-wide writes are admin/manager only', () => {
+    expect(() => compile('force_close_all', {}, 'dispatcher')).toThrow(/may not/);
+    expect(() => compile('bulk_reassign', { calls: ['42', '142'], unit: '12' }, 'supervisor')).toThrow(/may not/);
+  });
   it('set_priority → /escalate', () => {
     expect(compile('set_priority', { call: 'selected call', priority: 'P1' })[0]).toMatchObject({ path: '/dispatch/calls/9/escalate', body: { new_priority: 'P1' } });
   });
@@ -77,8 +91,12 @@ describe('compileToolCall — update_call_fields allowlist', () => {
 });
 
 describe('path allowlist', () => {
-  it.each(['/dispatch/calls', '/dispatch/calls/7/status', '/dispatch/units/3/status', '/comms/bolos'])('allows %s', p => expect(isAllowedPath(p)).toBe(true));
-  it.each(['/dispatch/calls/7', '/admin/users', '/dispatch/calls/force-close-all', '/dispatch/calls/7/../8/status'])('rejects/limits %s', p => {
+  it.each([
+    '/dispatch/calls', '/dispatch/calls/7/status', '/dispatch/units/3/status', '/comms/bolos',
+    // Board-wide writes — admin/manager in the route AND in the catalog.
+    '/dispatch/calls/force-close-all', '/dispatch/calls/bulk-reassign',
+  ])('allows %s', p => expect(isAllowedPath(p)).toBe(true));
+  it.each(['/dispatch/calls/7', '/admin/users', '/dispatch/calls/archive-bulk', '/dispatch/calls/7/../8/status'])('rejects/limits %s', p => {
     // PUT /dispatch/calls/:id IS allowed (field updates); the rest are not.
     expect(isAllowedPath(p)).toBe(p === '/dispatch/calls/7');
   });
@@ -90,6 +108,15 @@ describe('collectRefs / resolve helpers', () => {
     const v2 = validateToolCall({ tool: 'set_unit_status', params: { unit: 'A1', status: 'busy' } }, 'admin');
     if (!v1.ok || !v2.ok) throw new Error('validate');
     expect(collectRefs([v1.call, v2.call])).toEqual({ callRefs: ['42'], unitRefs: ['12', '14', 'A1'] });
+  });
+  it('collects the SECOND call ref of merge and the ARRAY of bulk_reassign', () => {
+    // Both are refs the collector historically missed; a miss here is invisible
+    // until a real DB lookup fails in needCall().
+    const mg = validateToolCall({ tool: 'merge_calls', params: { call: '42', into: '142' } }, 'admin');
+    const br = validateToolCall({ tool: 'bulk_reassign', params: { calls: ['50', '51'], unit: '12' } }, 'admin');
+    if (!mg.ok || !br.ok) throw new Error('validate');
+    expect(collectRefs([mg.call]).callRefs).toEqual(['42', '142']);
+    expect(collectRefs([br.call])).toEqual({ callRefs: ['50', '51'], unitRefs: ['12'] });
   });
   it('pickCall: exact, zero-padded suffix, selected, ambiguity', () => {
     const calls = [

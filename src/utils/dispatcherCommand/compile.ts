@@ -22,6 +22,8 @@ export interface ResolvedRefs {
 export const ALLOWED_PATHS: RegExp[] = [
   /^\/dispatch\/calls$/,
   /^\/dispatch\/calls\/\d+$/,
+  // Board-wide writes. Both are admin/manager in the route AND in the catalog.
+  /^\/dispatch\/calls\/(force-close-all|bulk-reassign)$/,
   /^\/dispatch\/calls\/\d+\/(status|dispatch|unassign-unit|hold|resume|escalate|redispatch|undo-redispatch|archive|unarchive|merge-into|split|le-notification|promote-to-incident)$/,
   /^\/dispatch\/units\/\d+\/(status|mileage)$/,
   /^\/comms\/bolos$/,
@@ -223,6 +225,31 @@ export function compileToolCall(call: ValidatedToolCall, refs: ResolvedRefs, aut
       const u = needUnit(refs, p.unit);
       return [http('PUT', `/dispatch/units/${u.id}/mileage`, `${u.call_sign} odometer → ${Number(p.mileage).toLocaleString()} mi`, { mileage: Number(p.mileage) })];
     }
+    case 'bulk_reassign': {
+      const u = needUnit(refs, p.unit);
+      const calls = (p.calls as string[]).map(ref => needCall(refs, ref));
+      // De-dupe: "reassign 42, 0042 and 43" resolves two refs to one call, and
+      // the route would otherwise count it twice in its chunked IN-list.
+      const ids = [...new Set(calls.map(c => c.id))];
+      return [
+        http('POST', '/dispatch/calls/bulk-reassign',
+          `Reassign ${ids.length} call${ids.length === 1 ? '' : 's'} (${calls.map(c => c.call_number).join(', ')}) to ${u.call_sign}`,
+          { call_ids: ids, unit_id: u.id }),
+        client('refresh', {}, 'Refresh board'),
+      ];
+    }
+    case 'force_close_all': {
+      const body: Record<string, unknown> = {};
+      if (p.disposition) body.disposition = String(p.disposition).trim().toLowerCase().replace(/\s+/g, '_');
+      // The summary is what the dispatcher sees in the command bar and HEARS
+      // read back on the voice path, so it has to say "ALL" out loud — this
+      // step is not scoped to a selection and runs without a confirmation turn.
+      return [
+        http('POST', '/dispatch/calls/force-close-all',
+          `Close ALL active calls on the board${body.disposition ? ` (${body.disposition})` : ''} and release every unit`, body),
+        client('refresh', {}, 'Refresh board'),
+      ];
+    }
     case 'delete_call': {
       const c = needCall(refs, p.call);
       return [
@@ -262,6 +289,8 @@ export function collectRefs(calls: ValidatedToolCall[]): { callRefs: string[]; u
     // merge_calls carries a SECOND call ref. Without this the target never
     // reaches the resolver and every merge dies in needCall().
     if (typeof p.into === 'string') callRefs.add(p.into);
+    // bulk_reassign carries an ARRAY of call refs — same trap as `into` above.
+    if (Array.isArray(p.calls)) for (const r of p.calls) if (typeof r === 'string') callRefs.add(r);
     if (typeof p.unit === 'string') unitRefs.add(p.unit);
     if (Array.isArray(p.units)) for (const u of p.units) if (typeof u === 'string') unitRefs.add(u);
   }
