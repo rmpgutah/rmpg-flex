@@ -184,6 +184,7 @@ const JailPage = lazyRetry(() => import('./pages/JailPage'));
 const AffairsPage = lazyRetry(() => import('./pages/AffairsPage'));
 const AssetsPage = lazyRetry(() => import('./pages/AssetsPage'));
 const CommunityPage = lazyRetry(() => import('./pages/CommunityPage'));
+const SafeWatchPage = lazyRetry(() => import('./pages/SafeWatchPage'));
 const TasksPage = lazyRetry(() => import('./pages/TasksPage'));
 const AlertsPage = lazyRetry(() => import('./pages/AlertsPage'));
 const TrainingManagementPage = lazyRetry(() => import('./pages/TrainingManagementPage'));
@@ -752,6 +753,7 @@ function AppRoutes() {
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
             <Route path="/community" element={<RouteErrorBoundary><CommunityPage /></RouteErrorBoundary>} />
+            <Route path="/safewatch" element={<RouteErrorBoundary><SafeWatchPage /></RouteErrorBoundary>} />
             <Route path="/tasks" element={<RouteErrorBoundary><TasksPage /></RouteErrorBoundary>} />
             <Route path="/alerts" element={<RouteErrorBoundary><AlertsPage /></RouteErrorBoundary>} />
             <Route path="/training-mgmt" element={<RouteErrorBoundary><TrainingManagementPage /></RouteErrorBoundary>} />
