@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Delete, Disc, ExternalLink, Hash, MicOff, Pause as PauseIcon, PhoneCall, PhoneForwarded, PhoneIncoming, PhoneOff, Users } from 'lucide-react';
+import { Bell, BellOff, Delete, Disc, ExternalLink, Hash, MicOff, Pause as PauseIcon, PhoneCall, PhoneForwarded, PhoneIncoming, PhoneOff, Users } from 'lucide-react';
 import { useSoftphone } from './SoftphoneProvider';
+import { isCallToneEnabled, setCallToneEnabled, stopCallTones } from './callTones';
 import LinkDialerGate from './LinkDialerGate';
 import TransferPicker from './TransferPicker';
 import { openDialerWindow } from './dialerWindow';
@@ -53,6 +54,7 @@ export default function SoftphoneCard({ digits, onDigitsChange, dtmfMode, onDtmf
 }) {
   const s = useSoftphone();
   const [picker, setPicker] = useState<'menu' | 'blind' | 'warm' | null>(null);
+  const [tones, setTones] = useState(() => isCallToneEnabled());
   const [blockCallerId, setBlockCallerId] = useState(false);
   const timer = useTimer(s.connectedAt);
   const target = normalizeDialTarget(digits);
@@ -72,6 +74,26 @@ export default function SoftphoneCard({ digits, onDigitsChange, dtmfMode, onDtmf
   return (
     <section id="dc-keypad" className="bg-surface-raised border border-border-subtle p-3 space-y-2">
       <Header right={(
+        <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-pressed={!tones}
+          onClick={() => {
+            const next = !tones;
+            setCallToneEnabled(next);
+            setTones(next);
+            // Silence anything currently ringing the instant it is turned off,
+            // rather than at the end of the current cadence cycle.
+            if (!next) stopCallTones();
+          }}
+          className={`${BTN} py-0.5`}
+          style={sevStyle('warn', !tones)}
+          title={tones
+            ? 'Ring and dial tones are on. Click to silence them (the on-screen incoming-call alert still shows).'
+            : 'Ring and dial tones are SILENCED. Click to turn them back on.'}
+        >
+          {tones ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />} {tones ? 'Tones on' : 'Tones off'}
+        </button>
         <button
           type="button"
           onClick={() => onDtmfModeChange(!dtmfMode)}
@@ -82,6 +104,7 @@ export default function SoftphoneCard({ digits, onDigitsChange, dtmfMode, onDtmf
         >
           <Hash className="w-3 h-3" /> {dtmfMode ? 'DTMF mode' : 'Dial mode'}
         </button>
+        </div>
       )}>Softphone</Header>
 
       <div className="flex items-center gap-2 text-[10px] font-mono">

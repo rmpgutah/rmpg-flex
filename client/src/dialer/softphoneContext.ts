@@ -6,6 +6,7 @@ import type { SoftphoneSnapshot } from './softphoneMachine';
 const INITIAL: SoftphoneSnapshot = {
   status: 'offline', error: null, notice: null, callSid: null, remoteNumber: null, direction: null,
   connectedAt: null, muted: false, held: false, recording: false, waitingFrom: null,
+  outboundRinging: false,
 };
 
 export interface SoftphoneContextValue extends SoftphoneSnapshot {

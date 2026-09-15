@@ -106,6 +106,11 @@ const MIRROR_EXTRAS: Array<[string, string]> = [
   ['recording_mirror_attempts', 'INTEGER NOT NULL DEFAULT 0'],
   ['recording_mirror_error', 'TEXT'],
   ['recording_mirrored_at', 'TEXT'],
+  // Transcription backstop bookkeeping (migration 0292) — on BOTH tables, so
+  // it rides the shared list rather than the calls-only one below.
+  ['transcript_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+  ['transcript_error', 'TEXT'],
+  ['transcript_source', 'TEXT'],
 ];
 const CALL_EXTRAS: Array<[string, string]> = [
   ['recording_source_url', 'TEXT'], ['callback_at', 'TEXT'], ['person_id', 'INTEGER'],
@@ -891,6 +896,37 @@ async function serveAudio(
   }
   return c.json({ error: 'No recording' }, 404);
 }
+
+// On-demand transcription. The */30 sweep is the routine path; this is for a
+// dispatcher looking at a specific archived call that upstream never
+// transcribed and wanting it read NOW, and for retrying a row the sweep gave
+// up on. Deliberately clears the terminal status/attempt count first, so a
+// row parked at 'unintelligible' is genuinely retried rather than no-opped.
+async function transcribeOnDemand(c: Parameters<typeof serveAudio>[0] & {
+  req: { param(k: string): string }; json: (b: unknown, s?: number) => Response;
+}, kind: 'call' | 'vm') {
+  const db = getDb(c.env);
+  await ensureSchema(db);
+  const table = kind === 'call' ? 'dialer_calls' : 'dialer_voicemails';
+  const id = Number(c.req.param('id'));
+  const row = await queryFirst<{ recording_r2_key: string | null }>(
+    db, `SELECT recording_r2_key FROM ${table} WHERE id = ?`, id);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (!row.recording_r2_key) {
+    return c.json({ ok: false, code: 'not_mirrored', error: 'The recording has not been copied into RMPG Flex yet.' }, 409);
+  }
+  await execute(db, `UPDATE ${table} SET transcript_attempts = 0, transcript_error = NULL,
+      transcript_status = CASE WHEN transcript_status = 'ready' THEN 'ready' ELSE 'none' END
+    WHERE id = ?`, id).catch(() => undefined);
+  const { transcribeOne } = await import('../utils/dialerTranscription');
+  const ok = await transcribeOne(c.env, kind, id);
+  const after = await queryFirst<{ transcript: string | null; transcript_status: string | null }>(
+    db, `SELECT transcript, transcript_status FROM ${table} WHERE id = ?`, id);
+  return c.json({ ok, transcript: after?.transcript ?? null, transcript_status: after?.transcript_status ?? null });
+}
+
+dialerConnect.post('/calls/:id/transcribe', (c) => transcribeOnDemand(c as never, 'call'));
+dialerConnect.post('/voicemails/:id/transcribe', (c) => transcribeOnDemand(c as never, 'vm'));
 
 dialerConnect.get('/calls/:id/audio', async (c) => {
   await ensureSchema(getDb(c.env));

@@ -3,6 +3,7 @@ import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/dial
 import { SoftphoneContext, type SoftphoneContextValue } from './softphoneContext';
 import { dialerApi, type DialerApiError } from './dialerApi';
 import { createLeaderElection, isPopoutWindow } from './leaderElection';
+import { RINGBACK_MAX_MS, setCallTone, stopCallTones } from './callTones';
 import { INITIAL, reduce, type SoftphoneSnapshot } from './softphoneMachine';
 import { controlCallSid, type DeviceFactory, type SoftphoneCall, type SoftphoneDevice } from './types';
 import { useDialerStream } from './useDialerStream';
@@ -16,6 +17,12 @@ const PSTN_FAILURE_STATUSES: Record<string, string> = {
   'no-answer': 'No answer.',
 };
 const TOKEN_REFRESH_LEAD_MS = 5 * 60_000;
+// Twilio CallStatus values (and the AMD `answered-by-*` synthetics the status
+// webhook publishes alongside them) that mean the far end is NO LONGER
+// ringing. Anything not listed — 'queued', 'initiated', 'ringing' — leaves the
+// ringback running, so an unrecognised status can never cut a real ringback
+// short; the RINGBACK_MAX_MS ceiling is what bounds the other direction.
+const FAR_END_SETTLED = /^(in-progress|completed|busy|failed|no-answer|canceled|cancelled|answered-by-)/;
 
 const Ctx = SoftphoneContext;
 export { useSoftphone } from './softphoneContext';
@@ -57,6 +64,7 @@ export function SoftphoneProvider({ children, createDevice, enabled = true, stre
     const ev = e as { callSid?: string; status?: string };
     const active = activeCallRef.current;
     if (!active || !ev.callSid || ev.callSid !== controlCallSid(active)) return;
+    if (ev.status && FAR_END_SETTLED.test(ev.status)) dispatch({ type: 'FAR_END', ringing: false });
     const failure = ev.status ? PSTN_FAILURE_STATUSES[ev.status] : undefined;
     if (failure) {
       dispatch({ type: 'ERROR', message: failure });
@@ -105,6 +113,28 @@ export function SoftphoneProvider({ children, createDevice, enabled = true, stre
     call.on('reject', end('missed'));
     call.on('error', (err: Error) => { dispatch({ type: 'ERROR', message: err.message }); end('failed')(); });
   }, [archive, refreshToken]);
+
+  // ── Call-progress tones ────────────────────────────────────
+  // An inbound call rings; an outbound call plays ringback until the PSTN leg
+  // reports it has stopped ringing. Derived from the snapshot rather than
+  // fired imperatively at each call site, so every path that ends a call
+  // (accept, reject, cancel, carrier failure, leader hand-off, unmount)
+  // silences the tone without having to remember to.
+  const tone = snap.status === 'incoming' || snap.status === 'call_waiting'
+    ? 'ring' as const
+    : snap.outboundRinging ? 'ringback' as const : null;
+  useEffect(() => { setCallTone(tone); }, [tone]);
+  useEffect(() => () => stopCallTones(), []);
+
+  // Ceiling on ringback. The stream is the authoritative "they picked up"
+  // signal, but it is a network dependency: if it drops, nothing else ever
+  // clears outboundRinging and the dispatcher hears ringback over a live
+  // conversation. Past a normal PSTN no-answer window, stop assuming.
+  useEffect(() => {
+    if (!snap.outboundRinging) return;
+    const id = setTimeout(() => dispatch({ type: 'FAR_END', ringing: false }), RINGBACK_MAX_MS);
+    return () => clearTimeout(id);
+  }, [snap.outboundRinging]);
 
   const register = useCallback(async () => {
     if (!enabled) { dispatch({ type: 'PASSIVE' }); return; }
