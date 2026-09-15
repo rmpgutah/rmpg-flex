@@ -21,6 +21,13 @@ client/dist/
 # Generated PDFs that shouldn't be tracked in source
 client/RMPG-Dispatch-Guide-*.pdf
 
+# Case documents exported to the repo root (call printouts, record exports).
+# These carry LAW ENFORCEMENT SENSITIVE content — caller numbers, call SIDs,
+# officer names — and must never enter git history, where deletion does not
+# remove them. Root-anchored so the tracked PDF snapshot fixtures under
+# client/src/utils/pdf/v2/__tests__/__snapshots__/ are unaffected.
+/*.pdf
+
 # macOS
 .DS_Store
 **/.DS_Store
