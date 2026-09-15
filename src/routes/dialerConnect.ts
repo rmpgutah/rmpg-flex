@@ -22,6 +22,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks, columnExists } from '../utils/db';
 import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
+import { isDialConnectExportUrl } from './dialerConnectImport';
 import { containsAnyClause } from '../utils/searchText';
 import { log } from '../utils/logger';
 import {
@@ -269,7 +270,13 @@ async function mirrorRecording(env: Env['Bindings'], kind: MirrorKind, id: numbe
     const timer = setTimeout(() => ctrl.abort(), MIRROR_FETCH_TIMEOUT_MS);
     let upstream: Response;
     try {
-      upstream = await fetch(row.recording_source_url!, { redirect: 'follow', signal: ctrl.signal });
+      // Imported Dial Connect history points at dispatch-app's service-key
+      // export (it holds the Twilio credentials the bare recording URLs need).
+      const base = env.DIAL_CONNECT_API_BASE || 'https://rmpgutah.us/dialer';
+      const headers: Record<string, string> = isDialConnectExportUrl(base, row.recording_source_url) && env.DIAL_CONNECT_SERVICE_KEY
+        ? { 'x-rmpg-service-key': env.DIAL_CONNECT_SERVICE_KEY }
+        : {};
+      upstream = await fetch(row.recording_source_url!, { redirect: 'follow', signal: ctrl.signal, headers });
     } finally {
       clearTimeout(timer);
     }
