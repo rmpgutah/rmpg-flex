@@ -19,6 +19,7 @@ import {
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log as logger } from '../utils/logger';
 import { normalizeToUtcTimestamp } from '../utils/denverTime';
+import { likePattern } from '../utils/d1Like';
 const fleet = new Hono<Env>();
 
 // Manager-tier roles can create/update/delete vehicles. Read endpoints
@@ -157,7 +158,7 @@ fleet.get('/', async (c) => {
     }
     if (q.search) {
       where.push('(v.plate_number LIKE ? OR v.make LIKE ? OR v.model LIKE ? OR v.vehicle_number LIKE ?)');
-      const pat = `%${q.search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+      const pat = likePattern(q.search);
       params.push(pat, pat, pat, pat);
     }
 
@@ -692,7 +693,7 @@ fleet.get('/dashcam-videos', async (c) => {
     const params: unknown[] = [];
     if (q.search) {
       where.push('(v.title LIKE ? OR v.case_number LIKE ? OR v.notes LIKE ?)');
-      const pat = `%${q.search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+      const pat = likePattern(q.search);
       params.push(pat, pat, pat);
     }
     if (q.vehicle_id) {

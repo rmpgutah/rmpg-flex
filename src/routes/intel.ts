@@ -114,7 +114,7 @@ intel.get('/search', operational, async (c) => {
     } catch (err) {
       log.warn('intel FTS failed, falling back to LIKE', { error: err instanceof Error ? err.message : String(err) });
       // 3) LIKE fallback — degraded but alive if intel_index is missing on live.
-      // D1 LIKE cap: pattern >50 chars fails — cappedLikePattern escapes and
+      // D1 LIKE cap: a pattern over 50 BYTES throws — cappedLikePattern escapes and
       // truncates so '%' + escaped + '%' stays <=50.
       const term = cappedLikePattern(q);
       try {

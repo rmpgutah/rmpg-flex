@@ -16,6 +16,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 import { codedLike } from '../utils/searchText';
+import { likePattern } from '../utils/d1Like';
 
 const kb = new Hono<Env>();
 
@@ -59,7 +60,7 @@ kb.get('/search', async (c) => {
   if (q.length < 2) return c.json({ query: q, total: 0, results: [] });
 
   const db = getDb(c.env);
-  const like = `%${q.slice(0, 48)}%`;
+  const like = likePattern(q);
   const PER = 6; // cap per source so no single type dominates
 
   const sources: Array<Promise<KbResult[]>> = [

@@ -30,6 +30,7 @@ import { getDb, query, queryFirst } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { likePattern } from '../utils/d1Like';
 const skiptracer = new Hono<Env>();
 
 function requireRole(
@@ -173,7 +174,7 @@ skiptracer.get('/search/byname', async (c) => {
     ).join(' AND ');
     const params: unknown[] = [];
     for (const t of tokens) {
-      const wild = `%${t.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+      const wild = likePattern(t);
       params.push(wild, wild, wild, wild, wild);
     }
 
@@ -213,7 +214,7 @@ skiptracer.get('/search/byaddress', async (c) => {
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
     const offset = (page - 1) * PER_PAGE;
 
-    const wild = `%${addr.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    const wild = likePattern(addr);
     const total = (await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) as n FROM persons
@@ -260,9 +261,9 @@ skiptracer.get('/search/bynameaddress', async (c) => {
       : '1=1';
     const addrWhere = '(address LIKE ? OR city LIKE ?)';
     const params: unknown[] = [];
-    // D1 LIKE cap: pattern >50 chars silently returns nothing
-    for (const t of tokens) { const w = `%${t.slice(0, 48)}%`; params.push(w, w, w); }
-    const aw = `%${addr.slice(0, 48)}%`;
+   
+    for (const t of tokens) { const w = likePattern(t); params.push(w, w, w); }
+    const aw = likePattern(addr);
     params.push(aw, aw);
 
     const where = `${nameWhere} AND ${addrWhere}`;
@@ -315,8 +316,8 @@ skiptracer.get('/search/byphone', async (c) => {
       "REPLACE(REPLACE(REPLACE(REPLACE(phone_secondary,'-',''),' ',''),'(',''),')','') LIKE ?)"
     ).join(' OR ');
     const params: unknown[] = [];
-    // D1 LIKE cap: pattern >50 chars silently returns nothing
-    for (const c2 of candidates) { const w = `%${String(c2).slice(0, 48)}%`; params.push(w, w); }
+   
+    for (const c2 of candidates) { const w = likePattern(String(c2)); params.push(w, w); }
 
     const total = (await queryFirst<{ n: number }>(
       db, `SELECT COUNT(*) as n FROM persons WHERE ${where}`, ...params,
@@ -354,7 +355,7 @@ skiptracer.get('/search/byemail', async (c) => {
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
     const offset = (page - 1) * PER_PAGE;
 
-    const wild = `%${email.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    const wild = likePattern(email);
     const total = (await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) as n FROM persons WHERE email LIKE ? OR email_secondary LIKE ?`,
@@ -497,7 +498,7 @@ skiptracer.get('/dossiers', async (c) => {
     const search = q('search');
     if (search) {
       conditions.push('(subject_name LIKE ? OR notes LIKE ?)');
-      const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+      const s = likePattern(search);
       params.push(s, s);
     }
     const where = `WHERE ${conditions.join(' AND ')}`;

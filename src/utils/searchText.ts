@@ -8,18 +8,35 @@
 // Spec: docs/superpowers/specs/2026-06-12-humanized-search-linkage-design.md
 // ============================================================
 
+import { D1_LIKE_MAX_BYTES, byteLength, likePattern } from './d1Like';
+
 /** Escape LIKE wildcards so a search for "50%" doesn't match everything. */
 export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
+// ⚠️ escapeLike() is the RAW escaper and applies no cap. Anything that turns
+// its output into a bound LIKE pattern must go through likePattern() (or
+// cappedLikePattern() below), which owns the byte budget.
+
 // ── D1's LIKE pattern cap ────────────────────────────────────────────────────
 //
-// Cloudflare D1 sets SQLITE_LIMIT_LIKE_PATTERN_LENGTH to **50 characters**.
-// Stock SQLite defaults to 50000, so this has no local equivalent: it cannot
-// reproduce in `wrangler dev`, in Miniflare, or in any unit test — it only
-// surfaces against remote D1, as `D1_ERROR: LIKE or GLOB pattern too complex`.
-// Measured empirically against the live DB on 2026-07-24 (50 chars OK, 52 fails).
+// Cloudflare D1 sets SQLITE_LIMIT_LIKE_PATTERN_LENGTH to **50 BYTES**. SQLite
+// checks it against sqlite3_value_bytes(), so the unit is encoded bytes, not
+// characters -- the two coincide only for ASCII. An earlier revision of this
+// comment said "50 characters"; that under-counts every accented character,
+// em dash and emoji by a factor of two to four.
+// Stock SQLite defaults to 50000, but D1's limit IS reproducible locally:
+// measured in Miniflare via `vitest.workers.config.mts` on 2026-09-15, a
+// 50-byte pattern succeeds and 51 bytes throws `D1_ERROR: LIKE or GLOB
+// pattern too complex`. An earlier revision of this comment said the cap
+// "cannot reproduce in Miniflare, or in any unit test" — that is wrong, and
+// acting on it would talk you out of writing the regression test. See
+// test-workers/likePatternD1Cap.test.ts, which asserts against real D1.
+//
+// The same run shows why the unit matters: 25 accented characters is 52 bytes
+// but only 27 UTF-16 units, so it THROWS while sailing through a
+// `.slice(0, 48)` guard.
 //
 // A pattern of `%<term>%` therefore breaks once the term passes 48 characters —
 // well within ordinary input. Two live routes were returning 500s on real user
@@ -32,29 +49,36 @@ export function escapeLike(s: string): string {
 // LIKE pattern, so it has no length cap at all, and it matches literally —
 // no wildcard escaping needed.
 
-/** Cloudflare D1's SQLITE_LIMIT_LIKE_PATTERN_LENGTH. Stock SQLite uses 50000. */
-export const D1_LIKE_PATTERN_LIMIT = 50;
+/**
+ * Cloudflare D1's SQLITE_LIMIT_LIKE_PATTERN_LENGTH, in bytes. Stock SQLite
+ * uses 50000.
+ *
+ * Re-exported from d1Like so there is exactly one definition of the limit --
+ * two constants drifting apart is how one of these helpers ends up capping to
+ * a number the other does not believe in.
+ */
+export const D1_LIKE_PATTERN_LIMIT = D1_LIKE_MAX_BYTES;
 
 /**
  * True when `%term%` (after wildcard escaping) would exceed D1's LIKE pattern
  * cap and thus fail at runtime. Use to guard any remaining raw LIKE call site.
  */
 export function exceedsLikePatternLimit(term: string): boolean {
-  return escapeLike(term).length + 2 > D1_LIKE_PATTERN_LIMIT;
+  return byteLength(escapeLike(term)) + 2 > D1_LIKE_PATTERN_LIMIT;
 }
 
 /**
- * Build a `%term%` LIKE pattern (escaped for `ESCAPE '\'`) that is GUARANTEED
- * to fit D1's 50-char pattern cap: the escaped term is truncated to 48 chars,
- * and a dangling odd backslash left by the cut is trimmed so it can't escape
- * the trailing `%` wildcard. Prefer containsClause() for new code; use this
- * when a call site must stay on LIKE.
+ * Build a `%term%` LIKE pattern (escaped for `ESCAPE '\'`) GUARANTEED to fit
+ * D1's pattern cap. Prefer containsClause() for new code -- instr() has no cap
+ * at all and needs no escaping; use this when a call site must stay on LIKE.
+ *
+ * Delegates to likePattern(), which measures BYTES and drops whole escape
+ * pairs. The previous implementation sliced UTF-16 units and then trimmed a
+ * dangling backslash after the fact; the trailing-backslash repair was right,
+ * but the measurement let any non-ASCII term through over the cap.
  */
 export function cappedLikePattern(term: string): string {
-  const escaped = escapeLike(term)
-    .slice(0, D1_LIKE_PATTERN_LIMIT - 2)
-    .replace(/\\+$/, (m) => (m.length % 2 ? m.slice(0, -1) : m));
-  return `%${escaped}%`;
+  return likePattern(term, { escape: true });
 }
 
 /**
@@ -184,6 +208,11 @@ export function codedLike(col: string, term: string): { sql: string; binds: stri
   const cands = codeCandidates(term);
   if (cands.length === 0) return { sql: '0', binds: [] };
   const sql = '(' + cands.map(() => `${col} LIKE ? ESCAPE '\\'`).join(' OR ') + ')';
-  const binds = cands.map((c) => `%${escapeLike(c)}%`);
+  // Each bind is capped independently. This used to be a bare
+  // `%${escapeLike(c)}%` with no cap at all, so a long term threw from inside
+  // the query: knowledgeBase.ts and records.ts pass the raw search term
+  // straight in, and useOfForce.ts / connections.ts only dodged it by slicing
+  // their input to 40 characters first -- still wrong for non-ASCII.
+  const binds = cands.map((c) => likePattern(c, { escape: true }));
   return { sql, binds };
 }

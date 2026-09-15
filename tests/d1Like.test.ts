@@ -68,24 +68,113 @@ describe('likePattern', () => {
     }
   });
 
-  // Uppercasing can CHANGE byte length ('ß' -> 'SS'), so the trim has to
-  // happen after the case fold, not before.
-  it('measures after upper-casing when asked to fold case', () => {
-    const pattern = likePattern('ß'.repeat(40), { upperCase: true });
-    expect(pattern).toBe(`%${'S'.repeat(D1_LIKE_MAX_BYTES - 2)}%`);
+  // Deliberately does NOT trim: '%  %' matches almost nothing, but '%%'
+  // matches EVERY row. Most call sites guard their input for truthiness only,
+  // so a helper that trimmed would silently turn a whitespace-only search
+  // into an unfiltered one -- in this codebase that means dumping person
+  // records. A caller that wants the trim does it itself.
+  it('leaves surrounding whitespace alone', () => {
+    expect(likePattern('  Main St  ')).toBe('%  Main St  %');
+  });
+
+  it('does not widen a whitespace-only needle to match-all', () => {
+    expect(likePattern('   ')).toBe('%   %');
+    expect(likePattern('   ')).not.toBe('%%');
+  });
+
+  it('is a bare wildcard only for genuinely empty input', () => {
+    expect(likePattern('')).toBe('%%');
+  });
+});
+
+// ── Escape-aware trimming ───────────────────────────────────────────────
+// Escaping is not free: each escaped character costs an extra byte. Sites
+// that escaped and THEN sliced could cut between a backslash and the
+// character it escapes, leaving a dangling '\' — which SQLite rejects
+// outright under `ESCAPE '\'` ("ESCAPE expression must be a single
+// character" / invalid escape sequence), not merely over-matching. Sites
+// that sliced and THEN escaped overflowed the cap instead.
+describe('likePattern with escape', () => {
+  it('escapes the LIKE metacharacters', () => {
+    expect(likePattern('100%_raw\\', { escape: true })).toBe('%100\\%\\_raw\\\\%');
+  });
+
+  it('leaves ordinary text untouched', () => {
+    expect(likePattern('Main St', { escape: true })).toBe('%Main St%');
+  });
+
+  // The regression: budget is measured on the ESCAPED text.
+  it('keeps an all-metacharacter needle inside the cap', () => {
+    const pattern = likePattern('%'.repeat(100), { escape: true });
     expect(byteLen(pattern)).toBeLessThanOrEqual(D1_LIKE_MAX_BYTES);
   });
 
-  it('upper-cases the needle when asked', () => {
-    expect(likePattern('main st', { upperCase: true })).toBe('%MAIN ST%');
+  // The other regression: an escape pair is dropped whole or kept whole.
+  //
+  // Sweeping the PREFIX length is what makes this bite. An escaped '%' is a
+  // 2-byte pair, so a needle of nothing but '%' lands the 48-byte cut on an
+  // even boundary every time and never dangles by luck. The failing case is
+  // a cut that falls between the '\' and its '%' -- e.g. 47 plain characters
+  // followed by one '%', where escape-then-trim yields 47 chars + a lone '\'.
+  it('never leaves a dangling escape character at any cut point', () => {
+    for (let prefix = 0; prefix <= 60; prefix++) {
+      const pattern = likePattern(`${'a'.repeat(prefix)}${'%'.repeat(10)}`, { escape: true });
+      const needle = pattern.slice(1, -1);
+      const backslashes = (needle.match(/\\/g) ?? []).length;
+      const pairs = (needle.match(/\\%/g) ?? []).length;
+      // Every backslash must be followed by the character it escapes.
+      expect(backslashes, `prefix=${prefix} needle=${JSON.stringify(needle)}`).toBe(pairs);
+      expect(byteLen(pattern)).toBeLessThanOrEqual(D1_LIKE_MAX_BYTES);
+    }
   });
 
-  it('trims surrounding whitespace', () => {
-    expect(likePattern('  Main St  ')).toBe('%Main St%');
+  it('never splits an escaped multi-byte character', () => {
+    // A backslash cannot precede a non-metacharacter, so this is really a
+    // check that mixed content still trims on character boundaries.
+    const pattern = likePattern('é%'.repeat(40), { escape: true });
+    expect(byteLen(pattern)).toBeLessThanOrEqual(D1_LIKE_MAX_BYTES);
+    expect(pattern).not.toContain('�');
   });
 
-  it('is a bare wildcard for empty input', () => {
-    expect(likePattern('')).toBe('%%');
-    expect(likePattern('   ')).toBe('%%');
+  it('does not escape by default', () => {
+    expect(likePattern('50%')).toBe('%50%%');
+  });
+});
+
+describe('likePattern match modes', () => {
+  it('defaults to contains', () => {
+    expect(likePattern('abc')).toBe('%abc%');
+  });
+
+  it('builds a prefix pattern with one wildcard', () => {
+    expect(likePattern('abc', { match: 'prefix' })).toBe('abc%');
+  });
+
+  it('builds a suffix pattern with one wildcard', () => {
+    expect(likePattern('abc', { match: 'suffix' })).toBe('%abc');
+  });
+
+  // A one-wildcard pattern gets one more needle byte than a two-wildcard
+  // one -- the budget is the cap minus the wildcards actually emitted.
+  it('gives a prefix pattern the full cap', () => {
+    const pattern = likePattern('A'.repeat(200), { match: 'prefix' });
+    expect(byteLen(pattern)).toBe(D1_LIKE_MAX_BYTES);
+    expect(pattern).toBe(`${'A'.repeat(D1_LIKE_MAX_BYTES - 1)}%`);
+  });
+});
+
+describe('likePattern case folding', () => {
+  it('upper-cases when asked', () => {
+    expect(likePattern('main st', { caseFold: 'upper' })).toBe('%MAIN ST%');
+  });
+
+  it('lower-cases when asked', () => {
+    expect(likePattern('MAIN ST', { caseFold: 'lower' })).toBe('%main st%');
+  });
+
+  // Folding can change byte length, so it must precede the measurement.
+  it('measures after folding', () => {
+    const pattern = likePattern('ß'.repeat(40), { caseFold: 'upper' });
+    expect(pattern).toBe(`%${'S'.repeat(D1_LIKE_MAX_BYTES - 2)}%`);
   });
 });
