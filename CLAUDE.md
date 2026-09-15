@@ -74,10 +74,12 @@ desktop/            Electron wrapper — kept (in active use)
 **Canonical trigger**: `git push origin main` → `.github/workflows/deploy.yml`:
 
 1. `npm run typecheck` (Worker)
-2. `wrangler d1 migrations apply rmpg-flex --remote` (`continue-on-error: true`; the Worker reconciles missing columns at boot)
-3. `wrangler deploy` (Worker)
-4. `cd client && npm ci && npm run build`
-5. `wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main`
+2. `node scripts/d1PendingMigrations.ts --remote` — applies every untracked migration **statement by statement** and marks it tracked. **Blocking** (no `continue-on-error`).
+3. `DB_MODE=remote scripts/check-migration-drift.sh` — re-reads every `CREATE TABLE` / `ADD COLUMN` across `migrations/` and verifies each one exists on live D1. **Blocking**; skip only via the `SKIP_DRIFT_CHECK` repo variable.
+4. Verify critical schema (`calls_for_service`, `units`, `persons`, `warrants`, `audit_log`, `users`, `dispatch_notes`, `alpr_captures` must exist). **Blocking.**
+5. `wrangler deploy` (Worker)
+6. `cd client && npm ci && npm run build`
+7. `wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main`
 
 **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
@@ -118,15 +120,19 @@ npm run migrate:prod      # apply migrations to remote D1
 1. Add a new file under `migrations/` using the next free integer prefix (see [`migrations/README.md`](migrations/README.md)). Current high-water is `0289` (check `ls migrations/ | tail` — duplicate prefixes exist, e.g. two `0075`/`0084`/`0085` files).
 2. Write idempotent DDL — `CREATE TABLE IF NOT EXISTS`. D1 does **not** support `IF NOT EXISTS` on `ADD COLUMN`, so either accept the failure on re-apply or wrap the `ALTER` in a check via the Worker boot reconciler.
 3. Test locally: `npm run migrate:local`.
-4. Merge to main — `deploy.yml` applies it to remote D1 (and continues on error, as documented above).
-5. **⚠️ Migrations routinely fail to reach live D1 silently** (deploy step is `continue-on-error`; migration tracking historically targeted the abandoned DB). After merging, apply the DDL **AND** mark it tracked in one shot via [`scripts/apply-migration.sh`](scripts/apply-migration.sh):
+4. Merge to main — `deploy.yml` applies it to remote D1 and **fails the deploy if it does not land** (see Deploy above).
+5. **Normally there is nothing to do by hand.** Re-measured 2026-09-15 on deploy run 3908: the apply step reported `applied: [] / trackedOnly: [] / failed: []` and the drift check reported *"OK — no drift detected (539 tables, 1132 column additions verified)"* against 647 live tables. The only files it skips are `0249_sync_queue.sql` and `0250_sync_conflicts.sql`, both marked `Local-only` in their header — deliberate, not drift.
+
+   > **⚠️ The old "migrations routinely fail to reach live D1 silently" warning is RETIRED — do not act on it.** It described `wrangler d1 migrations apply --remote` under `continue-on-error: true`, which aborted the whole batch at the first duplicate-column `ALTER` (0227 `starting_mileage`) and stranded every later file while the deploy still went green. That step is gone. `scripts/d1PendingMigrations.ts` replaced it: one statement at a time, duplicate-column / already-exists treated as success, remote-unsafe table rebuilds marked tracked so they stop blocking the batch — and the step is blocking, with the drift check right behind it. Reading the retired warning as "assume the migration didn't land" costs a pointless manual apply; **check the deploy's drift-check output first.**
+
+6. **If a migration genuinely needs a manual apply** (an emergency, or a red drift check), prefer the **Apply D1 migration** workflow — it holds the Cloudflare secrets, is safe to re-run, and prints the `d1_migrations` row back:
 
    ```bash
-   scripts/apply-migration.sh 0147_my_new_migration.sql
+   gh workflow run apply-d1-migration.yml -f filename=0147_my_new_migration.sql
    ```
 
-   The helper runs `wrangler d1 execute --remote --file` then `INSERT OR IGNORE INTO d1_migrations`. Skipping the tracker insert is what caused the 19-row drift sweep on 2026-06-22 — wrangler then retries those files forever, hiding any real failure under swallowed "duplicate column name" noise. Verify the change landed with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed.
-6. **All `db.prepare(...).first() / .all() / .run()` are async** on D1 — always `await`.
+   [`scripts/apply-migration.sh`](scripts/apply-migration.sh) does the same locally, but **prompts on stdin** when wrangler errors, so it hangs in any non-interactive shell. Either path does `d1 execute --remote --file` then `INSERT OR IGNORE INTO d1_migrations`; skipping the tracker insert is what caused the 19-row drift sweep on 2026-06-22. Verify with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed.
+7. **All `db.prepare(...).first() / .all() / .run()` are async** on D1 — always `await`.
 
 ## Security
 
@@ -709,7 +715,7 @@ verify manually with `npm run typecheck && cd client && npx tsc --noEmit && npx 
 1. **`/server/` is dead and no longer exists** — the old VPS-era Express server (and its stale duplicate at top-level `server/`) was deleted outright in the 2026-07-16 repo cleanup. If you see `import ... from 'server/...'` anywhere, that's a bug from before the rehoming and should be ported to `/src/`.
 2. **`/src/` and `/client/src/` both contain TypeScript** — `/src/` is the Worker, `/client/src/` is React. They share no build, no `tsconfig`, no `package.json`. Edits to one do not affect the other.
 3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
-4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
+4. **`deploy.yml`'s migration step is BLOCKING — the deploy log is now authoritative** (changed 2026-06-28; earlier revisions of this file said the opposite). `node scripts/d1PendingMigrations.ts --remote` has no `continue-on-error`, and `check-migration-drift.sh` re-verifies every expected table and column against live immediately after. A green deploy therefore *does* mean the schema landed, and a red drift check names the missing table or column. Don't hand-apply a migration on the assumption it was swallowed — read the drift-check output for that commit's deploy run first.
 5. **D1 has dirty schema in prod** — earlier migrations partially applied during the rehoming. New migrations must be idempotent. See [`migrations/README.md`](migrations/README.md).
 6. **Service worker cache** — `CACHE_NAME` in `client/public/sw.js` auto-stamps from the git short SHA via the `stamp-sw-version` plugin in [`client/vite.config.ts`](client/vite.config.ts) on every production build. Do NOT edit `CACHE_NAME` manually — it's a literal placeholder `'rmpg-flex-BUILD'` in source and a hand bump is a merge-conflict magnet (this auto-stamp refactor exists for that reason). Add a one-line changelog comment under the most recent `// vNNN:` entry if you want to document what shipped, but the cache name itself is handled for you.
 7. **Mapbox token** — `client/src/utils/mapboxApiKey.ts` reads `VITE_MAPBOX_ACCESS_TOKEN` at build time. The error string in that file still says "Add MAPBOX_ACCESS_TOKEN to server/.env" — that's stale (no `.env` on Workers); the token must be embedded into the Vite build via `client/.env` or Cloudflare Pages env vars.
