@@ -140,8 +140,30 @@ community.get('/tips', async (c) => {
   }
 });
 
+// POST /tips — staff-entered record of a public tip. AUTH IS REQUIRED.
+//
+// ⚠️ This handler previously carried the comment "Public endpoint — no auth
+// required for anonymous tips". That was never true: /api/community is
+// registered `auth: 'required'` in src/routesConfig.ts, and the comment and
+// that registration arrived in the SAME commit. `src/index.ts` applies
+// authMiddleware per REGISTERED PREFIX, not per handler, so no comment on a
+// handler can make it public. No caller has ever POSTed here — the only
+// client reference is CommunityPage.tsx's GET.
+//
+// `is_anonymous` therefore means "the member of the public asked not to be
+// named", NOT "submitted without authentication". A dispatcher or CSO taking
+// the tip by phone or at the counter is the authenticated caller.
+//
+// DO NOT "fix" the old mismatch by moving this prefix to `auth: 'public'`.
+// That would create an unauthenticated INSERT into a law-enforcement system
+// with no HMAC, no rate limit and no captcha, for a feature with no UI. Real
+// anonymous intake needs its own public prefix with those controls plus
+// quarantine-before-promotion — which is exactly what /api/safewatch/ingest
+// already does (src/routes/safewatch.ts); route new public intake through
+// that pattern rather than opening this one.
+//
+// Pinned by test-workers/communityTipsAuth.test.ts.
 community.post('/tips', async (c) => {
-  // Public endpoint — no auth required for anonymous tips
   try {
     const db = getDb(c.env);
     const b = await c.req.json<Record<string, unknown>>();
