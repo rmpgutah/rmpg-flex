@@ -165,6 +165,59 @@ export function matchRules(rawText: string): PlannerOutput | null {
     return out('create_bolo', '', [{ tool: 'create_bolo', params: { type, title: d.slice(0, 100), description: d } }]);
   }
 
+  // DELETE (true delete — deliberately narrow wording, and the only tool that
+  // still raises the Y/N gate). "remove"/"drop" are NOT accepted here: they are
+  // unassign verbs, and a mis-heard "remove 12" must never become a delete.
+  m = new RegExp(String.raw`^(?:permanently\s+)?(?:delete|purge)\s+(?:call\s+)?${CALL}$`).exec(t);
+  if (m) return out('delete_call', '', [{ tool: 'delete_call', params: { call: m[1] } }]);
+
+  // ARCHIVE / UNARCHIVE
+  m = new RegExp(String.raw`^archive\s+${CALL}$`).exec(t);
+  if (m) return out('archive_call', '', [{ tool: 'archive_call', params: { call: m[1] } }]);
+  m = new RegExp(String.raw`^(?:unarchive|restore)\s+${CALL}$`).exec(t);
+  if (m) return out('unarchive_call', '', [{ tool: 'unarchive_call', params: { call: m[1] } }]);
+
+  // MERGE:  "merge 42 into 142", "42 is a duplicate of 142"
+  m = new RegExp(String.raw`^merge\s+${CALL}\s+(?:in)?to\s+${CALL}$`).exec(t);
+  if (m) return out('merge_calls', '', [{ tool: 'merge_calls', params: { call: m[1], into: m[2] } }]);
+  m = new RegExp(String.raw`^${CALL}\s+is\s+a\s+(?:duplicate|dupe)\s+of\s+${CALL}$`).exec(t);
+  if (m) return out('merge_calls', '', [{ tool: 'merge_calls', params: { call: m[1], into: m[2] } }]);
+
+  // PROMOTE TO INCIDENT
+  m = new RegExp(String.raw`^(?:promote|write|make)\s+(?:a\s+)?(?:report|incident)?\s*(?:on|for|from)?\s*${CALL}(?:\s+to\s+(?:an\s+)?incident)?$`).exec(t);
+  if (m && /\b(promote|report|incident)\b/.test(t)) {
+    return out('promote_to_incident', '', [{ tool: 'promote_to_incident', params: { call: m[1] } }]);
+  }
+
+  // LE NOTIFICATION:  "notify slcpd on 42", "42 notified uhp case 25-1234"
+  m = new RegExp(String.raw`^(?:notify|notified|le notify)\s+(.+?)\s+(?:on|for|about)\s+${CALL}$`).exec(t);
+  if (m) return out('notify_agency', '', [{ tool: 'notify_agency', params: { call: m[2], agency: m[1].trim().toUpperCase() } }]);
+
+  // REDISPATCH / RETURN VISIT + UNDO
+  m = new RegExp(String.raw`^(?:redispatch|re dispatch|return visit|schedule (?:a )?return(?: visit)?)\s+(?:on|for)?\s*${CALL}$`).exec(t);
+  if (m) return out('redispatch', '', [{ tool: 'redispatch', params: { call: m[1] } }]);
+  m = new RegExp(String.raw`^(?:undo|cancel)\s+(?:the\s+)?(?:redispatch|re dispatch|return visit)\s+(?:on|for)?\s*${CALL}$`).exec(t);
+  if (m) return out('undo_redispatch', '', [{ tool: 'undo_redispatch', params: { call: m[1] } }]);
+
+  // MILEAGE:  "12 mileage 45000", "set 12 odometer to 45,000"
+  m = new RegExp(String.raw`^(?:set\s+|log\s+|record\s+)?${UNIT}\s+(?:mileage|odometer|miles)\s+(?:is\s+|to\s+|at\s+)?([\d,]+)$`).exec(t);
+  if (m) return out('set_unit_mileage', '', [{ tool: 'set_unit_mileage', params: { unit: m[1].toUpperCase(), mileage: Number(m[2].replace(/,/g, '')) } }]);
+
+  // TEN-CODE LOOKUP:  "code 10-71", "what is a 10-71", "10-71"
+  m = /^(?:(?:what'?s|what is)\s+(?:a\s+)?)?(?:code[\s-]*)?((?:10-\d{1,3})|(?:code-?\d{1,2}))$/.exec(t);
+  if (m) return out('lookup_code', '', [{ tool: 'lookup_code', params: { code: m[1].toUpperCase() } }]);
+
+  // PREMISE ALERTS at an address
+  m = /^(?:premise\s+)?alerts?\s+(?:at|on|for)\s+(.+)$/.exec(t);
+  if (m) return out('premise_alerts', '', [{ tool: 'premise_alerts', params: { address: m[1].trim() } }]);
+
+  // TIMELINE / SHIFT SUMMARY
+  m = new RegExp(String.raw`^(?:timeline|history|audit(?: trail)?)\s+(?:of|on|for)?\s*${CALL}$`).exec(t);
+  if (m) return out('call_timeline', '', [{ tool: 'call_timeline', params: { call: m[1] } }]);
+  if (/^(?:shift summary|summary|sitrep|how.?s the shift|shift stats?)$/.test(t)) {
+    return out('shift_summary', '', [{ tool: 'shift_summary', params: {} }]);
+  }
+
   // NAVIGATE
   m = /^(?:go to|open|show|take me to|navigate to)\s+(?:the\s+)?(map|records|warrants|bolos|communications|field interviews|trespass orders|plate log|radio|fleet|reports|intel|admin|dispatch)(?:\s+page)?$/.exec(t);
   if (m) return out('navigate', '', [{ tool: 'navigate', params: { page: m[1].replace(/\s+/g, '-') } }]);

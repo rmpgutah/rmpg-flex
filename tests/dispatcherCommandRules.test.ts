@@ -115,6 +115,49 @@ describe('matchRules — reads and console', () => {
   });
 });
 
+describe('matchRules — expanded capabilities (2026-09-14)', () => {
+  it('delete uses narrow wording only', () => {
+    expect(first('delete 42')).toEqual({ tool: 'delete_call', params: { call: '42' } });
+    expect(first('permanently delete call 42')).toEqual({ tool: 'delete_call', params: { call: '42' } });
+  });
+  it('unassign verbs never become a delete', () => {
+    // "remove 12 from 42" must stay an unassign — a mis-heard unassign that
+    // deletes a call is the exact failure this narrow wording prevents.
+    expect(first('remove 12 from 42').tool).toBe('unassign_unit');
+    expect(first('drop 12 off 42').tool).toBe('unassign_unit');
+  });
+  it('archive / unarchive', () => {
+    expect(first('archive 42')).toEqual({ tool: 'archive_call', params: { call: '42' } });
+    expect(first('restore 42')).toEqual({ tool: 'unarchive_call', params: { call: '42' } });
+  });
+  it('merge collects both call refs', () => {
+    expect(first('merge 42 into 142')).toEqual({ tool: 'merge_calls', params: { call: '42', into: '142' } });
+    expect(first('42 is a duplicate of 142')).toEqual({ tool: 'merge_calls', params: { call: '42', into: '142' } });
+  });
+  it('promote to incident', () => {
+    expect(first('promote 42 to incident').tool).toBe('promote_to_incident');
+  });
+  it('agency notification', () => {
+    expect(first('notify slcpd on 42')).toEqual({ tool: 'notify_agency', params: { call: '42', agency: 'SLCPD' } });
+  });
+  it('redispatch and undo', () => {
+    expect(first('redispatch 42')).toEqual({ tool: 'redispatch', params: { call: '42' } });
+    expect(first('undo the return visit on 42')).toEqual({ tool: 'undo_redispatch', params: { call: '42' } });
+  });
+  it('mileage strips thousands separators', () => {
+    expect(first('set 12 odometer to 45,000')).toEqual({ tool: 'set_unit_mileage', params: { unit: '12', mileage: 45000 } });
+  });
+  it('ten-code lookup', () => {
+    expect(first('10-71')).toEqual({ tool: 'lookup_code', params: { code: '10-71' } });
+    expect(first('what is a 10-71')).toEqual({ tool: 'lookup_code', params: { code: '10-71' } });
+  });
+  it('premise alerts, timeline, shift summary', () => {
+    expect(first('alerts at 123 main st')).toEqual({ tool: 'premise_alerts', params: { address: '123 main st' } });
+    expect(first('timeline of 42')).toEqual({ tool: 'call_timeline', params: { call: '42' } });
+    expect(first('shift summary')).toEqual({ tool: 'shift_summary', params: {} });
+  });
+});
+
 describe('matchRules — no match', () => {
   it.each(['', 'good morning', 'what is the weather like', 'please make sure the caller on the alarm call gets a callback'])(
     'returns null for %j', (text) => { expect(matchRules(text)).toBeNull(); },

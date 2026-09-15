@@ -84,8 +84,24 @@ export function pickUnit(ref: string, units: ResolvedUnit[]): { hit?: ResolvedUn
   return { candidates: fuzzy.map(f => f.u) };
 }
 
-/** Recent + active calls the dispatcher could plausibly mean. */
-export async function loadCandidateCalls(db: D1Database): Promise<ResolvedCall[]> {
+/**
+ * Recent + active calls the dispatcher could plausibly mean.
+ *
+ * `includeArchived` widens the set to archived rows from the last 30 days. It
+ * is OFF by default on purpose: an archived call is off the board, so letting
+ * "clear 42" silently land on one would be a surprise. It is switched on only
+ * for the two tools whose whole job is to act on an archived call
+ * (unarchive_call, delete_call) — without it those can never resolve a target.
+ */
+export async function loadCandidateCalls(db: D1Database, includeArchived = false): Promise<ResolvedCall[]> {
+  if (includeArchived) {
+    return query<ResolvedCall>(
+      db,
+      `SELECT id, call_number, status FROM calls_for_service
+       WHERE ${ACTIVE_CALL_WHERE} OR created_at >= datetime('now','-30 days')
+       ORDER BY created_at DESC LIMIT 400`,
+    ).catch(() => []);
+  }
   return query<ResolvedCall>(
     db,
     // Active board + anything closed in the last 3 days (a dispatcher may
@@ -107,11 +123,12 @@ export async function resolveRefs(
   callRefs: string[],
   unitRefs: string[],
   ctx: Pick<CommandContext, 'selectedCallNumber'>,
+  opts: { includeArchived?: boolean } = {},
 ): Promise<{ refs: ResolvedRefs; issues: ResolveIssue[] }> {
   const refs: ResolvedRefs = { calls: {}, units: {} };
   const issues: ResolveIssue[] = [];
   if (callRefs.length) {
-    const calls = await loadCandidateCalls(db);
+    const calls = await loadCandidateCalls(db, opts.includeArchived === true);
     for (const r of callRefs) {
       const { hit, candidates } = pickCall(r, calls, ctx.selectedCallNumber);
       if (hit) refs.calls[r] = hit;

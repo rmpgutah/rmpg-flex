@@ -115,6 +115,74 @@ async function runServerRead(env: Bindings, db: D1Database, call: ValidatedToolC
       if (!active.length) return 'No units on duty.';
       return `${active.length} on duty: ` + active.map(u => `${u.call_sign} ${toDisplayLabel(u.status ?? '')}`).join(', ') + '.';
     }
+    case 'lookup_code': {
+      const raw = String(p.code).trim();
+      const row = await queryFirst<{ code: string; description: string | null; priority: string | null; category: string | null;
+        requires_backup: number | null; officer_safety: number | null; ems_needed: number | null; fire_needed: number | null }>(
+        db, `SELECT code, description, priority, category, requires_backup, officer_safety, ems_needed, fire_needed
+             FROM dispatch_codes WHERE UPPER(code) = UPPER(?) AND COALESCE(active, 1) = 1`, raw,
+      ).catch(() => null);
+      if (!row) return `No dispatch code on file for "${raw}".`;
+      const flags = [
+        row.requires_backup ? 'backup required' : '',
+        row.officer_safety ? 'officer safety' : '',
+        row.ems_needed ? 'EMS' : '',
+        row.fire_needed ? 'fire' : '',
+      ].filter(Boolean);
+      return `${row.code}: ${row.description ?? 'no description'}` +
+        `${row.priority ? ` (${row.priority}` : ''}${row.category ? `, ${toDisplayLabel(row.category)}` : ''}${row.priority ? ')' : ''}` +
+        `${flags.length ? ` — ${flags.join(', ')}` : ''}.`;
+    }
+    case 'premise_alerts': {
+      // D1 caps a LIKE pattern at 50 chars; the two wrapping '%' plus a long
+      // spoken address blows past it and matches nothing. Trim the needle.
+      const address = String(p.address).trim().slice(0, 40);
+      const rows = await query<{ title: string | null; alert_type: string | null; alert_level: string | null; description: string | null }>(
+        db, `SELECT title, alert_type, alert_level, description FROM premise_alerts
+             WHERE active = 1 AND (expires_at IS NULL OR expires_at >= datetime('now'))
+               AND UPPER(address) LIKE ?
+             ORDER BY alert_level = 'critical' DESC, alert_level = 'warning' DESC, created_at DESC LIMIT 5`,
+        `%${address.toUpperCase()}%`,
+      ).catch(() => []);
+      if (!rows.length) return `No premise alerts on file for ${address}.`;
+      return `${rows.length} premise alert${rows.length > 1 ? 's' : ''} at ${address}: ` +
+        rows.map(r => `${String(r.alert_level ?? 'info').toUpperCase()} — ${r.title ?? toDisplayLabel(r.alert_type ?? 'alert')}${r.description ? `: ${r.description}` : ''}`).join('; ') + '.';
+    }
+    case 'call_timeline': {
+      const calls = await loadCandidateCalls(db);
+      const { hit, candidates } = pickCall(String(p.call), calls, ctx.selectedCallNumber);
+      if (!hit) return candidates.length ? `Which call: ${candidates.map(c => c.call_number).join(', ')}?` : `No call matches "${p.call}".`;
+      const rows = await query<{ action: string; details: string | null; created_at: string; user_name: string | null }>(
+        db, `SELECT a.action, a.details, a.created_at, u.full_name AS user_name
+             FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+             WHERE a.entity_type = 'call' AND a.entity_id = ?
+             ORDER BY a.created_at DESC LIMIT 10`, hit.id,
+      ).catch(() => []);
+      if (!rows.length) return `No timeline entries recorded for ${hit.call_number}.`;
+      return `${hit.call_number} timeline: ` +
+        rows.map(r => `${r.created_at} ${toDisplayLabel(r.action)}${r.user_name ? ` by ${r.user_name}` : ''}${r.details ? ` (${r.details})` : ''}`).join('; ') + '.';
+    }
+    case 'shift_summary': {
+      const [byStatus, byPriority, units] = await Promise.all([
+        query<{ status: string; n: number }>(
+          db, `SELECT status, COUNT(*) n FROM calls_for_service WHERE created_at >= datetime('now', '-12 hours') GROUP BY status`,
+        ).catch(() => []),
+        query<{ priority: string | null; n: number }>(
+          db, `SELECT priority, COUNT(*) n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE} GROUP BY priority`,
+        ).catch(() => []),
+        query<{ status: string; n: number }>(
+          db, `SELECT status, COUNT(*) n FROM units GROUP BY status`,
+        ).catch(() => []),
+      ]);
+      const total = byStatus.reduce((s, r) => s + r.n, 0);
+      const avail = units.find(u => u.status === 'available')?.n ?? 0;
+      const onDuty = units.filter(u => u.status !== 'off_duty').reduce((s, r) => s + r.n, 0);
+      const parts = [`${total} call${total === 1 ? '' : 's'} in the last 12 hours`];
+      if (byStatus.length) parts.push(byStatus.map(r => `${r.n} ${toDisplayLabel(r.status)}`).join(', '));
+      if (byPriority.length) parts.push('active by priority: ' + byPriority.map(r => `${r.n} ${r.priority ?? 'unset'}`).join(', '));
+      parts.push(`${onDuty} unit${onDuty === 1 ? '' : 's'} on duty, ${avail} available`);
+      return parts.join('. ') + '.';
+    }
     default: return '';
   }
 }
@@ -137,7 +205,9 @@ async function assemble(env: Bindings, db: D1Database, planned: PlannerOutput, c
     else errors.push(v.error.error);
   }
   const { callRefs, unitRefs } = collectRefs(validated.filter(v => !v.def.serverRead));
-  const { refs, issues } = await resolveRefs(db, callRefs, unitRefs, ctx);
+  // Only unarchive/delete may reach an archived call — see loadCandidateCalls.
+  const includeArchived = validated.some(v => v.tool === 'unarchive_call' || v.tool === 'delete_call');
+  const { refs, issues } = await resolveRefs(db, callRefs, unitRefs, ctx, { includeArchived });
   if (issues.length) {
     return { steps: [], readTexts: [], clarify: issues.map(describeIssue).join(' '), errors, destructive: false };
   }

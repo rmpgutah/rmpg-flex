@@ -11,6 +11,10 @@ import { z } from 'zod';
 
 export const WRITE_ROLES = ['dispatcher', 'supervisor', 'manager', 'admin'] as const;
 export const CREATE_ROLES = ['officer', ...WRITE_ROLES] as const;
+/** Merge/split restructure a call's identity — supervisor sign-off, per the routes' own guards. */
+export const SUPERVISOR_ROLES = ['supervisor', 'manager', 'admin'] as const;
+/** Hard delete is admin/manager only — mirrors calls.delete('/:id') exactly. */
+export const DELETE_ROLES = ['admin', 'manager'] as const;
 export const READ_ROLES = ['officer', 'dispatcher', 'supervisor', 'manager', 'admin', 'contract_manager', 'human_resources'] as const;
 
 export const CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled'] as const;
@@ -27,6 +31,19 @@ export interface ToolDef {
   description: string;
   params: z.ZodTypeAny;
   roles: readonly string[];
+  /**
+   * Requires a Y/N confirmation turn before the client executes it.
+   *
+   * OPERATOR POLICY (set 2026-09-14): this gate is reserved for TRUE DELETES —
+   * an operation that removes a record with no in-app way back. Everything
+   * else, including clearing/closing a call, unassigning a unit, re-dispatching,
+   * merging and bulk status writes, executes immediately: those are all
+   * recoverable (status is re-settable, units re-assignable) and a confirmation
+   * turn on routine radio traffic costs more than it protects.
+   *
+   * Do NOT set this true for "high impact but reversible". The narrower the
+   * gate, the more a confirmation prompt actually means something.
+   */
   destructive: boolean;
   /** Reads run on the server and fold their answer into `reply`. */
   serverRead?: boolean;
@@ -80,7 +97,7 @@ export const TOOLS: Record<string, ToolDef> = {
     description: 'Remove a unit from a call.',
     params: z.object({ call: callRef, unit: unitRef }),
     roles: WRITE_ROLES,
-    destructive: true,
+    destructive: false, // reversible — re-assign the unit
   },
   hold_call: {
     name: 'hold_call',
@@ -134,7 +151,77 @@ export const TOOLS: Record<string, ToolDef> = {
     description: 'Re-dispatch a cleared PSO / process-service call as a new attempt.',
     params: z.object({ call: callRef }),
     roles: WRITE_ROLES,
-    destructive: true,
+    destructive: false, // creates a NEW linked call; undo_redispatch reverses it
+  },
+  undo_redispatch: {
+    name: 'undo_redispatch',
+    description: 'Undo the most recent re-dispatch / return visit on a call.',
+    params: z.object({ call: callRef }),
+    roles: WRITE_ROLES,
+    destructive: false,
+  },
+  archive_call: {
+    name: 'archive_call',
+    description: 'Archive a call (removes it from the active board; reversible with unarchive).',
+    params: z.object({ call: callRef }),
+    roles: WRITE_ROLES,
+    destructive: false,
+  },
+  unarchive_call: {
+    name: 'unarchive_call',
+    description: 'Restore an archived call to the active board.',
+    params: z.object({ call: callRef }),
+    roles: WRITE_ROLES,
+    destructive: false,
+  },
+  merge_calls: {
+    name: 'merge_calls',
+    description: 'Merge one call into another (duplicate reports of the same incident). The source call is folded into the target.',
+    params: z.object({ call: callRef, into: callRef }),
+    roles: SUPERVISOR_ROLES,
+    destructive: false,
+  },
+  split_call: {
+    name: 'split_call',
+    description: 'Split a call into one or more additional child calls, each with its own incident type (e.g. one scene that is both an assault and a stolen vehicle).',
+    params: z.object({
+      call: callRef,
+      splits: z.array(z.object({
+        incident_type: z.string().min(1).max(80),
+        description: z.string().max(2000).optional(),
+        location_address: z.string().max(200).optional(),
+      })).min(1).max(5),
+    }),
+    roles: WRITE_ROLES,
+    destructive: false,
+  },
+  notify_agency: {
+    name: 'notify_agency',
+    description: 'Record that an outside law-enforcement agency was notified on a call (e.g. SLCPD, UHP), with an optional agency case number.',
+    params: z.object({ call: callRef, agency: z.string().max(200).optional(), case_number: z.string().max(100).optional() }),
+    roles: WRITE_ROLES,
+    destructive: false,
+  },
+  promote_to_incident: {
+    name: 'promote_to_incident',
+    description: 'Promote a call to a full incident report.',
+    params: z.object({ call: callRef }),
+    roles: CREATE_ROLES,
+    destructive: false,
+  },
+  set_unit_mileage: {
+    name: 'set_unit_mileage',
+    description: 'Record a unit\'s current odometer reading.',
+    params: z.object({ unit: unitRef, mileage: z.number().nonnegative().max(2_000_000) }),
+    roles: WRITE_ROLES,
+    destructive: false,
+  },
+  delete_call: {
+    name: 'delete_call',
+    description: 'PERMANENTLY delete a call for service and detach its records. Irreversible — use only for a call created in error. Prefer cancel or archive.',
+    params: z.object({ call: callRef }),
+    roles: DELETE_ROLES,
+    destructive: true, // a true delete — the one thing that still asks Y/N
   },
   // ── Reads (server-side) ──
   lookup_record: {
@@ -181,6 +268,38 @@ export const TOOLS: Record<string, ToolDef> = {
     name: 'list_units',
     description: 'List units and their statuses (optionally one unit).',
     params: z.object({ unit: unitRef.optional() }),
+    roles: READ_ROLES,
+    destructive: false,
+    serverRead: true,
+  },
+  lookup_code: {
+    name: 'lookup_code',
+    description: 'Look up a dispatch / ten-code (e.g. 10-71, CODE-3) and read back what it means.',
+    params: z.object({ code: z.string().min(1).max(20) }),
+    roles: READ_ROLES,
+    destructive: false,
+    serverRead: true,
+  },
+  premise_alerts: {
+    name: 'premise_alerts',
+    description: 'Read active premise alerts / hazards on file for an address before units arrive.',
+    params: z.object({ address: z.string().min(3).max(200) }),
+    roles: READ_ROLES,
+    destructive: false,
+    serverRead: true,
+  },
+  call_timeline: {
+    name: 'call_timeline',
+    description: 'Read back the audit timeline of a call — who did what and when.',
+    params: z.object({ call: callRef }),
+    roles: READ_ROLES,
+    destructive: false,
+    serverRead: true,
+  },
+  shift_summary: {
+    name: 'shift_summary',
+    description: 'Summarize the current shift: call volume by status and priority, and unit availability.',
+    params: z.object({}),
     roles: READ_ROLES,
     destructive: false,
     serverRead: true,

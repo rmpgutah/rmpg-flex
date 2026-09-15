@@ -21,6 +21,10 @@ function appAs(user: User) {
 
 const DISPATCHER: User = { id: 41, role: 'dispatcher', username: 'disp', full_name: 'Dee Spatcher' };
 const VIEWER: User = { id: 42, role: 'client_viewer', username: 'view', full_name: 'Client Viewer' };
+// Only admin/manager may delete a call — and a true delete is now the only
+// operation that raises the confirmation gate, so the round-trip tests below
+// need an admin actor to reach it at all.
+const ADMIN: User = { id: 43, role: 'admin', username: 'adm', full_name: 'Ada Min' };
 const db = () => (env as unknown as { DB: D1Database }).DB;
 
 async function command(user: User, body: Record<string, unknown>) {
@@ -103,38 +107,48 @@ describe('POST /api/dispatcher/command — deterministic path (no AI)', () => {
 });
 
 describe('confirmation round-trip', () => {
+  // Policy (2026-09-14): only a TRUE DELETE raises the gate. Routine writes —
+  // clearing a call, unassigning a unit — now execute immediately.
+  it('clearing a call and unassigning a unit do NOT ask for confirmation', async () => {
+    const clear = await command(DISPATCHER, { text: 'clear 42 unfounded' });
+    expect(clear.json.needs_confirmation).toBe(false);
+    expect(clear.json.steps[0]).toMatchObject({ path: '/dispatch/calls/7001/status', destructive: false });
+    const unassign = await command(DISPATCHER, { text: 'remove 12 from 42' });
+    expect(unassign.json.needs_confirmation).toBe(false);
+  });
+
   it('destructive plan → token; Y executes; log status follows', async () => {
-    const first = await command(DISPATCHER, { text: 'clear 42 unfounded' });
+    const first = await command(ADMIN, { text: 'delete 42' });
     expect(first.json.needs_confirmation).toBe(true);
     expect(first.json.confirm_token).toBeTruthy();
     expect(first.json.reply).toMatch(/^Confirm:/);
-    expect(first.json.steps[0]).toMatchObject({ path: '/dispatch/calls/7001/status', destructive: true, body: { status: 'cleared', disposition: 'unfounded' } });
+    expect(first.json.steps[0]).toMatchObject({ method: 'DELETE', path: '/dispatch/calls/7001', destructive: true });
     const pending = await queryFirst<{ status: string }>(db(), 'SELECT status FROM dispatcher_command_log WHERE id = ?', first.json.log_id);
     expect(pending?.status).toBe('awaiting_confirmation');
 
-    const second = await command(DISPATCHER, { confirm_token: first.json.confirm_token, confirmed: true });
+    const second = await command(ADMIN, { confirm_token: first.json.confirm_token, confirmed: true });
     expect(second.json.confirmed).toBe(true);
     expect(second.json.needs_confirmation).toBe(false);
-    expect(second.json.steps[0].path).toBe('/dispatch/calls/7001/status');
+    expect(second.json.steps[0].path).toBe('/dispatch/calls/7001');
     const confirmed = await queryFirst<{ status: string }>(db(), 'SELECT status FROM dispatcher_command_log WHERE id = ?', first.json.log_id);
     expect(confirmed?.status).toBe('confirmed');
 
     // Token is single-use.
-    const replay = await command(DISPATCHER, { confirm_token: first.json.confirm_token, confirmed: true });
+    const replay = await command(ADMIN, { confirm_token: first.json.confirm_token, confirmed: true });
     expect(replay.json.intent).toBe('confirm_expired');
   });
 
   it('N cancels and returns no steps', async () => {
-    const first = await command(DISPATCHER, { text: 'remove 12 from 42' });
+    const first = await command(ADMIN, { text: 'delete 42' });
     expect(first.json.needs_confirmation).toBe(true);
-    const second = await command(DISPATCHER, { confirm_token: first.json.confirm_token, confirmed: false });
+    const second = await command(ADMIN, { confirm_token: first.json.confirm_token, confirmed: false });
     expect(second.json.confirmed).toBe(false);
     expect(second.json.steps).toEqual([]);
     expect(second.json.reply).toBe('Cancelled.');
   });
 
   it('another user cannot consume the token', async () => {
-    const first = await command(DISPATCHER, { text: 'clear 42 unfounded' });
+    const first = await command(ADMIN, { text: 'delete 42' });
     const other: User = { id: 99, role: 'admin', username: 'a', full_name: 'A' };
     const res = await command(other, { confirm_token: first.json.confirm_token, confirmed: true });
     expect(res.status).toBe(403);
@@ -143,7 +157,7 @@ describe('confirmation round-trip', () => {
   it('operator can turn confirmation off via system_config', async () => {
     await execute(db(), `INSERT INTO system_config (config_key, config_value) VALUES ('dispatcher_command_confirm_destructive', '0')`);
     try {
-      const { json } = await command(DISPATCHER, { text: 'clear 42 unfounded' });
+      const { json } = await command(ADMIN, { text: 'delete 42' });
       expect(json.needs_confirmation).toBe(false);
       expect(json.steps[0].destructive).toBe(true);
     } finally {
