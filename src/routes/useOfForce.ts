@@ -18,6 +18,7 @@ import { recordAudit } from '../utils/auditLog';
 import { codedLike } from '../utils/searchText';
 import { log } from '../utils/logger';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { likePattern } from '../utils/d1Like';
 const uof = new Hono<Env>();
 
 function requireRole(c: any, ...roles: string[]): string | null {
@@ -56,14 +57,15 @@ uof.get('/', async (c) => {
     const params: unknown[] = [];
     if (q('status')) { where.push('u.status = ?'); params.push(q('status')); }
     if (q('search')) {
-      // D1 LIKE cap: pattern >50 chars silently returns nothing. codedLike
-      // escapes (lengthens) the term, so cap the raw input low enough that
-      // the escaped + wildcard-wrapped bind stays <=50.
-      const rawSearch = q('search')!.trim().slice(0, 40);
+      // The old `.slice(0, 40)` here was a guess at a budget that compensated
+      // for codedLike() applying no cap of its own. codedLike now caps each
+      // bind itself, so the raw term goes in and each helper measures its own
+      // pattern -- in bytes, which 40 UTF-16 units never was.
+      const rawSearch = q('search')!.trim();
       const ftLike = codedLike('u.force_type', rawSearch);
       where.push(`(${ftLike.sql} OR u.narrative LIKE ? OR u.justification LIKE ?
                    OR off.full_name LIKE ? OR p.last_name LIKE ?)`);
-      const pat = `%${rawSearch}%`;
+      const pat = likePattern(rawSearch);
       params.push(...ftLike.binds, pat, pat, pat, pat);
     }
     const whereSql = where.join(' AND ');

@@ -69,6 +69,7 @@ import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
 import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
 import serveAttemptFiles from './serveAttemptFiles';
 import { applyUrgencyTier } from '../utils/serveDiligencePlanner';
+import { likePattern } from '../utils/d1Like';
 import {
   intakePatchFromPreview,
   parseServeParsedData,
@@ -1016,7 +1017,7 @@ sv.get('/', async (c) => {
   if (priority) { where.push('q.priority = ?'); args.push(priority); }
   if (search) {
     where.push('(q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
-    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    const s = likePattern(search);
     args.push(s, s, s);
   }
   // FK reference guards: CASE expressions are re-emitted AFTER q.* so

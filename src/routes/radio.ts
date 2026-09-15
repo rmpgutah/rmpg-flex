@@ -43,6 +43,7 @@ import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTI
 import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
 import type { Bindings } from '../types';
 import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
+import { likePattern } from '../utils/d1Like';
 
 const rt = new Hono<Env>();
 
@@ -154,8 +155,11 @@ rt.get('/transmissions', async (c) => {
     // helper does the boolean OR/negation parsing on the page. We
     // narrow first to keep payloads small.
     where.push('(transcript LIKE ? OR unit_label LIKE ? OR tags LIKE ?)');
-    const safe = q.replace(/[%_]/g, '').slice(0, 48); // D1 LIKE cap: pattern >50 chars silently returns nothing
-    const like = `%${safe}%`;
+    // This SQL carries no `ESCAPE` clause, so wildcards are STRIPPED rather
+    // than escaped; likePattern then owns the byte cap. (The cap is on bytes,
+    // not characters -- an accented transcript search overflowed the old
+    // `.slice(0, 48)`.)
+    const like = likePattern(q.replace(/[%_]/g, ''));
     args.push(like, like, like);
   }
   const rc = rangeClause(range);
@@ -687,7 +691,7 @@ rt.get('/ai/shift-summary', async (c) => {
      WHERE (unit_call_signs LIKE ? OR COALESCE(responding_officer,'') LIKE ?)
        AND datetime(created_at) >= datetime('now', ?)
      ORDER BY datetime(created_at) DESC LIMIT 50`,
-    `%${unit.slice(0, 48)}%`, `%${unit.slice(0, 48)}%`, since,
+    likePattern(unit), likePattern(unit), since,
   ).catch(() => []);
 
   const txRow = await queryFirst<{ n: number }>(

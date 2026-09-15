@@ -38,6 +38,7 @@ import { lookupFbiWanted } from '../utils/fbiWantedLookup';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 import { containsAnyClause } from '../utils/searchText';
+import { likePattern } from '../utils/d1Like';
 const dlRecords = new Hono<Env>();
 
 // ── Inline role gate (mirrors arrests.ts) ───────────────────
@@ -664,8 +665,8 @@ dlRecords.get('/deep-sweep', async (c) => {
 
     const lastLike = `${last.slice(0, 49)}%`;
     const firstLike = first ? `${first.slice(0, 49)}%` : '%';
-    const bothLike = `%${last.slice(0, 48)}%`;
-    const firstAny = first ? `%${first.slice(0, 48)}%` : '%';
+    const bothLike = likePattern(last);
+    const firstAny = first ? likePattern(first) : '%';
 
     const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
       try { return await fn(); } catch { return []; }
@@ -673,7 +674,7 @@ dlRecords.get('/deep-sweep', async (c) => {
 
     // MVR keys: exact-ish DL number (normalised) when supplied by the scan.
     const dlNum = (c.req.query('dl') || '').trim().replace(/\W/g, '');
-    const dlLike = dlNum ? `%${dlNum.slice(0, 48)}%` : null;
+    const dlLike = dlNum ? likePattern(dlNum) : null;
 
     const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows,
            sexOffenders, watchlist, aliasHits, caseHits, mvrCitations, dlHistory, utahSor] = await Promise.all([

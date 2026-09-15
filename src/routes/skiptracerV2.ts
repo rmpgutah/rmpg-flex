@@ -18,6 +18,7 @@ import {
   parseSearchParams, runSkipTracerSearch, detectSearchTypeFromParams,
 } from '../utils/skiptracerV2/search';
 import { listSourceInfo, upsertSourceConfig } from '../utils/skiptracerV2/sources';
+import { likePattern } from '../utils/d1Like';
 
 const skiptracerV2 = new Hono<Env>();
 
@@ -192,7 +193,7 @@ skiptracerV2.get('/dossiers', async (c) => {
     const binds: unknown[] = [];
     if (q) {
       conditions.push('(subject_name LIKE ? OR notes LIKE ?)');
-      const wild = `%${q.slice(0, 48)}%`;
+      const wild = likePattern(q);
       binds.push(wild, wild);
     }
     const rows = await query<Record<string, unknown>>(db,

@@ -22,6 +22,7 @@ import type { Env } from '../../types';
 import { query, queryFirst, execute, queryInChunks } from '../../utils/db';
 import { recordAudit } from '../../utils/auditLog';
 import { log } from '../../utils/logger';
+import { likePattern } from '../../utils/d1Like';
 
 const dataCapture = new Hono<Env>();
 
@@ -425,20 +426,20 @@ dataCapture.post('/query', async (c) => {
   const personBinds: unknown[] = [];
 
   if (body.name) {
-    const n = `%${body.name.trim().slice(0, 48)}%`;
+    const n = likePattern(body.name.trim());
     personClauses.push(`(first_name || ' ' || last_name LIKE ? OR alias_nickname LIKE ? OR aliases LIKE ?)`);
     personBinds.push(n, n, n);
   }
-  if (body.first_name) { personClauses.push(`first_name LIKE ?`); personBinds.push(`%${String(body.first_name).slice(0, 48)}%`); }
-  if (body.last_name) { personClauses.push(`last_name LIKE ?`); personBinds.push(`%${String(body.last_name).slice(0, 48)}%`); }
+  if (body.first_name) { personClauses.push(`first_name LIKE ?`); personBinds.push(likePattern(String(body.first_name))); }
+  if (body.last_name) { personClauses.push(`last_name LIKE ?`); personBinds.push(likePattern(String(body.last_name))); }
   if (body.dob) { personClauses.push(`dob = ?`); personBinds.push(body.dob); }
   if (body.phone) {
     const ph = body.phone.replace(/\D/g, '');
     personClauses.push(`(REPLACE(REPLACE(REPLACE(phone,'-',''),'(',''),')','') LIKE ? OR REPLACE(REPLACE(REPLACE(phone_secondary,'-',''),'(',''),')','') LIKE ?)`);
     personBinds.push(`%${ph}%`, `%${ph}%`);
   }
-  if (body.email) { const emailPat = `%${String(body.email).slice(0, 48)}%`; personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(emailPat, emailPat); }
-  if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(`%${String(body.address).slice(0, 48)}%`); }
+  if (body.email) { const emailPat = likePattern(String(body.email)); personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(emailPat, emailPat); }
+  if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(likePattern(String(body.address))); }
   if (body.dl_number) { personClauses.push(`dl_number = ?`); personBinds.push(body.dl_number.toUpperCase()); }
 
   if (personClauses.length > 0) {
@@ -468,10 +469,10 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.dl_number || body.dob || body.address) {
     const dlClauses: string[] = [];
     const dlBinds: unknown[] = [];
-    if (body.name) { dlClauses.push(`full_name LIKE ?`); dlBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
+    if (body.name) { dlClauses.push(`full_name LIKE ?`); dlBinds.push(likePattern(body.name.trim())); }
     if (body.dl_number) { dlClauses.push(`dl_number = ?`); dlBinds.push(body.dl_number.toUpperCase()); }
     if (body.dob) { dlClauses.push(`dob = ?`); dlBinds.push(body.dob); }
-    if (body.address) { dlClauses.push(`address LIKE ?`); dlBinds.push(`%${String(body.address).slice(0, 48)}%`); }
+    if (body.address) { dlClauses.push(`address LIKE ?`); dlBinds.push(likePattern(String(body.address))); }
     try {
       const dlRows = await query(
         c.env.DB,
@@ -499,7 +500,7 @@ dataCapture.post('/query', async (c) => {
     }
     if (body.name) {
       vClauses.push(`registered_owner LIKE ?`);
-      vBinds.push(`%${body.name.trim().slice(0, 48)}%`);
+      vBinds.push(likePattern(body.name.trim()));
     }
     try {
       const vRows = await query(
@@ -525,7 +526,7 @@ dataCapture.post('/query', async (c) => {
     const wBinds: unknown[] = [];
     if (body.name) {
       wClauses.push(`subject_name LIKE ?`);
-      wBinds.push(`%${body.name.trim().slice(0, 48)}%`);
+      wBinds.push(likePattern(body.name.trim()));
     }
     if (body.dob) { wClauses.push(`subject_dob = ?`); wBinds.push(body.dob); }
     try {
@@ -550,9 +551,9 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.phone || body.email) {
     const sdClauses: string[] = [];
     const sdBinds: unknown[] = [];
-    if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
+    if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(likePattern(body.name.trim())); }
     if (body.phone) { sdClauses.push(`subject_phone LIKE ?`); sdBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
-    if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(`%${String(body.email).slice(0, 48)}%`); }
+    if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(likePattern(String(body.email))); }
     try {
       const sdRows = await query(
         c.env.DB,
@@ -574,11 +575,11 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.dob || body.phone || body.plate || body.email) {
     const piClauses: string[] = [];
     const piBinds: unknown[] = [];
-    if (body.name) { piClauses.push(`subject_name LIKE ?`); piBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
+    if (body.name) { piClauses.push(`subject_name LIKE ?`); piBinds.push(likePattern(body.name.trim())); }
     if (body.dob) { piClauses.push(`subject_dob = ?`); piBinds.push(body.dob); }
     // JSON seed search for phone/plate/email
     if (body.phone) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
-    if (body.email) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${String(body.email).slice(0, 48)}%`); }
+    if (body.email) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(likePattern(String(body.email))); }
     if (body.plate) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.plate.toUpperCase()}%`); }
     try {
       const piRows = await query(

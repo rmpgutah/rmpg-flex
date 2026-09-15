@@ -946,9 +946,10 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  // D1 LIKE cap: pattern >50 chars fails. escapeLike LENGTHENS the string, so
-  // cappedLikePattern truncates the ESCAPED term to keep '%'+escaped+'%' <=50.
-  const raw = q.trim().slice(0, 40);
+  // cappedLikePattern and codedLike each cap their own binds now (in bytes),
+  // so the raw term goes in. The old `.slice(0, 40)` was covering for
+  // codedLike having no cap at all, and was itself char-based.
+  const raw = q.trim();
   const term = cappedLikePattern(raw);
   const incidentTypeMatch = codedLike('incident_type', raw);
   type Hit = { id: number; type: string; label: string };

@@ -1,6 +1,7 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
 import { splitPersonName } from './http';
+import { likePattern } from '../../d1Like';
 
 export async function search(seed: EnrichmentSeed, env: Bindings): Promise<SourceResult> {
   const start = Date.now();
@@ -11,8 +12,8 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
   }
 
   try {
-    // D1 LIKE cap is 50 chars; %pattern% uses 2, leaving 48 for the value.
-    const lastLike = `%${last.toLowerCase().slice(0, 48)}%`;
+    // D1's LIKE cap is 50 BYTES (not characters), and likePattern owns it.
+    const lastLike = likePattern(last.toLowerCase());
     const rows = await env.DB.prepare(
       `SELECT sdn_name, sdn_type, program, aliases_json, dob, nationality, remarks
        FROM ofac_sdn

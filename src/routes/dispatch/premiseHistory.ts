@@ -10,6 +10,7 @@ import type { Env } from '../../types';
 import { getDb, query } from '../../utils/db';
 import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
+import { likePattern } from '../../utils/d1Like';
 
 const premise = new Hono<Env>();
 
@@ -53,7 +54,7 @@ premise.get('/premise-history', requireRole('officer', 'dispatcher', 'supervisor
     // street number) to widen the match. Won't match across totally
     // different streets because of the LIKE bounds.
     whereClause += ' AND UPPER(location_address) LIKE ?';
-    params.push(`%${address.trim().toUpperCase().slice(0, 48)}%`);
+    params.push(likePattern(address.trim(), { caseFold: 'upper' }));
   }
 
   let rows: PremiseHistoryRow[];
@@ -120,7 +121,7 @@ premise.get('/address-occupants', requireRole('officer', 'dispatcher', 'supervis
        WHERE UPPER(p.address) LIKE ?
        ORDER BY active_warrants DESC, p.last_name
        LIMIT 25`,
-      `%${address.toUpperCase().slice(0, 48)}%`,
+      likePattern(address, { caseFold: 'upper' }),
     );
     const occupants = people.map((p) => {
       let flags: string[] = [];

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import type { D1Database } from '@cloudflare/workers-types';
 import { log } from '../utils/logger';
+import { likePattern } from '../utils/d1Like';
 
 const app = new Hono<{ Bindings: { DB: D1Database }; Variables: { user: any } }>();
 
@@ -45,7 +46,7 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
   } catch (err) {
     log.warn('[investigation] FTS cases query failed, trying LIKE fallback', { error: err instanceof Error ? err.message : String(err) });
     try {
-      const likeQuery = `%${sanitized.slice(0, 48)}%`;
+      const likeQuery = likePattern(sanitized);
       const likeRes = await db.prepare(
         `SELECT c.id, c.case_number, c.title, c.status, c.case_type, c.priority,
                 c.solvability_score, c.created_at, c.updated_at, 0 as fts_rank
@@ -80,7 +81,7 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
   } catch (err) {
     log.warn('[investigation] FTS persons query failed, trying LIKE fallback', { error: err instanceof Error ? err.message : String(err) });
     try {
-      const likeQuery = `%${sanitized.slice(0, 48)}%`;
+      const likeQuery = likePattern(sanitized);
       const likeRes = await db.prepare(
         `SELECT p.id, p.first_name, p.last_name, p.dob, p.phone,
                 p.created_at, 0 as fts_rank
