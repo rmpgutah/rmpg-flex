@@ -1138,7 +1138,7 @@ export default function IncidentsPage() {
           <button type="button" className="toolbar-btn text-[10px]" onClick={() => handleBulkAction('status', 'under_review')}>
             Mark Review
           </button>
-          <button type="button" className="ml-auto text-[10px] text-rmpg-400 hover:text-rmpg-200" onClick={() => setSelectedIds(new Set())}>
+          <button type="button" aria-label="Clear selection" className="ml-auto text-[10px] text-rmpg-400 hover:text-rmpg-200" onClick={() => setSelectedIds(new Set())}>
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -1982,6 +1982,8 @@ export default function IncidentsPage() {
                 notes={narrativeRef.current?.value || selectedIncident.narrative || ''}
                 incidentType={selectedIncident.type}
                 locationAddress={selectedIncident.location || ''}
+                mode="incident"
+                existingText={narrativeRef.current?.value || selectedIncident.narrative || ''}
                 onAccept={(narrative) => {
                   if (narrativeRef.current) narrativeRef.current.value = narrative;
                 }}

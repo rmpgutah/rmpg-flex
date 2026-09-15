@@ -118,6 +118,8 @@ export default function AlarmTrackingPage() {
   const [permitError, setPermitError] = useState(false);
   const [permitSearch, setPermitSearch] = useState('');
   const [permitStatusFilter, setPermitStatusFilter] = useState<string>('all');
+  const [permitPage, setPermitPage] = useState(1);
+  const PERMITS_PER_PAGE = 50;
   const [selectedPermit, setSelectedPermit] = useState<AlarmPermit | null>(null);
   const [permitActivations, setPermitActivations] = useState<AlarmActivation[]>([]);
   const [loadingPermitActivations, setLoadingPermitActivations] = useState(false);
@@ -315,6 +317,13 @@ export default function AlarmTrackingPage() {
     }
     return true;
   });
+
+  const totalPermitPages = Math.max(1, Math.ceil(filteredPermits.length / PERMITS_PER_PAGE));
+  const currentPermitPage = Math.min(permitPage, totalPermitPages);
+  const permitsPage = filteredPermits.slice((currentPermitPage - 1) * PERMITS_PER_PAGE, currentPermitPage * PERMITS_PER_PAGE);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setPermitPage(1); }, [permitSearch, permitStatusFilter]);
 
   // ─── Render helpers ──────────────────────────────────────────
 
@@ -516,7 +525,7 @@ export default function AlarmTrackingPage() {
                   </td></tr>
                 ) : filteredPermits.length === 0 ? (
                   <tr><td colSpan={8}><EmptyState icon={Bell} title={permitSearch || permitStatusFilter !== 'all' ? 'No permits match the filter' : 'No permits found'} description={permitSearch || permitStatusFilter !== 'all' ? 'Clear search or status filter.' : 'Create a new alarm permit to get started.'} /></td></tr>
-                ) : filteredPermits.map(p => (
+                ) : permitsPage.map(p => (
                   <tr
                     key={p.id}
                     onClick={() => selectPermit(p)}
@@ -541,6 +550,20 @@ export default function AlarmTrackingPage() {
               </tbody>
             </table>
           </div>
+
+          {totalPermitPages > 1 && (
+            <div className="flex items-center justify-between px-1 py-1.5">
+              <button type="button" onClick={() => setPermitPage(p => Math.max(1, p - 1))} disabled={currentPermitPage === 1} className="text-[10px] text-gray-400 disabled:opacity-30 hover:text-gray-100 transition-colors">
+                ← Prev
+              </button>
+              <span className="text-[9px] font-mono text-gray-500 tabular-nums">
+                Page {currentPermitPage} / {totalPermitPages} &bull; {filteredPermits.length} permits
+              </span>
+              <button type="button" onClick={() => setPermitPage(p => Math.min(totalPermitPages, p + 1))} disabled={currentPermitPage === totalPermitPages} className="text-[10px] text-gray-400 disabled:opacity-30 hover:text-gray-100 transition-colors">
+                Next →
+              </button>
+            </div>
+          )}
         </div>
       )}
 

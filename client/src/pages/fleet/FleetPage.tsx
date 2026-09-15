@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Car, Plus, Wrench, Gauge, Archive, DollarSign, FileText,
   CheckCircle, Calendar, Shield, Eye, Trash2, Tag, Activity, LayoutDashboard,
@@ -8,7 +8,6 @@ import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
-import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -42,6 +41,7 @@ import type {
 } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import type { FleetViewMode } from './fleetConstants';
+import { useFleetThresholds } from './fleetConstants';
 import { downloadTextFile, fleetListToCsv } from '../../utils/rmsListExport';
 
 // ============================================================
@@ -62,16 +62,79 @@ export default function FleetPage() {
   const isAdmin = user?.role === 'admin';
 
   const { openMenu } = useContextMenu();
+  const { expiryWarnDays } = useFleetThresholds();
   const cm = useMenuActions();
+
+  // ── URL-addressable state (vehicle, view, status, q, tab) ─
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const selectedId: string | null = searchParams.get('vehicle');
+  const viewMode = (searchParams.get('view') as FleetViewMode) || 'dashboard';
+  const filterStatus = searchParams.get('status') || 'all';
+  const searchQuery = searchParams.get('q') || '';
+  // undefined when no URL param so the hook can distinguish "no URL value" from
+  // "URL param explicitly set to overview".
+  const activeTabFromUrl = (searchParams.get('tab') as DetailTab) || undefined;
+
+  const setSelectedId = useCallback((id: string | number | null) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const prevVehicle = prev.get('vehicle');
+      const nextVehicle = id == null ? null : String(id);
+      if (id == null) next.delete('vehicle');
+      else next.set('vehicle', String(id));
+      // Clear the tab param only when switching BETWEEN vehicles so the
+      // reset-to-overview behavior is URL-visible. A null→A first selection
+      // must not clear a bookmarked ?tab=fuel from the URL.
+      if (prevVehicle !== null && prevVehicle !== nextVehicle) {
+        next.delete('tab');
+      }
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const setViewMode = useCallback((v: FleetViewMode) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v === 'dashboard') next.delete('view');
+      else next.set('view', v);
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const setFilterStatus = useCallback((s: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (s === 'all') next.delete('status');
+      else next.set('status', s);
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const setSearchQuery = useCallback((q: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (!q) next.delete('q');
+      else next.set('q', q);
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const setActiveTabUrl = useCallback((t: DetailTab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (t === 'overview') next.delete('tab');
+      else next.set('tab', t);
+      return next;
+    });
+  }, [setSearchParams]);
 
   // ── Vehicle list ──────────────────────────────────────────
   const {
     vehicles, vehicleTotal, hasMore, loadingMore, loadMore, filtered,
-    filterStatus, setFilterStatus, searchQuery, setSearchQuery,
     showArchived, setShowArchived,
     statusCounts, avgMileage, refetch: fetchVehicles,
-  } = useFleetVehicles();
-  const [selectedId, setSelectedId] = useState<string | number | null>(null);
+  } = useFleetVehicles({ filterStatus, setFilterStatus, searchQuery, setSearchQuery });
 
   const vehicleNumberById = useMemo(() => {
     const m = new Map<string | number, string>();
@@ -80,12 +143,8 @@ export default function FleetPage() {
   }, [vehicles]);
 
   // ── View mode (no vehicle selected) ──────────────────────
-  const [viewMode, setViewMode] = usePersistedTab(
-    'rmpg_fleet_view_mode',
-    'dashboard' as FleetViewMode,
-    ['dashboard', 'analysis', 'work_orders', 'vendors', 'service', 'driver_performance'] as const,
-  );
   const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
+
 
   // ── Fleet-wide analytics (no vehicle selected) ───────────
   const [fleetAnalytics, setFleetAnalytics] = useState<FleetAnalytics | null>(null);
@@ -123,7 +182,10 @@ export default function FleetPage() {
     activeTab, setActiveTab,
     fetchDetail, fetchFuelLogs, fetchInspections, fetchAssignments,
     fetchPersonnel, fetchVehicleAnalytics, fetchGpsMileage, syncGpsMileage, clearDetail,
-  } = useVehicleDetail(selectedId, resetPerVehicleCostState, handleDetailLazyLoad);
+  } = useVehicleDetail(selectedId, resetPerVehicleCostState, handleDetailLazyLoad, {
+    activeTab: activeTabFromUrl,
+    setActiveTab: setActiveTabUrl,
+  });
 
   // ── Costs tab ─────────────────────────────────────────────
   const {
@@ -200,16 +262,16 @@ export default function FleetPage() {
   const registrationExpiring = vehicles.filter(v => {
     if (!v.registration_expiry) return false;
     const exp = parseTimestamp(v.registration_expiry);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    return exp <= thirtyDays;
+    const warn = new Date();
+    warn.setDate(warn.getDate() + expiryWarnDays);
+    return exp <= warn;
   }).length;
   const insuranceExpiring = vehicles.filter(v => {
     if (!v.insurance_expiry) return false;
     const exp = parseTimestamp(v.insurance_expiry);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(thirtyDays.getDate() + 30);
-    return exp <= thirtyDays;
+    const warn = new Date();
+    warn.setDate(warn.getDate() + expiryWarnDays);
+    return exp <= warn;
   }).length;
   const assignedVehicles = vehicles.filter(v => v.assigned_unit_call_sign).length;
 

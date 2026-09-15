@@ -145,6 +145,7 @@ import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import deliveriesWebhook from './routes/deliveriesWebhook';
 import driverPerformance from './routes/driverPerformance';
 import legalDataHunter from './routes/legalDataHunter';
 import webBrowser from './routes/webBrowser';
@@ -157,6 +158,7 @@ import tesseractTraining from './routes/tesseractTraining';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
+import dispatcherCommand from './routes/dispatcherCommand';
 import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
@@ -212,6 +214,8 @@ import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
 import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
+import dialerVoice from './routes/dialerVoice';
+import dialerConnectImport from './routes/dialerConnectImport';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -332,7 +336,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
-    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
+    note: 'Sign in with Dialer (rmpgutah.us/dialer OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
@@ -450,6 +454,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
     note: 'Voice dialogue agent (/dialogue) + dispatch read-aloud (/read-aloud) for the AI dispatcher.' },
+  { prefix: '/api/dispatcher', router: dispatcherCommand, auth: 'required',
+    note: 'Dispatcher Command Engine: POST /command turns free-form typed/spoken instructions into validated CAD steps (rules → callAi planner → catalog/compile); POST /command/:id/result records outcomes; GET /command/recent (supervisor+). Design: docs/superpowers/specs/2026-09-14-dispatcher-command-engine-design.md' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
   { prefix: '/api/mdt', router: mdt, auth: 'required' },
@@ -873,8 +879,15 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Longer ingest prefix FIRST so Hono does not let the parent router steal POST /ingest.
   { prefix: '/api/dialer-connect/ingest', router: dialerConnectIngest, auth: 'public',
     note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
+  { prefix: '/api/deliveries/webhook', router: deliveriesWebhook, auth: 'public',
+    note: 'rmpgutahps.us delivery-scheduler push (piece 1/3). HMAC via RMPG_FLEX_WEBHOOK_SECRET (x-rmpg-flex-hmac-sha256). 200 not_configured when unset.' },
+  // Longer prefix FIRST (same reason as /ingest above).
+  { prefix: '/api/dialer-connect/import', router: dialerConnectImport, auth: 'required',
+    note: 'Admin/manager: copy the full Dial Connect history (calls, voicemails, callbacks, contacts, SMS) into the Flex archive via dispatch-app\'s service-key export. Idempotent.' },
   { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
     note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
+  { prefix: '/api/dialer', router: dialerVoice, auth: 'required',
+    note: 'Native softphone: Twilio token, presence, call controls and SSE proxied server-to-server to Dial Connect (dispatch-app) as the linked dispatcher (users.dialer_oidc_sub).' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },

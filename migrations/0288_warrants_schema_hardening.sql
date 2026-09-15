@@ -1,61 +1,19 @@
--- 0288: Warrant schema hardening
--- Fixes three classes of silent failures discovered in the 2026-09-13 audit:
---   1. 'quashed' missing from the warrants.status CHECK constraint — any PUT/:id
---      or POST/:id/reopen setting status='quashed' throws CHECK constraint failed
---      on D1, making the quashed branch completely broken.
---   2. Missing poller-sync columns — syncLocalWarrantRecord writes columns that
---      were never formally added via numbered migrations; a fresh D1 from
---      numbered migrations only would fail every poller write silently.
---   3. Missing indexes on high-filter columns (archived_at, subject_person_id,
---      issued_date) causing full scans on every list/unified query.
+-- 0288: Warrant schema hardening (D1-compatible rewrite)
+-- Fixes from the 2026-09-13 audit:
+--
+-- Part 1 (CHECK constraint): REMOVED — D1 blocks PRAGMA writable_schema, and
+-- the live DB (baseline schema) has no CHECK on warrants.status anyway.
+-- App-level validation in warrantStatus.ts handles the 'quashed' status.
+--
+-- Part 2 (poller-sync columns): MOVED to a runtime reconciler in
+-- src/routes/warrants.ts (reconcileWarrantsSchema) using the columnExists
+-- pattern from db.ts. D1 does not support ADD COLUMN IF NOT EXISTS, and a
+-- plain ADD COLUMN in a multi-statement migration aborts the whole file on
+-- the first duplicate column name error.
+--
+-- Part 3 (indexes): Kept here — CREATE INDEX IF NOT EXISTS is D1-safe.
 
--- ── Part 1: Fix status CHECK ──────────────────────────────────────────────
--- SQLite stores CHECK constraints inside the CREATE TABLE SQL text in
--- sqlite_master. PRAGMA writable_schema patches that text without touching
--- table data. The guard clauses ensure idempotency and safe no-ops:
---   - WHERE … NOT LIKE '%''quashed''%'  → skip if already patched
---   - AND sql LIKE '%''recalled''%'     → skip if the original string changed
--- If writable_schema is unsupported (silently ignored by D1), 0 rows are
--- updated — the code path around it still gets hardened by the other parts.
-PRAGMA writable_schema = ON;
-
-UPDATE sqlite_master
-  SET sql = REPLACE(
-    sql,
-    '''active'',''served'',''expired'',''cancelled'',''recalled'')',
-    '''active'',''served'',''expired'',''cancelled'',''recalled'',''quashed'')'
-  )
-WHERE type = 'table'
-  AND name = 'warrants'
-  AND sql LIKE '%''recalled''%'
-  AND sql NOT LIKE '%''quashed''%';
-
-PRAGMA writable_schema = OFF;
-
--- ── Part 2: Poller-sync columns ───────────────────────────────────────────
--- These are written by syncLocalWarrantRecord in utahWarrantPoller.ts but
--- were never added by a numbered migration. D1's ALTER TABLE ignores
--- "duplicate column name" errors with continue-on-error, but in the poller
--- context they throw and are silently caught — so any newly-promoted warrant
--- loses all state-sync metadata.
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS subject_first_name TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS subject_last_name TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS subject_dob TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS issued_date TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS confirmed INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS auto_created INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS scraped_source TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS scraped_raw TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS external_warrant_id TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS external_source_key TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS last_checked_at TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS last_check_result TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS priority INTEGER;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS jurisdiction TEXT;
-ALTER TABLE warrants ADD COLUMN IF NOT EXISTS issuing_agency TEXT;
-
--- ── Part 3: Performance indexes ───────────────────────────────────────────
--- GET /unified filters archived_at IS NULL on every load — no index.
+-- GET /unified filters archived_at IS NULL on every load.
 CREATE INDEX IF NOT EXISTS idx_warrants_archived_at
   ON warrants(archived_at);
 

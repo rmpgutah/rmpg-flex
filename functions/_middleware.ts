@@ -16,10 +16,11 @@
 //
 // If DevTools attributes the flood to dialer-embed:1 / beacon.min.js /
 // cdn-cgi/challenge-platform, that document is Dial Connect
-// (https://dialer.rmpgutah.us), not this Pages app. This middleware cannot
-// set headers on that origin. Fix there:
-//   A. Same Observatory / Transform Rule / Custom Headers locations, but on
-//      the dialer.rmpgutah.us hostname (or the dispatch-app Pages project)
+// (now at rmpgutah.us/dialer, same zone). This middleware does set headers
+// for all Pages responses, but the Cloudflare Worker that serves /dialer/*
+// sets its own CSP via next.config.ts headers(). Fix there:
+//   A. Same Observatory / Transform Rule / Custom Headers locations, now on
+//      the /dialer/* Worker route
 //   B. Disable Cloudflare Web Analytics on that host (beacon.min.js) or
 //      allow https://static.cloudflareinsights.com in THAT app's script-src
 //      and connect-src
@@ -111,11 +112,9 @@ const FULL_CSP = [
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,
   `connect-src ${ALLOWED_CONNECT}`,
-  // dialer.rmpgutah.us: DialerPanel's embedded Dial Connect iframe (see
-  // client/src/components/DialerPanel.tsx) -- without this the browser
-  // blocks the embed outright, even though the meta-tag CSP in index.html
-  // allows it, because this HTTP header enforces alongside it.
-  `frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us`,
+  // Dial Connect is now at rmpgutah.us/dialer (same origin) — 'self' already
+  // covers the iframe. No separate domain entry needed.
+  `frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com`,
   `media-src 'self' blob: data:`,
   `worker-src 'self' blob:`,
   `child-src 'self' blob:`,
@@ -143,7 +142,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // blocks Twilio Voice inside DialerPanel's cross-origin iframe.
   out.headers.set(
     'Permissions-Policy',
-    'camera=(self), microphone=(self "https://dialer.rmpgutah.us"), geolocation=(self), autoplay=(self "https://dialer.rmpgutah.us"), payment=()',
+    // Dial Connect is same-origin now; plain (self) is sufficient.
+    'camera=(self), microphone=(self), geolocation=(self), autoplay=(self), payment=()',
   );
 
   // Prevent the browser (and Cloudflare edge) from caching HTML responses.

@@ -951,61 +951,60 @@ connections.get('/search', operational, async (c) => {
   const raw = q.trim().slice(0, 40);
   const term = cappedLikePattern(raw);
   const incidentTypeMatch = codedLike('incident_type', raw);
-  const results: Array<{ id: number; type: string; label: string }> = [];
+  type Hit = { id: number; type: string; label: string };
 
-  try {
-    for (const p of await query<any>(db, `SELECT id, first_name, last_name FROM persons WHERE first_name LIKE ? ESCAPE '\' OR last_name LIKE ? ESCAPE '\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\' LIMIT 8`, term, term, term))
-      results.push({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` });
-  } catch (err) { log.warn('Connections persons search error', { error: err instanceof Error ? err.message : String(err) }); }
+  // Each source is an independent D1 round-trip; running them sequentially
+  // (the original `for (... of await query(...))` chain, one after another)
+  // meant a single search paid for ~10 round-trips in series — an 8-9s
+  // response confirmed live. None of these queries depend on each other, so
+  // Promise.all lets D1 run them concurrently; each keeps its own try/catch
+  // so one slow/broken table still degrades to an empty slice, not a 500.
+  const sources: Array<Promise<Hit[]>> = [
+    query<any>(db, `SELECT id, first_name, last_name FROM persons WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term)
+      .then(rows => rows.map(p => ({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` })))
+      .catch(err => { log.warn('Connections persons search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const v of await query<any>(db, `SELECT id, make, model, plate_number, color FROM vehicles_records WHERE make LIKE ? ESCAPE '\' OR model LIKE ? ESCAPE '\' OR plate_number LIKE ? ESCAPE '\' OR vin LIKE ? ESCAPE '\' LIMIT 8`, term, term, term, term))
-      results.push({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.replace(/\s+/g, ' ').trim() });
-  } catch (err) { log.warn('Connections vehicles search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, make, model, plate_number, color FROM vehicles_records WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term, term)
+      .then(rows => rows.map(v => ({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.replace(/\s+/g, ' ').trim() })))
+      .catch(err => { log.warn('Connections vehicles search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const p of await query<any>(db, `SELECT id, name FROM properties WHERE name LIKE ? ESCAPE '\' OR address LIKE ? ESCAPE '\' LIMIT 8`, term, term))
-      results.push({ id: p.id, type: 'property', label: p.name });
-  } catch (err) { log.warn('Connections properties search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, name FROM properties WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' LIMIT 8`, term, term)
+      .then(rows => rows.map(p => ({ id: p.id, type: 'property', label: p.name })))
+      .catch(err => { log.warn('Connections properties search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const b of await query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\' OR dba_name LIKE ? ESCAPE '\' OR address LIKE ? ESCAPE '\' OR owner_name LIKE ? ESCAPE '\' LIMIT 8`, term, term, term, term))
-      results.push({ id: b.id, type: 'business', label: b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${b.id}`) });
-  } catch (err) { log.warn('Connections businesses search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\\' OR dba_name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR owner_name LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term, term)
+      .then(rows => rows.map(b => ({ id: b.id, type: 'business', label: b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${b.id}`) })))
+      .catch(err => { log.warn('Connections businesses search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const r of await query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\' LIMIT 8`, term, term))
-      results.push({ id: r.id, type: 'case', label: `${r.case_number} - ${r.title}` });
-  } catch (err) { log.warn('Connections cases search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' LIMIT 8`, term, term)
+      .then(rows => rows.map(r => ({ id: r.id, type: 'case', label: `${r.case_number} - ${r.title}` })))
+      .catch(err => { log.warn('Connections cases search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
-      results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
-  } catch (err) { log.warn('Connections incidents search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term)
+      .then(rows => rows.map(i => ({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() })))
+      .catch(err => { log.warn('Connections incidents search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  // Calls for service — searchable so an analyst can seed a graph on a CFS.
-  try {
-    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
-      results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
-  } catch (err) { log.warn('Connections calls search error', { error: err instanceof Error ? err.message : String(err) }); }
+    // Calls for service — searchable so an analyst can seed a graph on a CFS.
+    query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term)
+      .then(rows => rows.map(cf => ({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() })))
+      .catch(err => { log.warn('Connections calls search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const w of await query<any>(db, `SELECT id, warrant_number, status FROM warrants WHERE warrant_number LIKE ? ESCAPE '\' OR subject_name LIKE ? ESCAPE '\' LIMIT 8`, term, term))
-      results.push({ id: w.id, type: 'warrant', label: `${w.warrant_number || `W-${w.id}`} (${w.status || '?'})` });
-  } catch (err) { log.warn('Connections warrants search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, warrant_number, status FROM warrants WHERE warrant_number LIKE ? ESCAPE '\\' OR subject_name LIKE ? ESCAPE '\\' LIMIT 8`, term, term)
+      .then(rows => rows.map(w => ({ id: w.id, type: 'warrant', label: `${w.warrant_number || `W-${w.id}`} (${w.status || '?'})` })))
+      .catch(err => { log.warn('Connections warrants search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const e of await query<any>(db, `SELECT id, evidence_number, description FROM evidence WHERE evidence_number LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\' LIMIT 8`, term, term))
-      results.push({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() });
-  } catch (err) { log.warn('Connections evidence search error', { error: err instanceof Error ? err.message : String(err) }); }
+    query<any>(db, `SELECT id, evidence_number, description FROM evidence WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' LIMIT 8`, term, term)
+      .then(rows => rows.map(e => ({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() })))
+      .catch(err => { log.warn('Connections evidence search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
 
-  try {
-    for (const r of await query<any>(db,
+    query<any>(db,
       `SELECT id, report_number, title FROM intel_reports
-       WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\') LIMIT 8`, term, term))
-      results.push({ id: r.id, type: 'intel_report', label: `${r.report_number || `INT-${r.id}`} — ${r.title || ''}`.trim() });
-  } catch (err) { log.warn('Connections intel search error', { error: err instanceof Error ? err.message : String(err) }); }
+       WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\') LIMIT 8`, term, term)
+      .then(rows => rows.map(r => ({ id: r.id, type: 'intel_report', label: `${r.report_number || `INT-${r.id}`} — ${r.title || ''}`.trim() })))
+      .catch(err => { log.warn('Connections intel search error', { error: err instanceof Error ? err.message : String(err) }); return []; }),
+  ];
 
+  const results: Hit[] = (await Promise.all(sources)).flat();
   return c.json(results);
 });
 

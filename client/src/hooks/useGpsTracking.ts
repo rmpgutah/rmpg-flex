@@ -1579,10 +1579,24 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-start tracking when app returns to foreground (handles mobile app resume)
+  // Re-start tracking when app returns to foreground (handles mobile app resume).
+  // Uses the same permission-then-gesture strategy as the heartbeat: calling
+  // watchPosition from a non-gesture context while permission is 'prompt' makes
+  // the browser silently withhold callbacks on mobile.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !isTracking) {
+      if (document.visibilityState !== 'visible' || isTracking) return;
+
+      if (IS_WINDOWS_ELECTRON) { startTracking(); return; }
+
+      const permApi = (navigator as any).permissions;
+      if (permApi?.query) {
+        permApi.query({ name: 'geolocation' }).then((res: any) => {
+          if (res.state === 'granted') startTracking();
+          // 'prompt' or 'denied': wait for next user gesture (the auto-start
+          // effect's listeners handle this — don't duplicate them here).
+        }).catch(() => startTracking());
+      } else {
         startTracking();
       }
     };

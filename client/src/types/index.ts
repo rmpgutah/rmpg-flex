@@ -2260,7 +2260,9 @@ export type WSMessageType =
   // Smart automation engine — fired by server or client-side rule evaluation.
   // Payload: { action_type, rule_id, source:'officer'|'system', fired_at,
   //            trigger_lat?, trigger_lng?, context? }
-  | 'automation_alert';
+  | 'automation_alert'
+  // Desktop force-update push (admin broadcasts to trigger quitAndInstall)
+  | 'force_update';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -3184,9 +3186,10 @@ export interface CrmTask {
 
 export interface CrmActivity {
   id: number | string;
-  client_id: number | string;
+  client_id?: number | string;
   client_name?: string;
-  activity_type: 'note' | 'call' | 'email' | 'meeting' | 'invoice' | 'contract_change' | 'site_visit';
+  lead_name?: string;
+  activity_type: 'note' | 'call' | 'email' | 'meeting' | 'invoice' | 'contract_change' | 'site_visit' | 'stage_change' | 'converted';
   subject?: string;
   details?: string;
   created_by?: string;

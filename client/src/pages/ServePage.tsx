@@ -807,14 +807,18 @@ export default function ServePage() {
     try {
       const data = await apiFetch<any>('/process-server/deadlines');
       setDeadlines(data);
-    } catch { /* ignore */ }
+    } catch {
+      addToast('Could not load deadlines — please try again', 'error');
+    }
   };
 
   const handleLoadSuccessRates = async () => {
     try {
       const data = await apiFetch<any>('/process-server/success-rates?days=90');
       setSuccessRates(data);
-    } catch { /* ignore */ }
+    } catch {
+      addToast('Could not load success rates — please try again', 'error');
+    }
   };
 
   // ── Serve settings (mileage rate, etc.) ───────────────────────────
@@ -897,7 +901,7 @@ export default function ServePage() {
     setLoading(true);
     setFetchError('');
     try {
-      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
+      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}&limit=500`);
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
@@ -1437,6 +1441,9 @@ export default function ServePage() {
             ops: formOps,
           }),
         });
+        // Optimistically update the job in place so it stays visible during the
+        // background refresh and doesn't disappear if the sort order changes.
+        setJobs(prev => prev.map(j => j.id === editJob.id ? { ...j, ...formData, serve_date: formData.serve_date || selectedDate } as unknown as ServeJob : j));
       } else {
         await apiFetch('/process-server', {
           method: 'POST',
@@ -1625,10 +1632,7 @@ export default function ServePage() {
   // Filtered Jobs
   // ══════════════════════════════════════════════════════════════════════
 
-  // ── Feature 29: Multi-key sort ──
-  type SortKey = 'urgency' | 'priority' | 'date' | 'name' | 'fee';
-  const [sortKey, setSortKey] = useState<SortKey>('urgency');
-  // ── Feature 1: Priority Queue Sort (kept for backwards compat) ──
+  // ── Feature 1: Sort by deadline urgency ──
   const [sortByUrgency, setSortByUrgency] = useState(false);
   // ── Feature 33: Serve-type filter ──
   const [serveTypeFilter, setServeTypeFilter] = useState<string>('all');
@@ -1689,7 +1693,10 @@ export default function ServePage() {
           total: data.subtotal ?? 0,
         },
       });
-    } catch { setCostEstimate(null); }
+    } catch {
+      setCostEstimate(null);
+      addToast('Could not load cost estimate — please try again', 'error');
+    }
   };
 
   const filteredJobs = useMemo(() => {
@@ -3707,6 +3714,7 @@ export default function ServePage() {
             officerId={Number(user.id)}
             sharedJobs={jobs}
             onJobsChange={setJobs}
+            serveRouteId={savedRoute?.id ?? undefined}
             routeOrderIds={(() => {
               if (savedRoute?.optimized_order_json) {
                 try {

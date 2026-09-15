@@ -154,6 +154,26 @@
       <button type="button" class="pw-submit" id="pw-submit" aria-label="Sign in">&#8594;</button>
     </div>
     <div class="lock-error" id="lock-error"></div>
+    <!-- PIN unlock — shown when offline PIN is enrolled -->
+    <div id="pin-unlock-section" style="display:none; text-align:center; margin-top:16px;">
+      <button id="pin-toggle-btn" style="
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: var(--text-secondary);
+        padding: 6px 16px;
+        border-radius: 2px;
+        cursor: pointer;
+        font-size: 12px;
+        letter-spacing: 0.5px;
+      ">Use Offline PIN</button>
+      <div id="pin-input-section" style="display:none; margin-top:12px;">
+        <div class="pw-wrap" style="margin: 0 auto;">
+          <input class="pw-input" id="pin-input" type="password" placeholder="6-digit PIN" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
+          <button type="button" class="pw-submit" id="pin-submit" aria-label="Verify PIN">&#8594;</button>
+        </div>
+        <p id="pin-error" style="color:var(--sev-critical); font-size:12px; margin-top:8px; height:16px;"></p>
+      </div>
+    </div>
     <!-- Face unlock — shown only when enrollment-status returns true -->
     <div id="face-unlock-section" style="display:none; text-align:center; margin-top:12px;">
       <button id="face-unlock-btn" style="
@@ -247,6 +267,11 @@
         showPhase('phase-lock');
         setTimeout(function() { document.getElementById('pw-input').focus(); }, 200);
 
+        // Check offline PIN availability
+        initPinUnlock().catch(function(err) {
+          console.warn('[PIN-UNLOCK] init error', err);
+        });
+
         // Attempt to show face unlock button if enrollment exists
         initFaceUnlock(loginName).catch(function(err) {
           console.warn('[FACE-UNLOCK] init error', err);
@@ -278,6 +303,63 @@
       }
       // On success, main sends splash:phase welcome — no action needed here.
     });
+
+    // ── Offline PIN Unlock ──────────────────────────────────────────
+    async function initPinUnlock() {
+      try {
+        var result = await window.splashBridge.checkPinAvailable();
+        if (result && result.available) {
+          document.getElementById('pin-unlock-section').style.display = 'block';
+        }
+      } catch (err) {
+        console.warn('[PIN-UNLOCK] availability check failed', err);
+      }
+    }
+
+    var pinSubmitting = false;
+
+    function doPinSubmit() {
+      if (pinSubmitting) return;
+      var pin = document.getElementById('pin-input').value.trim();
+      if (!pin || pin.length !== 6 || !/^\d{6}$/.test(pin)) {
+        document.getElementById('pin-error').textContent = 'Enter a 6-digit PIN';
+        return;
+      }
+      pinSubmitting = true;
+      document.getElementById('pin-submit').disabled = true;
+      document.getElementById('pin-error').textContent = '';
+
+      window.splashBridge.sendPinAuth(pin).then(function(result) {
+        pinSubmitting = false;
+        document.getElementById('pin-submit').disabled = false;
+        if (!result || !result.success) {
+          document.getElementById('pin-error').textContent = result && result.error ? result.error : 'Invalid PIN';
+          document.getElementById('pin-input').value = '';
+          document.getElementById('pin-input').focus();
+        }
+      }).catch(function(err) {
+        pinSubmitting = false;
+        document.getElementById('pin-submit').disabled = false;
+        document.getElementById('pin-error').textContent = 'PIN check failed';
+        console.error('[PIN-UNLOCK] error', err);
+      });
+    }
+
+    document.getElementById('pin-toggle-btn').addEventListener('click', function() {
+      var section = document.getElementById('pin-input-section');
+      var visible = section.style.display !== 'none';
+      section.style.display = visible ? 'none' : 'block';
+      if (!visible) {
+        document.getElementById('pin-input').value = '';
+        document.getElementById('pin-error').textContent = '';
+        setTimeout(function() { document.getElementById('pin-input').focus(); }, 100);
+      }
+    });
+
+    document.getElementById('pin-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doPinSubmit();
+    });
+    document.getElementById('pin-submit').addEventListener('click', doPinSubmit);
 
     // ── Face Unlock ───────────────────────────────────────────────
     function loadScript(src) {

@@ -17,9 +17,9 @@ export const BATCH_ORDER: readonly Criticality[] = [
   'internal-reference',
 ] as const;
 
-export type FixtureVariant = 'typical' | 'empty' | 'maximal';
+export type FixtureVariant = 'typical' | 'empty' | 'maximal' | 'enrichment';
 
-export const REQUIRED_VARIANTS: readonly FixtureVariant[] = ['typical', 'empty', 'maximal'] as const;
+export const REQUIRED_VARIANTS: readonly FixtureVariant[] = ['typical', 'empty', 'maximal', 'enrichment'] as const;
 
 export interface PdfFixture<T = unknown> {
   variant: FixtureVariant;

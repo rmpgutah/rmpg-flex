@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   isChunkLoadError,
+  isHookMismatchError,
+  isStaleChunkError,
   normalizeChunkError,
   mayReloadForChunkFailure,
   reloadAndHold,
@@ -37,6 +39,38 @@ describe('isChunkLoadError', () => {
     expect(isChunkLoadError(new Error('Request failed with status 404'))).toBe(false);
     expect(isChunkLoadError(new Error('Cannot read properties of undefined'))).toBe(false);
     expect(isChunkLoadError('some string')).toBe(false);
+  });
+});
+
+describe('isHookMismatchError', () => {
+  it('matches the "invalid hook call" family of minified React errors (#300/#310/#321)', () => {
+    for (const m of [
+      'Minified React error #300; visit https://react.dev/errors/300 for the full message',
+      'Minified React error #310; visit https://react.dev/errors/310 for the full message',
+      'Minified React error #321; visit https://react.dev/errors/321 for the full message',
+    ]) {
+      expect(isHookMismatchError(new Error(m))).toBe(true);
+    }
+  });
+
+  it('does not match #301 (too many re-renders — a real infinite-loop bug, not version skew)', () => {
+    expect(isHookMismatchError(new Error('Minified React error #301; visit https://react.dev/errors/301'))).toBe(false);
+  });
+
+  it('does not match unrelated errors', () => {
+    expect(isHookMismatchError(new Error('Request failed with status 404'))).toBe(false);
+    expect(isHookMismatchError('some string')).toBe(false);
+  });
+});
+
+describe('isStaleChunkError', () => {
+  it('matches both import-rejection and hook-mismatch errors', () => {
+    expect(isStaleChunkError(new Error('ChunkLoadError: Loading chunk 42 failed'))).toBe(true);
+    expect(isStaleChunkError(new Error('Minified React error #310; visit https://react.dev/errors/310'))).toBe(true);
+  });
+
+  it('does not match unrelated errors', () => {
+    expect(isStaleChunkError(new Error('Cannot read properties of undefined'))).toBe(false);
   });
 });
 

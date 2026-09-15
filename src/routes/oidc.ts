@@ -2,7 +2,7 @@
 // RMPG Flex — "Sign in with Dialer" OIDC SSO
 // ============================================================
 // Mounted at /api/oidc (auth: 'public' — mirrors emailOauthCallback.ts:
-// the browser is mid-redirect from dialer.rmpgutah.us with no Authorization
+// the browser is mid-redirect from rmpgutah.us/dialer with no Authorization
 // header or app cookie, so this route can't sit behind authMiddleware).
 // isPublicAuthBypass() in src/middleware/auth.ts already exempts every path
 // ending in /oauth/callback; /dialer/callback below doesn't match that
@@ -56,7 +56,7 @@ interface DiscoveryDoc {
 }
 
 // Discovery doc + JWKS rarely change — cache in KV for an hour rather than
-// fetching dialer.rmpgutah.us/.well-known on every login. KV fails open to a
+// fetching rmpgutah.us/dialer/.well-known on every login. KV fails open to a
 // live fetch on miss/error, never blocks login on a cache problem.
 async function getDiscoveryDoc(env: Env['Bindings']): Promise<DiscoveryDoc> {
   const cacheKey = 'oidc:dialer:discovery';

@@ -16,7 +16,13 @@
 name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
-compatibility_flags = ["nodejs_compat"]
+# global_fetch_strictly_public: without it a Worker cannot fetch() another
+# Worker on its own zone (Cloudflare error 1042). Both the Dial Connect OIDC
+# discovery fetch (src/utils/sso.ts) and the native-softphone proxy
+# (src/routes/dialerVoice.ts) call rmpgutah.us/dialer/*, served by Worker
+# `dialer` on this same zone. Miniflare tests stub fetch, so only live traffic
+# ever sees 1042.
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # ─── Smart Placement (enabled 2026-06-12, monitor) ─────────
 # This worker is D1-heavy (most CAD endpoints make several sequential
@@ -440,7 +446,7 @@ FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 # it lives here as a plain var.
 # DIALER_OIDC_CLIENT_SECRET is set via
 # `npx wrangler secret put DIALER_OIDC_CLIENT_SECRET` — never in this file.
-DIALER_OIDC_ISSUER = "https://dialer.rmpgutah.us/api/oidc/.well-known/openid-configuration"
+DIALER_OIDC_ISSUER = "https://rmpgutah.us/dialer/api/oidc/.well-known/openid-configuration"
 DIALER_OIDC_CLIENT_ID = "flex-ceb1d9a685995b45"
 # Browser callbacks must hit rmpgutah.us/api/* (zone proxy + WAF cookie).
 # api.rmpgutah.us is the managed-challenge host except /api/health.
@@ -452,7 +458,7 @@ DIALER_OIDC_REDIRECT_URI = "https://rmpgutah.us/api/oidc/dialer/callback"
 APP_ORIGIN = "https://rmpgutah.us"
 # Dial Connect CFS status sync (POST /api/dispatch/calls/:id/status).
 # Secret is `npx wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
-DIAL_CONNECT_WEBHOOK_URL = "https://dialer.rmpgutah.us/api/webhooks/flex/cfs-status"
+DIAL_CONNECT_WEBHOOK_URL = "https://rmpgutah.us/dialer/api/webhooks/flex/cfs-status"
 
 # NSOPW nationwide SOR (mig 0146 + 0147). The federated search endpoint at
 # nsopw-api.ojp.gov is technically public + CORS-restricted; nsopw.gov's

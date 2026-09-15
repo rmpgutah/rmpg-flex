@@ -68,6 +68,37 @@ export function isChunkLoadError(err: unknown): boolean {
   return CHUNK_ERROR_MARKERS.some((m) => msg.includes(m));
 }
 
+// React minified error codes for the "invalid hook call" family — #300
+// (fewer hooks than expected), #310 (more hooks than expected), and #321
+// (invalid hook call, whose own message names "mismatching versions of React
+// and the renderer" / "more than one copy of React" as causes). Unlike the
+// import-rejection markers above, these are RUNTIME errors: the chunk loaded
+// fine, but a stale cached chunk (e.g. an old ServePage bundle still open in
+// a long-lived tab) executed against a newer sibling chunk (vendor-react,
+// vendor-charts, ...) from a later deploy, and the two disagree about hook
+// bookkeeping. That's the same root cause chunkRetry.ts exists to repair —
+// it just doesn't surface as an import() rejection, so isChunkLoadError's
+// marker list misses it and the auto-reload safety net in
+// ErrorBoundary.componentDidCatch never fires, landing on the manual
+// recovery card instead. #301 ("too many re-renders") is deliberately
+// excluded — that's an infinite-loop bug in the component itself, not a
+// version-skew symptom, and auto-reloading it would just loop forever.
+const HOOK_MISMATCH_ERROR_PATTERN = /minified react error #(?:300|310|321)\b/i;
+
+/** True when an error is a React "invalid hook call" family error (#300/#310/#321)
+ *  — the runtime-mismatch counterpart to isChunkLoadError's import-rejection check. */
+export function isHookMismatchError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return HOOK_MISMATCH_ERROR_PATTERN.test(msg);
+}
+
+/** True when an error should be treated as a stale-chunk failure for recovery
+ *  purposes — either a failed import() (isChunkLoadError) or a hook-mismatch
+ *  runtime error from a version-skewed chunk (isHookMismatchError). */
+export function isStaleChunkError(err: unknown): boolean {
+  return isChunkLoadError(err) || isHookMismatchError(err);
+}
+
 // ------------------------------------------------------------------
 // HTTP-cache poison repair
 //

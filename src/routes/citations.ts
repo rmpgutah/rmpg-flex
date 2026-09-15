@@ -16,7 +16,9 @@ import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { likePattern } from '../utils/d1Like';
 import { containsAnyClause } from '../utils/searchText';
+import { evaluateCitationCompleteness } from '../utils/citationCompleteness';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -360,6 +362,36 @@ citations.get('/:id', async (c) => {
   } catch (err) {
     log.error('GET /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation', code: 'GET_ERROR' }, 500);
+  }
+});
+
+// ── GET /:id/completeness — data completeness / readiness ───
+citations.get('/:id/completeness', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const row = await queryFirst<{
+      person_id: number | null; person_name: string | null; violation_description: string | null;
+      issuing_officer_id: number | null; issuing_officer_name: string | null;
+      court_date: string | null; appearance_required: number | null;
+      vehicle_description: string | null; vehicle_plate: string | null;
+    }>(
+      db,
+      `SELECT person_id, person_name, violation_description, issuing_officer_id, issuing_officer_name,
+              court_date, appearance_required, vehicle_description, vehicle_plate
+       FROM citations WHERE id = ?`,
+      id,
+    );
+    if (!row) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
+    const violation_count = (await queryFirst<{ n: number }>(
+      db, 'SELECT COUNT(*) n FROM citation_violations WHERE citation_id = ?', id,
+    ).catch(() => null))?.n ?? 0;
+    const result = evaluateCitationCompleteness({ ...row, violation_count });
+    return c.json({ data: result });
+  } catch (err) {
+    log.error('GET /:id/completeness failed', { src: 'src/routes/citations.ts' }, err);
+    return c.json({ error: 'Failed to evaluate completeness', code: 'COMPLETENESS_ERROR' }, 500);
   }
 });
 
@@ -1054,7 +1086,18 @@ citations.get('/statutes/lookup', async (c) => {
     const q = c.req.query('q');
     const offenseLevel = c.req.query('offense_level');
     if (!q || q.length < 2) return c.json({ data: [] });
-    const searchTerm = `%${q}%`;
+    // D1 caps a LIKE pattern at 50 BYTES and the wrapping '%' count toward it,
+    // so an unbounded `%${q}%` threw `D1_ERROR: LIKE or GLOB pattern too
+    // complex` for any term over 48 bytes (verified against local D1 in
+    // test-workers/citationsStatuteLookup.test.ts: 50 bytes passes, 52
+    // throws). The guard above is a MINIMUM only.
+    //
+    // The failure was silent: the catch below logs and returns { data: [] },
+    // so a long statute search looked to the officer like "no such statute"
+    // rather than an error. likePattern trims by ENCODED length and never
+    // splits a character, so an accented or emoji-bearing term is safe too --
+    // `q.length` is UTF-16 units and would not have protected it.
+    const searchTerm = likePattern(q);
     const params: unknown[] = [searchTerm, searchTerm, searchTerm];
     let whereExtra = '';
     if (offenseLevel) { whereExtra = ' AND s.offense_level = ?'; params.push(offenseLevel); }

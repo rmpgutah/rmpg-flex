@@ -134,6 +134,9 @@ export default function EvidencePropertyPage() {
   });
   const [newEvidenceSubmitting, setNewEvidenceSubmitting] = useState(false);
 
+  // Bulk selection
+  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<number>>(new Set());
+
   // Detail tab
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
 
@@ -188,6 +191,7 @@ export default function EvidencePropertyPage() {
   const [confirmDispose, setConfirmDispose] = useState(false);
   const [confirmApproveRelease, setConfirmApproveRelease] = useState(false);
   const [pendingReleaseAction, setPendingReleaseAction] = useState<'approve' | 'deny' | null>(null);
+  const [confirmBulkDisposition, setConfirmBulkDisposition] = useState<string | null>(null);
 
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
@@ -320,9 +324,26 @@ export default function EvidencePropertyPage() {
     }
   };
 
+  useEffect(() => { setSelectedEvidenceIds(new Set()); }, [page, filterStatus, filterType, searchQuery]);
   useEffect(() => { fetchItems(); }, [fetchItems]);
   useEffect(() => { fetchStats(); fetchLocations(); }, [fetchStats, fetchLocations]);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
+
+  const handleBulkDisposition = async (disposition: string) => {
+    const count = selectedEvidenceIds.size;
+    if (count === 0) return;
+    try {
+      await apiFetch('/records/evidence/bulk-disposition', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedEvidenceIds), disposition }),
+      });
+      setSelectedEvidenceIds(new Set());
+      await fetchItems({ silent: true });
+      fetchStats();
+      addToast(`${count} item${count > 1 ? 's' : ''} updated`, 'success');
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Bulk action failed', 'error'); }
+  };
 
   // When detail tab switches to BWC, fetch videos
   useEffect(() => {
@@ -706,6 +727,17 @@ export default function EvidencePropertyPage() {
           </div>
         </div>
 
+        {/* Bulk action toolbar */}
+        {selectedEvidenceIds.size > 0 && canDispose && (
+          <div className="px-3 py-1.5 border-b border-brand-700/40 bg-brand-900/20 flex items-center gap-2 flex-shrink-0 flex-wrap">
+            <span className="text-[10px] font-semibold text-brand-300">{selectedEvidenceIds.size} selected</span>
+            <button type="button" onClick={() => setConfirmBulkDisposition('return_to_owner')} className="toolbar-btn text-[9px]">Release to Owner</button>
+            <button type="button" onClick={() => setConfirmBulkDisposition('destroy')} className="toolbar-btn text-[9px]">Destroy</button>
+            <button type="button" onClick={() => void handleBulkDisposition('pending')} className="toolbar-btn text-[9px]">Mark Pending</button>
+            <button type="button" onClick={() => setSelectedEvidenceIds(new Set())} className="toolbar-btn text-[9px]"><X style={{ width: 9, height: 9 }} /></button>
+          </div>
+        )}
+
         {/* Item List */}
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Evidence items">
           {loading ? (
@@ -741,6 +773,23 @@ export default function EvidencePropertyPage() {
                 aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
+                  {canDispose && (
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3 flex-shrink-0"
+                      checked={selectedEvidenceIds.has(item.id)}
+                      onChange={e => {
+                        e.stopPropagation();
+                        setSelectedEvidenceIds(prev => {
+                          const next = new Set(prev);
+                          e.target.checked ? next.add(item.id) : next.delete(item.id);
+                          return next;
+                        });
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      aria-label={`Select ${item.evidence_number || `EV-${item.id}`}`}
+                    />
+                  )}
                   <span className="text-[11px] font-mono font-bold text-rmpg-100 truncate px-1.5 py-0.5 evidence-barcode-stripe" style={{ letterSpacing: '0.08em' }}>
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
@@ -1547,6 +1596,22 @@ export default function EvidencePropertyPage() {
         confirmLabel={pendingReleaseAction === 'approve' ? 'Approve' : 'Deny'}
         confirmVariant={pendingReleaseAction === 'approve' ? 'warning' : 'danger'}
         isLoading={releaseSubmitting}
+      />
+
+      {/* ── Confirm: bulk disposition (destroy / release) ── */}
+      <ConfirmDialog
+        isOpen={!!confirmBulkDisposition}
+        onClose={() => setConfirmBulkDisposition(null)}
+        onConfirm={() => {
+          if (confirmBulkDisposition) {
+            void handleBulkDisposition(confirmBulkDisposition);
+            setConfirmBulkDisposition(null);
+          }
+        }}
+        title={`Bulk ${confirmBulkDisposition === 'destroy' ? 'Destroy' : 'Release'} Evidence`}
+        message={`${confirmBulkDisposition === 'destroy' ? 'Destroy' : 'Release'} ${selectedEvidenceIds.size} selected item${selectedEvidenceIds.size > 1 ? 's' : ''}? This is irreversible and will be logged in the chain of custody.`}
+        confirmLabel={confirmBulkDisposition === 'destroy' ? 'Destroy All' : 'Release All'}
+        confirmVariant="danger"
       />
     </div>
   );

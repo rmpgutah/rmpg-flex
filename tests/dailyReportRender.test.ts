@@ -109,6 +109,27 @@ describe('renderDailyReport', () => {
     expect(joined).toContain('123 Main St');
   });
 
+  it('does not throw when free-text fields contain embedded newlines/control characters', async () => {
+    // Live failure (2026-09-07): 'WinAnsi cannot encode "\n" (0x000a)'.
+    // pdf-lib's WinAnsiEncoding has no mapping for C0 control codes at all,
+    // so a literal newline/tab typed into an officer's notes field crashed
+    // the whole nightly blotter run even though it's byte-value <= 0xFF and
+    // so survived the existing >0xFF sanitization untouched.
+    const controlCharData: DailyReportData = {
+      ...emptyData,
+      operations: {
+        calls: [{
+          ...fullData.operations.calls[0],
+          notes: 'Line one\nLine two\r\nLine three\tindented',
+          description: 'Multi-line\ndispatch description',
+          action_taken: 'Report\ttaken',
+        }],
+        citations: [],
+      },
+    };
+    await expect(renderDailyReport(controlCharData)).resolves.toBeInstanceOf(Uint8Array);
+  });
+
   it('displays Mountain Time (MT), not raw UTC, for all timestamps', async () => {
     // received_at '2026-07-18 20:00:00' is UTC = 14:00 MT (MDT, UTC-6).
     // generatedAt '2026-08-01T12:00:00.000Z' is UTC = 06:00 MT.

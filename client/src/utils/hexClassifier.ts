@@ -394,12 +394,10 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // NewCallModal uses border-[var(--spm-border,#334155)] — the hex is a CSS-var fallback inside a
   // Tailwind arbitrary-value expression, already correctly using the CSS variable system.
   // AssignmentProposalModal uses var(--brand-blue,#1d4ed8) — same pattern, already var-backed.
-  // DialerPanel has rgba(0,0,0,0.45) inside a Tailwind shadow utility — drop shadows are always black
-  // and the opacity is the only meaningful value; CSS var() adds no semantic benefit here.
   // FileAttachments uses rgba(0,0,0,…) for lightbox gradient scrims and fullscreen overlay
   // backgrounds — black overlay scrims are always correct regardless of theme.
   // useIncidentHeatmap has rgba(0,0,0,0) as a Mapbox heatmap color stop (paint context).
-  cssVarFallbacksAndOverlayScrims: /(^|\/)(NewCallModal|AssignmentProposalModal|DialerPanel|FileAttachments|useIncidentHeatmap)\.(tsx?)$/,
+  cssVarFallbacksAndOverlayScrims: /(^|\/)(NewCallModal|AssignmentProposalModal|FileAttachments|useIncidentHeatmap)\.(tsx?)$/,
   // FeatureInspectorPanel has a single `color: '#0a1422'` on a button whose background is
   // `var(--brand-gold)` — which renders as silver in the blue-silver theme, as #d4a017 gold in the
   // night theme, and as #936c0a darker gold in the light theme. The dark-navy text is load-bearing

@@ -59,7 +59,11 @@ function isPublicAuthBypass(pathname: string): boolean {
     // JWT session — gated instead by requireApiKeyScope('service_request')
     // in src/routes/integrations.ts (integration_api_keys, migration 0006).
     || pathname === '/api/integrations/calls-for-service'
-    || pathname === '/api/dialer-connect/ingest';
+    || pathname === '/api/dialer-connect/ingest'
+    // rmpgutahps.us delivery-scheduler → CAD push (piece 1/3). No JWT —
+    // gated by HMAC-SHA256 (RMPG_FLEX_WEBHOOK_SECRET) inside the route
+    // itself (see src/routes/deliveriesWebhook.ts).
+    || pathname === '/api/deliveries/webhook';
 }
 
 // ── Audited self-verifying media routes ─────────────────────────

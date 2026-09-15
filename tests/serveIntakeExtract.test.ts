@@ -399,7 +399,7 @@ describe('needsCriticPass', () => {
       service_deadline: 'd', recipient_dob: 'e', recipient_phone: 'f',
     });
     for (const k of Object.keys(fields)) fields[k].confidence = 0.1;
-    expect(needsCriticPass(fields, []).length).toBeLessThanOrEqual(5);
+    expect(needsCriticPass(fields, []).length).toBeLessThanOrEqual(6); // cap raised to 6
   });
 });
 

@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('splashBridge', {
   // Payload: { ok: boolean, error?: string, officer?: { name, role } }
   onAuthResult: (cb) => ipcRenderer.on('splash:auth-result', (_e, data) => cb(data)),
 
+  // Offline PIN auth — validates a 6-digit PIN against the local DB.
+  // Returns { success: boolean, error?: string }
+  sendPinAuth: (pin) => ipcRenderer.invoke('splash:pin-auth', { pin }),
+
+  // Check if offline PIN auth is available (a PIN has been enrolled).
+  // Returns { available: boolean }
+  checkPinAvailable: () => ipcRenderer.invoke('splash:pin-available'),
+
   // Face unlock channels (Task 12)
   faceEnrollmentStatus: (userId) => ipcRenderer.invoke('face:enrollment-status', { userId }),
   faceVerify: (userId, embedding) => ipcRenderer.invoke('face:verify', { userId, embedding }),
