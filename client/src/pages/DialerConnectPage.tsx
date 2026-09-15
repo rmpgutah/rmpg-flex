@@ -571,6 +571,15 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
     await load();
   };
 
+  const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, []);
+
   const play = async (id: number) => {
     if (playing === id) {
       audioRef.current?.pause();
@@ -578,7 +587,9 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
       return;
     }
     const blob = await apiFetchBlob(`/dialer-connect/voicemails/${id}/audio`);
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     const url = URL.createObjectURL(blob);
+    blobUrlRef.current = url;
     if (!audioRef.current) audioRef.current = new Audio();
     audioRef.current.src = url;
     await audioRef.current.play();
@@ -751,10 +762,21 @@ function HistoryTab({ exportedBy, addToast, canImport = false }: { exportedBy: s
   }, [listParams, from, to]);
   useEffect(() => { load().catch(() => {}); }, [load]);
 
+  const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, []);
+
   const play = async (id: number) => {
     if (playing === id) { audioRef.current?.pause(); setPlaying(null); return; }
     const blob = await apiFetchBlob(`/dialer-connect/calls/${id}/audio`);
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     const url = URL.createObjectURL(blob);
+    blobUrlRef.current = url;
     if (!audioRef.current) audioRef.current = new Audio();
     audioRef.current.src = url;
     await audioRef.current.play();

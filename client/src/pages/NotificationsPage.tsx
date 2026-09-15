@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import useMountedRef from '../hooks/useMountedRef';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   Bell, BellOff, Check, CheckCheck, Clock, Settings, Trash2, AlertTriangle, X,
@@ -94,8 +95,7 @@ export default function NotificationsPage() {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const mountedRef = useMountedRef();
 
   // ConfirmDialog targets for destructive operator-wide sweeps.
   // These were unconfirmed buttons in the toolbar — "Clear Read" silently
