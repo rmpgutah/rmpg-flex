@@ -220,7 +220,7 @@ export default function DialerConnectPage() {
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'dialer' && <DialerTab exportedBy={exportedBy} addToast={addToast} />}
         {tab === 'voicemail' && <VoicemailTab exportedBy={exportedBy} addToast={addToast} />}
-        {tab === 'history' && <HistoryTab exportedBy={exportedBy} addToast={addToast} />}
+        {tab === 'history' && <HistoryTab exportedBy={exportedBy} addToast={addToast} canImport={user?.role === 'admin' || user?.role === 'manager'} />}
       </div>
     </div>
   );
@@ -686,8 +686,24 @@ function VoicemailTab({ exportedBy, addToast }: { exportedBy: string; addToast: 
   );
 }
 
-function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: AddToast }) {
+function HistoryTab({ exportedBy, addToast, canImport = false }: { exportedBy: string; addToast: AddToast; canImport?: boolean }) {
   const navigate = useNavigate();
+  const [importing, setImporting] = useState(false);
+  const importHistory = async () => {
+    setImporting(true);
+    try {
+      const r = await apiFetch<{ ok: boolean; code?: string; calls?: number; voicemails?: number; callbacks?: number; contacts?: number; smsConversations?: number; skipped?: unknown[] }>(
+        '/dialer-connect/import/dial-connect', { method: 'POST', timeoutMs: 120_000 },
+      );
+      if (!r.ok) { addToast(r.code === 'not_configured' ? 'Dial Connect import is not configured' : 'Import failed', 'error'); return; }
+      addToast(`Imported ${r.calls ?? 0} calls, ${r.voicemails ?? 0} voicemails, ${r.callbacks ?? 0} callbacks, ${r.contacts ?? 0} contacts, ${r.smsConversations ?? 0} SMS threads${r.skipped?.length ? ` (${r.skipped.length} skipped)` : ''}. Recordings copy in over the next cron ticks.`, 'success');
+      await load();
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Import failed', 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
   const [rows, setRows] = useState<DialerCall[]>([]);
   const [q, setQ] = useState('');
   const [direction, setDirection] = useState('all');
@@ -770,6 +786,17 @@ function HistoryTab({ exportedBy, addToast }: { exportedBy: string; addToast: Ad
         <input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
         <input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-surface-sunken border border-border-subtle text-[10px] text-rmpg-100 px-1 py-0.5" />
         <button type="button" onClick={() => exportCsv().catch((e) => addToast(String(e), 'error'))} className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-fg-secondary">CSV</button>
+        {canImport && (
+          <button
+            type="button"
+            disabled={importing}
+            onClick={() => { void importHistory(); }}
+            className="text-[9px] uppercase border border-border-subtle px-1.5 py-0.5 text-fg-secondary disabled:opacity-40"
+            title="Copy the full Dial Connect history (calls, voicemails, callbacks, contacts, SMS) into RMPG Flex. Safe to re-run."
+          >
+            {importing ? 'Importing…' : 'Import Dial Connect history'}
+          </button>
+        )}
         <button type="button" onClick={() => { void load(); }} className="ml-auto text-fg-secondary" aria-label="Refresh history"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {summary && (

@@ -214,6 +214,7 @@ import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
 import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
 import dialerVoice from './routes/dialerVoice';
+import dialerConnectImport from './routes/dialerConnectImport';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -877,6 +878,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
   { prefix: '/api/deliveries/webhook', router: deliveriesWebhook, auth: 'public',
     note: 'rmpgutahps.us delivery-scheduler push (piece 1/3). HMAC via RMPG_FLEX_WEBHOOK_SECRET (x-rmpg-flex-hmac-sha256). 200 not_configured when unset.' },
+  // Longer prefix FIRST (same reason as /ingest above).
+  { prefix: '/api/dialer-connect/import', router: dialerConnectImport, auth: 'required',
+    note: 'Admin/manager: copy the full Dial Connect history (calls, voicemails, callbacks, contacts, SMS) into the Flex archive via dispatch-app\'s service-key export. Idempotent.' },
   { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
     note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
   { prefix: '/api/dialer', router: dialerVoice, auth: 'required',
