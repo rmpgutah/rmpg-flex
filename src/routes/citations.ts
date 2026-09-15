@@ -16,6 +16,7 @@ import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { likePattern } from '../utils/d1Like';
 import { containsAnyClause } from '../utils/searchText';
 import { evaluateCitationCompleteness } from '../utils/citationCompleteness';
 const citations = new Hono<Env>();
@@ -1085,7 +1086,18 @@ citations.get('/statutes/lookup', async (c) => {
     const q = c.req.query('q');
     const offenseLevel = c.req.query('offense_level');
     if (!q || q.length < 2) return c.json({ data: [] });
-    const searchTerm = `%${q}%`;
+    // D1 caps a LIKE pattern at 50 BYTES and the wrapping '%' count toward it,
+    // so an unbounded `%${q}%` threw `D1_ERROR: LIKE or GLOB pattern too
+    // complex` for any term over 48 bytes (verified against local D1 in
+    // test-workers/citationsStatuteLookup.test.ts: 50 bytes passes, 52
+    // throws). The guard above is a MINIMUM only.
+    //
+    // The failure was silent: the catch below logs and returns { data: [] },
+    // so a long statute search looked to the officer like "no such statute"
+    // rather than an error. likePattern trims by ENCODED length and never
+    // splits a character, so an accented or emoji-bearing term is safe too --
+    // `q.length` is UTF-16 units and would not have protected it.
+    const searchTerm = likePattern(q);
     const params: unknown[] = [searchTerm, searchTerm, searchTerm];
     let whereExtra = '';
     if (offenseLevel) { whereExtra = ' AND s.offense_level = ?'; params.push(offenseLevel); }
