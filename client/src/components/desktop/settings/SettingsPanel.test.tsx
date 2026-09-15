@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, configure } from '@testing-library/react';
 import SettingsPanel, { SETTINGS_TABS } from './SettingsPanel';
 import { createWindowsBridge } from '../../../hooks/useWindowsBridge';
 import type { WindowsBridge } from '../../../hooks/useWindowsBridge';
@@ -75,6 +75,16 @@ function renderPanel(props: Partial<React.ComponentProps<typeof SettingsPanel>> 
   const bridge: WindowsBridge = createWindowsBridge();
   return { bridge, ...render(<SettingsPanel bridgeOverride={bridge} {...props} />) };
 }
+
+// Every assertion here that waits on a bridge loader resolving is racing
+// testing-library's 1 s default asyncUtilTimeout. CI runs this suite on a 2-vCPU
+// runner with two concurrent jsdom forks (vitest.desktop.config.ts caps
+// maxWorkers at 2), where GC pauses routinely blow past 1 s — the "older desktop
+// build without winExt" case failed three reruns at ~1206 ms while passing
+// locally and in isolation. 10 s stays well inside the 20 s testTimeout, so a
+// genuinely-never-rendered element still fails the test rather than hanging.
+// Vitest isolates each file in its own fork, so this stays scoped to this suite.
+configure({ asyncUtilTimeout: 10_000 });
 
 beforeEach(() => {
   apiFetchMock.mockReset();
