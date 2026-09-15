@@ -17,5 +17,7 @@ export const dialerApi = {
   addParty: (callSid: string, phoneNumber: string) => post<{ status: string }>('/dialer/voice/conference/add', { callSid, phoneNumber }),
   recording: (callSid: string, action: 'start' | 'stop') => post<{ status: string }>('/dialer/voice/recording', { callSid, action }),
   duress: () => post<{ ok?: boolean }>('/dialer/voice/duress', {}),
+  getDnd: () => apiFetch<{ dnd: boolean }>('/dialer/dnd'),
+  setDnd: (dnd: boolean) => apiFetch<{ dnd: boolean }>('/dialer/dnd', { method: 'PATCH', body: JSON.stringify({ dnd }) }),
   archive: (payload: Record<string, unknown>) => post<unknown>('/dialer-connect/events', payload).catch(() => undefined),
 };

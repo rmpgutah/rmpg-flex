@@ -18,15 +18,16 @@ function Host() {
 }
 const renderCard = () => render(
   <MemoryRouter>
-    <SoftphoneProvider createDevice={(t) => { device = new MockDevice(t); return device; }}><Host /></SoftphoneProvider>
+    <SoftphoneProvider createDevice={(t) => { device = new MockDevice(t); return device; }} streamEnabled={false}><Host /></SoftphoneProvider>
   </MemoryRouter>,
 );
 
 beforeEach(() => {
   device = null; localStorage.clear(); apiFetch.mockReset();
-  apiFetch.mockImplementation(async (path: string) => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === '/dialer/token') return { token: 'tok', identity: 'dispatcher_abc', expiresAt: new Date(Date.now() + 3600_000).toISOString() };
     if (path === '/dialer/presence') return [{ id: 'peer1', name: 'Pat Peer', agency: 'all', dnd: false }];
+    if (path === '/dialer/dnd') return init?.method === 'PATCH' ? JSON.parse(String(init.body)) : { dnd: true };
     return { status: 'ok' };
   });
 });
@@ -78,5 +79,16 @@ describe('SoftphoneCard', () => {
     renderCard();
     expect(await screen.findByRole('link', { name: /sign in with dialer/i })).toHaveAttribute('href', '/api/oidc/dialer/login');
     expect(screen.queryByRole('button', { name: 'Key 1' })).not.toBeInTheDocument();
+  });
+
+  test('DND on shows the voicemail warning and the toggle clears it via PATCH', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    expect(await screen.findByRole('button', { name: /dnd on/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/routed to voicemail/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /dnd on/i }));
+    expect(await screen.findByRole('button', { name: /dnd off/i })).toHaveAttribute('aria-pressed', 'false');
+    expect(apiFetch).toHaveBeenCalledWith('/dialer/dnd', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ dnd: false }) }));
+    expect(screen.queryByText(/routed to voicemail/i)).not.toBeInTheDocument();
   });
 });
