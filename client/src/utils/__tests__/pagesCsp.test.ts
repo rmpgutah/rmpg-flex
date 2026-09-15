@@ -50,7 +50,9 @@ describe('Pages CSP is not the Observatory starter policy', () => {
     expect(policyBlock).toContain("'wasm-unsafe-eval'");
     expect(policyBlock).toContain('https://static.cloudflareinsights.com');
     expect(policyBlock).toContain('https://challenges.cloudflare.com');
-    expect(policyBlock).toContain('https://dialer.rmpgutah.us');
+    // Dial Connect moved to rmpgutah.us/dialer (same origin); no separate
+    // domain entry needed in the CSP. Verify the entry is gone, not added.
+    expect(policyBlock).not.toContain('https://dialer.rmpgutah.us');
     expect(policyBlock).toMatch(/connect-src \$\{ALLOWED_CONNECT\}/);
     expect(policyBlock).not.toMatch(/connect-src 'none'/);
   });

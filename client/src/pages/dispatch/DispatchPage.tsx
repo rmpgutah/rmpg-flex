@@ -7879,9 +7879,49 @@ export default function DispatchPage() {
               status: c.status,
             })),
             currentUser: user?.full_name || user?.username || 'Dispatch',
+            selectedCallNumber: selectedCall?.call_number ?? null,
           }}
           onAction={(action: CommandAction) => {
             switch (action.type) {
+              case 'ai_command': {
+                // Free-form command already planned by /api/dispatcher/command and
+                // executed by dispatcherCommandClient; apply the console actions.
+                for (const a of action.clientActions) {
+                  switch (a.action) {
+                    case 'select_call': {
+                      const target = calls.find(c => String(c.id) === String(a.payload.call_id));
+                      if (target) { setSelectedCall(target); setDetailTab('info'); }
+                      break;
+                    }
+                    case 'open_new_call':
+                      setTemplateInitialData({
+                        incident_type: a.payload.incident_type as string | undefined,
+                        location: (a.payload.location_address as string | undefined) || '',
+                        description: a.payload.description as string | undefined,
+                      });
+                      setShowNewCallModal(true);
+                      break;
+                    case 'open_ncic':
+                      setNcicInitialQuery({ type: a.payload.type as 'person' | 'vehicle' | 'warrant', query: String(a.payload.query ?? '') });
+                      setShowNcicPanel(true);
+                      break;
+                    case 'navigate':
+                      if (typeof a.payload.path === 'string') navigate(a.payload.path);
+                      break;
+                    case 'refresh':
+                      fetchData();
+                      break;
+                    default:
+                      break;
+                  }
+                }
+                // Read-backs (record checks, unit lists, call status) are spoken like
+                // the typed QP/QV verbs are; confirmations/clarifications too.
+                if (action.reply && /^(lookup|call_status|unit_location|closest|list_)/.test(action.intent)) {
+                  speakDispatcherResponse(action.reply);
+                }
+                break;
+              }
               case 'new_call':
                 if (action.incidentType && action.location) {
                   // Both type + address → Quick Template Dialog (fastest path)

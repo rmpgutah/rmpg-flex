@@ -3,8 +3,9 @@
 // Mounted at /api/dialer-connect (auth required) plus
 // /api/dialer-connect/ingest (public, HMAC via DIAL_CONNECT_WEBHOOK_SECRET).
 //
-// Event contract (POST /events from the CAD iframe bridge in
-// client/src/components/DialerPanel.tsx, and POST /ingest from Dial Connect):
+// Event contract (POST /events from the native softphone in
+// client/src/dialer/SoftphoneProvider.tsx via dialerApi.archive(), and
+// POST /ingest from Dial Connect):
 //   type: 'call_status'      — carries `status`; the only event allowed to set it.
 //   type: 'recording_ready'  — NO status. Carries numbers/direction/duration/
 //                              recordingUrl; must enrich, never overwrite.
@@ -22,6 +23,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks, columnExists } from '../utils/db';
 import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
+import { isDialConnectExportUrl } from './dialerConnectImport';
 import { containsAnyClause } from '../utils/searchText';
 import { log } from '../utils/logger';
 import {
@@ -217,9 +219,10 @@ async function insertVoicemail(db: ReturnType<typeof getDb>, body: IngestCall & 
 // ---------------------------------------------------------------------------
 // Recording mirror — copy every Dial Connect recording INTO RMPG Flex.
 //
-// Dial Connect hands us a recording_source_url on dialer.rmpgutah.us. That link
-// stays as provenance, but the bytes are copied into encrypted R2 so playback,
-// download, evidence export and retention never depend on the dialer host.
+// Dial Connect hands us a recording_source_url (now at rmpgutah.us/dialer,
+// previously dialer.rmpgutah.us). That link stays as provenance, but the bytes
+// are copied into encrypted R2 so playback, download, evidence export and
+// retention never depend on the dialer host.
 // Runs (a) inline on ingest via waitUntil, (b) lazily when the audio endpoint
 // has to proxy, and (c) from the */30 cron sweep (mirrorPendingRecordings) as
 // the backstop. Retries are bounded by MIRROR_MAX_ATTEMPTS per row.
@@ -268,7 +271,13 @@ async function mirrorRecording(env: Env['Bindings'], kind: MirrorKind, id: numbe
     const timer = setTimeout(() => ctrl.abort(), MIRROR_FETCH_TIMEOUT_MS);
     let upstream: Response;
     try {
-      upstream = await fetch(row.recording_source_url!, { redirect: 'follow', signal: ctrl.signal });
+      // Imported Dial Connect history points at dispatch-app's service-key
+      // export (it holds the Twilio credentials the bare recording URLs need).
+      const base = env.DIAL_CONNECT_API_BASE || 'https://rmpgutah.us/dialer';
+      const headers: Record<string, string> = isDialConnectExportUrl(base, row.recording_source_url) && env.DIAL_CONNECT_SERVICE_KEY
+        ? { 'x-rmpg-service-key': env.DIAL_CONNECT_SERVICE_KEY }
+        : {};
+      upstream = await fetch(row.recording_source_url!, { redirect: 'follow', signal: ctrl.signal, headers });
     } finally {
       clearTimeout(timer);
     }

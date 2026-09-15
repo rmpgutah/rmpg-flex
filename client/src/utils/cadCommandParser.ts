@@ -7,6 +7,8 @@
 
 import { apiFetch } from '../hooks/useApi';
 import { formatEnumValue } from './formatters';
+import { appendCallNote } from './callNotes';
+import { runDispatcherCommand, hasPendingConfirmation, isAffirmative, isNegative, type ClientAction } from './dispatcherCommandClient';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -69,6 +71,16 @@ export type CommandAction =
   | { type: 'narrative'; callId: string; text: string }
   | { type: 'quality_metrics'; days?: number }
   | { type: 'show_help' }
+  | {
+      /** Free-form command handled by the Dispatcher Command Engine (/api/dispatcher/command). */
+      type: 'ai_command';
+      intent: string;
+      reply: string;
+      ok: boolean;
+      needsConfirmation: boolean;
+      clarify?: string;
+      clientActions: ClientAction[];
+    }
   | { type: 'none' };
 
 export interface CommandResult {
@@ -162,6 +174,8 @@ export interface CadContext {
   units: Array<{ id: string; call_sign: string; status: string; current_call_id?: string }>;
   calls: Array<{ id: string; call_number: string; status: string }>;
   currentUser?: string;
+  /** Call currently selected on the board — what "this call" means to the command engine. */
+  selectedCallNumber?: string | null;
 }
 
 // ─── Fuzzy Matching ──────────────────────────────────────────
@@ -248,6 +262,13 @@ export async function executeCommand(
   const trimmed = input.trim();
   if (!trimmed) {
     return { success: false, message: '', action: { type: 'none' } };
+  }
+
+  // A pending destructive plan from the command engine is waiting on Y/N —
+  // route that answer straight back before any verb matching ("N" would
+  // otherwise be an unknown verb, and "Y" is nothing else).
+  if (hasPendingConfirmation() && (isAffirmative(trimmed) || isNegative(trimmed))) {
+    return runNaturalLanguage(trimmed, ctx);
   }
 
   const parts = trimmed.split(/\s+/);
@@ -563,29 +584,7 @@ export async function executeCommand(
       }
 
       try {
-        // Fetch current call to get existing notes, then append
-        const current = await apiFetch<any>(`/dispatch/calls/${call.id}`);
-        let existingNotes: any[] = [];
-        try {
-          const parsed = JSON.parse(current.notes || '[]');
-          existingNotes = Array.isArray(parsed) ? parsed : [];
-        } catch { /* notes wasn't JSON — preserve below */ }
-        // If notes was a plain (non-JSON) string, DON'T discard it — seed the
-        // array with the existing text as a legacy note so adding a note never
-        // wipes prior free-text content.
-        if (existingNotes.length === 0 && typeof current.notes === 'string' && current.notes.trim()) {
-          existingNotes = [{ id: 'legacy', author: 'System', text: current.notes, timestamp: new Date().toISOString() }];
-        }
-        existingNotes.push({
-          id: String(Date.now()),
-          author: ctx.currentUser || 'Dispatch',
-          text: noteText,
-          timestamp: new Date().toISOString(),
-        });
-        await apiFetch(`/dispatch/calls/${call.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ notes: JSON.stringify(existingNotes) }),
-        });
+        await appendCallNote(call.id, noteText, ctx.currentUser || 'Dispatch');
         return {
           success: true,
           message: `Note added to ${call.call_number}: "${noteText}"`,
@@ -1263,13 +1262,41 @@ export async function executeCommand(
           }
         } catch { /* fall through */ }
       }
-      return {
-        success: false,
-        message: `Unknown command: ${verb}. Type HELP for commands.`,
-        action: { type: 'none' },
-      };
+      // Not a CAD verb → hand the whole line to the Dispatcher Command Engine,
+      // which accepts any phrasing ("assign 12 to 42", "clear 42 unfounded",
+      // "set the caller phone on this call to …").
+      return runNaturalLanguage(trimmed, ctx);
     }
   }
+}
+
+/** Free-form path: rules → LLM planner on the Worker, steps executed here with the user's JWT. */
+async function runNaturalLanguage(text: string, ctx: CadContext): Promise<CommandResult> {
+  const out = await runDispatcherCommand(text, {
+    source: 'typed',
+    selectedCallNumber: ctx.selectedCallNumber ?? null,
+    author: ctx.currentUser || 'Dispatch',
+  });
+  if (!out.handled) {
+    return {
+      success: false,
+      message: `Unknown command: "${text}". Type HELP for CAD verbs, or say what you want done (e.g. "assign 12 to 42").`,
+      action: { type: 'none' },
+    };
+  }
+  return {
+    success: out.ok,
+    message: out.reply || (out.ok ? 'Copy.' : 'Command failed.'),
+    action: {
+      type: 'ai_command',
+      intent: out.intent,
+      reply: out.reply,
+      ok: out.ok,
+      needsConfirmation: out.needsConfirmation,
+      clarify: out.clarify,
+      clientActions: out.clientActions,
+    },
+  };
 }
 
 /** Get list of known command verbs for autocomplete */

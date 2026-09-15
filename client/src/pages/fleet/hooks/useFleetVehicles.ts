@@ -26,6 +26,13 @@ export interface FleetVehiclesResult {
   refetch: (options?: { silent?: boolean }) => Promise<void>;
 }
 
+interface FleetVehiclesOptions {
+  filterStatus?: string;
+  setFilterStatus?: (s: string) => void;
+  searchQuery?: string;
+  setSearchQuery?: (s: string) => void;
+}
+
 /** Fleet vehicle list, its filters, and the stats derived from it.
  *
  *  `filtered` applies the status + search filters; `statusCounts` and
@@ -38,16 +45,25 @@ export interface FleetVehiclesResult {
  *
  *  Pagination: the hook tracks the current page offset and exposes `hasMore`
  *  + `loadMore()` so the panel can render a "Load more" button. Each `loadMore`
- *  appends the next page to the in-memory list. `refetch` resets to page 1. */
-export function useFleetVehicles(): FleetVehiclesResult {
+ *  appends the next page to the in-memory list. `refetch` resets to page 1.
+ *
+ *  Pass `opts` to supply controlled filterStatus/searchQuery from outside (e.g.
+ *  from URL params). When provided, the hook's internal state is bypassed for
+ *  those fields so the external source stays the single source of truth. */
+export function useFleetVehicles(opts: FleetVehiclesOptions = {}): FleetVehiclesResult {
   const { addToast } = useToast();
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [vehicleTotal, setVehicleTotal] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalFilterStatus, setInternalFilterStatus] = useState<string>('all');
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+
+  const filterStatus = opts.filterStatus !== undefined ? opts.filterStatus : internalFilterStatus;
+  const setFilterStatus = opts.setFilterStatus ?? setInternalFilterStatus;
+  const searchQuery = opts.searchQuery !== undefined ? opts.searchQuery : internalSearchQuery;
+  const setSearchQuery = opts.setSearchQuery ?? setInternalSearchQuery;
   const [showArchived, setShowArchived] = useState(false);
 
   const refetch = useCallback(async (options?: { silent?: boolean }) => {

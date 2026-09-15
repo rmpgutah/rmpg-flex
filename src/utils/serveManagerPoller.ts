@@ -160,12 +160,17 @@ async function cacheJob(db: D1Database, job: SmJob, linkedCallId?: number): Prom
     // recipient, and rush can all change between syncs. Omitting them (as
     // the original code did) meant a job cached before a location correction
     // in SM would forever show the wrong address in RMPG.
+    // `process_type` and `recipient_description` were written on INSERT but
+    // omitted here, while `documents_json` — the very input process_type is
+    // derived from — WAS refreshed. So adding a subpoena to an already-cached
+    // job updated the document list and left process_type reading 'other'
+    // forever: a derived column permanently contradicting its own source.
     const sets = [
       'job_status=?', 'service_status=?', 'sm_job_number=?',
       'process_server_name=?', 'client_job_number=?',
-      'client_company_name=?', 'recipient_name=?',
+      'client_company_name=?', 'recipient_name=?', 'recipient_description=?',
       'due_date=?', 'rush=?', 'service_instructions=?',
-      'addresses_json=?', 'documents_json=?',
+      'addresses_json=?', 'documents_json=?', 'process_type=?',
       'court_case_number=?',
       "sm_updated_at=?", "updated_at=datetime('now')",
     ];
@@ -173,9 +178,10 @@ async function cacheJob(db: D1Database, job: SmJob, linkedCallId?: number): Prom
       job.job_status ?? null, job.service_status ?? null,
       job.servemanager_job_number ?? null,
       getProcessServerName(job), job.client_job_number || null,
-      clientName, recipientName,
+      clientName, recipientName, job.recipient?.description || null,
       job.due_date || null, rushVal, job.service_instructions || null,
       JSON.stringify(job.addresses || []), JSON.stringify(job.documents || []),
+      processType,
       job.court_case?.number || null,
       job.updated_at || null,
     ];
@@ -333,8 +339,17 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     const targetClient = await getTargetClient(db);
     const lastPoll = await getSmConfig(db, 'servemanager_last_poll_at');
 
-    const jobs = await fetchRecentJobs(db, env, lastPoll || undefined);
-    if (jobs.length === 0) return { synced: 0, callsCreated: 0, attemptsSynced: 0 };
+    const fetched = await fetchRecentJobs(db, env, lastPoll || undefined);
+    const { jobs } = fetched;
+    // A transport failure, a missing key, and "no new jobs" used to be the
+    // same observation (an empty array). Surface the distinction: an empty
+    // batch that failed still reports its error to /sync and the cron log.
+    if (jobs.length === 0) {
+      if (fetched.error) {
+        log.error('[sm-poller] Job fetch failed', { error: fetched.error });
+      }
+      return { synced: 0, callsCreated: 0, attemptsSynced: 0, ...(fetched.error ? { error: fetched.error } : {}) };
+    }
 
     // Hoist the auto-create config read outside the loop — fetching it per job
     // burns one D1 round-trip per job and was the primary reason large syncs
@@ -386,6 +401,28 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       synced++;
     }
 
+    // Advance the watermark ONLY when the cursor chain was walked to its end.
+    // An incomplete walk (page cap reached, or a mid-walk transport failure)
+    // means jobs exist that this cycle never saw; moving the watermark past
+    // them skips them permanently, because `updated_since` only ever moves
+    // forward. Leaving it put re-reads the same window next cycle, and every
+    // write below is an idempotent upsert, so the replay is free.
+    if (!fetched.complete) {
+      log.error('[sm-poller] Incomplete job fetch — watermark held back', {
+        error: fetched.error, synced, callsCreated,
+      });
+      return { synced, callsCreated, attemptsSynced, error: fetched.error ?? 'incomplete ServeManager fetch' };
+    }
+
+    // The watermark is the latest `updated_at` OBSERVED IN THE DATA, not
+    // wall-clock now(). A cycle takes real time (multi-page fetch plus a write
+    // per job), and any job ServeManager updated inside that window carries an
+    // `updated_at` earlier than now() — stamping now() dropped it into a gap it
+    // could never be fetched out of again. Re-reading the boundary job on the
+    // next cycle is harmless; missing it is not.
+    const watermark = fetched.watermark;
+    if (!watermark) return { synced, callsCreated, attemptsSynced };
+
     // Update last poll timestamp. system_config has a UNIQUE(config_key,
     // config_value) index (not just config_key), and datetime('now') is
     // second-precision, so two poll cycles completing in the same wall-clock
@@ -402,7 +439,8 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
     try {
       await execute(db,
         `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
-         VALUES ('servemanager_last_poll_at', datetime('now'), 'integrations', 0, 1, datetime('now'), datetime('now'))`);
+         VALUES ('servemanager_last_poll_at', ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`,
+        watermark);
     } catch (raceErr: any) {
       const raceMsg = String(raceErr?.message || raceErr || 'unknown');
       if (!/SQLITE_CONSTRAINT/i.test(raceMsg) || !/system_config/i.test(raceMsg)) throw raceErr;

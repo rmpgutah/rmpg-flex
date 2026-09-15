@@ -124,6 +124,16 @@ export const equipmentCustodyFixtures: PdfFixture<EquipmentPdfInput>[] = [
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {
+      item: typicalEquipment,
+      checkoutLog: [checkoutLogEntry(0), checkoutLogEntry(1)],
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
+
 ];
 
 // ── Evidence Item ───────────────────────────────────────────
@@ -206,6 +216,14 @@ export const evidenceItemFixtures: PdfFixture<EvidencePdfInput>[] = [
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      item: typicalEvidenceItem,
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
 ];
 
 // ── Bodycam Video Custody ───────────────────────────────────
@@ -277,6 +295,15 @@ export const bodycamVideoCustodyFixtures: PdfFixture<BodycamVideoPdfInput>[] = [
       },
       custody: Array.from({ length: 40 }, (_, i) => bodycamCustodyEntry(i)),
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      video: typicalBodycamVideo,
+      custody: [bodycamCustodyEntry(0), bodycamCustodyEntry(1)],
+      preparedBy: 'Sgt. Marcus Reyes',
     },
   },
 ];
@@ -406,6 +433,28 @@ export const forensicCaseFixtures: PdfFixture<ForensicCasePdfInput>[] = [
       payloadHash: 'c'.repeat(64),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      case: typicalCase,
+      exhibits: [forensicExhibit(0), forensicExhibit(1)],
+      analyses: [
+        {
+          id: 1,
+          analysis_type: 'fiber_comparison',
+          status: 'complete',
+          methodology: 'Polarized light microscopy per lab SOP FL-14.',
+          analyst_name: 'Dana Whitlock',
+          started_at: '2026-03-15T09:00:00Z',
+          completed_at: '2026-03-16T17:00:00Z',
+          conclusion: 'Consistent with reference sample; findings released to the custody of the court.',
+        },
+      ],
+      preparedBy: 'Dana Whitlock',
+      payloadHash: 'b'.repeat(64),
+    },
+  },
 ];
 
 // ── Jail Booking Sheet ──────────────────────────────────────
@@ -502,6 +551,15 @@ export const jailBookingSheetFixtures: PdfFixture<JailBookingSheetInput>[] = [
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      inmate: typicalInmate,
+      charges: [inmateChargeRow(0), inmateChargeRow(1)],
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
 ];
 
 // ── Jail Roster Snapshot ─────────────────────────────────────
@@ -543,4 +601,14 @@ export const jailRosterSnapshotFixtures: PdfFixture<JailRosterSnapshotInput>[] =
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      rows: [typicalInmate, { ...typicalInmate, id: 1102, booking_number: 'BK-2026-004418', last_name: 'Reyes', first_name: 'Marcus' }],
+      scope: 'All in-custody inmates',
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
 ];
+

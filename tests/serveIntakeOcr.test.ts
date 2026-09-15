@@ -13,8 +13,8 @@
 //
 // No real case data — synthetic document text only.
 
-import { describe, it, expect } from 'vitest';
-import { ocrText } from '../src/utils/serveIntakeOcr';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { ocrText, MIN_FALLBACK_LEG_MS } from '../src/utils/serveIntakeOcr';
 
 // env.DB stub: every system_config lookup (anthropic_api_key, anthropic_model,
 // openai_api_key, openai_model) resolves to "no row", so the Claude leg
@@ -121,6 +121,61 @@ function mkClaudeEnv(capture: (body: any) => void): { env: any; restore: () => v
   };
   return { env, restore: () => { globalThis.fetch = realFetch; } };
 }
+
+// ============================================================
+// MIN_FALLBACK_LEG_MS floor — the Workers-AI leg must not be starved
+// ============================================================
+// Live 'Vision/Text extraction timed out' errors (2026-09) traced to a slow-
+// but-fallbackable Claude response (e.g. a transient overload) burning most
+// of the shared 90s budget before falling through — leaving the free
+// Workers-AI leg with too little time even though it would have succeeded
+// given a fair share. Simulates that: the Claude leg takes 85s (of the 90s
+// budget) to fail, then the Workers-AI leg takes 10s to succeed. Without the
+// floor it would get only ~5s remaining and time out; with the floor it gets
+// MIN_FALLBACK_LEG_MS and succeeds.
+describe('ocrText — MIN_FALLBACK_LEG_MS floor on the Workers-AI leg', () => {
+  it('never gives the fallback-leg reject-timer less than MIN_FALLBACK_LEG_MS, even with almost no budget left', async () => {
+    // Simulate "almost the whole 90s budget already spent by the Claude leg":
+    // aiBudget() reads Date.now() once for `start`, then once per leg() call.
+    // Return a huge jump on the leg() call for the FALLBACK leg only, so
+    // budgetRemaining computes to ~1s — the exact starved scenario that
+    // produced the live 'Text extraction timed out' errors.
+    const dateSpy = vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(0)      // aiBudget() start
+      .mockReturnValueOnce(0)      // leg() for the Claude attempt (fresh budget)
+      .mockReturnValue(89_000);    // leg() for the Workers-AI fallback attempt (89s elapsed of 90s)
+
+    // setTimeout is called by BOTH the Claude-leg race and the fallback-leg
+    // race. Claude fails fast (no key configured, no network call), so the
+    // only setTimeout the reject-race path schedules is the fallback leg's —
+    // capture every delay so we can pick it out reliably regardless of order.
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    const env: any = {
+      DB: { prepare: () => ({ bind: () => ({ first: async () => null }), first: async () => null }) },
+      AI: {
+        // Resolve well within the floor (30s) but past the starved ~1s
+        // budget — proves the fallback leg actually got the floor, not the
+        // leftover budget, by succeeding rather than racing the reject-timer.
+        run: async () => ({
+          response: JSON.stringify({ documentType: 'other', confidence: 0.5, fields: {} }),
+        }),
+      },
+    };
+
+    try {
+      const result = await ocrText(env, 'Some synthetic document text goes here.');
+      expect(result.error).not.toBe('Text extraction timed out');
+      expect(result.documentType).toBe('other');
+
+      const delays = setTimeoutSpy.mock.calls.map((call) => call[1]);
+      expect(delays.some((ms) => (ms as number) >= MIN_FALLBACK_LEG_MS)).toBe(true);
+    } finally {
+      dateSpy.mockRestore();
+      setTimeoutSpy.mockRestore();
+    }
+  });
+});
 
 describe('ocrText — docType forwarding to the Claude leg', () => {
   it('threads docType into the Claude system prompt', async () => {

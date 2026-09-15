@@ -733,7 +733,6 @@ export default function AdminPage() {
         { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
         { id: 'sync_status' as TabId, label: 'Sync Status', icon: Server },
         { id: 'offline-queue' as TabId, label: 'Offline Queue', icon: WifiOff },
-        { id: 'gps_health', label: 'GPS Health', icon: Navigation },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
       ],

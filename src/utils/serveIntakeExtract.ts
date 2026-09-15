@@ -113,6 +113,12 @@ export const TARGET_FIELDS = [
   'witness_fee_instrument',                  // verbatim, e.g. 'Check VV787 $18.50'
   'registered_agent_address',                // distinct from recipient_address
   'sub_service_authorized_first_attempt',    // yes | no | ''
+  // ── Attempt-record fields (attempt_sheet family) ───────────
+  // Prior attempt observations — extracted from "First Attempt", "Second
+  // Attempt", etc. sheets where the server recorded what happened.
+  'prior_attempt_date',    // ISO date of the prior attempt
+  'attempt_outcome',       // description of what was observed (no answer, refused, wrong address…)
+  'observer_id',           // process server name/badge from that attempt
 ] as const;
 
 export type TargetField = typeof TARGET_FIELDS[number];
@@ -137,7 +143,7 @@ export interface ExtractionResult {
 // type to a closed enum that matches the client's DOCUMENT_TYPES
 // list so the dropdown value lands correctly without translation.
 const DOC_TYPES = [
-  'court_filing', 'field_sheet', 'info_page', 'affidavit', 'summons',
+  'court_filing', 'field_sheet', 'info_page', 'attempt_sheet', 'affidavit', 'summons',
   'complaint', 'subpoena', 'eviction', 'restraining_order',
   'identification', 'correspondence', 'other',
 ] as const;
@@ -371,6 +377,13 @@ Utah - <courthouse name>" (e.g. "Third Judicial District Court, State of Utah - 
 capture that whole phrase as court_name verbatim; it does not name the county. Do NOT treat the
 party being served as a case party: on a subpoena the recipient is usually a non-party witness.`,
 
+  attempt_sheet: `This is a SERVE ATTEMPT RECORD — a report of one previous attempt to serve the recipient.
+It typically carries: the attempt date/time, the process server's name, the address attempted,
+a description of what was observed (no answer, occupant refused, wrong address, etc.), and
+sometimes a GPS stamp or officer ID. Use these fields to extract prior_attempt_date,
+service_instructions (notes), and recipient_address when more authoritative documents are absent.
+Do NOT use the "no answer" or "refused" description as the recipient's name.`,
+
   info_page: `This is a ServeManager INFORMATION FORM — the authoritative operational record.
 Prefer it for recipient, service address, service instructions, job numbers, and due date.
 The JOB header carries two numbers: the FIRST (position, not size) is job_number; the SECOND
@@ -403,6 +416,8 @@ export function buildFamilyPrompt(docType: string): string {
 const FIELD_SHEET_NAME_HINT = /field[\s_-]*sheet/i;
 const COURT_FILING_NAME_HINT = /court[\s_-]*(docket|filing)|docket/i;
 const INFO_PAGE_NAME_HINT = /information[\s_-]*(form|page)|info[\s_-]*(form|page)/i;
+// "First Attempt", "Second Attempt", "1st Attempt", "Attempt 1", etc.
+const ATTEMPT_SHEET_NAME_HINT = /(\d+(st|nd|rd|th)?[\s_-]*attempt|first[\s_-]*attempt|second[\s_-]*attempt|third[\s_-]*attempt|attempt[\s_-]*\d+)/i;
 
 export function familyFromFileName(fileName: string): string | undefined {
   const name = (fileName || '').trim();
@@ -410,6 +425,7 @@ export function familyFromFileName(fileName: string): string | undefined {
   if (FIELD_SHEET_NAME_HINT.test(name)) return 'field_sheet';
   if (COURT_FILING_NAME_HINT.test(name)) return 'court_filing';
   if (INFO_PAGE_NAME_HINT.test(name)) return 'info_page';
+  if (ATTEMPT_SHEET_NAME_HINT.test(name)) return 'attempt_sheet';
   return undefined;
 }
 
@@ -418,11 +434,17 @@ export function familyFromFileName(fileName: string): string | undefined {
 // every packet. Only genuinely doubtful critical fields qualify, capped
 // so a badly-scanned document cannot blow the daily free allocation.
 const CRITIC_FIELDS: TargetField[] = [
+  // Recipient identity — name is the most common OCR error source and was
+  // the field most often wrong in production packets.
+  'recipient_last_name', 'recipient_first_name',
   'case_number', 'court_name', 'recipient_address', 'service_deadline',
   'recipient_dob', 'recipient_phone', 'address_class',
+  // service_instructions carry special delivery requirements (gated entry,
+  // call ahead, etc.) whose mis-extraction causes failed serves.
+  'service_instructions',
 ];
 const CRITIC_CONFIDENCE_FLOOR = 0.6;
-const CRITIC_MAX_FIELDS = 5;
+const CRITIC_MAX_FIELDS = 6;
 
 export function needsCriticPass(
   fields: Record<string, ExtractedField>,
@@ -1185,7 +1207,7 @@ const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
 const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
 const DATE_FIELDS = new Set<TargetField>([
   'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
-  'attempt_start_not_before',
+  'attempt_start_not_before', 'prior_attempt_date',
 ]);
 const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.
