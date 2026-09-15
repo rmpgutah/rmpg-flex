@@ -1,10 +1,21 @@
 # Apply one D1 migration file to live `rmpg-flex` and mark it tracked.
 #
-# Why this exists: `deploy.yml` runs `wrangler d1 migrations apply --remote`
-# against EVERY untracked file. That aborts at the first bare ALTER that
-# already exists on live (today: 0227 starting_mileage), so later files
-# like 0270 never run. This workflow executes a single file via
-# `d1 execute --file` — the same path as scripts/apply-migration.sh.
+# Why this exists (ORIGINAL, now FIXED): deploy.yml used to run
+# `wrangler d1 migrations apply --remote` across every untracked file, which
+# aborted at the first bare ALTER already present on live (0227
+# starting_mileage), so later files never ran while the deploy still went
+# green. deploy.yml no longer does that — it runs
+# scripts/d1PendingMigrations.ts (statement-by-statement, duplicate-column
+# tolerated, blocking) followed by scripts/check-migration-drift.sh, so the
+# routine path is self-healing and needs no manual step.
+#
+# So this workflow is now the ESCAPE HATCH, not the normal path. Reach for it
+# when the drift check goes red, during an emergency hotfix, or to repair a
+# d1_migrations tracker row. It is safe to re-run: a duplicate-column /
+# already-exists error is treated as an idempotent re-apply, and the final
+# step prints the file's d1_migrations row so a no-op is obvious
+# (changed_db: false). Prefer it over scripts/apply-migration.sh, which
+# prompts on stdin and therefore hangs in non-interactive shells.
 #
 # Usage:
 #   gh workflow run apply-d1-migration.yml -f filename=0270_tesseract_box_page_number.sql
