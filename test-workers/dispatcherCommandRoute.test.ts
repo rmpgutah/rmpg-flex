@@ -240,3 +240,88 @@ describe('POST /command/:id/result + GET /command/recent', () => {
     expect((await query(db(), 'SELECT * FROM units WHERE id = 302 AND status = ?', 'busy')).length).toBe(1);
   });
 });
+
+// ── Per-ref archive scoping ──────────────────────────────────────────────
+//
+// loadCandidateCalls keeps `includeArchived` off by default so that "clear 42"
+// can never silently land on a call that is off the board. assemble() used to
+// compute that flag ONCE per plan via `validated.some(...)`, so a single
+// archive-scoped tool anywhere in the plan widened the candidate set for every
+// other ref too.
+//
+// Driven from a synthetic PlannerOutput because the deterministic rules
+// planner cannot produce this shape -- its only multi-tool outputs are
+// lookup_record + open_ncic, neither of which is archive-scoped or takes a
+// call ref. In production the AI planner emits arbitrary multi-tool plans.
+describe('assemble — archive scoping is per ref, not per plan', () => {
+  const ADMIN_CTX = {
+    userId: ADMIN.id,
+    role: 'admin',
+    userName: ADMIN.full_name,
+    source: 'typed' as const,
+    selectedCallNumber: null,
+  };
+
+  beforeAll(async () => {
+    // Archived: excluded from the board set by `COALESCE(status,'') != 'archived'`,
+    // included in the archived set because it was created inside 30 days.
+    await execute(db(), `DELETE FROM calls_for_service WHERE id = 7003`);
+    await execute(db(), `INSERT INTO calls_for_service (id, call_number, incident_type, priority, status, location_address, created_at)
+      VALUES (7003, 'CFS26-0777', 'theft', 'P3', 'archived', '3 Archive Ave', datetime('now','-10 days'))`);
+  });
+
+  async function assemblePlan(tool_calls: Array<{ tool: string; params: Record<string, unknown> }>) {
+    const { assemble } = await import('../src/routes/dispatcherCommand');
+    return assemble(
+      env as unknown as Parameters<typeof assemble>[0],
+      db(),
+      { intent: 'test', reply: '', tool_calls: tool_calls as never },
+      ADMIN_CTX,
+    );
+  }
+
+  it('resolves an archived call for an archive-scoped tool', async () => {
+    const out = await assemblePlan([{ tool: 'delete_call', params: { call: '777' } }]);
+    expect(out.clarify).toBeUndefined();
+    expect(out.steps.some((s) => s.kind === 'http' && String(s.path).includes('7003'))).toBe(true);
+  });
+
+  it('does not resolve an archived call for a board tool on its own', async () => {
+    const out = await assemblePlan([{ tool: 'hold_call', params: { call: '777' } }]);
+    expect(out.clarify).toBeTruthy();
+    expect(out.steps).toHaveLength(0);
+  });
+
+  // The regression. Before the fix the delete widened the candidate set for
+  // the whole plan, so "777" resolved to the archived call for hold_call too
+  // and the board tool acted on an off-board call.
+  it('does not let an archive-scoped tool widen a board tool in the same plan', async () => {
+    const out = await assemblePlan([
+      { tool: 'delete_call', params: { call: '42' } },
+      { tool: 'hold_call', params: { call: '777' } },
+    ]);
+    expect(out.clarify).toBeTruthy();
+    // No step may target the archived row.
+    expect(out.steps.some((s) => s.kind === 'http' && String(s.path).includes('7003'))).toBe(false);
+  });
+
+  it('still resolves each ref correctly when both kinds appear with distinct refs', async () => {
+    const out = await assemblePlan([
+      { tool: 'delete_call', params: { call: '777' } },
+      { tool: 'hold_call', params: { call: '42' } },
+    ]);
+    expect(out.clarify).toBeUndefined();
+    const paths = out.steps.filter((s) => s.kind === 'http').map((s) => String(s.path));
+    expect(paths.some((p) => p.includes('7003'))).toBe(true); // archived -> delete
+    expect(paths.some((p) => p.includes('7001'))).toBe(true); // board -> hold
+  });
+
+  it('reports an unresolved board ref once, not twice', async () => {
+    const out = await assemblePlan([
+      { tool: 'delete_call', params: { call: '777' } },
+      { tool: 'hold_call', params: { call: '999999' } },
+    ]);
+    expect(out.clarify).toBeTruthy();
+    expect(out.clarify!.match(/999999/g)?.length).toBe(1);
+  });
+});
