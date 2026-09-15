@@ -24,6 +24,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
+import { likePattern } from '../utils/d1Like';
 
 const offenderRegistry = new Hono<Env>();
 
@@ -80,7 +81,7 @@ offenderRegistry.get('/', requireRole('admin', 'manager', 'supervisor', 'officer
     if (search) {
       conditions.push(`(a.description LIKE ? OR a.alert_address LIKE ?
         OR p.first_name LIKE ? OR p.last_name LIKE ?)`);
-      const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+      const s = likePattern(search);
       params.push(s, s, s, s);
     }
     const where = `WHERE ${conditions.join(' AND ')}`;

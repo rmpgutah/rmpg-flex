@@ -2,6 +2,7 @@ import type { Bindings } from '../../types';
 import type { ScreeningAdapter, NormalizedCandidate, PersonRow, SearchParams, MatchResult, ScreeningHitRow } from './types';
 import { scoreSanctionMatch } from './scoring';
 import { getDb, query, queryFirst, execute, executeBatch } from '../db';
+import { likePattern } from '../d1Like';
 
 const BULK_URL = 'https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json';
 
@@ -68,10 +69,14 @@ export function appendCautionFlag(existing: string | null, flag: string): string
 }
 
 // Fix 4: Escape LIKE wildcards in user-supplied input.
-// D1 LIKE cap is 50 chars; %pattern% uses 2, so cap the inner term at 48.
+//
+// The escaping and the byte cap interact: escaping ADDS a byte per
+// metacharacter, and the old `.replace(...).slice(0, 48)` could cut between a
+// '\' and the character it escaped. A trailing lone '\' is not a loose match
+// under the `ESCAPE '\'` clause used below -- SQLite rejects it. likePattern
+// trims whole escape pairs, and in bytes rather than UTF-16 units.
 function likeContains(input: string | undefined | null): string {
-  const inner = (input ?? '').trim().replace(/[%_\\]/g, '\\$&').slice(0, 48);
-  return `%${inner}%`;
+  return likePattern((input ?? '').trim(), { escape: true });
 }
 
 export async function ingestOfac(env: Bindings): Promise<{ rowsLoaded: number }> {

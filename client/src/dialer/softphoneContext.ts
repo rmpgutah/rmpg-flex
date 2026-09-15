@@ -4,7 +4,7 @@ import type { SoftphoneSnapshot } from './softphoneMachine';
 // Kept as a literal (not imported from softphoneMachine) so this module stays
 // a few hundred bytes — it is the only softphone code in the SPA entry chunk.
 const INITIAL: SoftphoneSnapshot = {
-  status: 'offline', error: null, callSid: null, remoteNumber: null, direction: null,
+  status: 'offline', error: null, notice: null, callSid: null, remoteNumber: null, direction: null,
   connectedAt: null, muted: false, held: false, recording: false, waitingFrom: null,
 };
 
@@ -23,6 +23,8 @@ export interface SoftphoneContextValue extends SoftphoneSnapshot {
   toggleRecording(): Promise<void>;
   duress(): Promise<void>;
   retry(): void;
+  /** Dismiss the current non-fatal control notice. */
+  dismissNotice(): void;
   /** Do Not Disturb on the dispatch-app side: null until known. While true, inbound calls skip this dispatcher. */
   dnd: boolean | null;
   setDnd(dnd: boolean): Promise<void>;
@@ -40,7 +42,7 @@ export const LOADING_VALUE: SoftphoneContextValue = {
   identity: null,
   dial: noopAsync, answer: noop, reject: noop, hangup: noop, setMuted: noop,
   toggleHold: noopAsync, sendDigits: noop, transferBlind: noopAsync, transferWarm: noopAsync,
-  addParty: noopAsync, toggleRecording: noopAsync, duress: noopAsync, retry: noop,
+  addParty: noopAsync, toggleRecording: noopAsync, duress: noopAsync, retry: noop, dismissNotice: noop,
   dnd: null, setDnd: noopAsync, lastDuress: null,
 };
 

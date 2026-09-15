@@ -185,10 +185,18 @@ export function SoftphoneProvider({ children, createDevice, enabled = true, stre
     return () => window.removeEventListener(DIALER_PLACE_CALL_EVENT, onPlace);
   }, [dial]);
 
+  // A refused control action (hold/transfer/recording) is NOT a device failure:
+  // the call is still up, so it reports as a dismissible notice and every button
+  // stays live. Dispatching ERROR here used to flip the machine to 'error',
+  // which disabled Hang up / Mute / Hold mid-call on a call that was still
+  // connected — the dispatcher could neither control nor end it.
   const withSid = useCallback(async (fn: (sid: string) => Promise<unknown>) => {
     const sid = controlCallSid(activeCallRef.current);
-    if (!sid) return;
-    try { await fn(sid); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); }
+    if (!sid) {
+      dispatch({ type: 'CONTROL_FAILED', message: 'Call control is not available yet — the call has no Twilio CallSid.' });
+      return;
+    }
+    try { await fn(sid); } catch (err) { dispatch({ type: 'CONTROL_FAILED', message: (err as Error).message || 'That action was refused.' }); }
   }, []);
 
   const value = useMemo<SoftphoneContextValue>(() => ({
@@ -215,12 +223,13 @@ export function SoftphoneProvider({ children, createDevice, enabled = true, stre
     transferWarm: (target) => withSid((sid) => dialerApi.addDispatcher(sid, target)),
     addParty: (phone) => withSid((sid) => dialerApi.addParty(sid, phone)),
     toggleRecording: () => withSid(async (sid) => { await dialerApi.recording(sid, snap.recording ? 'stop' : 'start'); dispatch({ type: 'RECORDING', recording: !snap.recording }); }),
-    duress: async () => { try { await dialerApi.duress(); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); } },
+    duress: async () => { try { await dialerApi.duress(); } catch (err) { dispatch({ type: 'CONTROL_FAILED', message: (err as Error).message }); } },
+    dismissNotice: () => dispatch({ type: 'NOTICE_CLEARED' }),
     retry: () => { deviceRef.current?.destroy(); deviceRef.current = null; dispatch({ type: 'RESET' }); force(); void register(); },
     dnd,
     setDnd: async (next) => {
       try { const r = await dialerApi.setDnd(next); setDndState(Boolean(r.dnd)); }
-      catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); }
+      catch (err) { dispatch({ type: 'CONTROL_FAILED', message: (err as Error).message }); }
     },
     lastDuress,
   }), [snap, dial, withSid, attachCall, register, dnd, lastDuress]);

@@ -27,6 +27,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { containsAnyClause } from '../utils/searchText';
 import { log } from '../utils/logger';
+import { likePattern } from '../utils/d1Like';
 const forensics = new Hono<Env>();
 
 // ── Allowed-value sets (mirror migration CHECK constraints) ──
@@ -790,7 +791,7 @@ forensics.get('/:caseId/links/search', async (c) => {
     const type = (c.req.query('type') || 'person').toLowerCase();
     if (!q || q.length < 2) return c.json([]);
     if (!LINK_ENTITY_TYPES.has(type)) return c.json([]);
-    const like = `%${q.slice(0, 48)}%`;
+    const like = likePattern(q);
 
     if (type === 'person') {
       const rows = await query<Record<string, unknown>>(db, `
