@@ -69,7 +69,7 @@ import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { compassCardinal } from '../utils/locationImagery';
-import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { useWebSocket } from '../context/WebSocketContext';
 import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { useBattery } from '../components/BatteryIndicator';
@@ -1680,7 +1680,12 @@ export default function NavigationPage() {
         // Carry the whole record so the click popup ("DB visual") can read it
         // straight off the feature — no second lookup, no stale React closure.
         properties: {
-          color: crimeColor(p),
+          // CLASS_META colors are CSS variables (correct for the DOM legend
+          // at the bottom of this page) and Mapbox GL resolves paint colors
+          // in a shader, where var() means nothing — ['get','color'] threw
+          // "Could not parse color from value 'var(--sev-warn)'" per feature
+          // and the crime layer painted nothing. Resolve at the seam.
+          color: safeMapboxColor(crimeColor(p), '#c3ccd6'),
           source: p.source, category: p.category || '', label: p.label || '',
           date: p.date || '', area: p.area || '', ref: p.ref || '', division: p.division || '',
           agency: p.agency || '', lat: p.lat, lng: p.lng,
@@ -2184,7 +2189,7 @@ export default function NavigationPage() {
       features: corridorHazards.map((h) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [h.lng, h.lat] },
-        properties: { color: h.color, r: 8 + h.severity * 4 },
+        properties: { color: safeMapboxColor(h.color, '#c3ccd6'), r: 8 + h.severity * 4 },
       })),
     };
     try {

@@ -1,5 +1,5 @@
 import mapboxgl from 'mapbox-gl';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from './mapboxSafeLayer';
+import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from './mapboxSafeLayer';
 import { escapeHtml } from './sanitize';
 import { parseTimestamp } from './dateUtils';
 import { formatEnumValue } from './formatters';
@@ -141,7 +141,7 @@ export function addServeJobLayer(map: mapboxgl.Map, jobs: ServeMapEntry[], sourc
       type: 'Feature' as const,
       properties: {
         id: j.id,
-        color: SERVE_PRIORITY_COLOR[j.priority] ?? SERVE_PRIORITY_COLOR.routine,
+        color: safeMapboxColor(SERVE_PRIORITY_COLOR[j.priority] ?? SERVE_PRIORITY_COLOR.routine, '#c3ccd6'),
         case_number: j.case_number,
       },
       geometry: { type: 'Point' as const, coordinates: [j.recipient_lng!, j.recipient_lat!] },

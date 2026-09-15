@@ -12,7 +12,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
-import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -82,20 +82,20 @@ function shapesToGeoJSON(shapes: DrawnShape[]): GeoJSON.FeatureCollection {
     if (s.type === 'polyline') {
       features.push({
         type: 'Feature',
-        properties: { id: s.id, color: s.color, shapeType: 'polyline' },
+        properties: { id: s.id, color: safeMapboxColor(s.color, '#c3ccd6'), shapeType: 'polyline' },
         geometry: { type: 'LineString', coordinates: s.coordinates },
       });
     } else if (s.type === 'polygon') {
       features.push({
         type: 'Feature',
-        properties: { id: s.id, color: s.color, shapeType: 'polygon' },
+        properties: { id: s.id, color: safeMapboxColor(s.color, '#c3ccd6'), shapeType: 'polygon' },
         geometry: { type: 'Polygon', coordinates: [s.coordinates] },
       });
     } else if (s.type === 'circle' && s.center && s.radiusMeters) {
       const ring = circlePolygon(s.center, s.radiusMeters);
       features.push({
         type: 'Feature',
-        properties: { id: s.id, color: s.color, shapeType: 'circle' },
+        properties: { id: s.id, color: safeMapboxColor(s.color, '#c3ccd6'), shapeType: 'circle' },
         geometry: { type: 'Polygon', coordinates: [ring] },
       });
     }

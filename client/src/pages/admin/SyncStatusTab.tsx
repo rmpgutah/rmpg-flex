@@ -6,6 +6,10 @@ import PanelTitleBar from '../../components/PanelTitleBar';
 import { Server as ServerIcon } from 'lucide-react';
 
 interface QueueCounts {
+  // false on the cloud deployment: `sync_queue`/`sync_conflicts` come from
+  // the local-only migrations 0249/0250 and only exist on the FZ-55
+  // secondary server. The endpoints answer 200 with zeroes rather than 500.
+  provisioned?: boolean;
   pending: number;
   failed: number;
   delivered: number;
@@ -25,6 +29,7 @@ export default function SyncStatusTab() {
   const { mode, localBase } = useApiBase();
   const [queue, setQueue] = useState<QueueCounts | null>(null);
   const [conflicts, setConflicts] = useState<ConflictRow[]>([]);
+  const [provisioned, setProvisioned] = useState(true);
   const [loading, setLoading] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,10 +40,11 @@ export default function SyncStatusTab() {
     try {
       const [q, c] = await Promise.all([
         apiFetch<QueueCounts>('/api/sync/queue'),
-        apiFetch<{ conflicts: ConflictRow[] }>('/api/sync/conflicts?limit=50'),
+        apiFetch<{ provisioned?: boolean; conflicts: ConflictRow[] }>('/api/sync/conflicts?limit=50'),
       ]);
       setQueue(q);
       setConflicts(Array.isArray(c?.conflicts) ? c.conflicts : []);
+      setProvisioned(q?.provisioned !== false && c?.provisioned !== false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load sync status';
       setError(msg);
@@ -75,6 +81,14 @@ export default function SyncStatusTab() {
 
       {error && <p className="text-red-400 text-xs">{error}</p>}
 
+      {!provisioned && (
+        <p className="text-xs text-fg-muted">
+          FZ-55 sync tables are not provisioned on this deployment — the queue and
+          conflict log live only on the local secondary server. Switch the active
+          endpoint to LOCAL to inspect them.
+        </p>
+      )}
+
       {loading && !queue && (
         <p className="text-xs text-fg-muted">Loading sync status…</p>
       )}
@@ -96,7 +110,7 @@ export default function SyncStatusTab() {
 
       <button
         onClick={triggerReplay}
-        disabled={replaying || loading}
+        disabled={replaying || loading || !provisioned}
         className="px-3 py-1.5 text-xs bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 rounded disabled:opacity-50"
       >
         {replaying ? 'Replaying…' : 'Trigger Manual Replay'}

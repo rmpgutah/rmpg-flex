@@ -99,6 +99,13 @@ const ALLOWED_CONNECT = [
   // presigned URL, bypassing the Worker entirely — without this entry the
   // fetch/XHR is blocked by CSP before it ever reaches the network.
   'https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com',
+  // Twilio Voice JS SDK (native softphone) preloads its 16 ringtone/DTMF
+  // samples from sdk.twilio.com with XHR, so connect-src governs them — not
+  // media-src, which only sees the blob it plays afterwards. Missing here,
+  // the SDK swallows every load failure and dispatchers get a silent dialer
+  // (no ring, no DTMF feedback, no disconnect tone) with a console flood as
+  // the only symptom. Same silent-block class as the RainViewer tile host.
+  'https://sdk.twilio.com',
   // Desktop network/IP widgets (DesktopNetworkStatusWidget, DesktopIpInfoWidget,
   // DesktopNetworkDiag) fetch the Cloudflare trace endpoint for connectivity checks.
   'https://www.cloudflare.com',

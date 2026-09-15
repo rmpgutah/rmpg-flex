@@ -209,6 +209,29 @@ export async function columnExists(db: D1Database, table: string, column: string
   return row !== null;
 }
 
+/**
+ * True when `table` exists in the D1 schema.
+ *
+ * Needed because a handful of tables are deliberately absent from the cloud
+ * deployment — migrations 0249/0250 (`sync_queue`, `sync_conflicts`) are
+ * marked `Local-only` and are only ever applied to the FZ-55 secondary
+ * server. A route that reads them must probe first rather than let
+ * `no such table` bubble into a 500 (live defect 2026-09-15: the admin Sync
+ * Status tab retried two 500s three times each on every mount).
+ *
+ * `sqlite_master` is the check rather than `pragma_table_info`, which
+ * returns an empty set for a missing table and cannot distinguish that from
+ * a table with no columns.
+ */
+export async function tableExists(db: D1Database, table: string): Promise<boolean> {
+  const row = await withD1Retry(() =>
+    db.prepare(
+      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+    ).bind(table).first(),
+  );
+  return row !== null;
+}
+
 export async function executeBatch(
   db: D1Database,
   statements: { sql: string; bindings?: unknown[] }[]

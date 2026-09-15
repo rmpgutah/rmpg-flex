@@ -17,6 +17,7 @@ import {
 } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
+import { safeMapboxColor } from '../utils/mapboxSafeLayer';
 import { useMapTraffic } from '../hooks/useMapTraffic';
 import { useMapWeatherRadar } from '../hooks/useMapWeatherRadar';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
@@ -681,7 +682,7 @@ export default function NavMapView({
       type: 'FeatureCollection',
       features: pins.map((p) => ({
         type: 'Feature',
-        properties: { color: p.color, label: p.label },
+        properties: { color: safeMapboxColor(p.color, '#c3ccd6'), label: p.label },
         geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
       })),
     });

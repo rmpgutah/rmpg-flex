@@ -11,7 +11,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
-import { hasLayer, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { hasLayer, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { escapeHtml } from '../utils/sanitize';
 import { devLog, devWarn } from '../utils/devLog';
 
@@ -134,7 +134,7 @@ export function buildAlertFeatures(
         alert_id: alert.id,
         event: alert.event,
         severity: alert.severity,
-        color: SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.Unknown,
+        color: safeMapboxColor(SEVERITY_COLORS[alert.severity] ?? SEVERITY_COLORS.Unknown, '#c3ccd6'),
         headline: alert.headline ?? '',
         area_desc: alert.area_desc ?? '',
         expires: alert.expires ?? '',
