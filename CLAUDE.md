@@ -466,6 +466,65 @@ verb. Design: [`docs/superpowers/specs/2026-09-14-dispatcher-command-engine-desi
 - Repo ratchet `tests/callStatus.test.ts` rejects hand-rolled call-status lists — use
   `ACTIVE_CALL_WHERE` / `CLOSED_CALL_STATUSES` from `src/utils/callStatus.ts`.
 
+### Citations — State of Utah Uniform Citation (official form, 2026-09-15)
+
+Citations render the official **"UNIFORM CITATION OR INFORMATION AND SUMMONS TO
+APPEAR"** (form rev 10/13, the e-filed layout Utah justice courts receive), not
+the in-house approximation that preceded it.
+
+- **Schema**: [`client/src/utils/pdf/v2/forms/citationUtahMaster.ts`](client/src/utils/pdf/v2/forms/citationUtahMaster.ts)
+  — a `fixed-layout` section whose box grid, label wording, and block order are
+  transcribed from the filed form. Rendered multi-copy by
+  [`utahMasterRenderer.ts`](client/src/utils/pdf/v2/utahMasterRenderer.ts).
+- **The blank form is the same schema.** `blankForms/citationBlank.ts` now spreads
+  `citationUtahMasterSchema` + the `blank-form` watermark instead of maintaining a
+  parallel list of labels — the old hand-kept mirror drifted every time either side
+  changed, and a blank that doesn't match the filed copy is one an officer can't use.
+
+#### Citation invariants — read before touching the form
+
+- **⚠️ `citations` is at 72 columns and new fields go to `citations_ext`, never
+  onto `citations`.** D1's SQLite is `SQLITE_MAX_COLUMN=100` and a 101st column makes
+  the table UNREADABLE, not merely un-SELECTable (gotcha #19). The official form's
+  ~45 extra fields would have taken it to 117. `citations_ext` is 1:1, same pattern
+  as `calls_for_service_ext`; helpers in [`src/utils/citationExt.ts`](src/utils/citationExt.ts).
+- **The ext row is merged UNDER the base row** (`{...ext, ...row}`) on read, so a
+  same-named base column always wins. Never flip that spread order.
+- **Yes/No fields are TRI-STATE and NULL is load-bearing.** The paper form prints
+  `YES [] NO []`; an unanswered question leaves BOTH boxes empty. Coercing NULL to
+  `0` renders an explicit "NO" — a statement of fact on a court document that nobody
+  made. This is why `ynPair()`'s sidecar `path` hangs off a hidden carrier field
+  rather than the YES checkbox: pathing the checkbox extracts `false` for
+  "unanswered" and the round-trip re-renders it as a checked NO.
+- **The statutory paragraphs are verbatim** — the 5-to-14-day summons warning, the
+  not-an-information disclaimer, and the officer's certification under UCA 77-7-21.
+  A clerk reads these copies against the paper original, so paraphrasing is a
+  rejection risk. They render via the engine's `paragraph` FixedFieldStyle, which
+  WRAPS; `label` truncates to the first line via `splitTextToSize(...)[0]` and would
+  silently swallow the bulk of each notice.
+- **`FORM_CONTENT_HEIGHT` is derived from the built fields, not hardcoded.** The
+  copy-designation strip is page-anchored at `pageHeight - 25mm`, so content that
+  grows past it collides invisibly — the unit test asserts the clearance.
+- **An ext-only PUT is a real update.** The court's disposition strip (plea, fine,
+  jail, DLD date, docket, judge) is entirely ext-resident, so the `NO_FIELDS` guard
+  runs AFTER `extractCitationExt`.
+- **SSN is redacted for non-issuing roles.** The state form has a box for it; that
+  is not a reason to hand it to every authenticated reader. `redactCitationExt`
+  masks to `***-**-NNNN` outside admin/manager/supervisor/officer, and the LIST
+  endpoint never joins `citations_ext` at all.
+- **An ext write must never fail the citation.** Both call sites wrap the upsert in
+  try/catch + `log.error`; the base record is the legally significant write.
+  **Consequence for tests: a broken ext mapper is INVISIBLE** — assert on the
+  returned row, never just on `res.status`.
+- **Officer UI**: [`UniformCitationFields.tsx`](client/src/components/UniformCitationFields.tsx),
+  mounted in `CitationsPage.tsx`. `uniformFieldsFromRecord` rehydrates tri-states as
+  `null`, not `false`, when editing an existing citation.
+- **🔴 After merge**: `scripts/apply-migration.sh 0291_citations_uniform_form.sql`
+  against live D1 `785de7ae`, then verify with
+  `SELECT COUNT(*) FROM pragma_table_info('citations_ext')` (expect 59) and
+  `SELECT COUNT(*) FROM pragma_table_info('citations')` (must still be 72 — if it
+  grew, something ALTERed the wrong table).
+
 ### Legal Data Hunter (manual warrant-charge validation)
 
 Manual, officer-initiated cross-reference of a warrant's charge text against the Legal Data

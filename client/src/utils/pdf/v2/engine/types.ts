@@ -116,15 +116,18 @@ export type FixedFieldStyle =
   | 'barcode'     // accessor's string drawn as a Code128-like barcode
   | 'line'        // a plain horizontal/vertical rule (no accessor needed)
   | 'rect'        // an outline rectangle (no accessor needed)
-  | 'label';      // static label text (uses `label`, not accessor)
+  | 'label'        // static label text (uses `label`, not accessor)
+  | 'paragraph';  // static `label` text WRAPPED to the field width over multiple lines
 
 export interface FixedField<T = any> {
   /** Schema path for sidecar extraction. Display-only fields omit this. */
   path?: string;
   /** Accessor for the rendered value. Required except for style='line'|'rect'|'label'. */
   accessor?: (data: T) => string | { image?: string } | boolean | undefined | null;
-  /** Static label text when style='label' (or as the prefix when style='checkbox'). */
+  /** Static label text when style='label'|'paragraph' (or as the prefix when style='checkbox'). */
   label?: string;
+  /** Baseline-to-baseline spacing in mm for style='paragraph'. Default 2.6. */
+  lineHeight?: number;
   /** Absolute mm coordinates relative to the section's origin. */
   x: number;
   y: number;

@@ -195,6 +195,33 @@ function drawLabel<T>(doc: jsPDF, field: FixedField<T>, originX: number, originY
   doc.text(truncated, textX, y + field.h - 1.5, { align: field.align ?? 'left' });
 }
 
+/**
+ * Multi-line static text wrapped to the field width. `drawLabel` truncates to
+ * the first line (splitTextToSize(...)[0]), which silently swallows the bulk of
+ * the statutory notices the Utah Uniform Citation must print verbatim — the
+ * summons warning, the not-an-information disclaimer, and the officer's
+ * certification under UCA 77-7-21. Those are legal text, so they wrap instead.
+ */
+function drawParagraph<T>(doc: jsPDF, field: FixedField<T>, originX: number, originY: number): void {
+  if (!field.label) return;
+  const x = originX + field.x;
+  const y = originY + field.y;
+  setFont(doc, field.fontSize ?? TYPOGRAPHY.fieldLabel.size, !!field.bold);
+  const lines: string[] = doc.splitTextToSize(field.label, field.w);
+  const lineHeight = field.lineHeight ?? 2.6;
+  // Clip to the declared height so an over-long string can never bleed into
+  // the field below it — fixed-layout has no reflow to absorb the overflow.
+  const maxLines = Math.max(1, Math.floor(field.h / lineHeight));
+  const textX = field.align === 'center'
+    ? x + field.w / 2
+    : field.align === 'right'
+    ? x + field.w
+    : x;
+  lines.slice(0, maxLines).forEach((line, i) => {
+    doc.text(line, textX, y + lineHeight * (i + 1), { align: field.align ?? 'left' });
+  });
+}
+
 function drawBarcode<T>(
   doc: jsPDF, field: FixedField<T>, originX: number, originY: number, text: string,
 ): void {
@@ -260,6 +287,7 @@ export function renderFixedLayoutSection<T>(
       case 'line':       drawLine(doc, field, originX, originY); break;
       case 'rect':       drawRect(doc, field, originX, originY); break;
       case 'label':      drawLabel(doc, field, originX, originY); break;
+      case 'paragraph':  drawParagraph(doc, field, originX, originY); break;
     }
   }
 
