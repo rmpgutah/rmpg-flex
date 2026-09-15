@@ -56,6 +56,12 @@ export type Bindings = {
   // Optional — unset → { ok:false, code:'not_configured' } (200), per the
   // optional-integration pattern. `wrangler secret put TURNSTILE_SECRET_KEY`.
   TURNSTILE_SECRET_KEY?: string;
+  // Dial Connect (dispatch-app Worker `dialer`) server-to-server proxy for the
+  // native softphone (src/routes/dialerVoice.ts). Base is a plain var; the key
+  // is `wrangler secret put DIAL_CONNECT_SERVICE_KEY` and must equal
+  // RMPG_FLEX_SERVICE_KEY on the `dialer` Worker. Unset key → not_configured.
+  DIAL_CONNECT_API_BASE?: string;
+  DIAL_CONNECT_SERVICE_KEY?: string;
   // Comma-separated frontend hostnames siteverify may report for the public
   // form (non-secret, wrangler.toml [vars]). Empty → verification fails closed.
   TURNSTILE_HOSTNAMES?: string;
@@ -180,6 +186,10 @@ export type Bindings = {
   // wrangler.toml vars (URL) + `wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
   DIAL_CONNECT_WEBHOOK_URL?: string;
   DIAL_CONNECT_WEBHOOK_SECRET?: string;
+  // rmpgutahps.us delivery-scheduler → CAD push (piece 1/3). Set via
+  // `wrangler secret put RMPG_FLEX_WEBHOOK_SECRET`. Unset -> 200 not_configured.
+  // See docs/superpowers/specs/2026-09-14-delivery-scheduler-cad-push-design.md
+  RMPG_FLEX_WEBHOOK_SECRET?: string;
   // WebBrowserSessionDO namespace — one instance per active Web Company
   // Browser session (idFromName(sessionId)). Holds a real headless Chrome
   // instance via Browser Rendering and streams screenshot frames to the
@@ -189,6 +199,10 @@ export type Bindings = {
   // puppeteer.launch(). Fetcher is the correct binding type here (same
   // shape as a service binding); puppeteer.launch() accepts it structurally.
   BROWSER: Fetcher;
+  // Pushover app API token (optional — falls back to config_items.pushover_api_key).
+  // Set via `wrangler secret put PUSHOVER_APP_TOKEN`. Per-user delivery keys are
+  // stored in user_settings JSON as pushover_user_key.
+  PUSHOVER_APP_TOKEN?: string;
 };
 
 export type Variables = {

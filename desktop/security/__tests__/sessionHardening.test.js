@@ -11,7 +11,9 @@ test('buildCspHeaderValue: returns a policy scoped to self plus known integratio
   assert.match(policy, /connect-src[^;]*https:\/\/api\.rmpgutah\.us/);
   assert.match(policy, /img-src[^;]*\*\.mapbox\.com/);
   assert.match(policy, /script-src[^;]*\*\.mapbox\.com/);
-  assert.match(policy, /frame-src[^;]*https:\/\/dialer\.rmpgutah\.us/);
+  // Dial Connect is now at rmpgutah.us/dialer (same origin); 'self' covers it.
+  assert.match(policy, /frame-src 'self'/);
+  assert.doesNotMatch(policy, /frame-src[^;]*https:\/\/dialer\.rmpgutah\.us/);
   assert.match(policy, /script-src[^;]*challenges\.cloudflare\.com/);
   assert.doesNotMatch(policy, /static\.cloudflareinsights\.com/);
   assert.doesNotMatch(policy, /connect-src 'none'/);
@@ -50,9 +52,12 @@ test('isPermissionAllowed: allows a known permission from the trusted host', () 
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'media'), true);
 });
 
-test('isPermissionAllowed: allows media from Dial Connect so Twilio Voice works in the embed', () => {
-  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'media'), true);
-  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'geolocation'), false);
+test('isPermissionAllowed: Dial Connect is same-origin (rmpgutah.us/dialer) — media allowed via expectedHost match', () => {
+  // DIALER_HOST is now 'rmpgutah.us' (same as expectedHost); the iframe requests
+  // permissions from rmpgutah.us, which matches expectedHost directly.
+  assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'media'), true);
+  // The old dialer.rmpgutah.us subdomain no longer matches DIALER_HOST.
+  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'media'), false);
 });
 
 test('isPermissionAllowed: rejects a matching permission from an untrusted host', () => {
@@ -131,10 +136,17 @@ test('shouldAllowNewWindow: routes a different http(s) host external', () => {
   assert.deepEqual(shouldAllowNewWindow('https://maps.google.com/?q=1', 'rmpgutah.us'), { action: 'external' });
 });
 
-test('shouldAllowNewWindow: Dial Connect opens in-app so Twilio Voice stays one Client', () => {
+test('shouldAllowNewWindow: Dial Connect is same-origin at rmpgutah.us/dialer — in-app via expectedHost match', () => {
+  // Dial Connect moved from dialer.rmpgutah.us to rmpgutah.us/dialer.
+  // A window to rmpgutah.us matches expectedHost directly, so it opens in-app.
+  assert.deepEqual(
+    shouldAllowNewWindow('https://rmpgutah.us/dialer', 'rmpgutah.us'),
+    { action: 'allow' },
+  );
+  // The old subdomain is no longer a known DIALER_HOST; it routes external.
   assert.deepEqual(
     shouldAllowNewWindow('https://dialer.rmpgutah.us/dialer', 'rmpgutah.us'),
-    { action: 'allow' },
+    { action: 'external' },
   );
 });
 

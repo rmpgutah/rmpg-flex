@@ -1,0 +1,41 @@
+import { describe, test, expect } from 'vitest';
+import { INITIAL, reduce, type SoftphoneSnapshot } from './softphoneMachine';
+
+const at = (s: SoftphoneSnapshot, ...events: Parameters<typeof reduce>[1][]) => events.reduce(reduce, s);
+
+describe('softphone reducer', () => {
+  test('registers and becomes ready', () => {
+    const s = at(INITIAL, { type: 'REGISTERING' }, { type: 'REGISTERED' });
+    expect(s.status).toBe('ready');
+    expect(s.error).toBeNull();
+  });
+
+  test('inbound call: incoming → in_call with caller number and sid', () => {
+    const s = at(INITIAL, { type: 'REGISTERED' }, { type: 'INCOMING', from: '+18015551212', callSid: 'CA1' }, { type: 'ACCEPTED', callSid: 'CA1', connectedAt: 1000 });
+    expect(s).toMatchObject({ status: 'in_call', remoteNumber: '+18015551212', callSid: 'CA1', direction: 'inbound', connectedAt: 1000 });
+  });
+
+  test('outbound call: dialing → in_call; disconnect resets call fields but stays ready', () => {
+    const dialing = at(INITIAL, { type: 'REGISTERED' }, { type: 'DIALING', to: '+18015551212' });
+    expect(dialing).toMatchObject({ status: 'in_call', direction: 'outbound', remoteNumber: '+18015551212', connectedAt: null });
+    const live = reduce(dialing, { type: 'ACCEPTED', callSid: 'CA9', connectedAt: 5 });
+    const held = reduce(reduce(live, { type: 'MUTED', muted: true }), { type: 'HELD', held: true });
+    expect(held).toMatchObject({ muted: true, held: true, callSid: 'CA9' });
+    const done = reduce(held, { type: 'DISCONNECTED' });
+    expect(done).toMatchObject({ status: 'ready', callSid: null, remoteNumber: null, muted: false, held: false, recording: false, connectedAt: null });
+  });
+
+  test('a second incoming call while in_call becomes call_waiting and cancel restores in_call', () => {
+    const live = at(INITIAL, { type: 'REGISTERED' }, { type: 'DIALING', to: '+1' }, { type: 'ACCEPTED', callSid: 'CA1', connectedAt: 1 });
+    const waiting = reduce(live, { type: 'INCOMING', from: '+2', callSid: 'CA2' });
+    expect(waiting).toMatchObject({ status: 'call_waiting', waitingFrom: '+2', callSid: 'CA1' });
+    expect(reduce(waiting, { type: 'WAITING_CANCELLED' })).toMatchObject({ status: 'in_call', waitingFrom: null });
+  });
+
+  test('errors carry the message; unlinked and passive are terminal until reset', () => {
+    expect(reduce(INITIAL, { type: 'ERROR', message: 'AccessTokenInvalid' })).toMatchObject({ status: 'error', error: 'AccessTokenInvalid' });
+    expect(reduce(INITIAL, { type: 'UNLINKED' }).status).toBe('unlinked');
+    expect(reduce(reduce(INITIAL, { type: 'REGISTERED' }), { type: 'PASSIVE' }).status).toBe('passive');
+    expect(reduce(reduce(INITIAL, { type: 'ERROR', message: 'x' }), { type: 'RESET' })).toEqual(INITIAL);
+  });
+});

@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
+import NarrativeAssist from '../components/dispatch/NarrativeAssist';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
@@ -1276,7 +1277,7 @@ export default function CitationsPage() {
                   </div>
                   <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
                 </div>
-                {completeness.missing_required.length > 0 && (
+                {(completeness.missing_required?.length ?? 0) > 0 && (
                   <div className="text-[10px] text-amber-400">Missing: {completeness.missing_required.join(', ')}</div>
                 )}
               </div>
@@ -1924,6 +1925,14 @@ export default function CitationsPage() {
             placeholder="Additional notes or remarks..."
             rows={4}
             className="input-dark w-full py-2 text-xs resize-none min-h-[36px]"
+          />
+          <NarrativeAssist
+            notes={form.notes}
+            incidentType={form.violation_description || 'Citation'}
+            locationAddress={form.location || ''}
+            mode="incident"
+            existingText={form.notes}
+            onAccept={narrative => updateField('notes', narrative)}
           />
         </section>
       </div>

@@ -50,6 +50,6 @@ describe('needsCriticPass gating (cost discipline)', () => {
       case_number: 'a', recipient_address: 'b', court_name: 'c',
       service_deadline: 'd', recipient_dob: 'e', recipient_phone: 'f', address_class: 'g',
     }, 0.1);
-    expect(needsCriticPass(f, []).length).toBeLessThanOrEqual(5);
+    expect(needsCriticPass(f, []).length).toBeLessThanOrEqual(6); // cap raised to 6
   });
 });

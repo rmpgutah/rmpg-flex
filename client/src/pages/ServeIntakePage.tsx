@@ -6,7 +6,7 @@ import { aamvaToServeOverrides } from '../utils/scanIdToRecipient';
 import { useToast } from '../components/ToastProvider';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiPostForm } from '../hooks/useApi';
 import { useNavigate, useSearchParams } from 'react-router';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -182,6 +182,7 @@ const DOCUMENT_TYPES = [
   { value: 'court_filing', label: 'Court Filing / Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
+  { value: 'attempt_sheet', label: 'Attempt Record', color: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
   { value: 'summons', label: 'Summons & Complaint', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
@@ -626,17 +627,22 @@ export default function ServeIntakePage() {
       // 'auto' → the server's Claude-vision engine classifies the image (ID card /
       // license plate / serve document) AND extracts its fields in one call.
       formData.append('docType', docType);
-      const token = localStorage.getItem('rmpg_token');
-      const resp = await fetch('/api/ocr/scan-document', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      if (resp.ok) {
-        return await resp.json();
-      }
-    } catch (err) { console.warn("[ServeIntakePage] operation failed:", err); }
-    return null;
+      // apiPostForm (not raw fetch) so an access token that expired mid-shift
+      // transparently refreshes and retries once instead of 401ing forever —
+      // a raw fetch here silently returned null on every rasterized page of a
+      // scanned PDF, leaving every review field blank with no error shown
+      // (the row still renders a green "extracted" checkmark either way,
+      // since that only reflects rasterization, not OCR, succeeding).
+      // timeoutMs: the server's own OCR pipeline retries across Claude ->
+      // OpenAI -> Workers AI under a 90s total budget (TOTAL_AI_BUDGET_MS in
+      // serveIntakeOcr.ts) before giving up — apiPostForm's 60s default
+      // aborted the client side first, surfacing a false TimeoutError on
+      // every large/slow scan even though the server would've come back.
+      return await apiPostForm<OcrScanResult>('/ocr/scan-document', formData, { timeoutMs: 100_000 });
+    } catch (err) {
+      console.warn("[ServeIntakePage] operation failed:", err);
+      return null;
+    }
   }, []);
 
   // Server-side field extraction for born-digital PDFs. The client already
@@ -650,24 +656,19 @@ export default function ServeIntakePage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('client_text', text);
-      const token = localStorage.getItem('rmpg_token');
-      const resp = await fetch('/api/serve-intake/scan-document', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      if (!resp.ok) {
-        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
-        return;
-      }
-      const scanResult: OcrScanResult = await resp.json();
+      // apiPostForm, not raw fetch — see ocrScanImage above for why: a
+      // mid-shift expired token must transparently refresh, not 401 forever.
+      // timeoutMs: match ocrScanImage's — the server budget is 90s.
+      const scanResult = await apiPostForm<OcrScanResult>('/serve-intake/scan-document', formData, { timeoutMs: 100_000 });
       if (scanResult?.fields) {
         setFiles(prev => prev.map(f =>
           f.file === file ? { ...f, ocrResult: scanResult } : f,
         ));
+      } else {
+        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
       }
     } catch {
-      // Network/timeout failure — still surface it rather than silently
+      // Network/timeout/auth failure — still surface it rather than silently
       // leaving a false-positive "extracted" checkmark (see ocrScanFailed doc).
       setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
     }
@@ -699,6 +700,7 @@ export default function ServeIntakePage() {
       let type = 'info_page';
       let scanned = false;
       let pageCount = 0;
+      let ocrScanFailedForFile = false;
 
       if (isPdf) {
         const extracted = await extractPdfText(file);
@@ -706,7 +708,8 @@ export default function ServeIntakePage() {
         pageCount = extracted.pages;
         const name = file.name.toLowerCase();
         type = name.includes('court') || name.includes('docket') ? 'court_filing'
-          : name.includes('field') ? 'field_sheet'
+          : name.includes('field') && name.includes('sheet') ? 'field_sheet'
+          : /(\d+(st|nd|rd|th)?[\s_-]*attempt|first[\s_-]*attempt|second[\s_-]*attempt|third[\s_-]*attempt|attempt[\s_-]*\d+)/i.test(name) ? 'attempt_sheet'
           : name.includes('affidavit') ? 'affidavit'
           : name.includes('summons') ? 'summons'
           : name.includes('complaint') ? 'complaint'
@@ -714,6 +717,7 @@ export default function ServeIntakePage() {
           : name.includes('eviction') || name.includes('unlawful') ? 'eviction'
           : name.includes('restraining') || name.includes('protective') ? 'restraining_order'
           : name.includes('id') || name.includes('passport') || name.includes('license') ? 'identification'
+          : name.includes('information') || name.includes('info') ? 'info_page'
           : 'info_page';
 
         // Scanned PDF (no usable text layer): rasterize its pages to images
@@ -724,8 +728,10 @@ export default function ServeIntakePage() {
         // gets pre-filled from the scanned content — same path as dropped images.
         if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
           const pages = await rasterizePdf(file);
+          let anyPageOcrSucceeded = false;
           for (let p = 0; p < pages.length; p++) {
             const pageOcr = await ocrScanImage(pages[p], type);
+            if (pageOcr?.fields && Object.keys(pageOcr.fields).length > 0) anyPageOcrSucceeded = true;
             newFiles.push({
               name: pages[p].name,
               type,
@@ -738,8 +744,13 @@ export default function ServeIntakePage() {
           }
           // A scanned PDF that rasterized OK isn't an error — its OCR rides on
           // the derived images. Mark it so the row shows "Scan OCR" + a green
-          // check instead of a misleading ⚠️ "no text" warning.
+          // check instead of a misleading ⚠️ "no text" warning. But rasterizing
+          // is not the same as OCR succeeding — if every page's Vision OCR call
+          // failed (expired token, network, server error), the review panel
+          // silently shows a green check with every field blank and no
+          // indication anything went wrong. Surface that as a real failure.
           scanned = pages.length > 0;
+          if (pages.length > 0 && !anyPageOcrSucceeded) ocrScanFailedForFile = true;
         } else {
           // Born-digital PDF with a text layer: queue for server-side LLM
           // field extraction so the review panel pre-fills with extracted values.
@@ -759,7 +770,9 @@ export default function ServeIntakePage() {
         if (scan) {
           ocrResult = scan;
           type = scan.documentType === 'court_docket' ? 'court_filing'
+            : scan.documentType === 'court_filing' ? 'court_filing'
             : scan.documentType === 'field_sheet' ? 'field_sheet'
+            : scan.documentType === 'attempt_sheet' ? 'attempt_sheet'
             : 'info_page';
           text = scan.rawText || '';
         }
@@ -770,6 +783,7 @@ export default function ServeIntakePage() {
         status: text.length > 50 || ocrResult?.success || scanned ? 'extracted' : 'error',
         scanned,
         ocrResult,
+        ocrScanFailed: ocrScanFailedForFile,
         file,
         size: file.size,
         pages: pageCount || undefined,

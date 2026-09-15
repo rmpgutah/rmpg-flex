@@ -20,19 +20,46 @@ export interface OfacSyncResult {
   error?: string;
 }
 
+// Per-attempt timeout for the full download (connect + body). The consolidated
+// SDN CSV is several MB, so 30s (the original value) covered only the
+// fetch()-resolves-on-headers phase — clearTimeout() ran immediately after
+// fetch() returned, disarming the abort signal BEFORE res.text() read the
+// body, which had no timeout of its own at all. Live failure 2026-09-01:
+// 'The operation was aborted' — the header phase itself hit the 30s wall on
+// a slow month, and the sync has zero rows in ofac_sdn since this feature
+// shipped (only one cron tick has ever fired — this job is monthly). Keep the
+// same AbortController armed across BOTH fetch() and res.text() so a slow
+// body download is also bounded, and retry the whole attempt on failure —
+// there's no cost to trying again since this only runs once a month.
+const FETCH_TIMEOUT_MS = 90_000;
+const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = [2_000, 5_000]; // between attempts 1→2 and 2→3
+
+async function fetchOfacCsvWithRetry(): Promise<string> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(OFAC_CSV_URL, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      clearTimeout(timer);
+      return text;
+    } catch (err) {
+      clearTimeout(timer);
+      lastErr = err;
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 export async function syncOfacSdn(db: D1Database): Promise<OfacSyncResult> {
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 30_000); // 30s timeout
-    const res = await fetch(OFAC_CSV_URL, { signal: ctrl.signal });
-    clearTimeout(timer);
-
-    if (!res.ok) {
-      return { downloaded: false, rowsProcessed: 0, individualsFound: 0, rowsUpserted: 0,
-               error: `HTTP ${res.status}` };
-    }
-
-    const text = await res.text();
+    const text = await fetchOfacCsvWithRetry();
     const lines = text.split('\n');
     if (lines.length < 2) {
       return { downloaded: true, rowsProcessed: 0, individualsFound: 0, rowsUpserted: 0,

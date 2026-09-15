@@ -3350,16 +3350,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // "AWAITING DISPOSITION" rather than "N/A", which read as missing data on
     // a call that simply hasn't been resolved.
     const dispVal = formatEnumValue(data.disposition) || (lifecycle.open ? 'PENDING' : 'N/A');
-    const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
     // Row 1: Responding officer + disposition + cleared timestamp (3-column)
     y = addThreeColumnFields(doc, [
       { label: 'Responding Officer', value: data.responding_officer || (lifecycle.open ? 'UNASSIGNED' : 'N/A') },
       { label: 'Disposition', value: dispVal },
       { label: 'Cleared At', value: fmtTimestamp(data.cleared_at) || (lifecycle.open ? 'PENDING' : '—') },
     ], y);
-    // Row 2: Action taken — full-width (may contain extended narrative)
-    y = addFieldPair(doc, 'Action Taken', actionVal, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  // Action Taken rendered separately with page-break-aware addNarrativeSection so
+  // AI-generated or detailed narratives are never truncated at the bottom of a page.
+  { const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
+    y = addNarrativeSection(doc, 'Action Taken', actionVal, y, data.priority as string | undefined);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -4232,25 +4234,36 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const callRows = data.calls.map((c: any) => [
-      c.call_number || 'N/A',
-      formatEnumValue(c.incident_type),
-      displayStatus(c.status || ''),
-      c.location || 'N/A',
-      fmtDate(c.created_at),
-    ]);
+    const cw = getContentWidth(doc);
+    const callRows = data.calls.map((c: any) => {
+      const pri = (c.priority || '').toString().toUpperCase();
+      const priLabel = pri === '1' || pri === 'P1' || pri === 'EMERGENCY' ? 'P1-EMERGENCY'
+        : pri === '2' || pri === 'P2' || pri === 'HIGH' || pri === 'URGENT' ? 'P2-URGENT'
+        : pri === '3' || pri === 'P3' || pri === 'MEDIUM' ? 'P3-MEDIUM'
+        : pri === '4' || pri === 'P4' || pri === 'LOW' ? 'P4-LOW'
+        : pri || 'N/A';
+      return [
+        c.call_number || 'N/A',
+        formatEnumValue(c.incident_type),
+        priLabel,
+        displayStatus(c.status || ''),
+        c.location || 'N/A',
+        fmtDate(c.created_at),
+      ];
+    });
     y = addTableWithShading(
       doc,
       [
-        { label: 'CALL #', x: lx },
-        { label: 'TYPE', x: lx + 27 },
-        { label: 'STATUS', x: lx + 69 },
-        { label: 'LOCATION', x: lx + 97 },
-        { label: 'DATE', x: lx + 152 },
+        { label: 'CALL #',    x: lx },
+        { label: 'TYPE',      x: lx + cw * 0.14 },
+        { label: 'PRIORITY',  x: lx + cw * 0.38 },
+        { label: 'STATUS',    x: lx + cw * 0.52 },
+        { label: 'LOCATION',  x: lx + cw * 0.64 },
+        { label: 'DATE',      x: lx + cw * 0.85 },
       ],
       callRows,
       y,
-      [lx, lx + 27, lx + 69, lx + 97, lx + 152],
+      [lx, lx + cw * 0.14, lx + cw * 0.38, lx + cw * 0.52, lx + cw * 0.64, lx + cw * 0.85],
       { sectionTitle: 'DISPATCH CALL HISTORY' },
     );
   }
@@ -4411,7 +4424,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Open-Source Intelligence', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
 
-    // Source summary row
+    // Match-tier + per-source summary banner
     if (Array.isArray(data._enrichment.sources)) {
       const sourceSummary = data._enrichment.sources
         .map(s => `${s.source.replace(/_/g, ' ').toUpperCase()} (${s.ok ? `${s.records.length} hit${s.records.length !== 1 ? 's' : ''}` : 'error'})`)
@@ -4430,37 +4443,219 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       }
     }
 
-    // Hit rows grouped by watchlist flags
-    const enrichRows = data._enrichment.records.map((r: any) => {
-      const flags = Array.isArray(r.watchlist_flags) && r.watchlist_flags.length > 0
-        ? r.watchlist_flags.map((f: string) => f.replace(/_/g, ' ').toUpperCase()).join(', ')
-        : '—';
-      const addr = Array.isArray(r.addresses) && r.addresses.length > 0
-        ? [r.addresses[0].street, r.addresses[0].city, r.addresses[0].state].filter(Boolean).join(', ')
-        : '—';
-      return [
-        r.source.replace(/_/g, ' ').toUpperCase(),
-        r.name || '—',
-        r.dob ? fmtDate(r.dob) : '—',
-        flags,
-        addr,
-      ];
-    });
+    // Group records by source and render source-specific tables so each
+    // source shows the columns most relevant to its data rather than a
+    // generic flat table where CourtListener case detail is invisible.
+    const bySource = new Map<string, any[]>();
+    for (const r of data._enrichment.records) {
+      const key = (r.source || 'unknown').toLowerCase();
+      if (!bySource.has(key)) bySource.set(key, []);
+      bySource.get(key)!.push(r);
+    }
 
-    y = addTableWithShading(
-      doc,
-      [
-        { label: 'SOURCE',  x: lx },
-        { label: 'NAME',    x: lx + 30 },
-        { label: 'DOB',     x: lx + 75 },
-        { label: 'FLAGS',   x: lx + 100 },
-        { label: 'ADDRESS', x: lx + 135 },
-      ],
-      enrichRows,
-      y,
-      [lx, lx + 30, lx + 75, lx + 100, lx + 135],
-      { sectionTitle: 'OSINT HITS' },
-    );
+    const osintCw = getContentWidth(doc);
+
+    // Helper: render a labelled sub-header for each source group
+    const renderOsintSubHeader = (label: string) => {
+      y = checkPageBreak(doc, y, 12, prio);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_CAPTION);
+      doc.text(label, lx + 1.5, y + 2);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setFont('helvetica', 'normal');
+      y += 4;
+    };
+
+    const SOURCE_ORDER = [
+      'fbi_wanted', 'open_sanctions', 'ofac', 'nsopw', 'bop_inmates',
+      'courtlistener', 'pdl', 'census_geocoder', 'usa_people_search',
+      'hunter', 'apollo', 'numverify', 'usps', 'open_corporates', 'hibp',
+    ];
+    const orderedSources = [
+      ...SOURCE_ORDER.filter(k => bySource.has(k)),
+      ...[...bySource.keys()].filter(k => !SOURCE_ORDER.includes(k)),
+    ];
+
+    for (const srcKey of orderedSources) {
+      const recs = bySource.get(srcKey)!;
+      y = checkPageBreak(doc, y, 20, prio);
+
+      if (srcKey === 'fbi_wanted') {
+        // FBI Most Wanted — name, DOB, status, aliases, description snippet
+        renderOsintSubHeader(`FBI MOST WANTED  (${recs.length} hit${recs.length !== 1 ? 's' : ''})`);
+        const rows = recs.map((r: any) => {
+          const raw = r.raw || {};
+          const aliases = Array.isArray(raw.aliases) && raw.aliases.length
+            ? raw.aliases.slice(0, 3).join(', ')
+            : '—';
+          const desc = typeof raw.description === 'string' && raw.description.trim()
+            ? raw.description.trim().slice(0, 80) + (raw.description.length > 80 ? '…' : '')
+            : '—';
+          const status = raw.status ? String(raw.status).toUpperCase() : 'WANTED';
+          return [r.name || '—', r.dob ? fmtDate(r.dob) : '—', status, aliases, desc];
+        });
+        y = addTableWithShading(doc,
+          [
+            { label: 'NAME',        x: lx },
+            { label: 'DOB',         x: lx + osintCw * 0.22 },
+            { label: 'STATUS',      x: lx + osintCw * 0.34 },
+            { label: 'ALIASES',     x: lx + osintCw * 0.46 },
+            { label: 'DESCRIPTION', x: lx + osintCw * 0.62 },
+          ],
+          rows, y,
+          [lx, lx + osintCw * 0.22, lx + osintCw * 0.34, lx + osintCw * 0.46, lx + osintCw * 0.62],
+          { sectionTitle: 'FBI WANTED' });
+
+      } else if (srcKey === 'courtlistener') {
+        // CourtListener — federal court dockets; show case details not person info
+        const criminal = recs.filter((r: any) => Array.isArray(r.watchlist_flags) && r.watchlist_flags.includes('federal_criminal_docket'));
+        const civil = recs.filter((r: any) => !criminal.includes(r));
+
+        if (criminal.length > 0) {
+          renderOsintSubHeader(`FEDERAL CRIMINAL DOCKET  (${criminal.length} case${criminal.length !== 1 ? 's' : ''})`);
+          const rows = criminal.map((r: any) => {
+            const raw = r.raw || {};
+            return [
+              raw.case_name || r.name || '—',
+              raw.docket_number || '—',
+              raw.court || '—',
+              raw.date_filed ? fmtDate(raw.date_filed) : '—',
+            ];
+          });
+          y = addTableWithShading(doc,
+            [
+              { label: 'CASE NAME',     x: lx },
+              { label: 'DOCKET #',      x: lx + osintCw * 0.42 },
+              { label: 'COURT',         x: lx + osintCw * 0.60 },
+              { label: 'DATE FILED',    x: lx + osintCw * 0.83 },
+            ],
+            rows, y,
+            [lx, lx + osintCw * 0.42, lx + osintCw * 0.60, lx + osintCw * 0.83],
+            { sectionTitle: 'FEDERAL CRIMINAL DOCKET' });
+        }
+
+        if (civil.length > 0) {
+          renderOsintSubHeader(`COURT RECORD — CIVIL/OTHER  (${civil.length} case${civil.length !== 1 ? 's' : ''})`);
+          const rows = civil.map((r: any) => {
+            const raw = r.raw || {};
+            return [
+              raw.case_name || r.name || '—',
+              raw.docket_number || '—',
+              raw.court || '—',
+              raw.date_filed ? fmtDate(raw.date_filed) : '—',
+            ];
+          });
+          y = addTableWithShading(doc,
+            [
+              { label: 'CASE NAME',   x: lx },
+              { label: 'DOCKET #',    x: lx + osintCw * 0.42 },
+              { label: 'COURT',       x: lx + osintCw * 0.60 },
+              { label: 'DATE FILED',  x: lx + osintCw * 0.83 },
+            ],
+            rows, y,
+            [lx, lx + osintCw * 0.42, lx + osintCw * 0.60, lx + osintCw * 0.83],
+            { sectionTitle: 'COURT RECORD' });
+        }
+
+      } else if (srcKey === 'open_sanctions' || srcKey === 'ofac') {
+        // Sanctions / OFAC — name, DOB, program, topics
+        renderOsintSubHeader(`${srcKey === 'ofac' ? 'OFAC' : 'OPEN SANCTIONS'}  (${recs.length} hit${recs.length !== 1 ? 's' : ''})`);
+        const rows = recs.map((r: any) => {
+          const raw = r.raw || {};
+          const flags = Array.isArray(r.watchlist_flags) && r.watchlist_flags.length
+            ? r.watchlist_flags.map((f: string) => f.replace(/_/g, ' ').toUpperCase()).join(', ')
+            : '—';
+          const program = raw.program || raw.schema || raw.topics?.[0] || '—';
+          return [r.name || '—', r.dob ? fmtDate(r.dob) : '—', flags, String(program).toUpperCase()];
+        });
+        y = addTableWithShading(doc,
+          [
+            { label: 'NAME',    x: lx },
+            { label: 'DOB',     x: lx + osintCw * 0.30 },
+            { label: 'FLAGS',   x: lx + osintCw * 0.46 },
+            { label: 'PROGRAM', x: lx + osintCw * 0.70 },
+          ],
+          rows, y,
+          [lx, lx + osintCw * 0.30, lx + osintCw * 0.46, lx + osintCw * 0.70],
+          { sectionTitle: 'SANCTIONS' });
+
+      } else if (srcKey === 'nsopw') {
+        // Sex offender registry — state + registration tier
+        renderOsintSubHeader(`NSOPW SEX OFFENDER REGISTRY  (${recs.length} hit${recs.length !== 1 ? 's' : ''})`);
+        const rows = recs.map((r: any) => {
+          const raw = r.raw || {};
+          const regState = raw.registration_state || raw.state || '—';
+          const tier = raw.tier || raw.classification || raw.level || '—';
+          const addr = Array.isArray(r.addresses) && r.addresses.length
+            ? [r.addresses[0].city, r.addresses[0].state].filter(Boolean).join(', ')
+            : '—';
+          return [r.name || '—', r.dob ? fmtDate(r.dob) : '—', String(regState).toUpperCase(), String(tier).toUpperCase(), addr];
+        });
+        y = addTableWithShading(doc,
+          [
+            { label: 'NAME',          x: lx },
+            { label: 'DOB',           x: lx + osintCw * 0.25 },
+            { label: 'REG. STATE',    x: lx + osintCw * 0.40 },
+            { label: 'TIER',          x: lx + osintCw * 0.55 },
+            { label: 'CITY / STATE',  x: lx + osintCw * 0.67 },
+          ],
+          rows, y,
+          [lx, lx + osintCw * 0.25, lx + osintCw * 0.40, lx + osintCw * 0.55, lx + osintCw * 0.67],
+          { sectionTitle: 'NSOPW' });
+
+      } else if (srcKey === 'bop_inmates' || srcKey === 'bop') {
+        // Bureau of Prisons inmate locator
+        renderOsintSubHeader(`BOP INMATE LOCATOR  (${recs.length} hit${recs.length !== 1 ? 's' : ''})`);
+        const rows = recs.map((r: any) => {
+          const raw = r.raw || {};
+          const race = raw.race || raw.ethnicity || '—';
+          const release = raw.release_date || raw.projected_release || '—';
+          const facility = raw.facility || raw.institution || '—';
+          const reg = raw.register_number || raw.inmate_number || '—';
+          return [r.name || '—', r.dob ? fmtDate(r.dob) : '—', String(race).toUpperCase(), reg, release ? fmtDate(String(release)) : '—', String(facility)];
+        });
+        y = addTableWithShading(doc,
+          [
+            { label: 'NAME',     x: lx },
+            { label: 'DOB',      x: lx + osintCw * 0.22 },
+            { label: 'RACE',     x: lx + osintCw * 0.36 },
+            { label: 'REG #',    x: lx + osintCw * 0.47 },
+            { label: 'RELEASE',  x: lx + osintCw * 0.60 },
+            { label: 'FACILITY', x: lx + osintCw * 0.73 },
+          ],
+          rows, y,
+          [lx, lx + osintCw * 0.22, lx + osintCw * 0.36, lx + osintCw * 0.47, lx + osintCw * 0.60, lx + osintCw * 0.73],
+          { sectionTitle: 'BOP INMATES' });
+
+      } else {
+        // Generic fallback: name, DOB, flags, address — used for PDL, Census
+        // Geocoder, People Search, Hunter, Apollo, HIBP, and any future sources
+        const srcLabel = srcKey.replace(/_/g, ' ').toUpperCase();
+        renderOsintSubHeader(`${srcLabel}  (${recs.length} hit${recs.length !== 1 ? 's' : ''})`);
+        const rows = recs.map((r: any) => {
+          const flags = Array.isArray(r.watchlist_flags) && r.watchlist_flags.length
+            ? r.watchlist_flags.map((f: string) => f.replace(/_/g, ' ').toUpperCase()).join(', ')
+            : '—';
+          const addr = Array.isArray(r.addresses) && r.addresses.length
+            ? [r.addresses[0].street, r.addresses[0].city, r.addresses[0].state].filter(Boolean).join(', ')
+            : '—';
+          const phones = Array.isArray(r.phones) && r.phones.length ? r.phones.slice(0, 2).join(', ') : '—';
+          return [r.name || '—', r.dob ? fmtDate(r.dob) : '—', flags, addr, phones];
+        });
+        y = addTableWithShading(doc,
+          [
+            { label: 'NAME',    x: lx },
+            { label: 'DOB',     x: lx + osintCw * 0.24 },
+            { label: 'FLAGS',   x: lx + osintCw * 0.38 },
+            { label: 'ADDRESS', x: lx + osintCw * 0.56 },
+            { label: 'PHONE',   x: lx + osintCw * 0.82 },
+          ],
+          rows, y,
+          [lx, lx + osintCw * 0.24, lx + osintCw * 0.38, lx + osintCw * 0.56, lx + osintCw * 0.82],
+          { sectionTitle: 'OSINT HITS' });
+      }
+    }
 
     if (data._enrichment.searched_at) {
       doc.setFont('helvetica', 'italic');

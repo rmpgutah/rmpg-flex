@@ -104,6 +104,16 @@ function safe(s: string | null | undefined): string {
     .replace(/™/g, 'TM')            // trademark → TM
     .replace(/®/g, '(R)')           // registered → (R)
     .replace(/©/g, '(C)')           // copyright → (C)
+    // Officer-entered free text (notes/description/action_taken) can contain
+    // literal newlines/tabs from a multi-line field — every drawText() call
+    // here renders a single line, and WinAnsiEncoding's map doesn't cover C0
+    // control codes at all (confirmed live: 'WinAnsi cannot encode "\n"
+    // (0x000a)'), so these are in-range for the catch-all below but still
+    // throw. Turn line/tab breaks into a space (matches how detailLine/
+    // detailText already join fields with '  |  ') before that catch-all,
+    // then strip any other remaining control character outright.
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\x00-\x1F\x7F]/g, '')
     // Drop everything else that's outside the WinAnsi range
     .replace(/[^\x00-\xFF]/g, '?');
 }

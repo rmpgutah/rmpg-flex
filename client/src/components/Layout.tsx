@@ -115,7 +115,7 @@ import PanicButton from './PanicButton';
 // it renders behind a boolean. Layout wraps every authenticated route, so a
 // static import here landed both in the entry chunk on every cold load.
 const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
-const DialerPanel = lazyRetry(() => import('./DialerPanel'));
+import DialerMount from '../dialer/DialerMount';
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
@@ -1016,6 +1016,7 @@ export default function Layout() {
   }
 
   return (
+    <DialerMount>
     <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
@@ -1896,14 +1897,7 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
-      {/* Dialer — always-on /dialer iframe (authenticated Twilio Client).
-          Dispatch → Dialer Connect docks it into the CAD page. Close (X) parks
-          the iframe off-screen so Twilio stays registered. Pop-out unloads
-          the iframe and opens a named Dial Connect window. */}
-      <React.Suspense fallback={null}>
-        <DialerPanel />
-      </React.Suspense>
-
     </div>
+    </DialerMount>
   );
 }

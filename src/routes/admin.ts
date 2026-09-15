@@ -12,6 +12,7 @@ import { log } from '../utils/logger';
 import { recordAudit } from '../utils/auditLog';
 import { parseUserAgentLabel } from '../utils/userAgent';
 import { getUserGraphToken } from '../utils/userGraphTokens';
+import { broadcastAll } from './ws';
 const admin = new Hono<Env>();
 
 // Admin mutations are reachable by any authenticated user once authMiddleware
@@ -2309,6 +2310,16 @@ admin.delete('/system/lockdown', async (c) => {
     return c.json({ success: true, lockdown: false, enabled: false });
   } catch (err) {
     log.error('DELETE /system/lockdown failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
+});
+
+// ── Remote force-update push ──────────────────────────────────
+admin.post('/force-update', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
+  const actor = c.get('user') as { id: number; username: string };
+  const delivered = broadcastAll('force_update', { version: 'latest', triggeredBy: actor.username });
+  log.info('Force-update broadcast sent', { deliveredTo: delivered, triggeredBy: actor.username, src: 'src/routes/admin.ts' });
+  return c.json({ success: true, delivered });
 });
 
 // ── Auth recovery ───────────────────────────────────────────

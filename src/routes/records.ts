@@ -1043,6 +1043,33 @@ records.post('/persons/:id/unarchive', async (c) => {
   }
 });
 
+// DELETE /records/persons/:id/flags/:flag — remove a single string entry from persons.flags.
+// Used by the UI to clear provenance tags (dl_ocr_imported, aos_id_capture) and any
+// plain-string flag the operator wants to retract.
+records.delete('/persons/:id/flags/:flag', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const flagToRemove = c.req.param('flag');
+    const person = await queryFirst<{ id: number; flags: string }>(db, 'SELECT id, flags FROM persons WHERE id = ?', id);
+    if (!person) return c.json({ error: 'Person not found' }, 404);
+
+    const flags = (() => {
+      try { const p = JSON.parse(person.flags || '[]'); return Array.isArray(p) ? p : []; } catch { return []; }
+    })();
+    const filtered = flags.filter((f: unknown) =>
+      typeof f === 'string' ? f !== flagToRemove : (f as { type?: string }).type !== flagToRemove
+    );
+    if (filtered.length === flags.length) return c.json({ message: 'Flag not found' }, 404);
+
+    await execute(db, 'UPDATE persons SET flags = ? WHERE id = ?', JSON.stringify(filtered), id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /records/persons/:id/flags/:flag failed:', err);
+    return dbErrorResponse(c, err, 'Failed to remove flag');
+  }
+});
+
 // ── Persons sub-resource endpoints ──
 
 // GET /records/persons/:id/system-history — warrants, incidents, calls, citations for a person.
@@ -2076,6 +2103,37 @@ records.post('/evidence/:id/checkin', async (c) => {
     );
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
+});
+
+// PUT /records/evidence/bulk-disposition — batch disposition update
+records.put('/evidence/bulk-disposition', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids: number[]; disposition: string }>();
+    const ids = (body.ids ?? []).map(Number).filter(Number.isFinite).filter(n => n > 0).slice(0, 200);
+    if (ids.length === 0) return c.json({ error: 'ids required', code: 'NO_IDS' }, 400);
+    const VALID_DISPOSITIONS = ['destroy', 'forfeit', 'auction', 'return_to_owner', 'pending'];
+    const disposition = String(body.disposition ?? '');
+    if (!VALID_DISPOSITIONS.includes(disposition)) return c.json({ error: 'Invalid disposition', code: 'INVALID_DISPOSITION' }, 400);
+    const newStatus = disposition === 'pending' ? 'pending_disposition'
+      : ['destroy', 'forfeit', 'auction'].includes(disposition) ? 'disposed'
+      : disposition === 'return_to_owner' ? 'released'
+      : 'pending_disposition';
+    const CHUNK = 90;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const ph = chunk.map(() => '?').join(',');
+      await execute(db,
+        `UPDATE evidence SET disposition = ?, status = ?,
+          disposal_date = CASE WHEN ? != 'pending' THEN date('now') ELSE NULL END,
+          updated_at = datetime('now') WHERE id IN (${ph})`,
+        disposition, newStatus, disposition, ...chunk,
+      );
+    }
+    return c.json({ success: true, affected: ids.length });
   } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 

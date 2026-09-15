@@ -105,9 +105,9 @@ export default function DownloadsPage() {
   const [showAllChangelog, setShowAllChangelog] = useState(false);
   const [activeTab, setActiveTab] = useState<Platform>(recommended);
   const [searchParams, setSearchParams] = useSearchParams();
-  // Dial Connect's icon is hosted on a separate domain (dialer.rmpgutah.us) and
-  // depends on a concurrently-shipping PWA deploy, so it may 404 — fall back to
-  // a bundled lucide icon rather than showing a broken-image glyph.
+  // Dial Connect's icon is now at rmpgutah.us/dialer/icons/icon-192.png
+  // (same origin) but may 404 during a deploy window — fall back to a bundled
+  // lucide icon rather than showing a broken-image glyph.
   const [dialConnectIconFailed, setDialConnectIconFailed] = useState(false);
 
   // Refs used by the N shortcut to programmatically click the active download link.
@@ -461,7 +461,7 @@ export default function DownloadsPage() {
               </div>
             ) : (
               <img
-                src="https://dialer.rmpgutah.us/icons/icon-192.png"
+                src="https://rmpgutah.us/dialer/icons/icon-192.png"
                 alt="Dial Connect"
                 className="w-10 h-10 rounded-full"
                 style={{ objectFit: 'contain' }}
@@ -476,7 +476,7 @@ export default function DownloadsPage() {
             </div>
           </div>
           <a
-            href="https://dialer.rmpgutah.us"
+            href="https://rmpgutah.us/dialer"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap"

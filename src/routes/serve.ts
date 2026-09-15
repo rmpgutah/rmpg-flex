@@ -44,7 +44,7 @@ import { Hono, type Context } from 'hono';
 import { log } from '../utils/logger';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists, queryInChunks, executeInChunks, chunkBindings, executeBatch } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { requireOnDutyForServe, linkServeAttemptToShift } from '../utils/corporateWorkflows';
@@ -392,7 +392,10 @@ sv.get('/active-routes', async (c) => {
     .format(new Date());
   const [routes, jobs] = await Promise.all([
     query(db, 'SELECT * FROM serve_routes WHERE route_date = ? ORDER BY id DESC LIMIT 50', today),
-    query(db, `SELECT * FROM serve_queue
+    query(db, `SELECT id, status, priority, officer_id, recipient_address, recipient_city,
+                      recipient_state, recipient_lat, recipient_lng, case_number,
+                      document_type, deadline, attempt_count, sort_order, created_at
+               FROM serve_queue
                WHERE status NOT IN ('served','cancelled','failed')
                ORDER BY sort_order, id DESC LIMIT 200`),
   ]);
@@ -512,6 +515,9 @@ sv.put('/reorder', async (c) => {
     .catch(() => ({} as { items?: { id: number; sort_order: number }[] }));
   if (!Array.isArray(body.items) || !body.items.length) {
     return c.json({ error: 'items array required' }, 400);
+  }
+  if (body.items.length > 500) {
+    return c.json({ error: 'Too many items — max 500 per request' }, 400);
   }
   const db = getDb(c.env);
   // D1 doesn't support transactions across multiple .run() calls in
@@ -718,11 +724,28 @@ sv.get('/schedule-analytics', async (c) => {
 sv.get('/export/csv', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
+
+  const rawFrom = c.req.query('from');
+  const rawTo   = c.req.query('to');
+  const status  = c.req.query('status') ?? null;
+
+  // Default window: last 90 days. Caller may widen/narrow via ?from=&to= (ISO date).
+  const defaultFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(rawFrom ?? '') ? rawFrom! : defaultFrom;
+  const to   = /^\d{4}-\d{2}-\d{2}$/.test(rawTo   ?? '') ? rawTo!   : new Date().toISOString().slice(0, 10);
+
+  const bindings: unknown[] = [from, to];
+  const statusClause = status ? ' AND status = ?' : '';
+  if (status) bindings.push(status);
+
   const rows = await query<any>(
     getDb(c.env),
     `SELECT id, status, priority, recipient_name, recipient_address, recipient_city,
             recipient_state, document_type, case_number, deadline, attempt_count, officer_id, created_at
-       FROM serve_queue ORDER BY id DESC LIMIT 10000`,
+       FROM serve_queue
+      WHERE date(created_at) BETWEEN ? AND ?${statusClause}
+      ORDER BY id DESC LIMIT 10000`,
+    ...bindings,
   );
   const headers = ['id', 'status', 'priority', 'recipient_name', 'recipient_address',
     'recipient_city', 'recipient_state', 'document_type', 'case_number', 'deadline',
@@ -810,17 +833,21 @@ sv.post('/assignments/assign', async (c) => {
 
   const assigned: number[] = [];
   const skipped: number[] = [];
+  const batchStmts: ReturnType<D1Database['prepare']>[] = [];
   for (const id of jobIds) {
     const job = await queryFirst<any>(db, 'SELECT id, status, officer_id FROM serve_queue WHERE id = ?', id);
     if (!job) { skipped.push(id); continue; }
     if (['served', 'cancelled', 'failed'].includes(job.status)) { skipped.push(id); continue; }
     const newStatus = officerId == null ? 'pending' : (job.status === 'pending' ? 'assigned' : job.status);
-    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?", officerId, newStatus, id);
-    await execute(db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`,
-      user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null }));
+    batchStmts.push(
+      db.prepare("UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(officerId, newStatus, id),
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`)
+        .bind(user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null })),
+    );
     assigned.push(id);
   }
+  if (batchStmts.length > 0) await db.batch(batchStmts);
   return c.json({ success: true, assigned, skipped });
 });
 
@@ -1290,20 +1317,17 @@ sv.put('/bulk-status', async (c) => {
   const closedAt = (status === 'served' || status === 'failed')
     ? `datetime('now')`
     : 'NULL';
-  // D1 doesn't support array bindings — use a parameterized IN clause, chunked
-  // under the 100-bound-parameter cap. `ids` comes straight from the request
-  // body (ServeBulkActions' "select all" sends the whole visible folder), and
-  // `status` is bound ahead of the list, so it must be reserved out of the
-  // budget or a 100-id batch would land at 101 parameters and throw at bind
-  // time. NOTE: chunked writes are not atomic — a mid-batch failure leaves
-  // earlier chunks committed, which is the same best-effort posture the
-  // billing call below already assumes.
-  await executeInChunks(
+  // D1 doesn't support array bindings — chunk under the 100-bound-parameter
+  // cap (1 leading binding for `status` reserved). All chunks are passed to
+  // db.batch() so the entire update is atomic: either every row moves to the
+  // new status or none do.
+  const chunks = chunkBindings(ids, 1 /* leading `status` binding */);
+  await executeBatch(
     db,
-    ids,
-    (placeholders) => `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
-     WHERE id IN (${placeholders})`,
-    [status],
+    chunks.map((chunk) => ({
+      sql: `UPDATE serve_queue SET status = ?, closed_at = ${closedAt} WHERE id IN (${chunk.map(() => '?').join(',')})`,
+      bindings: [status, ...chunk],
+    })),
   );
 
   // Bill served jobs — every other path to status='served' (single-attempt
@@ -1771,7 +1795,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
       return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
     }
   }
-  const attemptOfficerId = user?.role === 'officer' ? user.id : (body.officer_id ?? user?.id ?? null);
+  const rawBodyOfficerId = body.officer_id != null ? parseInt(body.officer_id, 10) : null;
+  if (user?.role !== 'officer' && rawBodyOfficerId != null) {
+    if (!Number.isFinite(rawBodyOfficerId) || rawBodyOfficerId < 1) {
+      return c.json({ error: 'Invalid officer_id' }, 400);
+    }
+    const validOfficer = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", rawBodyOfficerId,
+    );
+    if (!validOfficer) return c.json({ error: 'officer_id is not a valid user' }, 400);
+  }
+  const attemptOfficerId = user?.role === 'officer' ? user.id : (rawBodyOfficerId ?? user?.id ?? null);
 
   // Duplicate-attempt guard — prevent double-tap on mobile or offline-queue
   // replays from writing two identical rows. Same officer, same job, within
@@ -2172,21 +2206,59 @@ sv.post('/:id/substitute-service', async (c) => {
   if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number; role?: string } | undefined;
   const db = getDb(c.env);
-  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; call_id: number | null; officer_id: number | null }>(
-    db, 'SELECT attempt_count, max_attempts, call_id, officer_id FROM serve_queue WHERE id = ?', id,
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string; call_id: number | null; officer_id: number | null }>(
+    db, 'SELECT attempt_count, max_attempts, status, call_id, officer_id FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
   if (user?.role === 'officer' && queue.officer_id != null && queue.officer_id !== user.id) {
     return c.json({ error: 'Not assigned to this job' }, 403);
   }
   const nextNum = (queue.attempt_count ?? 0) + 1;
-  const officerForAttempt = user?.id ?? body.officer_id ?? null;
+  const rawSubOfficerId = body.officer_id != null ? parseInt(body.officer_id, 10) : null;
+  if (rawSubOfficerId != null && (!Number.isFinite(rawSubOfficerId) || rawSubOfficerId < 1)) {
+    return c.json({ error: 'Invalid officer_id' }, 400);
+  }
+  if (rawSubOfficerId != null) {
+    const validOfficer = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", rawSubOfficerId,
+    );
+    if (!validOfficer) return c.json({ error: 'officer_id is not a valid user' }, 400);
+  }
+  const officerForAttempt = user?.id ?? rawSubOfficerId ?? null;
   if (user?.role === 'officer' && officerForAttempt) {
     const duty = await requireOnDutyForServe(db, Number(officerForAttempt));
     if (!duty.on_duty) {
       return c.json({ error: 'Clock in before logging a serve attempt', code: 'NOT_ON_DUTY' }, 409);
     }
   }
+
+  // Reject if the job is already closed — substitute-service fires billing and
+  // notifications, so a double-submit would double-charge and double-notify.
+  if (queue.status === 'served' || queue.status === 'failed' || queue.status === 'cancelled') {
+    return c.json({ error: 'This job is already closed', code: 'ALREADY_CLOSED' }, 409);
+  }
+
+  // Duplicate-attempt guard — mirrors logAttempt's 120-second window so a
+  // mobile double-tap or an offline-queue replay cannot insert two rows.
+  if (officerForAttempt != null) {
+    const recentAttempt = await queryFirst<{ id: number }>(
+      db,
+      `SELECT id FROM serve_attempts
+       WHERE serve_queue_id = ? AND officer_id = ?
+         AND attempt_at > datetime('now', '-120 seconds')
+       ORDER BY attempt_at DESC LIMIT 1`,
+      id, Number(officerForAttempt),
+    );
+    if (recentAttempt) {
+      log.warn('Duplicate substitute-service attempt blocked', { queueId: id, officerId: officerForAttempt, existingAttemptId: recentAttempt.id });
+      return c.json({
+        error: 'A recent attempt was already logged for this job. Wait 2 minutes before logging another.',
+        code: 'DUPLICATE_ATTEMPT',
+        existing_attempt_id: recentAttempt.id,
+      }, 409);
+    }
+  }
+
   // No `status` column on live serve_attempts (see logAttempt note above).
   const ins = await execute(
     db,
@@ -2279,7 +2351,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
 
   if ('attempt_at' in body && body.attempt_at !== undefined) {
     sets.push('attempt_at = ?');
-    args.push(body.attempt_at || null);
+    args.push(deviceAttemptAt(body.attempt_at));
   }
   if ('attempt_type' in body && body.attempt_type !== undefined) {
     sets.push('attempt_type = ?');
@@ -2667,6 +2739,12 @@ sv.patch('/bulk-assign', async (c) => {
   if (!body?.ids?.length) return c.json({ error: 'ids required' }, 400);
   const officerId = body.officer_id ?? null;
   const db = getDb(c.env);
+  if (officerId != null) {
+    const validOfficer = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", officerId,
+    );
+    if (!validOfficer) return c.json({ error: 'officer_id is not an assignable user' }, 400);
+  }
   const updated = await executeInChunks(
     db,
     body.ids,
@@ -2695,7 +2773,7 @@ sv.get('/:id/comments', async (c) => {
 
 // [5b] POST /:id/comments — add a comment to a job's thread
 sv.post('/:id/comments', async (c) => {
-  const denied = requireRole(c, ...READ);
+  const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid id' }, 400);
@@ -2923,7 +3001,7 @@ sv.get('/:id/chain-of-custody', async (c) => {
     officer_id: number | null; assigned_at: string | null;
     updated_at: string | null;
   }>(db, `SELECT id, created_at, created_by, status, closed_at,
-             recipient_name, case_number, officer_id, assigned_at, updated_at
+             recipient_name, case_number, officer_id, NULL AS assigned_at, updated_at
           FROM serve_queue WHERE id = ?`, id);
   if (!job) return c.json({ error: 'Not found' }, 404);
 

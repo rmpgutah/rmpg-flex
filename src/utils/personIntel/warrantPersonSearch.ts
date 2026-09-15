@@ -155,13 +155,24 @@ export async function runWarrantPersonIntel(
     q.firstName, q.lastName, `${q.firstName} ${q.lastName}`.trim(),
   ).catch(() => []);
 
-  const courtRecords = await query<{ case_number: string; court_name: string; charge: string; filing_date: string | null }>(
+  const courtCacheRows = await query<{ results: string | null }>(
     db,
-    `SELECT case_number, court_name, charge, filing_date FROM court_records_cache
+    `SELECT results FROM court_records_cache
       WHERE UPPER(TRIM(COALESCE(first_name,''))) = UPPER(?) AND UPPER(TRIM(COALESCE(last_name,''))) = UPPER(?)
       LIMIT 20`,
     q.firstName, q.lastName,
-  ).catch(() => []);
+  ).catch(() => [] as { results: string | null }[]);
+  const courtRecords = courtCacheRows.flatMap(row => {
+    try {
+      const parsed = JSON.parse(row.results ?? '[]') as Array<{ docket_number?: string; case_name?: string; court?: string; date_filed?: string }>;
+      return parsed.map(r => ({
+        case_number: r.docket_number ?? '',
+        court_name: r.court ?? '',
+        charge: r.case_name ?? '',
+        filing_date: r.date_filed ?? null,
+      }));
+    } catch { return []; }
+  });
 
   const cards: PersonIntelCard[] = [];
 

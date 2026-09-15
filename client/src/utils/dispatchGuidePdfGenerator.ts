@@ -31,15 +31,22 @@ const PAGE = { W: 612, H: 792, MARGIN: 54 }; // US Letter @ 72dpi, 0.75" margins
 const LINE_H = 14;
 const SECTION_GAP = 18;
 
+// Blue & Silver theme, ported to literal hex for jsPDF (which cannot resolve
+// CSS vars — see CLAUDE.md's PDF-generator hex-audit exemption). Values are
+// pulled straight from client/src/styles/theme-palettes.css's
+// `html.theme-blue-silver` block + the `--accent-gold-300` text-role token,
+// so the printed guide reads as the same brand as the live console rather
+// than the 2026-05-30 "neutralized greys" pass this replaces.
 const COLOR = {
-  BLACK:    '#000000',
-  INK:      '#1a1a1a',
-  MUTED:    '#666666',
-  ACCENT:   '#555555',   // neutralized 2026-05-30 (was gold)
-  SURFACE:  '#f4f4f4',
-  RULE:     '#cccccc',
-  RED:      '#666666',   // neutralized 2026-05-30 (was #666666 red)
-  GREEN:    '#888888',   // neutralized 2026-05-30 (was #777777 green)
+  BLACK:    '#0b1826',   // --surface-base (deep navy) — used as "ink" on light panels
+  INK:      '#0b1826',
+  MUTED:    '#7c8ba1',   // silver-toned secondary text
+  ACCENT:   '#b8c4d1',   // --accent-silver-300 — structural chrome / borders / primary accent
+  SURFACE:  '#eef1f5',   // pale silver page surface
+  RULE:     '#c3ccd6',   // --accent-silver-400-ish rule color
+  GOLD:     '#d9bd72',   // --accent-gold-300 — TEXT role only (field labels / headers); never for chrome
+  RED:      '#c0392b',   // --sev-critical — critical/safety severity only
+  GREEN:    '#2f9e5b',   // ok/normal severity
 };
 
 // ─── Types ──────────────────────────────────────────────────
@@ -669,6 +676,10 @@ function section2(ctx: GuideContext): void {
   h2(ctx, 'Step 1 — Create the call');
   paragraph(ctx,
     'The clock starts when the phone rings. Your first obligation is life safety — get enough information to send help quickly, then refine as the caller talks. Do not wait for a complete picture before opening the call record.',
+  );
+
+  paragraph(ctx,
+    'Phone calls come in through Dial Connect, the softphone panel docked in the console (not a separate app — it lives at rmpgutah.us/dialer and is embedded directly). You do not need to do anything to archive the call: Dial Connect reports every status change (ringing, answered, missed, completed) and the recording is automatically mirrored into RMPG Flex\'s own encrypted storage — you will see an "Archived" chip on the call history entry once the copy lands, or "Copy pending" if it is still in flight. If a call shows in history with no number and no duration, that is the exact defect this mirroring was built to prevent — flag it rather than assuming it is normal.',
   );
   bullet(ctx, 'Press F2 or click "New Call" in the call list. The intake form opens with your cursor already in the incident-type field.');
   bullet(ctx, 'Type the incident type. Autocomplete surfaces matching types as you type — "dom" shows "Domestic Disturbance", "Domestic Violence", "Domestic Medical"; "sus" shows "Suspicious Person", "Suspicious Vehicle", "Suspicious Circumstances". Tab to accept a suggestion.');
@@ -1523,6 +1534,13 @@ function section8(ctx: GuideContext): void {
   bullet(ctx, 'If plate returns warrants or prior officer-safety caution, notify officer BEFORE they approach the vehicle.');
   bullet(ctx, 'Start the traffic-stop timer — officers should update status every 5-10 minutes during a stop.');
   bullet(ctx, 'If officer does not update in 10 minutes, radio check.');
+  bullet(ctx, 'If the officer wants every plate in frame checked rather than just the stopped vehicle, they can use "Scan vehicles" from the field camera on their phone/MDT — see "Vehicle capture (ALPR)" below.');
+
+  h3(ctx, 'Vehicle capture (ALPR)');
+  bullet(ctx, 'Officers trigger ALPR captures themselves from the field, not dispatch — via "Scan vehicles" mode in the field camera (attached to a call) or the standalone Plate Log scanner. Dispatch does not need to initiate anything.');
+  bullet(ctx, 'A capture taken with a call/incident attached auto-files the photo to that call\'s gallery and links every vehicle detected in the frame to the call (role "observed") — you will see it appear without anyone typing QT.');
+  bullet(ctx, 'A stolen-vehicle or watchlist hit on a capture fires the same critical-hit notification as any other plate check — treat it exactly like a QT hit: notify the officer before they approach if they have not already backed off.');
+  bullet(ctx, 'If an officer reports "Scan vehicles" isn\'t returning results, that\'s most likely the integration being unconfigured (returns a friendly "not configured" response) rather than a bad capture — escalate to admin, not a re-scan loop.');
 
   h3(ctx, 'Welfare check');
   bullet(ctx, 'Intake: who is being checked, why the concern, where, any medical / mental-health history.');
@@ -1856,7 +1874,7 @@ function section12(ctx: GuideContext): void {
   drawMapLayerStackDiagram(ctx);
 
   h2(ctx, 'Map Layers');
-  bullet(ctx, 'Base map — dark CartoDB (Spillman-style) by default. Switch to Google Satellite for aerial imagery when searching outdoors.');
+  bullet(ctx, 'Base map — a fixed dark-navy Mapbox GL basemap (gold arterial lines, silver minor roads) that does NOT follow the app\'s day/night theme, by design — Map, dashcam/body-cam HUDs, MDT, and turn-by-turn Nav stay dark always so a bright map never blinds a driver at night. Toggle satellite imagery from the layer selector when searching outdoors.');
   bullet(ctx, 'Beat polygons — semi-transparent colored overlays showing sector and beat boundaries. Toggle visibility with the layer selector.');
   bullet(ctx, 'Unit GPS pins — live positions of all units with fresh GPS. Pin color matches unit status (green available, amber busy, red dispatched, etc.).');
   bullet(ctx, 'Active call markers — call icons at call locations. Priority-tinted same as the call list.');
@@ -1956,10 +1974,10 @@ function section14(ctx: GuideContext): void {
 
   h2(ctx, 'Offline Survival');
   paragraph(ctx,
-    'The service worker caches the full app shell, Google Maps tiles for Utah, and your most recent call/unit snapshot. If the server is unreachable, you can still:',
+    'The service worker caches the full app shell, Mapbox GL tiles for Utah, and your most recent call/unit snapshot. If the API is unreachable, you can still:',
   );
   bullet(ctx, 'View the last known call stack and unit roster (read-only, marked STALE).');
-  bullet(ctx, 'Pan and zoom the map — CartoDB dark_matter fallback tiles are pre-cached Z7-Z15 for the operational area.');
+  bullet(ctx, 'Pan and zoom the map — the fixed dark navy Mapbox basemap is pre-cached Z7-Z15 for the operational area.');
   bullet(ctx, 'Read already-opened incident and citation records from the local cache.');
 
   paragraph(ctx,
@@ -2501,12 +2519,12 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
   // Central server node
   const cx = x + w / 2;
   const cy = y + h / 2 - 10;
-  const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX SERVER\nws://rmpgutah.us', {
+  const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX WORKER\nwss://api.rmpgutah.us', {
     fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
 
   // Database below server
-  const db = dBox(d, cx - 50, cy + 40, 100, 24, 'SQLite (audit log)', {
+  const db = dBox(d, cx - 50, cy + 40, 100, 24, 'D1 (audit log)', {
     fill: '#0a0a0a', stroke: '#2e2e2e', textColor: '#888888', fontSize: 8,
   });
   dArrow(d, server.x + server.w / 2, server.y + server.h, db.x + db.w / 2, db.y, undefined, '#888888');
@@ -3144,8 +3162,8 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
 
 /**
  * Fig. C-1 — System data-flow architecture. Left-to-right: browser
- * clients -> nginx -> Express server -> SQLite DB. Sideband: WebSocket
- * channel, systemd service, SSL certs.
+ * clients -> Cloudflare Pages (static SPA) -> Cloudflare Worker (Hono API)
+ * -> Cloudflare D1. Sideband: WebSocket channel, R2 object storage, KV cache.
  */
 function drawArchDataFlowDiagram(ctx: GuideContext): void {
   ensureSpace(ctx, 240);
@@ -3157,37 +3175,37 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
 
   dFrame(d, x, y, w, h);
 
-  // Three tiers: client, edge, server, data
+  // Three tiers: client, edge CDN, API worker, data
   const tierY = y + 40;
   const tierH = 60;
   const browser = dBox(d, x + 12, tierY, 96, tierH, 'BROWSER\nReact SPA\nVite bundle', {
     fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
-  const nginx = dBox(d, x + 130, tierY, 90, tierH, 'NGINX\nSSL terminator\nStatic + proxy', {
+  const pages = dBox(d, x + 130, tierY, 90, tierH, 'CF PAGES\nrmpgutah.us\nStatic CDN', {
     fill: '#1a1a1a', stroke: '#666666', textColor: '#cccccc', fontSize: 8, bold: true,
   });
-  const express = dBox(d, x + 240, tierY, 100, tierH, 'EXPRESS 5\ntsx runtime\nREST + WS', {
+  const worker = dBox(d, x + 240, tierY, 100, tierH, 'CF WORKER\nHono API\napi.rmpgutah.us', {
     fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
   });
-  const sqlite = dBox(d, x + 360, tierY, 90, tierH, 'SQLITE\nbetter-sqlite3\naudit log', {
+  const d1 = dBox(d, x + 360, tierY, 90, tierH, 'CF D1\nrmpg-flex\naudit log', {
     fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 8, bold: true,
   });
 
-  // Flow arrows (HTTPS 443, proxy 3001, file I/O)
-  dArrow(d, browser.x + browser.w, browser.y + tierH / 2, nginx.x, nginx.y + tierH / 2, 'HTTPS 443');
-  dArrow(d, nginx.x, nginx.y + tierH / 2, browser.x + browser.w, browser.y + tierH / 2);
-  dArrow(d, nginx.x + nginx.w, nginx.y + tierH / 2, express.x, express.y + tierH / 2, 'proxy 3001');
-  dArrow(d, express.x, express.y + tierH / 2, nginx.x + nginx.w, nginx.y + tierH / 2);
-  dArrow(d, express.x + express.w, express.y + tierH / 2, sqlite.x, sqlite.y + tierH / 2, 'prepared stmts');
-  dArrow(d, sqlite.x, sqlite.y + tierH / 2, express.x + express.w, express.y + tierH / 2);
+  // Flow arrows (HTTPS to CDN, HTTPS to Worker, prepared statements to D1)
+  dArrow(d, browser.x + browser.w, browser.y + tierH / 2, pages.x, pages.y + tierH / 2, 'HTTPS 443');
+  dArrow(d, pages.x, pages.y + tierH / 2, browser.x + browser.w, browser.y + tierH / 2);
+  dArrow(d, browser.x + browser.w, browser.y + tierH / 2 - 14, worker.x, worker.y + tierH / 2 - 14, 'HTTPS 443 (api.*)');
+  dArrow(d, worker.x, worker.y + tierH / 2 - 14, browser.x + browser.w, browser.y + tierH / 2 - 14);
+  dArrow(d, worker.x + worker.w, worker.y + tierH / 2, d1.x, d1.y + tierH / 2, 'prepared stmts');
+  dArrow(d, d1.x, d1.y + tierH / 2, worker.x + worker.w, worker.y + tierH / 2);
 
   // Sideband systems below
   const sideY = tierY + tierH + 26;
   const sidebands = [
-    { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: '#888888' },
-    { from: express, label: 'systemd unit\nrmpg-flex.service', color: '#888888' },
-    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#888888' },
-    { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: '#888888' },
+    { from: pages,  label: 'Cloudflare-managed\nTLS + WAF', color: '#888888' },
+    { from: worker, label: 'R2 bucket\nsystem-essentials (MAP_DATA)', color: '#888888' },
+    { from: worker, label: 'WebSocket\nwebSocketPair()', color: '#888888' },
+    { from: d1,     label: 'KV namespace\ncache / durable state', color: '#888888' },
   ];
   for (const sb of sidebands) {
     const sbX = sb.from.x + sb.from.w / 2 - 60;
@@ -3198,7 +3216,7 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   }
 
   ctx.y = y + h + 8;
-  dCaption(ctx, 'Fig. C-1 — RMPG Flex system architecture. Browser -> nginx -> Express -> SQLite.');
+  dCaption(ctx, 'Fig. C-1 — RMPG Flex system architecture. Browser -> Cloudflare Pages / Worker (Hono) -> D1.');
 }
 
 /**
@@ -4103,31 +4121,33 @@ function appendixC(ctx: GuideContext): void {
   drawArchDataFlowDiagram(ctx);
 
   h2(ctx, 'Where Things Live');
-  bullet(ctx, 'Server — hosted at the VPS, accessible at https://rmpgutah.us. Node.js Express application running under systemd.');
-  bullet(ctx, 'Database — SQLite file on the server. Every call, unit, incident, citation, person, and vehicle record lives here.');
-  bullet(ctx, 'WebSocket — bidirectional connection between your browser and the server. Every dispatch event broadcasts to all connected workstations.');
-  bullet(ctx, 'Your browser — renders the React client. Runs locally; no sensitive data persisted on your workstation beyond session tokens and UI preferences.');
-  bullet(ctx, 'Edge TTS — server-side neural voice synthesis. Audio streams back to your browser which applies radio-bandpass filtering for the authentic dispatch sound.');
-  bullet(ctx, 'Offline tiles — CartoDB dark_matter map tiles cached on your workstation by the service worker, so the map keeps working if internet flakes.');
+  bullet(ctx, 'App — the dispatch console is a React single-page app served from Cloudflare Pages at https://rmpgutah.us. There is no server to log into; it is a CDN-delivered bundle.');
+  bullet(ctx, 'API — every read/write goes to the Worker at https://api.rmpgutah.us (a Cloudflare Worker running the Hono framework). "The API" and "the Worker" mean the same thing.');
+  bullet(ctx, 'Database — Cloudflare D1 (a managed SQLite database at the edge). Every call, unit, incident, citation, person, and vehicle record lives here.');
+  bullet(ctx, 'Files — Cloudflare R2 object storage holds field photos, dashcam/body-cam footage, mirrored Dial Connect recordings, and map data layers.');
+  bullet(ctx, 'WebSocket — a direct connection between your browser and the Worker. Every dispatch event broadcasts to all connected workstations.');
+  bullet(ctx, 'Your browser — renders the React client. Runs locally; no sensitive data persists on your workstation beyond your session token and UI preferences.');
+  bullet(ctx, 'Offline tiles — Mapbox map tiles cached on your workstation by the service worker, so the map keeps working if the connection flakes.');
 
   h2(ctx, 'What Persists Where');
   table(ctx,
     ['Data', 'Lives In'],
     [
-      ['Calls, units, incidents, citations, people, vehicles', 'Server database (authoritative)'],
+      ['Calls, units, incidents, citations, people, vehicles', 'Cloudflare D1 (authoritative)'],
+      ['Field photos, footage, mirrored call recordings',    'Cloudflare R2 (authoritative)'],
       ['Your session token', 'Browser localStorage (valid until session expiry)'],
-      ['Voice persona, terseness, brain enabled', 'Server users table + browser localStorage (sync)'],
-      ['Panel sizes, map center/zoom',              'Browser localStorage (per-workstation)'],
+      ['Voice persona, terseness, brain enabled', 'D1 users table + browser localStorage (sync)'],
+      ['Panel sizes, map center/zoom, theme choice',  'Browser localStorage (per-workstation)'],
       ['Offline map tiles',                          'Browser service worker cache'],
       ['Spoken transcript (in-memory buffer)',       'Browser memory only; cleared on reload'],
-      ['Audit log',                                  'Server database (authoritative; immutable)'],
+      ['Audit log',                                  'Cloudflare D1 (authoritative; immutable)'],
     ],
     [5, 7],
   );
 
   h2(ctx, 'Why This Matters');
   paragraph(ctx,
-    'Knowing what lives where helps you troubleshoot smarter. If your voice persona follows you across workstations, that is because it is stored server-side. If your map reset to Utah-wide view after a reload, that is because the zoom level is stored in your browser, not the server. If you see a call on one workstation but not another, that is a sync issue, not a call-creation issue.',
+    'Knowing what lives where helps you troubleshoot smarter. If your voice persona follows you across workstations, that is because it is stored in D1, not your browser. If your map reset to Utah-wide view after a reload, that is because the zoom level is stored in your browser, not the API. If you see a call on one workstation but not another, that is a sync issue, not a call-creation issue. And because the app is served from Cloudflare\'s CDN rather than a single VPS, "the server is down" is almost never the right diagnosis anymore — a broken page is far more likely to be a stale service-worker cache (hard-reload the tab) than an outage.',
   );
 
   h2(ctx, 'Who to Contact for What');
@@ -4135,7 +4155,7 @@ function appendixC(ctx: GuideContext): void {
     ['Problem', 'Who'],
     [
       ['Console bug, feature request, training question', 'Your supervisor first; IT if system-level'],
-      ['Server down, database corruption, hard lockup',   'On-call admin via pager'],
+      ['App/API outage, database corruption, hard lockup', 'On-call admin via pager'],
       ['Password reset, account lockout',                 'Admin user; supervisor can escalate'],
       ['Data correction requiring audit override',        'Supervisor; supervisor escalates to admin'],
       ['Policy question about documentation',             'Agency supervisor (not IT)'],
@@ -4209,6 +4229,19 @@ function appendixD(ctx: GuideContext): void {
       ['Zone',    'Tier 3. Subdivision of a sector, often aligned to patrol shifts.'],
       ['Beat',    'Tier 4. Smallest unit — typically a few square blocks. 719 beats cover the full Utah operational area.'],
       ['Geofence','A polygon triggering an automatic alert when a unit enters or leaves (used for perimeter operations, hot zones, and evidence areas).'],
+    ],
+    [2, 8],
+  );
+
+  h2(ctx, 'Systems & Integrations');
+  table(ctx,
+    ['Term', 'Definition'],
+    [
+      ['ALPR',           'Automated License Plate Recognition. Officer-triggered vehicle capture ("Scan vehicles") that reads every plate in a photo, links each vehicle to the call, and screens for stolen/watchlist hits.'],
+      ['Dial Connect',   'The softphone at rmpgutah.us/dialer, embedded in the console. Handles inbound/outbound calls and reports status so RMPG Flex can archive a mirrored copy of the recording.'],
+      ['D1',             'Cloudflare D1 — the SQLite-compatible database RMPG Flex runs on. Replaced the retired VPS database in 2026.'],
+      ['Worker',         'The Cloudflare Worker running the Hono-based API at api.rmpgutah.us. "The API" and "the Worker" are the same thing.'],
+      ['R2',             'Cloudflare object storage. Holds field photos, footage, and mirrored call recordings.'],
     ],
     [2, 8],
   );
