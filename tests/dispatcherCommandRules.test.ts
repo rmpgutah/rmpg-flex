@@ -126,6 +126,18 @@ describe('matchRules — expanded capabilities (2026-09-14)', () => {
     expect(first('remove 12 from 42').tool).toBe('unassign_unit');
     expect(first('drop 12 off 42').tool).toBe('unassign_unit');
   });
+  it('force close all needs explicit "all" wording', () => {
+    expect(first('close all')).toEqual({ tool: 'force_close_all', params: {} });
+    expect(first('force close all calls as end of shift')).toEqual({ tool: 'force_close_all', params: { disposition: 'end_of_shift' } });
+    // An ordinary close must NOT reach the board-wide endpoint.
+    expect(first('close 42').tool).toBe('set_call_status');
+  });
+  it('bulk reassign needs more than one call', () => {
+    expect(first('reassign 42, 43 and 44 to 12')).toEqual({ tool: 'bulk_reassign', params: { calls: ['42', '43', '44'], unit: '12' } });
+    // A single call is an ordinary assignment — routing it through the
+    // admin-only bulk endpoint would 403 a dispatcher.
+    expect(matchRules('move 42 to 12')?.tool_calls[0]?.tool).not.toBe('bulk_reassign');
+  });
   it('archive / unarchive', () => {
     expect(first('archive 42')).toEqual({ tool: 'archive_call', params: { call: '42' } });
     expect(first('restore 42')).toEqual({ tool: 'unarchive_call', params: { call: '42' } });

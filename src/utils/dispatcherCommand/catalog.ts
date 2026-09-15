@@ -13,8 +13,14 @@ export const WRITE_ROLES = ['dispatcher', 'supervisor', 'manager', 'admin'] as c
 export const CREATE_ROLES = ['officer', ...WRITE_ROLES] as const;
 /** Merge/split restructure a call's identity — supervisor sign-off, per the routes' own guards. */
 export const SUPERVISOR_ROLES = ['supervisor', 'manager', 'admin'] as const;
+/**
+ * admin/manager only. Mirrors the guards on calls.delete('/:id'),
+ * /force-close-all and /bulk-reassign — the three routes that can change many
+ * records (or destroy one) in a single call.
+ */
+export const ADMIN_ROLES = ['admin', 'manager'] as const;
 /** Hard delete is admin/manager only — mirrors calls.delete('/:id') exactly. */
-export const DELETE_ROLES = ['admin', 'manager'] as const;
+export const DELETE_ROLES = ADMIN_ROLES;
 export const READ_ROLES = ['officer', 'dispatcher', 'supervisor', 'manager', 'admin', 'contract_manager', 'human_resources'] as const;
 
 export const CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled'] as const;
@@ -214,6 +220,20 @@ export const TOOLS: Record<string, ToolDef> = {
     description: 'Record a unit\'s current odometer reading.',
     params: z.object({ unit: unitRef, mileage: z.number().nonnegative().max(2_000_000) }),
     roles: WRITE_ROLES,
+    destructive: false,
+  },
+  bulk_reassign: {
+    name: 'bulk_reassign',
+    description: 'Reassign several calls at once to a single unit (shift handover). Every listed call is moved to that unit and any unit losing a call is released.',
+    params: z.object({ calls: z.array(callRef).min(1).max(50), unit: unitRef }),
+    roles: ADMIN_ROLES,
+    destructive: false,
+  },
+  force_close_all: {
+    name: 'force_close_all',
+    description: 'Close EVERY currently active call on the board at once and release every assigned unit. End-of-shift / board-reset tool — it affects all open calls, not a selection.',
+    params: z.object({ disposition: z.string().max(120).optional() }),
+    roles: ADMIN_ROLES,
     destructive: false,
   },
   delete_call: {
