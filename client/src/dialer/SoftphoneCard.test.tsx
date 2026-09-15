@@ -91,4 +91,29 @@ describe('SoftphoneCard', () => {
     expect(apiFetch).toHaveBeenCalledWith('/dialer/dnd', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ dnd: false }) }));
     expect(screen.queryByText(/routed to voicemail/i)).not.toBeInTheDocument();
   });
+
+  test('a rejected hold shows a dismissible notice and leaves the in-call controls usable', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/dialer/token') return { token: 'tok', identity: 'dispatcher_abc', expiresAt: new Date(Date.now() + 3600_000).toISOString() };
+      if (path === '/dialer/presence') return [];
+      if (path === '/dialer/dnd') return init?.method === 'PATCH' ? JSON.parse(String(init.body)) : { dnd: false };
+      if (path === '/dialer/voice/hold') throw new Error('Caller leg not found in conference');
+      return { status: 'ok' };
+    });
+    renderCard();
+    await waitFor(() => expect(screen.getByText(/^ready$/i)).toBeInTheDocument());
+    await act(async () => { device!.simulateIncoming('+18015550000', 'CAcaller1'); });
+    await user.click(screen.getByRole('button', { name: /^answer$/i }));
+
+    await user.click(screen.getByRole('button', { name: /^hold$/i }));
+
+    await waitFor(() => expect(screen.getByText(/caller leg not found/i)).toBeInTheDocument());
+    expect(screen.getByText(/^in call$/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /hang up/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^hold$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^hold$/i })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByText(/caller leg not found/i)).not.toBeInTheDocument();
+  });
 });
