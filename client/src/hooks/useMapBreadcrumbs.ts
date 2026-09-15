@@ -11,7 +11,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { devLog, devWarn } from '../utils/devLog';
-import { safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
 import { formatDateTime } from '../utils/dateUtils';
 
@@ -167,7 +167,7 @@ export function useMapBreadcrumbs(
           type: 'Feature',
           properties: {
             speedMph: mph,
-            color: speedToColor(p.speed),
+            color: safeMapboxColor(speedToColor(p.speed), '#c3ccd6'),
             opacity: 0.4 + (i / len) * 0.6,
           },
           geometry: {
@@ -189,7 +189,7 @@ export function useMapBreadcrumbs(
             properties: {
               index: i,
               opacity: 0.4 + (i / len) * 0.6,
-              color: speedToColor(p.speed),
+              color: safeMapboxColor(speedToColor(p.speed), '#c3ccd6'),
               callSign: trail.callSign,
               timestamp: p.timestamp,
               speed: p.speed,

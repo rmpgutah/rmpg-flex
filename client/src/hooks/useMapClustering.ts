@@ -10,7 +10,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
-import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 // ── Types ─────────────────────────────────────────────────
@@ -43,7 +43,7 @@ function pointsToGeoJSON(points: ClusterablePoint[]): GeoJSON.FeatureCollection 
     type: 'FeatureCollection',
     features: points.map(p => ({
       type: 'Feature' as const,
-      properties: { id: p.id, priority: p.priority || '3', label: p.label || '', color: p.color || '#c3ccd6' },
+      properties: { id: p.id, priority: p.priority || '3', label: p.label || '', color: safeMapboxColor(p.color, '#c3ccd6') },
       geometry: { type: 'Point' as const, coordinates: [p.longitude, p.latitude] },
     })),
   };

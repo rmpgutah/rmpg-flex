@@ -56,4 +56,17 @@ describe('Pages CSP is not the Observatory starter policy', () => {
     expect(policyBlock).toMatch(/connect-src \$\{ALLOWED_CONNECT\}/);
     expect(policyBlock).not.toMatch(/connect-src 'none'/);
   });
+  // Native softphone (Twilio Voice JS SDK) preloads its ringtone/DTMF sample
+  // set from sdk.twilio.com via XHR — a connect-src request, not media-src.
+  // Live 2026-09-15: the host was absent from BOTH policies, so every one of
+  // the 16 samples logged a violation and the enforced header blocked them,
+  // leaving dispatchers with a silent dialer (no ring, no DTMF feedback, no
+  // disconnect tone) and no error from our own code. The SDK swallows the
+  // load failure, so the console flood is the only symptom.
+  it('both policies allow the Twilio Voice SDK sound host in connect-src', () => {
+    expect(connectSrc(INDEX_HTML, 'index.html')).toContain('https://sdk.twilio.com');
+    const policyBlock = MIDDLEWARE.slice(0, MIDDLEWARE.indexOf('const FULL_CSP'));
+    expect(policyBlock, 'ALLOWED_CONNECT is missing the Twilio SDK host')
+      .toContain('https://sdk.twilio.com');
+  });
 });

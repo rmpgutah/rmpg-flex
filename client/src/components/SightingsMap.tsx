@@ -12,7 +12,7 @@ import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapbo
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildDotMarker, isValidLngLat } from '../pages/map/utils/mapMarkers';
 import { sightingSource } from '../utils/alprSource';
-import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
+import { hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource, getSourceSafe, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 // Above this many GPS-tagged sightings, individual DOM markers get dense
@@ -175,7 +175,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       type: 'FeatureCollection',
       features: located.map((s) => ({
         type: 'Feature',
-        properties: { id: s.id, plate: s.plate, color: sightingSource(s.notes).color, hit: s.hit ? 1 : 0 },
+        properties: { id: s.id, plate: s.plate, color: safeMapboxColor(sightingSource(s.notes).color, '#c3ccd6'), hit: s.hit ? 1 : 0 },
         geometry: { type: 'Point', coordinates: [s.lng!, s.lat!] },
       })),
     };
