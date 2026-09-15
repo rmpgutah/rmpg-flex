@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Rea
 import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/dialerConnect';
 import { SoftphoneContext, type SoftphoneContextValue } from './softphoneContext';
 import { dialerApi, type DialerApiError } from './dialerApi';
-import { isIframeDialerForced } from './dialerFlags';
 import { createLeaderElection, isPopoutWindow } from './leaderElection';
 import { INITIAL, reduce, type SoftphoneSnapshot } from './softphoneMachine';
 import { controlCallSid, type DeviceFactory, type SoftphoneCall, type SoftphoneDevice } from './types';
@@ -108,7 +107,7 @@ export function SoftphoneProvider({ children, createDevice, enabled = true, stre
   }, [archive, refreshToken]);
 
   const register = useCallback(async () => {
-    if (!enabled || isIframeDialerForced()) { dispatch({ type: 'PASSIVE' }); return; }
+    if (!enabled) { dispatch({ type: 'PASSIVE' }); return; }
     dispatch({ type: 'REGISTERING' });
     let token: string;
     try {

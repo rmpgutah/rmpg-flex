@@ -3,7 +3,6 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import DialerConnectPage from './DialerConnectPage';
-import { DIALER_HOST_ID } from '../components/dialerConnect';
 import { SoftphoneProvider } from '../dialer/SoftphoneProvider';
 import { MockDevice } from '../dialer/mockDevice';
 
@@ -61,20 +60,6 @@ describe('DialerConnectPage', () => {
     expect(screen.getByRole('button', { name: /call history/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^hang up$/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Dial number')).toBeInTheDocument();
-  });
-
-  test('iframe kill-switch restores the LIVE dock, starting collapsed', async () => {
-    localStorage.setItem('rmpg_dialer_iframe', '1');
-    const user = userEvent.setup();
-    await act(async () => { renderPage(); });
-    const host = screen.getByTestId('dialer-connect-host');
-    expect(host).toHaveAttribute('id', DIALER_HOST_ID);
-    // jsdom cannot parse `min(42vh, 680px)`, so assert on minHeight (240px open / 0px collapsed).
-    expect(host.style.minHeight).toBe('0px');
-    await user.click(screen.getByRole('button', { name: /show live dialer/i }));
-    expect(host.style.minHeight).toBe('240px');
-    await user.click(screen.getByRole('button', { name: /hide live dialer/i }));
-    expect(host.style.minHeight).toBe('0px');
   });
 
   test('call history has a date range and starred filter', async () => {

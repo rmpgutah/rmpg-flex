@@ -3,8 +3,9 @@
 // Mounted at /api/dialer-connect (auth required) plus
 // /api/dialer-connect/ingest (public, HMAC via DIAL_CONNECT_WEBHOOK_SECRET).
 //
-// Event contract (POST /events from the CAD iframe bridge in
-// client/src/components/DialerPanel.tsx, and POST /ingest from Dial Connect):
+// Event contract (POST /events from the native softphone in
+// client/src/dialer/SoftphoneProvider.tsx via dialerApi.archive(), and
+// POST /ingest from Dial Connect):
 //   type: 'call_status'      — carries `status`; the only event allowed to set it.
 //   type: 'recording_ready'  — NO status. Carries numbers/direction/duration/
 //                              recordingUrl; must enrich, never overwrite.
