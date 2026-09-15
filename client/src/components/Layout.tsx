@@ -365,6 +365,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/billing', icon: LifeBuoy, label: 'Services', group: 'support', children: [
     { path: '/billing', icon: DollarSign, label: 'Billing' },
     { path: '/community', icon: HeartHandshake, label: 'Community' },
+    { path: '/safewatch', icon: ShieldAlert, label: 'SafeWatch' },
     { path: '/tasks', icon: ListTodo, label: 'Task Management' },
     { path: '/alerts', icon: Megaphone, label: 'Notifications' },
     { path: '/qa', icon: CheckCircle, label: 'QA' },
