@@ -103,6 +103,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/assets': () => import('../pages/AssetsPage'),
   '/billing': () => import('../pages/BillingPage'),
   '/community': () => import('../pages/CommunityPage'),
+  '/safewatch': () => import('../pages/SafeWatchPage'),
   '/tasks': () => import('../pages/TasksPage'),
   '/alerts': () => import('../pages/AlertsPage'),
   '/qa': () => import('../pages/QAPage'),

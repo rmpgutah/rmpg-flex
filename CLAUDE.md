@@ -414,43 +414,36 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   (`openDialerWindow`, always same-origin `/dialer-connect?popout=1`). Rolling
   telephony back now requires a revert + deploy, not a localStorage flag.
   Spec: [`docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md`](docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md).
-- **Call-progress tones (2026-09-15).** The softphone rings on an inbound call and
-  plays ringback on an outbound one:
-  [`client/src/dialer/callTones.ts`](client/src/dialer/callTones.ts) (440+480 Hz
-  synthesized, looping; `setCallTone('ring'|'ringback'|null)`), driven from a
-  derived value in `SoftphoneProvider` so every path that ends a call silences it.
-  **⚠️ Ringback must NOT be derived from `connectedAt`.** The dispatcher's OWN leg
-  joins the conference the instant the call is placed, so `call.on('accept')` fires
-  long before the callee picks up — deriving from it makes every outbound call go
-  silent immediately. `snap.outboundRinging` is set by `DIALING` and cleared only by
-  the PSTN leg's server-pushed `call_status` (`FAR_END_SETTLED`), a hang-up, or the
-  `RINGBACK_MAX_MS` ceiling that exists because the SSE stream is a network
-  dependency. Honours the global `rmpg-sound` mute plus its own `rmpg_call_tones`
-  key (default on), toggled from `SoftphoneCard`.
-- **Transcription backstop (2026-09-15).** Upstream transcription in dispatch-app
-  (Twilio Voice Intelligence, else the OpenAI pipeline) is gated on credentials and
-  **returns silently when they are unset** — which is how recordings sat archived at
-  `transcript_status = 'none'` with nothing saying transcription had never run, and
-  a `transcript` search reported "no matches" for a call nobody had read.
-  [`src/utils/dialerTranscription.ts`](src/utils/dialerTranscription.ts) sweeps on
-  the `*/30` cron and transcribes mirrored R2 audio with Workers AI Whisper.
-  It is a **backstop, not a replacement**: it only fills a row whose `transcript` is
-  still empty (the final UPDATE is guarded on `transcript IS NULL`), so an upstream
-  transcript — diarized and with no size ceiling — always wins. Retries bounded by
-  `TRANSCRIBE_MAX_ATTEMPTS`; audio over `TRANSCRIBE_MAX_BYTES` (8 MB, the inline
-  model budget) is marked `too_large` rather than retried to death, and stays the
-  upstream path's job. `POST /calls/:id/transcribe` + `/voicemails/:id/transcribe`
-  force one row and reset a terminal status. Pinned by
-  `test-workers/dialerTranscription.test.ts`.
-  **🔴 After merge**: `scripts/apply-migration.sh 0292_dialer_transcription_backfill.sql`
-  against live D1 `785de7ae`, then verify with
-  `SELECT COUNT(*) FROM pragma_table_info('dialer_calls') WHERE name LIKE 'transcript_%'`
-  (expect 5: transcript, transcript_confidence, transcript_status, plus attempts/error/source).
-- **dispatch-app has no CI.** Its source is `~/Call Center/dispatch-app` (GitHub
-  `rmpgutah/dispatch-app`), deployed as Worker `dialer` via `npm run deploy` from
-  that directory — a merged PR there changes nothing until someone deploys. Every
-  browser URL in that app must go through `apiUrl()` (Next `basePath` `/dialer`
-  does not prefix `fetch()`/`EventSource`; 2026-09-14 outage).
+- **⚠️ dispatch-app HAS CI as of 2026-09-15 — the old "no CI, deploy by hand" note
+  here is RETIRED.** Its source is `~/Call Center/dispatch-app` (GitHub
+  `rmpgutah/dispatch-app`), deployed as Worker `dialer`.
+  `.github/workflows/deploy.yml` runs a `gate` job (`npm ci` → `tsc --noEmit` →
+  `eslint`, *reported not blocking*, 20 pre-existing errors → `npx vitest run`)
+  on every PR to `main` and on the push that merges it, then a `deploy` job —
+  guarded by `github.ref == 'refs/heads/main'` — that runs `npm run deploy`
+  (`opennextjs-cloudflare build && … deploy`) and smoke-checks
+  `https://rmpgutah.us/dialer`. So a merge to `main` now ships on its own; the
+  old advice to run `npm run deploy` by hand is only for a bypass.
+  - **The deploy does NOT apply schema.** That repo has no migration runner:
+    `d1/schema.sql` is a hand-maintained reference of the full schema (plain
+    `CREATE TABLE`, not `IF NOT EXISTS`, so replaying it errors rather than
+    reconciles), and Kysely types in `src/lib/kysely-types.ts` are hand-edited,
+    never regenerated. DDL goes to live `dialer-db` via an idempotent
+    `scripts/apply-*-schema.sh` (see the e911 and outbound-hold pairs), run with
+    an explicit `--remote`, **BEFORE** merging the code that reads the column.
+  - **`tests/e911-schema-ddl.test.ts` needs git history** — it does
+    `git show eaf343f:d1/schema.sql`, so it fails on any shallow clone
+    (`actions/checkout` defaults to `fetch-depth: 1`). Not a code regression.
+  - **Observed 2026-09-15: every `gate` run is failing at the infrastructure
+    level** — created→completed in 2–3 s, no steps, logs 404, identical on
+    `main` and across re-runs. That signature is a run rejected before dispatch,
+    most likely an Actions spending limit (the Claude review bot reported the
+    org's overage limit reached in the same window). While it persists, CI is
+    red on everything and nothing auto-deploys. Check org billing before
+    hunting for a workflow defect.
+
+  Every browser URL in that app must go through `apiUrl()` (Next `basePath`
+  `/dialer` does not prefix `fetch()`/`EventSource`; 2026-09-14 outage).
 - **Worker→Worker fetch on the same zone needs `global_fetch_strictly_public`**
   (`wrangler.toml` compatibility_flags). Without it Cloudflare returns error
   1042 and every `fetch('https://rmpgutah.us/dialer/...')` from `rmpg-flex-api`
