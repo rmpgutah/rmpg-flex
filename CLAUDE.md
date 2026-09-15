@@ -115,7 +115,7 @@ npm run migrate:prod      # apply migrations to remote D1
 
 ## Schema changes (D1)
 
-1. Add a new file under `migrations/` using the next free integer prefix (see [`migrations/README.md`](migrations/README.md)). Current high-water is `0280` (check `ls migrations/ | tail` — duplicate prefixes exist, e.g. two `0075`/`0084`/`0085` files).
+1. Add a new file under `migrations/` using the next free integer prefix (see [`migrations/README.md`](migrations/README.md)). Current high-water is `0289` (check `ls migrations/ | tail` — duplicate prefixes exist, e.g. two `0075`/`0084`/`0085` files).
 2. Write idempotent DDL — `CREATE TABLE IF NOT EXISTS`. D1 does **not** support `IF NOT EXISTS` on `ADD COLUMN`, so either accept the failure on re-apply or wrap the `ALTER` in a check via the Worker boot reconciler.
 3. Test locally: `npm run migrate:local`.
 4. Merge to main — `deploy.yml` applies it to remote D1 (and continues on error, as documented above).
@@ -414,6 +414,45 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   silently degrade to "not configured"/`dialer_unreachable`. Miniflare tests
   stub `fetch`, so only live traffic exposes it. `oidc-provider` on Workers also
   needs `shimWorkerSocket()` (dispatch-app) — Koa reads `socket.encrypted`.
+
+### Dispatcher Command Engine (typed CAD line + live voice → any CAD operation)
+
+One input surface, any phrasing: the CAD command bar and the voice channel both
+fall through to `POST /api/dispatcher/command` when the text is not a fixed CAD
+verb. Design: [`docs/superpowers/specs/2026-09-14-dispatcher-command-engine-design.md`](docs/superpowers/specs/2026-09-14-dispatcher-command-engine-design.md).
+
+- **Pipeline** (`src/utils/dispatcherCommand/`): `rules.ts` (regex intents, works
+  with every AI provider down) → `planner.ts` (`callAi`: Claude → OpenAI → Workers
+  AI; prompt is GENERATED from the catalog) → `catalog.ts` (zod + per-tool roles)
+  → `resolve.ts` (call#/unit → ids; "42" means the call whose numeric TAIL is 42,
+  "this call" = `context.selected_call_number`) → `compile.ts` (HTTP steps against
+  `ALLOWED_PATHS` + console actions). Route: [`src/routes/dispatcherCommand.ts`](src/routes/dispatcherCommand.ts).
+- **The CLIENT executes the write steps** ([`client/src/utils/dispatcherCommandClient.ts`](client/src/utils/dispatcherCommandClient.ts))
+  with the user's own JWT, so the existing routes' RBAC, validation (disposition
+  required to clear, vehicle-maintenance guard, etc.), `audit_log` and WS broadcasts
+  all fire unchanged. A Worker cannot fetch its own hostname and importing the root
+  app into a route is circular — do not "optimise" this into a server-side executor.
+  Server-side **reads** (record checks, call status, unit lists) run in the route and
+  are folded into `reply`.
+- **`update_call_fields` is bounded by `COMMAND_EDITABLE_COLUMNS`**, derived from the
+  PUT route's allowlist in [`src/routes/dispatch/callColumns.ts`](src/routes/dispatch/callColumns.ts)
+  (extracted from `calls.ts` for this) minus lifecycle columns. Never a superset.
+- **Destructive steps** (clear/close/cancel, unassign, redispatch) return
+  `needs_confirmation` + a single-use KV token (90 s). Typed `Y`/`N` or spoken
+  "affirmative"/"negative" resolves it; any other utterance abandons it. Operator
+  opt-out: `system_config dispatcher_command_confirm_destructive = '0'`.
+- **Not-a-command → `handled:false`** so the voice path falls through to the
+  `/api/voice/dialogue` persona. The old `/api/voice/parse` and `/api/voice/command`
+  client fallbacks were dead (no Worker route) and were removed from `voiceChannel.ts`.
+- **Audit**: `dispatcher_command_log` (migration `0289`, also reconciled at runtime).
+  Client posts per-step outcomes to `POST /command/:id/result`; `GET /command/recent`
+  (supervisor+). **🔴 After merge**: `scripts/apply-migration.sh 0289_dispatcher_command_log.sql`.
+- **Adding a capability** = one row in `TOOLS` (catalog) + one `case` in `compileToolCall`
+  (+ a path in `ALLOWED_PATHS` if new). Pure tests: `tests/dispatcherCommand*.test.ts`;
+  route: `test-workers/dispatcherCommandRoute.test.ts`; client:
+  `client/src/utils/__tests__/dispatcherCommandClient.test.ts`.
+- Repo ratchet `tests/callStatus.test.ts` rejects hand-rolled call-status lists — use
+  `ACTIVE_CALL_WHERE` / `CLOSED_CALL_STATUSES` from `src/utils/callStatus.ts`.
 
 ### Legal Data Hunter (manual warrant-charge validation)
 

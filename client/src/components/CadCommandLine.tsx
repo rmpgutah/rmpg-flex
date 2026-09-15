@@ -9,6 +9,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Terminal, ChevronRight } from 'lucide-react';
 import { executeCommand, getCommandVerbs, loadCommandHistory, saveCommandHistory, type CadContext, type CommandAction } from '../utils/cadCommandParser';
 import { playTone } from '../utils/dispatchTones';
+import { hasPendingConfirmation } from '../utils/dispatcherCommandClient';
 
 interface CadCommandLineProps {
   context: CadContext;
@@ -22,6 +23,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [isExpanded, setIsExpanded] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const outputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -97,19 +99,23 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
       setOutput({ text: result.message, success: result.success });
 
       // Play tone based on result
-      if (result.success && result.action.type !== 'show_help' && result.action.type !== 'none') {
+      const awaitingConfirm = result.action.type === 'ai_command' && result.action.needsConfirmation;
+      if (awaitingConfirm) {
+        playTone('warning');
+      } else if (result.success && result.action.type !== 'show_help' && result.action.type !== 'none') {
         playTone('info');
       } else if (!result.success) {
         playTone('error');
       }
+      setAwaitingConfirm(hasPendingConfirmation());
 
       // Notify parent of action
       if (result.action.type !== 'none' && onAction) {
         onAction(result.action);
       }
 
-      // For help, keep output visible (expanded)
-      if (result.action.type === 'show_help') {
+      // For help (and multi-line engine replies), keep output visible (expanded)
+      if (result.action.type === 'show_help' || result.message.includes('\n')) {
         setIsExpanded(true);
       }
     } catch (err) {
@@ -197,17 +203,17 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
           type="text"
           className="cad-command-input"
           value={input}
-          onChange={e => setInput(e.target.value.toUpperCase())}
+          onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsExpanded(true)}
-          placeholder="Type command or press / or F8  (HELP for commands)"
+          placeholder={awaitingConfirm ? 'Y to confirm, N to cancel' : 'Type a CAD verb or plain English — "assign 12 to 42"  (/ focuses, HELP lists verbs)'}
           aria-label="CAD command line"
           spellCheck={false}
           autoComplete="off"
           autoCapitalize="characters"
         />
         <span className="cad-command-hint">
-          {input ? 'ENTER' : '/'}
+          {awaitingConfirm ? 'Y/N' : input ? 'ENTER' : '/'}
         </span>
       </div>
     </div>
