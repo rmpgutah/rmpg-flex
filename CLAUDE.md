@@ -414,11 +414,36 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   (`openDialerWindow`, always same-origin `/dialer-connect?popout=1`). Rolling
   telephony back now requires a revert + deploy, not a localStorage flag.
   Spec: [`docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md`](docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md).
-- **dispatch-app has no CI.** Its source is `~/Call Center/dispatch-app` (GitHub
-  `rmpgutah/dispatch-app`), deployed as Worker `dialer` via `npm run deploy` from
-  that directory — a merged PR there changes nothing until someone deploys. Every
-  browser URL in that app must go through `apiUrl()` (Next `basePath` `/dialer`
-  does not prefix `fetch()`/`EventSource`; 2026-09-14 outage).
+- **⚠️ dispatch-app HAS CI as of 2026-09-15 — the old "no CI, deploy by hand" note
+  here is RETIRED.** Its source is `~/Call Center/dispatch-app` (GitHub
+  `rmpgutah/dispatch-app`), deployed as Worker `dialer`.
+  `.github/workflows/deploy.yml` runs a `gate` job (`npm ci` → `tsc --noEmit` →
+  `eslint`, *reported not blocking*, 20 pre-existing errors → `npx vitest run`)
+  on every PR to `main` and on the push that merges it, then a `deploy` job —
+  guarded by `github.ref == 'refs/heads/main'` — that runs `npm run deploy`
+  (`opennextjs-cloudflare build && … deploy`) and smoke-checks
+  `https://rmpgutah.us/dialer`. So a merge to `main` now ships on its own; the
+  old advice to run `npm run deploy` by hand is only for a bypass.
+  - **The deploy does NOT apply schema.** That repo has no migration runner:
+    `d1/schema.sql` is a hand-maintained reference of the full schema (plain
+    `CREATE TABLE`, not `IF NOT EXISTS`, so replaying it errors rather than
+    reconciles), and Kysely types in `src/lib/kysely-types.ts` are hand-edited,
+    never regenerated. DDL goes to live `dialer-db` via an idempotent
+    `scripts/apply-*-schema.sh` (see the e911 and outbound-hold pairs), run with
+    an explicit `--remote`, **BEFORE** merging the code that reads the column.
+  - **`tests/e911-schema-ddl.test.ts` needs git history** — it does
+    `git show eaf343f:d1/schema.sql`, so it fails on any shallow clone
+    (`actions/checkout` defaults to `fetch-depth: 1`). Not a code regression.
+  - **Observed 2026-09-15: every `gate` run is failing at the infrastructure
+    level** — created→completed in 2–3 s, no steps, logs 404, identical on
+    `main` and across re-runs. That signature is a run rejected before dispatch,
+    most likely an Actions spending limit (the Claude review bot reported the
+    org's overage limit reached in the same window). While it persists, CI is
+    red on everything and nothing auto-deploys. Check org billing before
+    hunting for a workflow defect.
+
+  Every browser URL in that app must go through `apiUrl()` (Next `basePath`
+  `/dialer` does not prefix `fetch()`/`EventSource`; 2026-09-14 outage).
 - **Worker→Worker fetch on the same zone needs `global_fetch_strictly_public`**
   (`wrangler.toml` compatibility_flags). Without it Cloudflare returns error
   1042 and every `fetch('https://rmpgutah.us/dialer/...')` from `rmpg-flex-api`
