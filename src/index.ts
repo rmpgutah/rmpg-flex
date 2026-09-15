@@ -445,6 +445,19 @@ export default {
           }).catch((err) => log.error('[dialer-mirror] sweep failed:', {}, err)),
         ).catch((err) => log.error('[dialer-mirror] import failed:', {}, err)),
       );
+      // Dial Connect transcription backstop — the upstream transcription paths
+      // in dispatch-app (Twilio Voice Intelligence, else OpenAI) both no-op
+      // silently when their credentials are unset, which left mirrored
+      // recordings archived with no transcript and nothing saying why. This
+      // sweep transcribes them with Workers AI. Runs AFTER the mirror above so
+      // audio copied on this same tick is picked up on the next one.
+      ctx.waitUntil(
+        import('./utils/dialerTranscription').then((m) =>
+          m.transcribePendingRecordings(env, 10).then((r) => {
+            if (r.attempted > 0) log.info(`[dialer-transcribe] attempted ${r.attempted}, transcribed ${r.transcribed}, failed ${r.failed}`);
+          }).catch((err) => log.error('[dialer-transcribe] sweep failed:', {}, err)),
+        ).catch((err) => log.error('[dialer-transcribe] import failed:', {}, err)),
+      );
       // Stale warrant-watch-run reaper. A Cron Trigger is capped at 15 min of
       // wall time and a waitUntil() at 30s, so a scan whose isolate is evicted
       // mid-loop never writes its own completion row and sits at 'running'

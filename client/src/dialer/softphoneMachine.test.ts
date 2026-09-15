@@ -32,6 +32,26 @@ describe('softphone reducer', () => {
     expect(reduce(waiting, { type: 'WAITING_CANCELLED' })).toMatchObject({ status: 'in_call', waitingFrom: null });
   });
 
+  test('an outbound dial marks the far end as ringing until it answers', () => {
+    const dialing = at(INITIAL, { type: 'REGISTERED' }, { type: 'DIALING', to: '+18015551212' });
+    // DIALING is optimistic: the PSTN leg has been requested but its own
+    // status events have not arrived yet, so ringback starts here rather than
+    // leaving the dispatcher in silence for the queued/initiated gap.
+    expect(dialing.outboundRinging).toBe(true);
+    expect(reduce(dialing, { type: 'FAR_END', ringing: false }).outboundRinging).toBe(false);
+    // The dispatcher's OWN leg joins the conference immediately, so ACCEPTED
+    // says nothing about whether the callee picked up — it must NOT clear the
+    // ringback, or every outbound call goes silent the instant it is placed.
+    expect(reduce(dialing, { type: 'ACCEPTED', callSid: 'CA1', connectedAt: 1 }).outboundRinging).toBe(true);
+  });
+
+  test('ringback clears on hang-up, error and an inbound call', () => {
+    const dialing = at(INITIAL, { type: 'REGISTERED' }, { type: 'DIALING', to: '+1' });
+    expect(reduce(dialing, { type: 'DISCONNECTED' }).outboundRinging).toBe(false);
+    expect(reduce(dialing, { type: 'ERROR', message: 'busy' }).outboundRinging).toBe(false);
+    expect(at(INITIAL, { type: 'REGISTERED' }, { type: 'INCOMING', from: '+1', callSid: 'CA1' }).outboundRinging).toBe(false);
+  });
+
   test('errors carry the message; unlinked and passive are terminal until reset', () => {
     expect(reduce(INITIAL, { type: 'ERROR', message: 'AccessTokenInvalid' })).toMatchObject({ status: 'error', error: 'AccessTokenInvalid' });
     expect(reduce(INITIAL, { type: 'UNLINKED' }).status).toBe('unlinked');
