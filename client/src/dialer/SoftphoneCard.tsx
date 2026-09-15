@@ -109,6 +109,12 @@ export default function SoftphoneCard({ digits, onDigitsChange, dtmfMode, onDtmf
         </div>
       )}
       {s.error && <div className="text-[10px]" style={{ color: 'var(--sev-critical)' }} role="alert">{s.error}</div>}
+      {s.notice && (
+        <div className="text-[10px] flex items-start gap-2" style={{ color: 'var(--sev-warn)' }} role="status">
+          <span className="flex-1">{s.notice}</span>
+          <button type="button" onClick={s.dismissNotice} className="uppercase text-[9px] border border-border-subtle px-1.5 shrink-0">Dismiss</button>
+        </div>
+      )}
 
       {s.status === 'unlinked' ? <LinkDialerGate /> : (
         <>
