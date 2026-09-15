@@ -21,7 +21,6 @@ import * as conversationMemory from './conversationMemory';
 import { resolveReferents } from './referentResolver';
 import { getBrainContext, isBrainEnabled } from './dispatcherBrain';
 import { renderCallNarrative } from './narrativeRenderer';
-import { runDispatcherCommand } from './dispatcherCommandClient';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -1073,6 +1072,12 @@ export class VoiceChannel {
       // plans on the Worker and executes here with the officer's JWT; a
       // destructive plan comes back as a Y/N confirmation turn, and a
       // spoken "affirmative"/"negative" on the next turn resolves it.
+      // Imported lazily: voiceChannel is eager in the entry chunk, so a static
+      // import pulls dispatcherCommandClient (and its transitive deps) into
+      // first paint for every user, including those who never speak a command.
+      // This call site is already async, so the dynamic import costs nothing
+      // here. See the client-entry-size ratchet in .github/workflows/pr-tests.yml.
+      const { runDispatcherCommand } = await import('./dispatcherCommandClient');
       const cmd = await runDispatcherCommand(effectiveTranscript, {
         source: 'speech',
         selectedCallNumber: getBrainContext().lastCall?.call_number ?? null,
