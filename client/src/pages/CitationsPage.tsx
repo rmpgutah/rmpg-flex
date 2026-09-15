@@ -152,7 +152,13 @@ interface CitationStats {
   today_count: number;
 }
 
-interface CitationForm {
+import UniformCitationFields, {
+  EMPTY_UNIFORM_FIELDS,
+  uniformFieldsFromRecord,
+  type UniformCitationFormFields,
+} from '../components/UniformCitationFields';
+
+interface CitationForm extends UniformCitationFormFields {
   type: CitationType;
   status: CitationStatus;
   person_id: string;
@@ -292,6 +298,7 @@ async function statuteFetcher(q: string): Promise<StatuteRow[]> {
 }
 
 const EMPTY_FORM: CitationForm = {
+  ...EMPTY_UNIFORM_FIELDS,
   type: 'traffic',
   status: 'issued',
   person_id: '',
@@ -718,6 +725,8 @@ export default function CitationsPage() {
     snapshotViolations(rehydrated);
     const c0: Citation = full as Citation;
     setForm({
+      // Official Uniform Citation fields, merged from citations_ext by the API.
+      ...uniformFieldsFromRecord(c0 as unknown as Record<string, unknown>),
       type: c0.type,
       status: c0.status,
       person_id: c0.person_id ? String(c0.person_id) : '',
@@ -1787,6 +1796,15 @@ export default function CitationsPage() {
             </div>
           </section>
         )}
+
+        {/* Official State of Utah Uniform Citation fields — the boxes the
+            state form prints beyond what the base citation record holds.
+            Persisted to citations_ext (migration 0291). */}
+        <UniformCitationFields
+          values={form}
+          onChange={(key, value) => updateField(key as keyof CitationForm, value)}
+          showVehicle={showVehicleSection}
+        />
 
         {/* Location & Time */}
         <section>

@@ -9,7 +9,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { geocodeAddress } from './geocode';
 import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
@@ -19,6 +19,13 @@ import { log } from '../utils/logger';
 import { likePattern } from '../utils/d1Like';
 import { containsAnyClause } from '../utils/searchText';
 import { evaluateCitationCompleteness } from '../utils/citationCompleteness';
+import {
+  ensureCitationExt,
+  extractCitationExt,
+  readCitationExt,
+  redactCitationExt,
+  upsertCitationExt,
+} from '../utils/citationExt';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -358,7 +365,11 @@ citations.get('/:id', async (c) => {
       id,
     );
     if (!row) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
-    return c.json({ data: row });
+    // Uniform Citation overflow columns (migration 0291). Merged UNDER the
+    // base row so a same-named base column always wins — citations_ext must
+    // never shadow an authoritative value on `citations`.
+    const ext = redactCitationExt(await readCitationExt(db, id), c.get('user')?.role);
+    return c.json({ data: { ...ext, ...row } });
   } catch (err) {
     log.error('GET /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation', code: 'GET_ERROR' }, 500);
@@ -466,6 +477,21 @@ citations.post('/', async (c) => {
       ...vals,
     );
     const newId = Number(result.meta.last_row_id);
+
+    // Uniform Citation overflow columns. A failure here must not fail the
+    // citation itself — the base record is the legally significant write,
+    // and losing e.g. a hair color is not worth 500-ing an officer on scene.
+    const ext = extractCitationExt(b);
+    if (ext) {
+      try {
+        await ensureCitationExt(db);
+        await upsertCitationExt(db, newId, ext);
+      } catch (extErr) {
+        log.error('citations_ext write failed on create',
+          { src: 'src/routes/citations.ts', citationId: newId }, extErr);
+      }
+    }
+
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citations WHERE id = ?', newId);
 
     // Analytics lakehouse: citation-issued event (best-effort, fire-and-forget).
@@ -478,7 +504,10 @@ citations.post('/', async (c) => {
       payload: { citation_number: citationNumber, issuing_officer_id: b.issuing_officer_id ?? null, person_id: b.person_id ?? null },
     })]);
 
-    return c.json({ data: created, citation_number: citationNumber }, 201);
+    return c.json({
+      data: { ...(await readCitationExt(db, newId)), ...(created ?? {}) },
+      citation_number: citationNumber,
+    }, 201);
   } catch (err) {
     return dbErrorResponse(c, err, 'Failed to create citation', 'CREATE_ERROR');
   }
@@ -552,13 +581,35 @@ citations.put('/:id', async (c) => {
       }
     }
 
-    if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
-    sets.push(`updated_at = datetime('now')`);
-    vals.push(id);
+    // Uniform Citation overflow columns (migration 0291). Extracted BEFORE
+    // the empty-body guard: an update touching only citations_ext fields
+    // (e.g. the court filling in the disposition strip) is a real update and
+    // must not be rejected as NO_FIELDS.
+    const ext = extractCitationExt(b);
 
-    await execute(db, `UPDATE citations SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    if (sets.length === 0 && !ext) {
+      return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+    }
+
+    if (ext) {
+      try {
+        await ensureCitationExt(db);
+        await upsertCitationExt(db, id, ext);
+      } catch (extErr) {
+        log.error('citations_ext write failed on update',
+          { src: 'src/routes/citations.ts', citationId: id }, extErr);
+      }
+    }
+
+    if (sets.length > 0) {
+      sets.push(`updated_at = datetime('now')`);
+      vals.push(id);
+      await execute(db, `UPDATE citations SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    }
+
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citations WHERE id = ?', id);
-    return c.json({ data: updated });
+    const extRow = redactCitationExt(await readCitationExt(db, id), c.get('user')?.role);
+    return c.json({ data: { ...extRow, ...(updated ?? {}) } });
   } catch (err) {
     log.error('PUT /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to update citation', code: 'UPDATE_ERROR' }, 500);
@@ -918,6 +969,7 @@ citations.post('/:id/violations', async (c) => {
       violation_number?: number; statute_id?: number; statute_citation?: string;
       violation_code?: string; violation_description?: string; offense_level?: string;
       fine_amount?: number; speed_recorded?: number; speed_limit?: number; notes?: string;
+      code_type?: string; severity?: string;
     }>();
     if (!b.violation_description?.trim()) {
       return c.json({ error: 'violation_description required', code: 'MISSING_DESCRIPTION' }, 400);
@@ -932,17 +984,32 @@ citations.post('/:id/violations', async (c) => {
       violationNumber = (maxRow?.max_num ?? 0) + 1;
     }
 
-    const result = await execute(
-      db,
-      `INSERT INTO citation_violations (
-         citation_id, violation_number, statute_id, statute_citation,
-         violation_code, violation_description, offense_level, fine_amount,
-         speed_recorded, speed_limit, notes
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    // code_type (U / CO / CY) and severity are the official Uniform
+    // Citation's offense-table columns, added by migration 0291. Probed
+    // rather than assumed so the route keeps working on a deployment
+    // where 0291 has not landed — an unknown column fails the whole
+    // INSERT, which would take the officer's violation entry down.
+    const cols = [
+      'citation_id', 'violation_number', 'statute_id', 'statute_citation',
+      'violation_code', 'violation_description', 'offense_level', 'fine_amount',
+      'speed_recorded', 'speed_limit', 'notes',
+    ];
+    const vals: unknown[] = [
       id, violationNumber, b.statute_id ?? null, b.statute_citation ?? null,
       b.violation_code ?? b.statute_citation ?? `VIO-${violationNumber}`,
       b.violation_description, b.offense_level ?? 'infraction', b.fine_amount ?? 0,
       b.speed_recorded ?? null, b.speed_limit ?? null, b.notes ?? null,
+    ];
+    if (await columnExists(db, 'citation_violations', 'code_type').catch(() => false)) {
+      cols.push('code_type', 'severity');
+      vals.push(b.code_type ?? null, b.severity ?? b.offense_level ?? null);
+    }
+
+    const result = await execute(
+      db,
+      `INSERT INTO citation_violations (${cols.join(', ')})
+       VALUES (${cols.map(() => '?').join(', ')})`,
+      ...vals,
     );
     const violation = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM citation_violations WHERE id = ?', Number(result.meta.last_row_id),
@@ -958,6 +1025,8 @@ const VIOLATION_UPDATABLE: Record<string, true> = {
   statute_id: true, statute_citation: true, violation_description: true,
   offense_level: true, fine_amount: true, speed_recorded: true, speed_limit: true,
   plea: true, verdict: true, disposition: true, disposition_date: true, notes: true,
+  // Official Uniform Citation offense-table columns (migration 0291).
+  code_type: true, severity: true,
 };
 
 citations.put('/:id/violations/:violationId', async (c) => {

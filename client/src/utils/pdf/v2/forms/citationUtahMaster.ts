@@ -1,20 +1,39 @@
 // ============================================================
-// citationUtahMaster — Utah Uniform Citation master form
+// citationUtahMaster — State of Utah Uniform Citation
 // ============================================================
-// Authentic Utah Uniform Citation layout (Rule 4-704) rendered via
-// the engine's fixed-layout section kind. One unified template
-// covers traffic / criminal / parking / warning types — sections
-// show/hide based on `data.type` and field presence.
+// Faithful reproduction of the official
+//   "UNIFORM CITATION OR INFORMATION AND SUMMONS TO APPEAR"
+// (form rev 10/13 — the layout Utah courts receive from the
+// e-filing pipeline). Field order, label wording, the box grid,
+// and the statutory paragraphs are transcribed from the filed
+// form rather than paraphrased: a justice court clerk reads
+// these copies against the paper original, so "close enough"
+// wording is a rejection risk.
+//
+// Block order, top to bottom, matching the printed form:
+//   1. Title bar + CASE NO. / CITATION / ORI
+//   2. STATE OF UTAH / COUNTY OF / CITY OF caption + issuing agency
+//   3. Defendant name + address
+//   4. Driver license block
+//   5. Physical descriptors
+//   6. Vehicle / vessel
+//   7. Commercial vehicle
+//   8. "THE ABOVE NAMED DEFENDANT IS CHARGED WITH" offense table
+//   9. Incident line (location / mile post / direction / posted)
+//  10. "GIVEN NOTICE TO APPEAR" + the 5-to-14-day summons warning
+//  11. Certification + officer / complainant / prosecuting agency
+//  12. Court disposition strip (plea, disposition, fine, jail, DLD)
+//  13. Payment line + READ CAREFULLY
 //
 // Per-zone identity (plaintiff name, agency ID label) is resolved
-// from the citation's `agency_court_zone` row at API serialization
-// time and passed into the schema via fields on CitationUtahData
-// (zone_plaintiff_name, zone_agency_id_label). Falls back to the
+// from the citation's `agency_court_zones` row at API serialization
+// time and passed in via zone_* fields, falling back to the
 // workspace default when unset.
 //
-// Multi-copy bottom strip is rendered conditionally based on
-// data.__copyKind ('court' | 'agency' | 'defendant' | 'file') —
-// the wrapper in utahMasterRenderer.ts sets this per page.
+// The multi-copy bottom strip is rendered by the wrapper in
+// utahMasterRenderer.ts from data.__copyKind — the official form
+// is a 4-part NCR set and the copy designation is part of it
+// ("ISSUING AGENCY COPY" on the filed sample).
 
 import type { FixedLayoutSection, FixedField, FormSchema } from '../engine/types';
 
@@ -25,115 +44,155 @@ export interface CitationUtahViolation {
   description: string;
   offense_class: string;          // 'Infraction' | 'Class C Misd.' | etc.
   fine_amount: number;
+  /** U = Utah Code, CO = County ordinance, CY = City ordinance. */
+  code_type?: string | null;
+  /** Severity as printed in the form's SEVERITY column (e.g. 'MB', 'I'). */
+  severity?: string | null;
+  /** Court-use columns — populated post-adjudication. */
+  final_charge?: string | null;
+  plea?: string | null;
+  disposition?: string | null;
 }
 
 export interface CitationUtahData {
   // ── Metadata ──
   citation_number?: string | null;
+  case_number?: string | null;
   type?: string | null;                       // 'traffic' | 'criminal' | 'parking' | 'warning'
   status?: string | null;
 
-  // ── Per-zone identity (resolved server-side from agency_court_zones) ──
-  zone_plaintiff_name?: string | null;        // 'STATE OF UTAH' or 'ROCKY MOUNTAIN PROTECTIVE GROUP'
-  zone_agency_id_label?: string | null;       // 'ORI: UT0XXXXXX' or 'License #: ...'
+  // ── Issuing identity (resolved server-side from agency_court_zones) ──
+  zone_plaintiff_name?: string | null;
+  zone_agency_id_label?: string | null;
   zone_include_court_caption?: boolean | null;
+  ori?: string | null;
+  issuing_agency?: string | null;
+  prosecuting_agency?: string | null;
+  caption_county?: string | null;
+  caption_city?: string | null;
   agency_phone?: string | null;
   agency_address?: string | null;
 
   // ── Court ──
   court_name?: string | null;
   court_address?: string | null;
+  court_phone?: string | null;
   court_date?: string | null;
   court_time?: string | null;
   court_room?: string | null;
-  case_number?: string | null;
   appearance_required?: boolean | null;
 
   // ── Defendant ──
-  person_name?: string | null;                // 'Last, First Middle'
-  person_first?: string | null;               // optional split form
+  person_name?: string | null;                // combined 'Last, First Middle'
+  person_first?: string | null;
   person_last?: string | null;
   person_middle?: string | null;
   person_dob?: string | null;
-  person_dl?: string | null;
-  person_dl_state?: string | null;
   person_address?: string | null;
   person_city?: string | null;
   person_state?: string | null;
   person_zip?: string | null;
   person_phone?: string | null;
+
+  // ── Driver license ──
+  person_dl?: string | null;
+  dl_state?: string | null;
+  person_dl_state?: string | null;            // legacy alias for dl_state
+  dl_expires?: string | null;
+  dl_restriction?: string | null;
+  cdl_presented?: boolean | null;
+  motorcycle_endorsed?: boolean | null;
+  picture_id?: boolean | null;
+  birth_place?: string | null;
+  ssn?: string | null;
+
+  // ── Physical descriptors ──
   person_sex?: string | null;
   person_race?: string | null;
   person_height?: string | null;
   person_weight?: string | null;
-  person_hair?: string | null;
   person_eyes?: string | null;
+  person_hair?: string | null;
 
-  // ── Vehicle ──
+  // ── Vehicle / vessel ──
   vehicle_plate?: string | null;
   vehicle_state?: string | null;
+  vehicle_plate_expires?: string | null;
   vehicle_year?: string | null;
   vehicle_make?: string | null;
   vehicle_model?: string | null;
+  vehicle_type?: string | null;
   vehicle_color?: string | null;
   vehicle_vin?: string | null;
-  vehicle_style?: string | null;
+
+  // ── Commercial vehicle ──
   commercial_vehicle?: boolean | null;
   hazmat?: boolean | null;
-  is_trailer?: boolean | null;
-  is_rental?: boolean | null;
+  occupants_16_plus?: boolean | null;
+  gvwr?: string | null;
+  company_unit?: string | null;
+  company_city_state?: string | null;
+  actual_weight?: string | null;
+  weight_limit?: string | null;
 
   // ── Incident ──
   violation_date?: string | null;
   violation_time?: string | null;
-  violation_day?: string | null;              // 'MON'..'SUN' or blank
   location?: string | null;
   incident_city?: string | null;
   incident_county?: string | null;
-  beat_id?: string | null;
-  sector_id?: string | null;
+  mile_post?: string | null;
+  direction_of_travel?: string | null;
+  interstate?: boolean | null;
+  military?: boolean | null;
+  accident_related?: boolean | null;
 
-  // ── Offenses (flat fallback for single-violation) ──
+  // ── Offenses (flat fallback for the single-violation case) ──
   statute_citation?: string | null;
   violation_description?: string | null;
   offense_level?: string | null;
   fine_amount?: number | null;
-  // Multi-violation array — when present, replaces flat fields in OFFENSES.
   violations?: CitationUtahViolation[];
 
-  // ── Speed/condition flags ──
+  // ── Speed / BAC ──
   speed_recorded?: number | string | null;
   speed_limit?: number | string | null;
   radar_type?: string | null;
   bac_level?: number | string | null;
-  school_zone?: boolean | null;
-  construction_zone?: boolean | null;
-  work_zone?: boolean | null;
-  accident_related?: boolean | null;
-  dui_related?: boolean | null;
-  property_damage?: boolean | null;
-  bodily_injury?: boolean | null;
-  fatality?: boolean | null;
-
-  // ── Bond/fine ──
-  bond_amount?: number | string | null;
-  bond_type?: string | null;
 
   // ── Notes ──
   notes?: string | null;
 
-  // ── Officer ──
+  // ── Officer / complainant ──
   issuing_officer_name?: string | null;
   badge_number?: string | null;
-  signature_image?: string | null;            // officer signature PNG
+  officer_id_number?: string | null;
+  complainant?: string | null;
+  complainant_phone?: string | null;
+  signature_image?: string | null;
   signature_date?: string | null;
 
   // ── Defendant signature ──
-  defendant_signature_image?: string | null;  // PNG, set after signature flow (PR 2)
+  defendant_signature_image?: string | null;
   defendant_signed_at?: string | null;
   defendant_refused?: boolean | null;
 
-  // ── Multi-copy variant (set by renderer wrapper per page) ──
+  // ── Court disposition strip (post-adjudication) ──
+  plea?: string | null;                       // 'guilty' | 'not_guilty' | 'no_contest'
+  final_charge?: string | null;
+  disposition?: string | null;                // 'dismissed' | 'diversion' | 'plea_in_abeyance' | 'declination'
+  fine_imposed?: number | string | null;
+  fine_suspended?: number | string | null;
+  jail_days?: number | string | null;
+  jail_suspended?: number | string | null;
+  conviction_date?: string | null;
+  date_sent_to_dld?: string | null;
+  docket_number?: string | null;
+  judge_name?: string | null;
+  felony_death?: boolean | null;
+  felony_serious_bodily?: boolean | null;
+
+  // ── Multi-copy variant (set by the renderer wrapper per page) ──
   __copyKind?: CitationCopyKind;
 }
 
@@ -152,445 +211,488 @@ const fmtFine = (v: number | string | null | undefined): string => {
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : '';
 };
 
-function isTraffic(d: CitationUtahData): boolean {
-  return d.type === 'traffic' || d.type == null || d.type === '';
-}
 function isWarning(d: CitationUtahData): boolean { return d.type === 'warning'; }
-function isCriminal(d: CitationUtahData): boolean { return d.type === 'criminal'; }
-function isParking(d: CitationUtahData): boolean { return d.type === 'parking'; }
 
-function showVehicle(d: CitationUtahData): boolean {
-  if (isCriminal(d) || isWarning(d)) {
-    // Only show vehicle if any vehicle data was captured (e.g. criminal w/ a vehicle)
-    return has(d.vehicle_plate) || has(d.vehicle_vin) || has(d.vehicle_make);
-  }
-  return true; // traffic & parking always show vehicle
-}
+/** The summons/appearance machinery is meaningless on a warning. */
+function showSummons(d: CitationUtahData): boolean { return !isWarning(d); }
 
-function showCourt(d: CitationUtahData): boolean { return !isWarning(d); }
-function showPromiseToAppear(d: CitationUtahData): boolean { return !isWarning(d); }
-function showSpeedRow(d: CitationUtahData): boolean {
-  return has(d.speed_recorded) || has(d.speed_limit) || has(d.radar_type);
-}
-
-// Format the defendant's name into a single "LAST, FIRST MIDDLE" string.
+/** Format the defendant's name into "LAST, FIRST MIDDLE". */
 function fmtDefendantName(d: CitationUtahData): string {
   if (d.person_name && d.person_name.trim()) return d.person_name.trim();
-  const parts: string[] = [];
-  if (d.person_last) parts.push(d.person_last.trim());
+  const last = (d.person_last ?? '').trim();
   const fm = [d.person_first, d.person_middle].filter((x) => x && x.trim()).join(' ');
-  if (fm) {
-    return parts.length ? `${parts[0]}, ${fm}` : fm;
+  if (last && fm) return `${last}, ${fm}`;
+  return last || fm;
+}
+
+/**
+ * The official form prints Last / First / Middle in three separate boxes,
+ * but most of the RMS captures a single "Last, First Middle" string. Split
+ * it on demand so a citation entered the normal way still fills all three
+ * boxes instead of cramming the whole name into "Last".
+ */
+function splitPersonName(d: CitationUtahData): { last: string; first: string; middle: string } {
+  const raw = str(d.person_name).trim();
+  const [lastPart = '', restPart = ''] = raw.includes(',')
+    ? [raw.slice(0, raw.indexOf(',')), raw.slice(raw.indexOf(',') + 1)]
+    : [raw, ''];
+  const rest = restPart.trim().split(/\s+/).filter(Boolean);
+  return {
+    last: lastPart.trim(),
+    first: rest[0] ?? '',
+    middle: rest.slice(1).join(' '),
+  };
+}
+
+/** Last name, falling back to the leading segment of a combined name. */
+function fmtLast(d: CitationUtahData): string {
+  return has(d.person_last) ? str(d.person_last) : splitPersonName(d).last;
+}
+
+function fmtFirst(d: CitationUtahData): string {
+  return has(d.person_first) ? str(d.person_first) : splitPersonName(d).first;
+}
+
+function fmtMiddle(d: CitationUtahData): string {
+  return has(d.person_middle) ? str(d.person_middle) : splitPersonName(d).middle;
+}
+
+// ── Statutory text ──────────────────────────────────────────
+// Transcribed verbatim from the filed form. These are legal
+// notices, not UI copy — do not reword, trim, or "clarify" them.
+
+const SUMMONS_WARNING =
+  'Not less than (5) five nor more than (14) fourteen days after the issuance of this citation, or as '
+  + 'directed by the court. IF YOU FAIL TO APPEAR THE COURT MAY ISSUE A WARRANT FOR YOUR ARREST. You may '
+  + 'be eligible for deferred prosecution under UCA 77-2-4.2. For more information visit '
+  + 'utcourts.gov/deferredtraffic';
+
+const NOT_AN_INFORMATION =
+  'This citation is not an information and will not be used as an information without your consent. If an '
+  + 'information is filed you will be provided a copy by the court. You MUST appear in court on or before the '
+  + 'time set in this citation or as directed by the court. IF YOU FAIL TO APPEAR, THE COURT MAY ISSUE A '
+  + 'WARRANT FOR YOUR ARREST.';
+
+const CERTIFICATION =
+  'I certify that a copy of this summons and citation was given to the defendant according to law on the '
+  + 'above date and I know or believe and so allege that the above named defendant did commit the offense '
+  + 'herein set forth contrary to law. I further certify that the court to which the defendant has been '
+  + 'directed to appear is the proper court pursuant to section 77-7-21, U.C.A.';
+
+const PAYMENT_LINE = 'Payment may be submitted online at: https://www.utcourts.gov/epayments';
+
+// ── Layout constants ────────────────────────────────────────
+// (0, 0) = top-left of the section. Letter page, 10mm margins.
+
+const W = 195.9;              // usable content width
+const ROW = 5.6;              // boxed grid row height
+const LBL = 5.5;              // in-box label font size
+const VAL = 8.5;              // value font size
+const TINY = 6;               // statutory paragraph font size
+
+/**
+ * A "LABEL  YES [] NO []" triple, as the official form prints every
+ * boolean. A tri-state: NULL leaves both boxes empty (the officer
+ * never answered), which is distinct from an explicit "No".
+ */
+function ynPair(
+  x: number, y: number, label: string,
+  read: (d: CitationUtahData) => boolean | null | undefined,
+  path?: string,
+  visibleIf?: (d: CitationUtahData) => boolean,
+): FixedField<CitationUtahData>[] {
+  // drawLabel truncates to splitTextToSize(label, w - 0.5)[0], so a box that
+  // is even slightly narrow silently drops characters — "MOTORCYCLE" rendered
+  // as "MOTORCYCL". Uppercase Helvetica at LBL runs ~1.4mm/char.
+  const labelW = Math.max(16, label.length * 1.5);
+  const fields: FixedField<CitationUtahData>[] = [
+    { x, y: y + 1.2, w: labelW, h: 3.6, style: 'label', label, fontSize: LBL, visibleIf },
+    {
+      x: x + labelW, y: y + 1.2, w: 8, h: 3.6, style: 'checkbox', label: 'YES', fontSize: LBL,
+      accessor: (d) => read(d) === true, visibleIf,
+    },
+    {
+      x: x + labelW + 11, y: y + 1.2, w: 8, h: 3.6, style: 'checkbox', label: 'NO', fontSize: LBL,
+      accessor: (d) => read(d) === false, visibleIf,
+    },
+  ];
+  if (path) {
+    // Sidecar carrier for the RAW tri-state. Extraction walks fields with a
+    // `path`, so pathing the YES box instead would round-trip null as `false`
+    // — re-rendering an unanswered question as an explicit "NO". This field
+    // draws nothing: drawLabel returns early when `label` is undefined.
+    fields.push({
+      x: 0, y: 0, w: 0, h: 0, style: 'label', path,
+      accessor: (d) => { const v = read(d); return v == null ? null : v; },
+    });
   }
-  return parts.join(', ');
+  return fields;
+}
+
+/** A labelled grid cell — the form's basic unit. */
+function cell(
+  x: number, y: number, w: number, label: string,
+  accessor: (d: CitationUtahData) => string,
+  path?: string,
+  opts: { h?: number; align?: 'left' | 'center' | 'right'; bold?: boolean; fontSize?: number } = {},
+): FixedField<CitationUtahData> {
+  return {
+    x, y, w, h: opts.h ?? ROW, style: 'box', label, accessor, path,
+    fontSize: opts.fontSize ?? VAL, align: opts.align, bold: opts.bold,
+  };
 }
 
 // ── Master form fixed-layout fields ─────────────────────────
 //
-// Coordinate system: (0, 0) = top-left of the section.
-// Letter page width with 10mm margins = 195.9mm usable.
-// Total section height = 215mm (fits between header and bottom strip).
+// Built with a running `y` cursor so the blocks stay self-consistent
+// when one of them changes height. FORM_CONTENT_HEIGHT below is the
+// measured end of that cursor and is asserted by the unit test — the
+// copy strip is page-anchored at (pageHeight - 25mm), so content that
+// grows past it would silently collide.
 
-const SECTION_WIDTH = 195.9;
-const ROW = 6;                // compact form row height (was 7 — saves ~10mm overall)
-const LABEL_FS = 6.5;         // tiny label font
-const VAL_FS = 9;             // value font
-const BIG_FS = 11;            // case caption font
-
-// Build the list of fields for the master form layout.
 function buildMasterFields(): FixedField<CitationUtahData>[] {
-  const fields: FixedField<CitationUtahData>[] = [];
+  const f: FixedField<CitationUtahData>[] = [];
+  let y = 0;
 
-  // ── 0–24mm: Court caption block ─────────────────────────
-  fields.push(
-    // Top rule
-    { x: 0, y: 0, w: SECTION_WIDTH, h: 0, style: 'line', bold: true },
-
-    // Plaintiff caption — "IN THE JUSTICE COURT OF..."
+  // ── 1. Title bar + CASE NO. / CITATION ──────────────────
+  f.push(
+    { x: 0, y, w: 129, h: 9.5, style: 'rect', bold: true },
     {
-      x: 0, y: 2, w: SECTION_WIDTH, h: 5, style: 'label',
-      label: 'IN THE JUSTICE COURT OF', align: 'center', fontSize: 8, bold: true,
-      visibleIf: (d) => d.zone_include_court_caption !== false,
+      x: 1, y: y + 1, w: 127, h: 4, style: 'label', align: 'center', bold: true, fontSize: 8,
+      label: 'UNIFORM CITATION OR INFORMATION',
     },
     {
-      x: 0, y: 7, w: SECTION_WIDTH, h: 5, style: 'text', accessor: (d) => (d.court_name ?? '').toUpperCase(),
-      align: 'center', fontSize: BIG_FS, bold: true, path: 'court_name',
-      visibleIf: (d) => d.zone_include_court_caption !== false,
+      x: 1, y: y + 5, w: 127, h: 4, style: 'label', align: 'center', bold: true, fontSize: 8,
+      label: 'AND SUMMONS TO APPEAR',
     },
+    cell(129, y, 33, 'CASE NO.', (d) => str(d.case_number), 'case_number', { h: 9.5 }),
+    cell(162, y, 33.9, 'CITATION', (d) => str(d.citation_number), 'citation_number', { h: 9.5, bold: true }),
+  );
+  y += 9.5;
 
-    // Plaintiff vs Defendant
-    {
-      x: 0, y: 14, w: 100, h: 4, style: 'text',
-      accessor: (d) => `${(d.zone_plaintiff_name ?? 'ROCKY MOUNTAIN PROTECTIVE GROUP').toUpperCase()},`,
-      fontSize: 9, bold: true,
-    },
-    {
-      x: 6, y: 18, w: 50, h: 4, style: 'label', label: 'Plaintiff,', fontSize: 8,
-    },
-    { x: 0, y: 22, w: 30, h: 4, style: 'label', label: 'vs.', fontSize: 9, bold: true },
-    {
-      x: 0, y: 26, w: 130, h: 5, style: 'underline',
-      accessor: (d) => fmtDefendantName(d).toUpperCase(),
-      label: 'Defendant', fontSize: 9, bold: true, path: 'person_name',
-    },
-
-    // Case number block on the right
-    {
-      x: 130, y: 14, w: 65, h: 6, style: 'box',
-      accessor: (d) => d.citation_number ?? d.case_number ?? '',
-      label: 'CITATION No.', fontSize: 9, bold: true, path: 'citation_number',
-    },
-    {
-      x: 130, y: 22, w: 65, h: 8, style: 'barcode',
-      accessor: (d) => d.citation_number ?? '',
-    },
-  );
-
-  // Horizontal separator
-  fields.push({ x: 0, y: 34, w: SECTION_WIDTH, h: 0, style: 'line' });
-
-  // ── 36–64mm: Defendant block ─────────────────────────────
-  let y = 36;
-  // Row 1: Last / First / Middle / DOB
-  fields.push(
-    { x: 0, y, w: 60, h: ROW, style: 'underline', label: 'Last', accessor: (d) => str(d.person_last || (d.person_name?.split(',')[0] ?? '')), path: 'person_last' },
-    { x: 62, y, w: 50, h: ROW, style: 'underline', label: 'First', accessor: (d) => str(d.person_first), path: 'person_first' },
-    { x: 114, y, w: 35, h: ROW, style: 'underline', label: 'Middle', accessor: (d) => str(d.person_middle), path: 'person_middle' },
-    { x: 151, y, w: 44.9, h: ROW, style: 'underline', label: 'Date of Birth', accessor: (d) => str(d.person_dob), path: 'person_dob' },
-  );
-  y += ROW + 1;
-  // Row 2: DL# / DL State / Address
-  fields.push(
-    { x: 0, y, w: 50, h: ROW, style: 'underline', label: 'DL #', accessor: (d) => str(d.person_dl), path: 'person_dl' },
-    { x: 52, y, w: 12, h: ROW, style: 'underline', label: 'St', accessor: (d) => str(d.person_dl_state), path: 'person_dl_state' },
-    { x: 66, y, w: 129.9, h: ROW, style: 'underline', label: 'Address', accessor: (d) => str(d.person_address), path: 'person_address' },
-  );
-  y += ROW + 1;
-  // Row 3: City / State / ZIP / Phone
-  fields.push(
-    { x: 0, y, w: 70, h: ROW, style: 'underline', label: 'City', accessor: (d) => str(d.person_city), path: 'person_city' },
-    { x: 72, y, w: 12, h: ROW, style: 'underline', label: 'St', accessor: (d) => str(d.person_state), path: 'person_state' },
-    { x: 86, y, w: 25, h: ROW, style: 'underline', label: 'Zip', accessor: (d) => str(d.person_zip), path: 'person_zip' },
-    { x: 113, y, w: 82.9, h: ROW, style: 'underline', label: 'Phone', accessor: (d) => str(d.person_phone), path: 'person_phone' },
-  );
-  y += ROW + 1;
-  // Row 4: Sex / Race / Hgt / Wgt / Hair / Eyes
-  fields.push(
-    { x: 0, y, w: 25, h: ROW, style: 'underline', label: 'Sex', accessor: (d) => str(d.person_sex), path: 'person_sex' },
-    { x: 27, y, w: 25, h: ROW, style: 'underline', label: 'Race', accessor: (d) => str(d.person_race), path: 'person_race' },
-    { x: 54, y, w: 25, h: ROW, style: 'underline', label: 'Height', accessor: (d) => str(d.person_height), path: 'person_height' },
-    { x: 81, y, w: 25, h: ROW, style: 'underline', label: 'Weight', accessor: (d) => str(d.person_weight), path: 'person_weight' },
-    { x: 108, y, w: 30, h: ROW, style: 'underline', label: 'Hair', accessor: (d) => str(d.person_hair), path: 'person_hair' },
-    { x: 140, y, w: 55.9, h: ROW, style: 'underline', label: 'Eyes', accessor: (d) => str(d.person_eyes), path: 'person_eyes' },
-  );
-  y += ROW + 1;
-  // Defendant block bottom rule
-  fields.push({ x: 0, y, w: SECTION_WIDTH, h: 0, style: 'line' });
-  y += 2;
-
-  // ── ~70–93mm: Vehicle block (conditional) ────────────────
-  const vehicleStartY = y;
-  fields.push({
-    x: 0, y, w: 30, h: 4, style: 'label', label: 'VEHICLE', fontSize: 8, bold: true,
-    visibleIf: showVehicle,
-  });
-  y += 4;
-  fields.push(
-    { x: 0, y, w: 36, h: ROW, style: 'underline', label: 'Plate', accessor: (d) => str(d.vehicle_plate), path: 'vehicle_plate', visibleIf: showVehicle },
-    { x: 38, y, w: 12, h: ROW, style: 'underline', label: 'St', accessor: (d) => str(d.vehicle_state), path: 'vehicle_state', visibleIf: showVehicle },
-    { x: 52, y, w: 22, h: ROW, style: 'underline', label: 'Year', accessor: (d) => str(d.vehicle_year), path: 'vehicle_year', visibleIf: showVehicle },
-    { x: 76, y, w: 32, h: ROW, style: 'underline', label: 'Make', accessor: (d) => str(d.vehicle_make), path: 'vehicle_make', visibleIf: showVehicle },
-    { x: 110, y, w: 40, h: ROW, style: 'underline', label: 'Model', accessor: (d) => str(d.vehicle_model), path: 'vehicle_model', visibleIf: showVehicle },
-    { x: 152, y, w: 43.9, h: ROW, style: 'underline', label: 'Color', accessor: (d) => str(d.vehicle_color), path: 'vehicle_color', visibleIf: showVehicle },
-  );
-  y += ROW + 1;
-  fields.push(
-    { x: 0, y, w: 120, h: ROW, style: 'underline', label: 'VIN', accessor: (d) => str(d.vehicle_vin), path: 'vehicle_vin', visibleIf: showVehicle },
-    { x: 122, y, w: 73.9, h: ROW, style: 'underline', label: 'Body Style', accessor: (d) => str(d.vehicle_style), path: 'vehicle_style', visibleIf: showVehicle },
-  );
-  y += ROW + 1;
-  fields.push(
-    { x: 0, y: y + 1, w: 8, h: 4, style: 'checkbox', label: 'Commercial', accessor: (d) => !!d.commercial_vehicle, path: 'commercial_vehicle', visibleIf: showVehicle },
-    { x: 50, y: y + 1, w: 8, h: 4, style: 'checkbox', label: 'Hazmat', accessor: (d) => !!d.hazmat, path: 'hazmat', visibleIf: showVehicle },
-    { x: 90, y: y + 1, w: 8, h: 4, style: 'checkbox', label: 'Trailer', accessor: (d) => !!d.is_trailer, path: 'is_trailer', visibleIf: showVehicle },
-    { x: 130, y: y + 1, w: 8, h: 4, style: 'checkbox', label: 'Rental', accessor: (d) => !!d.is_rental, path: 'is_rental', visibleIf: showVehicle },
-  );
-  y += 6;
-  fields.push({ x: 0, y, w: SECTION_WIDTH, h: 0, style: 'line', visibleIf: showVehicle });
-  y += 2;
-
-  // When vehicle hidden, claw back the 25mm we reserved.
-  // Note: the renderer doesn't shift later fields automatically based on visibility,
-  // so for the non-vehicle case the layout has a visible empty band — acceptable
-  // tradeoff for keeping the schema static. The hide condition is rare on traffic/
-  // parking citations (the dominant volume); criminal/warning citations show
-  // vehicle when relevant and skip when not, leaving the empty space as a
-  // visible "no vehicle involved" affordance.
-  void vehicleStartY;
-
-  // ── 93–115mm: Incident block ────────────────────────────
-  fields.push({ x: 0, y, w: 30, h: 4, style: 'label', label: 'INCIDENT', fontSize: 8, bold: true });
-  y += 4;
-  fields.push(
-    { x: 0, y, w: 40, h: ROW, style: 'underline', label: 'Date', accessor: (d) => str(d.violation_date), path: 'violation_date' },
-    { x: 42, y, w: 30, h: ROW, style: 'underline', label: 'Time', accessor: (d) => str(d.violation_time), path: 'violation_time' },
-    { x: 74, y, w: 22, h: ROW, style: 'underline', label: 'Day', accessor: (d) => str(d.violation_day), path: 'violation_day' },
-    { x: 98, y, w: 97.9, h: ROW, style: 'underline', label: 'Location', accessor: (d) => str(d.location), path: 'location' },
-  );
-  y += ROW + 1;
-  fields.push(
-    { x: 0, y, w: 65, h: ROW, style: 'underline', label: 'City', accessor: (d) => str(d.incident_city), path: 'incident_city' },
-    { x: 67, y, w: 45, h: ROW, style: 'underline', label: 'County', accessor: (d) => str(d.incident_county), path: 'incident_county' },
-    { x: 114, y, w: 35, h: ROW, style: 'underline', label: 'Beat', accessor: (d) => str(d.beat_id), path: 'beat_id' },
-    { x: 151, y, w: 44.9, h: ROW, style: 'underline', label: 'Sector', accessor: (d) => str(d.sector_id), path: 'sector_id' },
-  );
-  y += ROW + 1;
-  fields.push({ x: 0, y, w: SECTION_WIDTH, h: 0, style: 'line' });
-  y += 2;
-
-  // ── ~115–170mm: Offense table ────────────────────────────
-  fields.push({ x: 0, y, w: 60, h: 4, style: 'label', label: 'OFFENSE(S) — Utah Code or Local Ordinance', fontSize: 8, bold: true });
-  y += 4;
-  // Table header
-  fields.push(
-    { x: 0, y, w: 8, h: ROW, style: 'box', label: '#', fontSize: LABEL_FS, align: 'center' },
-    { x: 8, y, w: 40, h: ROW, style: 'box', label: 'Statute', fontSize: LABEL_FS },
-    { x: 48, y, w: 105, h: ROW, style: 'box', label: 'Description', fontSize: LABEL_FS },
-    { x: 153, y, w: 22, h: ROW, style: 'box', label: 'Class', fontSize: LABEL_FS, align: 'center' },
-    { x: 175, y, w: 20.9, h: ROW, style: 'box', label: 'Fine', fontSize: LABEL_FS, align: 'right' },
+  // ── 2. Issuing identity + caption ───────────────────────
+  f.push(
+    cell(0, y, 45, 'ORI', (d) => str(d.ori ?? d.zone_agency_id_label), 'ori'),
+    cell(45, y, 80, 'ISSUING AGENCY', (d) => str(d.issuing_agency), 'issuing_agency'),
+    cell(125, y, 70.9, 'PROSECUTING AGENCY', (d) => str(d.prosecuting_agency), 'prosecuting_agency'),
   );
   y += ROW;
-  // 4 data rows
+  f.push(
+    {
+      x: 0, y, w: 45, h: ROW, style: 'box', label: 'PLAINTIFF', bold: true, fontSize: VAL,
+      accessor: (d) => (d.zone_plaintiff_name ?? 'STATE OF UTAH').toUpperCase(),
+    },
+    cell(45, y, 80, 'COUNTY OF', (d) => str(d.caption_county), 'caption_county'),
+    cell(125, y, 70.9, 'CITY OF', (d) => str(d.caption_city), 'caption_city'),
+  );
+  y += ROW + 1;
+
+  // ── 3. Defendant ────────────────────────────────────────
+  f.push(
+    cell(0, y, 60, 'NAME (LAST)', fmtLast, 'person_last'),
+    cell(60, y, 50, '(FIRST)', fmtFirst, 'person_first'),
+    cell(110, y, 35, '(MIDDLE)', fmtMiddle, 'person_middle'),
+    cell(145, y, 50.9, 'DOB', (d) => str(d.person_dob), 'person_dob'),
+  );
+  y += ROW;
+  f.push(
+    cell(0, y, 90, 'ADDRESS', (d) => str(d.person_address), 'person_address'),
+    cell(90, y, 50, '(CITY)', (d) => str(d.person_city), 'person_city'),
+    cell(140, y, 15, '(STATE)', (d) => str(d.person_state), 'person_state', { align: 'center' }),
+    cell(155, y, 40.9, '(ZIP)', (d) => str(d.person_zip), 'person_zip'),
+  );
+  y += ROW;
+
+  // ── 4. Driver license ───────────────────────────────────
+  f.push(
+    cell(0, y, 48, 'DRIVER LICENSE', (d) => str(d.person_dl), 'person_dl'),
+    cell(48, y, 14, 'STATE', (d) => str(d.dl_state ?? d.person_dl_state), 'dl_state', { align: 'center' }),
+    cell(62, y, 26, 'EXPIRES', (d) => str(d.dl_expires), 'dl_expires'),
+    cell(88, y, 26, 'RESTRICTION', (d) => str(d.dl_restriction), 'dl_restriction'),
+    cell(114, y, 45, 'BIRTH PLACE', (d) => str(d.birth_place), 'birth_place'),
+    cell(159, y, 36.9, 'SOCIAL SEC. #', (d) => str(d.ssn), 'ssn'),
+  );
+  y += ROW;
+
+  // ── 5. Physical descriptors ─────────────────────────────
+  f.push(
+    cell(0, y, 22, 'GENDER', (d) => str(d.person_sex), 'person_sex', { align: 'center' }),
+    cell(22, y, 22, 'RACE CODE', (d) => str(d.person_race), 'person_race', { align: 'center' }),
+    cell(44, y, 22, 'HEIGHT', (d) => str(d.person_height), 'person_height', { align: 'center' }),
+    cell(66, y, 22, 'WEIGHT', (d) => str(d.person_weight), 'person_weight', { align: 'center' }),
+    cell(88, y, 24, 'EYES', (d) => str(d.person_eyes), 'person_eyes', { align: 'center' }),
+    cell(112, y, 24, 'HAIR', (d) => str(d.person_hair), 'person_hair', { align: 'center' }),
+    cell(136, y, 59.9, 'TELEPHONE', (d) => str(d.person_phone), 'person_phone'),
+  );
+  y += ROW;
+  f.push(
+    ...ynPair(0, y, 'CDL PRESENTED', (d) => d.cdl_presented, 'cdl_presented'),
+    ...ynPair(68, y, 'MOTORCYCLE', (d) => d.motorcycle_endorsed, 'motorcycle_endorsed'),
+    ...ynPair(130, y, 'PICTURE ID', (d) => d.picture_id, 'picture_id'),
+  );
+  y += 6;
+
+  // ── 6. Vehicle / vessel ─────────────────────────────────
+  f.push(
+    cell(0, y, 42, 'VEHICLE/VESSEL LICENSE', (d) => str(d.vehicle_plate), 'vehicle_plate'),
+    cell(42, y, 13, 'STATE', (d) => str(d.vehicle_state), 'vehicle_state', { align: 'center' }),
+    cell(55, y, 24, 'EXPIRES', (d) => str(d.vehicle_plate_expires), 'vehicle_plate_expires'),
+    cell(79, y, 34, 'VEHICLE MAKE', (d) => str(d.vehicle_make), 'vehicle_make'),
+    cell(113, y, 34, 'VEHICLE MODEL', (d) => str(d.vehicle_model), 'vehicle_model'),
+    cell(147, y, 24, 'VEHICLE TYPE', (d) => str(d.vehicle_type), 'vehicle_type'),
+    cell(171, y, 12, 'YEAR', (d) => str(d.vehicle_year), 'vehicle_year', { align: 'center' }),
+    cell(183, y, 12.9, 'COLOR', (d) => str(d.vehicle_color), 'vehicle_color', { align: 'center' }),
+  );
+  y += ROW;
+  f.push(
+    cell(0, y, 100, 'VIN', (d) => str(d.vehicle_vin), 'vehicle_vin'),
+    ...ynPair(104, y, 'ACCIDENT', (d) => d.accident_related, 'accident_related'),
+    ...ynPair(150, y, 'INTERSTATE', (d) => d.interstate, 'interstate'),
+  );
+  y += ROW + 1;
+
+  // ── 7. Commercial vehicle ───────────────────────────────
+  // Always printed: the official form carries this block on every
+  // citation, and a fixed layout has no reflow to reclaim the space.
+  f.push(
+    ...ynPair(0, y, 'COMMERCIAL VEH.', (d) => d.commercial_vehicle, 'commercial_vehicle'),
+    ...ynPair(62, y, 'HAZMAT', (d) => d.hazmat, 'hazmat'),
+    ...ynPair(112, y, '16+ OCCUPANTS', (d) => d.occupants_16_plus, 'occupants_16_plus'),
+  );
+  y += 6;
+  f.push(
+    cell(0, y, 30, 'GVWR', (d) => str(d.gvwr), 'gvwr'),
+    cell(30, y, 55, 'COMPANY/UNIT #', (d) => str(d.company_unit), 'company_unit'),
+    cell(85, y, 45, 'CITY/STATE', (d) => str(d.company_city_state), 'company_city_state'),
+    cell(130, y, 32, 'ACTUAL WEIGHT', (d) => str(d.actual_weight), 'actual_weight'),
+    cell(162, y, 33.9, 'WEIGHT LIMIT', (d) => str(d.weight_limit), 'weight_limit'),
+  );
+  y += ROW + 1;
+
+  // ── 8. Offense table ────────────────────────────────────
+  f.push({
+    x: 0, y, w: W, h: 4, style: 'label', bold: true, fontSize: 7.5,
+    label: 'THE ABOVE NAMED DEFENDANT IS CHARGED WITH',
+  });
+  y += 4;
+  const COLS: [number, number, string][] = [
+    [0, 12, 'COUNT'], [12, 72, 'VIOLATION'], [84, 30, 'CODE'], [114, 18, 'U / CO / CY'],
+    [132, 18, 'SEVERITY'], [150, 24, 'FINAL CHARGE'], [174, 21.9, 'PLEA/FINDING'],
+  ];
+  for (const [x, w, label] of COLS) {
+    f.push({ x, y, w, h: 5, style: 'box', label, fontSize: LBL, align: 'center' });
+  }
+  y += 5;
+  const offenseTop = y;
   for (let i = 0; i < 4; i++) {
-    const rowIdx = i;
-    const visibleIfHasViolation = (d: CitationUtahData) => {
-      if (rowIdx === 0) {
-        // Always show the first row — falls back to flat fields when no multi-violation array
-        return true;
-      }
-      const v = d.violations;
-      return Array.isArray(v) && v.length > rowIdx;
+    const rowY = offenseTop + i * ROW;
+    const pick = <K extends keyof CitationUtahViolation>(d: CitationUtahData, key: K): string => {
+      const v = d.violations?.[i];
+      if (v) return str(v[key]);
+      return '';
     };
-    fields.push(
-      // Row number
-      { x: 0, y, w: 8, h: ROW, style: 'box', label: String(rowIdx + 1), align: 'center', fontSize: VAL_FS },
-      // Statute
+    // Row 1 falls back to the flat single-violation columns on `citations`;
+    // rows 2-4 only render when a multi-violation array supplies them.
+    const shown = (d: CitationUtahData) => i === 0 || (d.violations?.length ?? 0) > i;
+    f.push(
+      { x: 0, y: rowY, w: 12, h: ROW, style: 'box', label: String(i + 1), align: 'center', fontSize: VAL },
       {
-        x: 8, y, w: 40, h: ROW, style: 'box',
-        accessor: (d) => {
-          const v = d.violations?.[rowIdx];
-          if (v) return v.statute_citation;
-          if (rowIdx === 0) return str(d.statute_citation);
-          return '';
-        },
-        path: rowIdx === 0 ? 'statute_citation' : undefined,
-        fontSize: VAL_FS,
-        visibleIf: visibleIfHasViolation,
+        x: 12, y: rowY, w: 72, h: ROW, style: 'box', fontSize: VAL, visibleIf: shown,
+        accessor: (d) => pick(d, 'description') || (i === 0 ? str(d.violation_description) : ''),
+        path: i === 0 ? 'violation_description' : undefined,
       },
-      // Description
       {
-        x: 48, y, w: 105, h: ROW, style: 'box',
-        accessor: (d) => {
-          const v = d.violations?.[rowIdx];
-          if (v) return v.description;
-          if (rowIdx === 0) return str(d.violation_description);
-          return '';
-        },
-        path: rowIdx === 0 ? 'violation_description' : undefined,
-        fontSize: VAL_FS,
-        visibleIf: visibleIfHasViolation,
+        x: 84, y: rowY, w: 30, h: ROW, style: 'box', fontSize: VAL, visibleIf: shown,
+        accessor: (d) => pick(d, 'statute_citation') || (i === 0 ? str(d.statute_citation) : ''),
+        path: i === 0 ? 'statute_citation' : undefined,
       },
-      // Class
       {
-        x: 153, y, w: 22, h: ROW, style: 'box',
-        accessor: (d) => {
-          const v = d.violations?.[rowIdx];
-          if (v) return v.offense_class;
-          if (rowIdx === 0) return str(d.offense_level);
-          return '';
-        },
-        path: rowIdx === 0 ? 'offense_level' : undefined,
-        align: 'center', fontSize: VAL_FS,
-        visibleIf: visibleIfHasViolation,
+        x: 114, y: rowY, w: 18, h: ROW, style: 'box', fontSize: VAL, align: 'center', visibleIf: shown,
+        accessor: (d) => pick(d, 'code_type'),
       },
-      // Fine
       {
-        x: 175, y, w: 20.9, h: ROW, style: 'box',
-        accessor: (d) => {
-          const v = d.violations?.[rowIdx];
-          if (v) return fmtFine(v.fine_amount);
-          if (rowIdx === 0) return fmtFine(d.fine_amount ?? null);
-          return '';
-        },
-        path: rowIdx === 0 ? 'fine_amount' : undefined,
-        align: 'right', fontSize: VAL_FS,
-        visibleIf: visibleIfHasViolation,
+        x: 132, y: rowY, w: 18, h: ROW, style: 'box', fontSize: VAL, align: 'center', visibleIf: shown,
+        accessor: (d) => pick(d, 'severity') || (i === 0 ? str(d.offense_level) : ''),
+        path: i === 0 ? 'offense_level' : undefined,
+      },
+      {
+        x: 150, y: rowY, w: 24, h: ROW, style: 'box', fontSize: VAL, visibleIf: shown,
+        accessor: (d) => pick(d, 'final_charge') || (i === 0 ? str(d.final_charge) : ''),
+        path: i === 0 ? 'final_charge' : undefined,
+      },
+      {
+        x: 174, y: rowY, w: 21.9, h: ROW, style: 'box', fontSize: VAL, align: 'center', visibleIf: shown,
+        accessor: (d) => pick(d, 'plea') || (i === 0 ? str(d.plea) : ''),
+        path: i === 0 ? 'plea' : undefined,
       },
     );
-    y += ROW;
   }
+  y = offenseTop + 4 * ROW + 1;
 
-  // Speed row (conditional)
-  fields.push(
+  // ── 9. Incident ─────────────────────────────────────────
+  f.push(
+    cell(0, y, 78, 'LOCATION', (d) => str(d.location), 'location'),
+    cell(78, y, 28, 'DATE', (d) => str(d.violation_date), 'violation_date'),
+    cell(106, y, 20, 'TIME', (d) => str(d.violation_time), 'violation_time', { align: 'center' }),
+    cell(126, y, 24, 'MILE POST', (d) => str(d.mile_post), 'mile_post', { align: 'center' }),
+    cell(150, y, 24, 'DIRECTION OF', (d) => str(d.direction_of_travel), 'direction_of_travel', { align: 'center' }),
+    cell(174, y, 21.9, 'POSTED', (d) => str(d.speed_limit), 'speed_limit', { align: 'center' }),
+  );
+  y += ROW;
+  f.push(
+    cell(0, y, 45, 'CITY', (d) => str(d.incident_city), 'incident_city'),
+    cell(45, y, 40, 'COUNTY', (d) => str(d.incident_county), 'incident_county'),
+    cell(85, y, 28, 'ALCOHOL BAC', (d) => str(d.bac_level), 'bac_level', { align: 'center' }),
+    cell(113, y, 26, 'SPEED', (d) => str(d.speed_recorded), 'speed_recorded', { align: 'center' }),
+    cell(139, y, 28, 'RADAR/LIDAR', (d) => str(d.radar_type), 'radar_type'),
     {
-      x: 0, y: y + 1, w: 40, h: ROW, style: 'underline',
-      label: 'Speed Recorded', accessor: (d) => has(d.speed_recorded) ? `${d.speed_recorded} MPH` : '',
-      path: 'speed_recorded', visibleIf: showSpeedRow,
-    },
-    {
-      x: 42, y: y + 1, w: 40, h: ROW, style: 'underline',
-      label: 'Posted', accessor: (d) => has(d.speed_limit) ? `${d.speed_limit} MPH` : '',
-      path: 'speed_limit', visibleIf: showSpeedRow,
-    },
-    {
-      x: 84, y: y + 1, w: 40, h: ROW, style: 'underline',
-      label: 'Radar Type', accessor: (d) => str(d.radar_type),
-      path: 'radar_type', visibleIf: showSpeedRow,
-    },
-    {
-      x: 126, y: y + 1, w: 69.9, h: ROW, style: 'underline',
-      label: 'TOTAL DUE', accessor: (d) => {
-        const fromViolations = (d.violations ?? []).reduce((s, v) => s + (v.fine_amount || 0), 0);
-        const total = fromViolations > 0 ? fromViolations : (Number(d.fine_amount) || 0);
+      x: 167, y, w: 28.9, h: ROW, style: 'box', label: 'TOTAL FINE', align: 'right', bold: true, fontSize: VAL,
+      accessor: (d) => {
+        const fromViolations = (d.violations ?? []).reduce((s, v) => s + (Number(v.fine_amount) || 0), 0);
+        const total = fromViolations > 0 ? fromViolations : Number(d.fine_amount) || 0;
         return total > 0 ? fmtFine(total) : '';
       },
-      align: 'right', bold: true,
     },
   );
-  y += ROW + 1;
+  y += ROW;
+  f.push(...ynPair(0, y, 'MILITARY', (d) => d.military, 'military'));
+  y += 6.5;
 
-  // Condition flags row
-  fields.push(
-    { x: 0, y, w: 8, h: 4, style: 'checkbox', label: 'School Zone', accessor: (d) => !!d.school_zone, path: 'school_zone' },
-    { x: 38, y, w: 8, h: 4, style: 'checkbox', label: 'Const Zone', accessor: (d) => !!d.construction_zone, path: 'construction_zone' },
-    { x: 76, y, w: 8, h: 4, style: 'checkbox', label: 'Work Zone', accessor: (d) => !!d.work_zone, path: 'work_zone' },
-    { x: 110, y, w: 8, h: 4, style: 'checkbox', label: 'Accident', accessor: (d) => !!d.accident_related, path: 'accident_related' },
-    { x: 144, y, w: 8, h: 4, style: 'checkbox', label: 'DUI Related', accessor: (d) => !!d.dui_related, path: 'dui_related' },
-  );
-  y += 5;
-  fields.push(
-    { x: 0, y, w: 8, h: 4, style: 'checkbox', label: 'Property Dmg', accessor: (d) => !!d.property_damage, path: 'property_damage' },
-    { x: 38, y, w: 8, h: 4, style: 'checkbox', label: 'Bodily Injury', accessor: (d) => !!d.bodily_injury, path: 'bodily_injury' },
-    { x: 76, y, w: 8, h: 4, style: 'checkbox', label: 'Fatality', accessor: (d) => !!d.fatality, path: 'fatality' },
-    { x: 110, y, w: 8, h: 4, style: 'checkbox', label: 'Commercial', accessor: (d) => !!d.commercial_vehicle, path: 'commercial_vehicle' },
-  );
-  y += 6;
-  fields.push({ x: 0, y, w: SECTION_WIDTH, h: 0, style: 'line' });
-  y += 2;
-
-  // ── ~170–192mm: Court appearance (conditional) ───────────
-  fields.push({
-    x: 0, y, w: 80, h: 4, style: 'label', label: 'COURT APPEARANCE', fontSize: 8, bold: true,
-    visibleIf: showCourt,
+  // ── 10. Notice to appear ────────────────────────────────
+  f.push({
+    x: 0, y, w: W, h: 4, style: 'label', bold: true, fontSize: 7.5,
+    label: 'THE DEFENDANT IS GIVEN NOTICE TO APPEAR', visibleIf: showSummons,
   });
   y += 4;
-  fields.push(
-    { x: 0, y, w: 130, h: ROW, style: 'underline', label: 'Court Name', accessor: (d) => str(d.court_name), path: 'court_name', visibleIf: showCourt },
-    { x: 132, y, w: 63.9, h: ROW, style: 'underline', label: 'Room / Dept', accessor: (d) => str(d.court_room), path: 'court_room', visibleIf: showCourt },
+  f.push(
+    cell(0, y, 100, 'MUST APPEAR IN:', (d) => str(d.court_name), 'court_name'),
+    cell(100, y, 45, 'PHONE #', (d) => str(d.court_phone), 'court_phone'),
+    cell(145, y, 50.9, 'ROOM', (d) => str(d.court_room), 'court_room'),
   );
-  y += ROW + 1;
-  fields.push({
-    x: 0, y, w: 195.9, h: ROW, style: 'underline', label: 'Court Address',
-    accessor: (d) => str(d.court_address), path: 'court_address', visibleIf: showCourt,
-  });
-  y += ROW + 1;
-  fields.push(
-    { x: 0, y, w: 50, h: ROW, style: 'underline', label: 'Appearance Date', accessor: (d) => str(d.court_date), path: 'court_date', visibleIf: showCourt },
-    { x: 52, y, w: 30, h: ROW, style: 'underline', label: 'Time', accessor: (d) => str(d.court_time), path: 'court_time', visibleIf: showCourt },
-    { x: 84, y: y + 1, w: 8, h: 4, style: 'checkbox', label: 'MANDATORY APPEARANCE', accessor: (d) => !!d.appearance_required, path: 'appearance_required', visibleIf: showCourt },
-    { x: 130, y: y + 1, w: 8, h: 4, style: 'checkbox', label: 'Pay online: pay.utcourts.gov', accessor: (d) => !d.appearance_required, visibleIf: showCourt },
+  y += ROW;
+  f.push(
+    cell(0, y, 125, 'LOCATED AT', (d) => str(d.court_address), 'court_address'),
+    cell(125, y, 40, 'DATE', (d) => str(d.court_date), 'court_date'),
+    cell(165, y, 30.9, 'TIME', (d) => str(d.court_time), 'court_time', { align: 'center' }),
   );
-  y += ROW + 1;
-  fields.push({ x: 0, y, w: SECTION_WIDTH, h: 0, style: 'line', visibleIf: showCourt });
-  y += 2;
+  y += ROW;
+  f.push({
+    x: 0, y, w: W, h: 9, style: 'paragraph', label: SUMMONS_WARNING,
+    fontSize: TINY, lineHeight: 2.4, visibleIf: showSummons,
+  });
+  y += 9.5;
 
-  // ── 192–212mm: Officer notes ────────────────────────────
-  fields.push({ x: 0, y, w: 80, h: 4, style: 'label', label: 'OFFICER NOTES', fontSize: 8, bold: true });
-  y += 4;
-  fields.push({
-    x: 0, y, w: SECTION_WIDTH, h: 8, style: 'underline',
-    accessor: (d) => str(d.notes), path: 'notes',
+  // ── 11. Certification + officer ─────────────────────────
+  f.push({
+    x: 0, y, w: W, h: 8, style: 'paragraph', label: NOT_AN_INFORMATION,
+    fontSize: TINY, lineHeight: 2.4, visibleIf: showSummons,
   });
-  y += 9;
-
-  // ── 212–235mm: Promise to appear + signatures ──────────
-  fields.push({
-    x: 0, y, w: 120, h: 4, style: 'label',
-    label: 'PROMISE TO APPEAR (Utah Code § 77-7-19)', fontSize: 8, bold: true,
-    visibleIf: showPromiseToAppear,
+  y += 8.5;
+  f.push({
+    x: 0, y, w: W, h: 8, style: 'paragraph', label: CERTIFICATION, fontSize: TINY, lineHeight: 2.4,
   });
-  y += 4;
-  fields.push({
-    x: 0, y, w: SECTION_WIDTH, h: 5, style: 'label',
-    label: 'I acknowledge receipt of this citation and promise to appear at the court named above on the date and time specified, or to satisfy any obligations imposed by the citation.',
-    fontSize: 7,
-    visibleIf: showPromiseToAppear,
-  });
-  y += 6;
-  // Defendant signature
-  fields.push(
+  y += 8.5;
+  f.push(
+    cell(0, y, 60, 'OFFICER', (d) => str(d.issuing_officer_name), 'issuing_officer_name'),
+    cell(60, y, 25, 'ID#', (d) => str(d.officer_id_number ?? d.badge_number), 'officer_id_number'),
+    cell(85, y, 50, 'COMPLAINANT', (d) => str(d.complainant), 'complainant'),
+    cell(135, y, 60.9, 'TELEPHONE NUMBER', (d) => str(d.complainant_phone ?? d.agency_phone), 'complainant_phone'),
+  );
+  y += ROW;
+  f.push(
     {
-      x: 0, y, w: 95, h: 6, style: 'signature',
-      accessor: (d) => d.defendant_refused
-        ? '' // refusal is handled by the stamp helper in PR 2; for now show empty
-        : { image: d.defendant_signature_image ?? undefined },
-      label: 'Defendant signature',
-      path: 'defendant_signature_image',
-      visibleIf: showPromiseToAppear,
+      x: 0, y, w: 90, h: 7, style: 'signature', label: 'Signature of Officer',
+      accessor: (d) => ({ image: d.signature_image ?? undefined }), path: 'signature_image',
     },
+    cell(92, y, 40, 'DATE', (d) => str(d.signature_date ?? d.violation_date), 'signature_date'),
     {
-      x: 97, y, w: 45, h: 6, style: 'underline',
-      accessor: (d) => str(d.defendant_signed_at),
-      label: 'Date', path: 'defendant_signed_at',
-      visibleIf: showPromiseToAppear,
-    },
-    {
-      x: 144, y: y + 2, w: 8, h: 4, style: 'checkbox',
-      label: 'REFUSED TO SIGN', accessor: (d) => !!d.defendant_refused, path: 'defendant_refused',
-      visibleIf: showPromiseToAppear,
+      x: 134, y, w: 61.9, h: 7, style: 'signature', label: 'Signature of Defendant',
+      accessor: (d) => (d.defendant_refused ? '' : { image: d.defendant_signature_image ?? undefined }),
+      path: 'defendant_signature_image', visibleIf: showSummons,
     },
   );
   y += 8;
 
-  // Officer signature
-  fields.push(
-    { x: 0, y, w: 80, h: 4, style: 'label', label: 'ISSUING OFFICER', fontSize: 8, bold: true },
+  // ── 12. Court disposition strip ─────────────────────────
+  f.push(
+    { x: 0, y, w: W, h: 30, style: 'rect' },
+    { x: 1, y: y + 0.5, w: 60, h: 4, style: 'label', label: 'COURT USE ONLY', bold: true, fontSize: 7 },
   );
-  y += 4;
-  fields.push(
-    { x: 0, y, w: 80, h: ROW, style: 'underline', label: 'Officer Name', accessor: (d) => str(d.issuing_officer_name), path: 'issuing_officer_name' },
-    { x: 82, y, w: 22, h: ROW, style: 'underline', label: 'Badge', accessor: (d) => str(d.badge_number), path: 'badge_number' },
-    { x: 106, y, w: 45, h: ROW, style: 'underline', label: 'Agency ID', accessor: (d) => str(d.zone_agency_id_label) },
-    { x: 153, y, w: 42.9, h: ROW, style: 'underline', label: 'Date', accessor: (d) => str(d.signature_date), path: 'signature_date' },
+  const dispTop = y + 4.5;
+  f.push(
+    { x: 2, y: dispTop, w: 24, h: 3.6, style: 'label', label: 'PLEA/FINDING', fontSize: LBL, bold: true },
+    { x: 28, y: dispTop, w: 8, h: 3.6, style: 'checkbox', label: 'Guilty', fontSize: LBL, accessor: (d) => d.plea === 'guilty' },
+    { x: 50, y: dispTop, w: 8, h: 3.6, style: 'checkbox', label: 'Not Guilty', fontSize: LBL, accessor: (d) => d.plea === 'not_guilty' },
+    { x: 80, y: dispTop, w: 8, h: 3.6, style: 'checkbox', label: 'No Contest', fontSize: LBL, accessor: (d) => d.plea === 'no_contest' },
+    { x: 116, y: dispTop, w: 14, h: 3.6, style: 'label', label: 'FELONY', fontSize: LBL, bold: true },
+    { x: 132, y: dispTop, w: 8, h: 3.6, style: 'checkbox', label: 'Death', fontSize: LBL, accessor: (d) => !!d.felony_death, path: 'felony_death' },
+    { x: 158, y: dispTop, w: 8, h: 3.6, style: 'checkbox', label: 'Serious Bodily', fontSize: LBL, accessor: (d) => !!d.felony_serious_bodily, path: 'felony_serious_bodily' },
   );
-  y += ROW + 1;
-  fields.push({
-    x: 0, y, w: 100, h: 6, style: 'signature',
-    accessor: (d) => ({ image: d.signature_image ?? undefined }),
-    label: 'Officer signature', path: 'signature_image',
-  });
+  const dispRow2 = dispTop + 5;
+  f.push(
+    { x: 2, y: dispRow2, w: 24, h: 3.6, style: 'label', label: 'DISPOSITION', fontSize: LBL, bold: true },
+    { x: 28, y: dispRow2, w: 8, h: 3.6, style: 'checkbox', label: 'Dismissed', fontSize: LBL, accessor: (d) => d.disposition === 'dismissed' },
+    { x: 56, y: dispRow2, w: 8, h: 3.6, style: 'checkbox', label: 'Diversion', fontSize: LBL, accessor: (d) => d.disposition === 'diversion' },
+    { x: 84, y: dispRow2, w: 8, h: 3.6, style: 'checkbox', label: 'Plea in Abeyance', fontSize: LBL, accessor: (d) => d.disposition === 'plea_in_abeyance' },
+    { x: 130, y: dispRow2, w: 8, h: 3.6, style: 'checkbox', label: 'Declination', fontSize: LBL, accessor: (d) => d.disposition === 'declination' },
+  );
+  const dispRow3 = dispRow2 + 5;
+  f.push(
+    cell(2, dispRow3, 34, 'FINE', (d) => fmtFine(d.fine_imposed), 'fine_imposed', { h: 5.6, align: 'right' }),
+    cell(36, dispRow3, 34, 'SUSPENDED', (d) => fmtFine(d.fine_suspended), 'fine_suspended', { h: 5.6, align: 'right' }),
+    cell(70, dispRow3, 34, 'JAIL (DAYS)', (d) => str(d.jail_days), 'jail_days', { h: 5.6, align: 'right' }),
+    cell(104, dispRow3, 34, 'SUSPENDED', (d) => str(d.jail_suspended), 'jail_suspended', { h: 5.6, align: 'right' }),
+    cell(138, dispRow3, 55.9, 'DOCKET', (d) => str(d.docket_number), 'docket_number', { h: 5.6 }),
+  );
+  const dispRow4 = dispRow3 + 6;
+  f.push(
+    cell(2, dispRow4, 50, 'DATE OF CONVICTION/FORFEITURE', (d) => str(d.conviction_date), 'conviction_date', { h: 5.6, fontSize: 7 }),
+    cell(52, dispRow4, 40, 'DATE SENT TO DLD', (d) => str(d.date_sent_to_dld), 'date_sent_to_dld', { h: 5.6, fontSize: 7 }),
+    cell(92, dispRow4, 101.9, 'SIGNATURE OF JUDGE OR COURT CLERK', (d) => str(d.judge_name), 'judge_name', { h: 5.6, fontSize: 7 }),
+  );
+  y += 31;
 
-  return fields;
+  // ── 13. Payment + READ CAREFULLY ────────────────────────
+  f.push(
+    { x: 0, y, w: 35, h: 4, style: 'label', label: 'READ CAREFULLY', bold: true, fontSize: 7 },
+    { x: 36, y, w: 159.9, h: 4, style: 'paragraph', label: PAYMENT_LINE, fontSize: TINY, lineHeight: 2.4 },
+  );
+  y += 5;
+
+  return f;
 }
 
+const MASTER_FIELDS = buildMasterFields();
+
+/**
+ * Height of the form content, DERIVED from the built fields rather than
+ * hand-maintained — a hardcoded constant drifts the moment a block grows
+ * and the overflow is invisible until someone reads a printed copy.
+ *
+ * The copy-designation strip is page-anchored at (pageHeight - 25mm), so
+ * the unit test asserts this still clears it.
+ */
+export const FORM_CONTENT_HEIGHT = Math.ceil(
+  MASTER_FIELDS.reduce((max, f) => Math.max(max, f.y + f.h), 0),
+);
+
 // Copy-strip labels — rendered by the multi-copy wrapper at the bottom
-// of each page (just above the footer), NOT as a section after the form.
-// Keeping it page-anchored means the form content can extend across the
-// vertical space without the strip getting pushed to a second page.
+// of each page. Wording matches the designations printed on the official
+// 4-part set (the filed sample carries "ISSUING AGENCY COPY").
 export const COPY_STRIP_LABELS: Record<CitationCopyKind, string> = {
-  court: 'COPY 1 — COURT (FILE WITH JUSTICE COURT)',
-  agency: 'COPY 2 — AGENCY (RMPG INTERNAL RECORDS)',
-  defendant: 'COPY 3 — DEFENDANT (RECEIPT — RETAIN FOR YOUR RECORDS)',
-  file: 'COPY 4 — OFFICER FILE (REPORT PACKET)',
+  court: 'COURT COPY',
+  agency: 'ISSUING AGENCY COPY',
+  defendant: 'DEFENDANT COPY',
+  file: 'OFFICER FILE COPY',
 };
 
 // ── Form schema ────────────────────────────────────────────
 
 export const citationUtahMasterSchema: FormSchema<CitationUtahData> = {
   meta: {
-    formNumber: 'UT-CIT-MASTER',
-    title: 'UNIFORM CITATION',
-    revision: '2026-06',
+    formNumber: 'UT-UNIFORM-CITATION',
+    title: 'UNIFORM CITATION OR INFORMATION AND SUMMONS TO APPEAR',
+    revision: '10/13',
   },
   header: {
     kind: 'default',
@@ -599,17 +701,10 @@ export const citationUtahMasterSchema: FormSchema<CitationUtahData> = {
     caseLabel: 'CITATION',
   },
   sections: [
-    // Master form fixed-layout section. 250mm spans roughly the full
-    // content area below the header (header bottom ~32mm + 4mm gap =
-    // 36mm; section ends at 286mm — slightly past page bottom 279.4mm.
-    // The copy designator is rendered at page-bottom by the multi-copy
-    // wrapper (NOT a section here), so the form's last few rows can
-    // overlap the footer band gracefully — preferable to splitting
-    // across pages.
     {
       kind: 'fixed-layout',
-      height: 250,
-      fields: buildMasterFields(),
+      height: FORM_CONTENT_HEIGHT,
+      fields: MASTER_FIELDS,
     } as FixedLayoutSection<CitationUtahData>,
   ],
   footer: {
@@ -620,9 +715,8 @@ export const citationUtahMasterSchema: FormSchema<CitationUtahData> = {
 };
 
 /**
- * Extract the canonical data bag from a CitationUtahData input for the
- * sidecar. Mirrors the round-trip pattern from `citation.ts`:
- * re-render from extractSidecar(pdf).data → same canonical bytes.
+ * Extract the canonical data bag for the sidecar. Round-trip contract:
+ * re-render(extractSidecar(pdf).data) produces the same canonical bytes.
  *
  * The bottom-strip copyKind is NOT included — it's a per-page render
  * detail, not part of the citation's canonical data.
@@ -634,14 +728,13 @@ export function citationUtahMasterCanonicalData(d: CitationUtahData): Record<str
     if ((section as FixedLayoutSection<CitationUtahData>).kind !== 'fixed-layout') continue;
     const fixed = section as FixedLayoutSection<CitationUtahData>;
     for (const f of fixed.fields) {
-      if (f.path && f.accessor) {
-        const raw = f.accessor(d);
-        // signature image fields return objects — store the image only
-        if (raw && typeof raw === 'object' && 'image' in raw) {
-          if (raw.image != null) bag[f.path] = raw.image;
-        } else if (raw != null) {
-          bag[f.path] = raw;
-        }
+      if (!f.path || !f.accessor) continue;
+      const raw = f.accessor(d);
+      if (raw && typeof raw === 'object' && 'image' in raw) {
+        // Signature fields carry {image}; store the data URL only.
+        if (raw.image != null) bag[f.path] = raw.image;
+      } else if (raw != null && raw !== '') {
+        bag[f.path] = raw;
       }
     }
   }
