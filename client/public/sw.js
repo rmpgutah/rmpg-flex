@@ -150,7 +150,9 @@ const API_CACHE_NAME = 'rmpg-api-data';
 const MAX_API_CACHE_ENTRIES = 250;
 // API endpoints whose responses change too rapidly or are security-sensitive
 // to serve stale. All others are cached network-first.
-const API_NO_CACHE = ['/api/auth', '/api/health', '/api/ws', '/api/offline'];
+// /api/dialer carries the softphone's live SSE stream + one-shot Twilio tokens:
+// caching would clone an infinite body and could hand out an expired token.
+const API_NO_CACHE = ['/api/auth', '/api/health', '/api/ws', '/api/offline', '/api/dialer'];
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -408,6 +410,9 @@ async function purgeCachedShell() {
 // v1104: Automation firing drain — flushClientFirings() chained after GPS
 //        flush in the gps-flush sync event so offline automation firings are
 //        replayed to dispatch the moment the device reconnects.
+// v1105: Native softphone (client/src/dialer) replaces the Dial Connect iframe
+//        by default; /api/dialer/* is a live SSE/token surface (never cached).
+//        No cache-shape change.
 // ── Background sync: flush unsynced GPS fixes + automation firings ────────
 self.addEventListener('sync', (event) => {
   if (event.tag !== 'gps-flush') return;

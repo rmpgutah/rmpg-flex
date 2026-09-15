@@ -3,7 +3,8 @@ import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import { ExternalLink, PhoneCall, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { DIALER_CONNECT_PATH, DIALER_HOST_ID, DIALER_PLACE_CALL_EVENT, normalizeDialTarget } from './dialerConnect';
+import { isIframeDialerForced } from '../dialer/dialerFlags';
 
 // Dial Connect is now served at rmpgutah.us/dialer (same origin as the
 // RMPG Flex SPA) via a Cloudflare Worker path route. The iframe is
@@ -12,7 +13,9 @@ export const DIALER_ORIGIN = 'https://rmpgutah.us';
 /** Authenticated Dial Connect at its new same-origin path. */
 export const DIALER_APP_URL = `${DIALER_ORIGIN}/dialer`;
 export const DIALER_WINDOW_NAME = 'rmpg-dial-connect';
-export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
+// Defined in ./dialerConnect (plain constants module) so the native softphone
+// can import them without pulling in — or being blocked by mocks of — this panel.
+export { DIALER_PLACE_CALL_EVENT, normalizeDialTarget } from './dialerConnect';
 export const DIALER_CHROME_EVENT = 'rmpg-flex:dialer-chrome';
 export const DIALER_IFRAME_ALLOW = 'microphone *; autoplay *; clipboard-write';
 export const DIALER_PANEL_WIDTH_PX = 900;
@@ -100,25 +103,19 @@ export function dialerIframeParkStyle(): CSSProperties {
   };
 }
 
-export function normalizeDialTarget(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
-  const digits = trimmed.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (digits.length === 10) return `+1${digits}`;
-  return digits ? `+${digits}` : '';
-}
-
 let dialerWindow: Window | null = null;
 
-/** Named top-level `/dialer` (no feature-string popup chrome — less likely to be blocked). */
+/** Named pop-out window (no feature-string popup chrome — less likely to be blocked).
+ *  Native softphone by default (`/dialer-connect?popout=1`); the legacy Dial
+ *  Connect app only under the `rmpg_dialer_iframe=1` kill-switch. */
 export function openDialerWindow(): Window | null {
   if (typeof window === 'undefined') return null;
   if (dialerWindow && !dialerWindow.closed) {
     dialerWindow.focus();
     return dialerWindow;
   }
-  dialerWindow = window.open(DIALER_APP_URL, DIALER_WINDOW_NAME);
+  const url = isIframeDialerForced() ? DIALER_APP_URL : `${window.location.origin}${DIALER_CONNECT_PATH}?popout=1`;
+  dialerWindow = window.open(url, DIALER_WINDOW_NAME);
   return dialerWindow;
 }
 

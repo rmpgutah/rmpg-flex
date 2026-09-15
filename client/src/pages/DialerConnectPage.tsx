@@ -3,17 +3,19 @@ import { useNavigate } from 'react-router';
 import {
   Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Voicemail,
   History, Search, Star, Printer, Download, Play, Pause, RefreshCw,
-  Plus, Trash2, Copy, Archive, CheckCheck, UserPlus, Link2, FileDown, MicOff, PhoneOff,
-  Delete, PhoneForwarded, Users, Disc, Pause as PauseIcon, ExternalLink, ShieldCheck, CloudOff,
-  ChevronUp, ChevronDown, Hash,
+  Plus, Trash2, Copy, Archive, CheckCheck, UserPlus, Link2, FileDown, ShieldCheck, CloudOff,
+  ChevronUp, ChevronDown,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch, apiFetchBlob, apiPostForm } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { usePersistedTab } from '../hooks/usePersistedState';
-import { openDialerWindow, postToDialer, normalizeDialTarget, DIALER_PLACE_CALL_EVENT, DIALER_CHROME_EVENT } from '../components/DialerPanel';
+import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT, DIALER_CHROME_EVENT } from '../components/DialerPanel';
 import { DIALER_HOST_ID } from '../components/dialerConnect';
+import SoftphoneCard from '../dialer/SoftphoneCard';
+import { useSoftphone } from '../dialer/SoftphoneProvider';
+import { isIframeDialerForced } from '../dialer/dialerFlags';
 import {
   DIALER_FUNCTIONS, VOICEMAIL_FUNCTIONS, CALL_HISTORY_FUNCTIONS,
   DISPOSITIONS, PRESENCE_STATUSES, displayPhone, formatDuration, audioFilename,
@@ -134,9 +136,16 @@ export default function DialerConnectPage() {
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
   const [liveOpen, setLiveOpen] = useState(true);
-  const [dockCollapsed, setDockCollapsed] = useState(false);
+  // Default collapsed: the embedded Dial Connect iframe is often unusable
+  // (telephony unconfigured, still loading, etc.) and the native tab UI
+  // below covers dialing/voicemail/history on its own. Users can still
+  // expand it via the LIVE toggle when they need the live Twilio dock.
+  const [dockCollapsed, setDockCollapsed] = useState(true);
   const [vmUnread, setVmUnread] = useState(0);
-  const dockVisible = liveOpen && !dockCollapsed;
+  // The LIVE dock hosts the legacy Dial Connect iframe; with the native
+  // softphone there is nothing to dock, so it only exists under the kill-switch.
+  const iframeMode = isIframeDialerForced();
+  const dockVisible = iframeMode && liveOpen && !dockCollapsed;
 
   useEffect(() => {
     document.title = 'Dialer Connect — RMPG Flex';
@@ -161,17 +170,19 @@ export default function DialerConnectPage() {
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="DIAL CONNECT" icon={PhoneCall} statusLed="var(--sev-ok)">
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setDockCollapsed((v) => !v)}
-            aria-label={dockVisible ? 'Hide live dialer' : 'Show live dialer'}
-            aria-pressed={!dockCollapsed}
-            title={liveOpen ? (dockVisible ? 'Hide the live Dial Connect dock' : 'Show the live Dial Connect dock') : 'Dial Connect is popped out or minimized'}
-            className="px-2 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1 border border-border-subtle text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-500 mr-1"
-          >
-            {dockVisible ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            LIVE
-          </button>
+          {iframeMode && (
+            <button
+              type="button"
+              onClick={() => setDockCollapsed((v) => !v)}
+              aria-label={dockVisible ? 'Hide live dialer' : 'Show live dialer'}
+              aria-pressed={!dockCollapsed}
+              title={liveOpen ? (dockVisible ? 'Hide the live Dial Connect dock' : 'Show the live Dial Connect dock') : 'Dial Connect is popped out or minimized'}
+              className="px-2 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1 border border-border-subtle text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-500 mr-1"
+            >
+              {dockVisible ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              LIVE
+            </button>
+          )}
           {([
             ['dialer', 'Dialer', Phone, null as number | null],
             ['voicemail', 'Voicemail', Voicemail, vmUnread],
@@ -196,14 +207,16 @@ export default function DialerConnectPage() {
           ))}
         </div>
       </PanelTitleBar>
-      <div
-        id={DIALER_HOST_ID}
-        data-testid="dialer-connect-host"
-        className="relative w-full shrink-0 overflow-hidden transition-[height,min-height] duration-300 ease-out"
-        style={dockVisible
-          ? { height: 'min(42vh, 680px)', minHeight: 240 }
-          : { height: 0, minHeight: 0 }}
-      />
+      {iframeMode && (
+        <div
+          id={DIALER_HOST_ID}
+          data-testid="dialer-connect-host"
+          className="relative w-full shrink-0 overflow-hidden transition-[height,min-height] duration-300 ease-out"
+          style={dockVisible
+            ? { height: 'min(42vh, 680px)', minHeight: 240 }
+            : { height: 0, minHeight: 0 }}
+        />
+      )}
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'dialer' && <DialerTab exportedBy={exportedBy} addToast={addToast} />}
         {tab === 'voicemail' && <VoicemailTab exportedBy={exportedBy} addToast={addToast} />}
@@ -268,16 +281,6 @@ function Card({ id, children, className = '' }: { id?: string; children: ReactNo
 const FIELD = 'w-full bg-surface-sunken border border-border-subtle px-2 py-1 text-[11px] text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-accent-silver-500/70';
 const BTN = 'text-[9px] font-semibold uppercase tracking-wide border border-border-subtle py-1.5 px-2 text-rmpg-200 hover:text-rmpg-50 hover:bg-surface-hover hover:border-rmpg-500 flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed';
 
-type Sev = 'ok' | 'critical' | 'warn';
-function sevStyle(sev: Sev, active = true) {
-  if (!active) return undefined;
-  return {
-    color: `var(--sev-${sev})`,
-    background: `rgb(var(--sev-${sev}-rgb) / 0.16)`,
-    borderColor: `rgb(var(--sev-${sev}-rgb) / 0.45)`,
-  };
-}
-
 /** Whether a recording has been COPIED into RMPG Flex (encrypted R2) or is still only a remote link. */
 function ArchiveChip({ row }: { row: { recording_r2_key?: string | null; recording_source_url?: string | null } }) {
   if (row.recording_r2_key) {
@@ -297,13 +300,6 @@ function ArchiveChip({ row }: { row: { recording_r2_key?: string | null; recordi
   return null;
 }
 
-const KEYPAD: ReadonlyArray<{ d: string; sub: string }> = [
-  { d: '1', sub: '' }, { d: '2', sub: 'ABC' }, { d: '3', sub: 'DEF' },
-  { d: '4', sub: 'GHI' }, { d: '5', sub: 'JKL' }, { d: '6', sub: 'MNO' },
-  { d: '7', sub: 'PQRS' }, { d: '8', sub: 'TUV' }, { d: '9', sub: 'WXYZ' },
-  { d: '*', sub: '' }, { d: '0', sub: '+' }, { d: '#', sub: '' },
-];
-
 function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: AddToast }) {
   const navigate = useNavigate();
   const [digits, setDigits] = useState('');
@@ -320,10 +316,8 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
   const [callbackAt, setCallbackAt] = useState('');
   const [dtmfMode, setDtmfMode] = useState(false);
   const [dtmfLog, setDtmfLog] = useState('');
-  const [muted, setMuted] = useState(false);
-  const [held, setHeld] = useState(false);
-  const [recording, setRecording] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const softphone = useSoftphone();
 
   const load = useCallback(async () => {
     try {
@@ -345,19 +339,8 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
   const place = (raw: string) => {
     const to = normalizeDialTarget(raw);
     if (!to) { addToast('Enter a valid number', 'error'); return; }
-    window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to } }));
+    void softphone.dial(to);
     addToast(`Dialing ${displayPhone(to)}`, 'success');
-  };
-
-  const send = (payload: Record<string, unknown>) => postToDialer({ source: 'rmpg-flex', ...payload });
-
-  const pressKey = (d: string) => {
-    if (dtmfMode) {
-      send({ type: 'dtmf', digit: d });
-      setDtmfLog((p) => p + d);
-    } else {
-      setDigits((p) => p + d);
-    }
   };
 
   const lookupNumber = async (raw: string) => {
@@ -380,7 +363,13 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
     try {
       const created = await apiFetch<{ data: DialerCall }>('/dialer-connect/calls', {
         method: 'POST',
-        body: JSON.stringify({ direction: 'outbound', to: target, status: 'completed' }),
+        body: JSON.stringify({
+          direction: softphone.direction ?? 'outbound',
+          to: softphone.remoteNumber ?? target,
+          call_sid: softphone.callSid ?? undefined,
+          duration_seconds: softphone.connectedAt ? Math.round((Date.now() - softphone.connectedAt) / 1000) : undefined,
+          status: 'completed',
+        }),
       });
       if (!created.data?.id) throw new Error('Call was not created');
       const patched = await apiFetch<{ data: DialerCall }>(`/dialer-connect/calls/${created.data.id}`, {
@@ -419,99 +408,19 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
       <div className="p-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 items-start">
 
         {/* ---------------- SOFTPHONE ---------------- */}
-        <Card id="dc-keypad">
-          <SectionHeader
-            right={(
-              <button
-                type="button"
-                onClick={() => setDtmfMode((v) => !v)}
-                aria-pressed={dtmfMode}
-                className={`${BTN} py-0.5`}
-                style={sevStyle('warn', dtmfMode)}
-                title="Toggle keypad between dialing a number and sending in-call DTMF tones"
-              >
-                <Hash className="w-3 h-3" /> {dtmfMode ? 'DTMF mode' : 'Dial mode'}
-              </button>
-            )}
-          >Softphone</SectionHeader>
-
-          <div className="bg-surface-sunken border border-border-subtle px-3 py-2">
-            <div className="text-[9px] uppercase tracking-widest text-fg-muted flex items-center justify-between">
-              <span>{dtmfMode ? 'Sending tones' : 'Number'}</span>
-              {target && !dtmfMode && <span className="font-mono normal-case tracking-normal">{target}</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                value={digits}
-                onChange={(e) => setDigits(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); place(digits); } }}
-                placeholder="Enter number"
-                inputMode="tel"
-                className="flex-1 min-w-0 bg-transparent border-0 p-0 font-mono text-xl text-rmpg-50 placeholder-fg-muted focus:outline-none"
-                aria-label="Dial number"
-              />
-              <button type="button" aria-label="Backspace" className="p-1 text-fg-secondary hover:text-rmpg-100 disabled:opacity-30" disabled={!digits} onClick={() => setDigits((p) => p.slice(0, -1))}>
-                <Delete className="w-4 h-4" />
-              </button>
-              <button type="button" aria-label="Clear number" className="text-[9px] uppercase text-fg-muted hover:text-rmpg-100 disabled:opacity-30" disabled={!digits} onClick={() => setDigits('')}>
-                Clear
-              </button>
-            </div>
-            {digits && !dtmfMode && (
-              <div className="text-[11px] font-mono text-fg-secondary">{displayPhone(target)}</div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-3 gap-1.5">
-            {KEYPAD.map(({ d, sub }) => (
-              <button
-                key={d}
-                type="button"
-                aria-label={`Key ${d}`}
-                className="h-11 bg-surface-base border border-border-subtle text-rmpg-50 hover:bg-surface-hover hover:border-rmpg-500 active:bg-surface-overlay flex flex-col items-center justify-center leading-none"
-                onClick={() => pressKey(d)}
-              >
-                <span className="font-mono text-base">{d}</span>
-                <span className="text-[7px] tracking-[0.2em] text-fg-muted h-2">{sub}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
-            <button type="button" onClick={() => place(digits)} className={`${BTN} py-2 text-[10px] font-bold`} style={sevStyle('ok')}>
-              <PhoneCall className="w-3.5 h-3.5" /> Call
-            </button>
-            <button type="button" onClick={() => { send({ type: 'hangup' }); setMuted(false); setHeld(false); setRecording(false); }} className={`${BTN} py-2 text-[10px] font-bold`} style={sevStyle('critical')}>
-              <PhoneOff className="w-3.5 h-3.5" /> Hang up
-            </button>
-          </div>
-
-          <div className="grid grid-cols-3 gap-1.5">
-            <button type="button" aria-pressed={muted} onClick={() => { send({ type: muted ? 'unmute' : 'mute' }); setMuted((v) => !v); }} className={BTN} style={sevStyle('warn', muted)}>
-              <MicOff className="w-3 h-3" /> {muted ? 'Unmute' : 'Mute'}
-            </button>
-            <button type="button" aria-pressed={held} onClick={() => { send({ type: held ? 'resume' : 'hold' }); setHeld((v) => !v); }} className={BTN} style={sevStyle('warn', held)}>
-              <PauseIcon className="w-3 h-3" /> {held ? 'Resume' : 'Hold'}
-            </button>
-            <button type="button" aria-pressed={recording} onClick={() => { send({ type: 'recording', action: recording ? 'stop' : 'start' }); setRecording((v) => !v); }} className={BTN} style={sevStyle('critical', recording)}>
-              <Disc className="w-3 h-3" /> {recording ? 'Stop rec' : 'Record'}
-            </button>
-            <button type="button" disabled={!target} onClick={() => send({ type: 'transfer', to: target })} className={BTN} title="Transfer the live call to the number entered above">
-              <PhoneForwarded className="w-3 h-3" /> Transfer
-            </button>
-            <button type="button" disabled={!target} onClick={() => send({ type: 'conference', to: target })} className={BTN} title="Add the number entered above to the live call">
-              <Users className="w-3 h-3" /> Conference
-            </button>
-            <button type="button" onClick={() => openDialerWindow()} className={BTN} title="Open Dial Connect in its own window">
-              <ExternalLink className="w-3 h-3" /> Pop out
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] font-mono text-fg-muted pt-1 border-t border-border-subtle">
+        <div className="space-y-2">
+          <SoftphoneCard
+            digits={digits}
+            onDigitsChange={setDigits}
+            dtmfMode={dtmfMode}
+            onDtmfModeChange={setDtmfMode}
+            onToneSent={(d) => setDtmfLog((p) => p + d)}
+          />
+          <div className="flex items-center justify-between text-[10px] font-mono text-fg-muted px-3">
             <span>Tones sent: <span className="text-fg-secondary">{dtmfLog || '—'}</span></span>
             {dtmfLog && <button type="button" className="uppercase text-[9px] hover:text-rmpg-100" onClick={() => setDtmfLog('')}>Clear</button>}
           </div>
-        </Card>
+        </div>
 
         {/* ---------------- DIRECTORY ---------------- */}
         <div className="space-y-3">
@@ -589,7 +498,7 @@ function DialerTab({ exportedBy, addToast }: { exportedBy: string; addToast: Add
               <span className="text-[9px] uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>Notes</span>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Call notes" className={`${FIELD} resize-y`} />
             </label>
-            <button type="button" className={`${BTN} w-full`} disabled={!target} title={target ? 'Archive this call in RMPG Flex and open the printable record' : 'Enter the number first'} onClick={() => { void logCall(); }}>
+            <button type="button" className={`${BTN} w-full`} disabled={!target && !softphone.remoteNumber} title={target || softphone.remoteNumber ? 'Archive this call in RMPG Flex and open the printable record' : 'Enter the number first'} onClick={() => { void logCall(); }}>
               <Printer className="w-3 h-3" /> Log + print form
             </button>
           </Card>

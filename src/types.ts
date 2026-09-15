@@ -56,6 +56,12 @@ export type Bindings = {
   // Optional — unset → { ok:false, code:'not_configured' } (200), per the
   // optional-integration pattern. `wrangler secret put TURNSTILE_SECRET_KEY`.
   TURNSTILE_SECRET_KEY?: string;
+  // Dial Connect (dispatch-app Worker `dialer`) server-to-server proxy for the
+  // native softphone (src/routes/dialerVoice.ts). Base is a plain var; the key
+  // is `wrangler secret put DIAL_CONNECT_SERVICE_KEY` and must equal
+  // RMPG_FLEX_SERVICE_KEY on the `dialer` Worker. Unset key → not_configured.
+  DIAL_CONNECT_API_BASE?: string;
+  DIAL_CONNECT_SERVICE_KEY?: string;
   // Comma-separated frontend hostnames siteverify may report for the public
   // form (non-secret, wrangler.toml [vars]). Empty → verification fails closed.
   TURNSTILE_HOSTNAMES?: string;
