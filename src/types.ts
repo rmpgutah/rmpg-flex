@@ -190,6 +190,10 @@ export type Bindings = {
   // `wrangler secret put RMPG_FLEX_WEBHOOK_SECRET`. Unset -> 200 not_configured.
   // See docs/superpowers/specs/2026-09-14-delivery-scheduler-cad-push-design.md
   RMPG_FLEX_WEBHOOK_SECRET?: string;
+  // team3-safewatch inbound alert push. Set via
+  // `wrangler secret put SAFEWATCH_WEBHOOK_SECRET`. Unset -> 200 not_configured.
+  // Inbound only — RMPG never pushes data out to SafeWatch.
+  SAFEWATCH_WEBHOOK_SECRET?: string;
   // WebBrowserSessionDO namespace — one instance per active Web Company
   // Browser session (idFromName(sessionId)). Holds a real headless Chrome
   // instance via Browser Rendering and streams screenshot frames to the

@@ -82,6 +82,7 @@ import invoices from './routes/invoices';
 import useOfForce from './routes/useOfForce';
 import notificationsInbox from './routes/notificationsInbox';
 import community, { communityReports } from './routes/community';
+import safewatchIngest, { safewatchTriage } from './routes/safewatch';
 import intel from './routes/intel';
 import intelAi from './routes/intelAi';
 import knowledge from './routes/knowledge';
@@ -350,6 +351,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // a personal phone scanning a QR shown on the desktop/MDT ShiftCard.
   { prefix: '/api/inspections', router: inspections, auth: 'public',
     note: 'Token-authed: resolves the open time_entry whose qr_token matches' },
+  { prefix: '/api/safewatch/ingest', router: safewatchIngest, auth: 'public',
+    note: 'team3-safewatch inbound alert push. HMAC via SAFEWATCH_WEBHOOK_SECRET (x-rmpg-flex-hmac-sha256). Public because a server-to-server push carries no JWT; the triage surface is a SEPARATE authed prefix (/api/safewatch-alerts) so the public mount cannot expose the listing. Inbound only \u2014 nothing goes out to SafeWatch. 200 not_configured when unset.' },
 
   // Recipient-facing Receipt of Service + Court Document Release
   // (/m/serve-receipt/<token>). MUST be public: the signer is a member of
@@ -669,6 +672,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
   { prefix: '/api/community-reports', router: communityReports, auth: 'required',
     note: 'Community reports / tips management for CommunityPortalPage (public_tips backing table)' },
+  { prefix: '/api/safewatch-alerts', router: safewatchTriage, auth: 'required',
+    note: 'SafeWatch triage queue (quarantined inbound alerts). Read: admin/manager/supervisor/dispatcher/officer. Write + promote-to-public_tips: admin/manager/supervisor. Migration 0291.' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
   { prefix: '/api/knowledge', router: knowledge, auth: 'required',
