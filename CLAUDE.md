@@ -720,6 +720,34 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
   `var(--x)` in a paint property, and the modern space-separated `rgb(r g b)` form
   **blanks the map**. Variant `'light'` now routes through the dark restyle; only the
   explicit `'print'` variant opts out.
+- **⚠️ A GeoJSON feature's `color` property must pass through `safeMapboxColor()`**
+  ([`client/src/utils/mapboxSafeLayer.ts`](client/src/utils/mapboxSafeLayer.ts)) —
+  this is the DATA-DRIVEN counterpart to the fixed-palette rule above. `MAP_PALETTE`
+  covers colors written literally into a style; this covers colors that arrive as
+  feature data and are read by a paint expression (`'circle-color': ['get','color']`).
+  Same shader, same constraint, different seam — and the second one is easy to miss
+  because the value usually comes from a token table that is CORRECT for the DOM.
+  - **The failure is silent and total.** Mapbox reports
+    `Failed to evaluate expression "["to-color",["get","color"]]". Could not parse
+    color from value 'var(--sev-warn)'` to the console and paints **nothing** — no
+    exception, no `error_log` row, no failing test. Live 2026-09-15: `NavigationPage`'s
+    `CLASS_META` fed `crimeColor()` straight into the crime layer and the whole layer
+    was invisible in production (`var(--sev-warn)` / `var(--brand-gold)` /
+    `var(--sev-ok)` = the `property` / `other` / `cfs` classes).
+  - **Do NOT "fix" this by delinting the var() out of the token table.** Those same
+    values feed the DOM legend on the same page, where `var()` is the required form.
+    Resolve at the seam, keep the variable upstream.
+  - **Every seam, not just the obvious ones.** Officer- and DB-supplied colors (drawn
+    shapes in `useMapDrawing`, dropped pins in `NavMapView`, `useMapClustering`) are
+    the same bug waiting on one bad config row — they were all unguarded until
+    2026-09-15. `safeMapboxColor` falls back rather than emitting an unparseable
+    value, so pass a literal-hex fallback (`'#c3ccd6'` unless the layer wants another).
+  - **Enforced by ratchet**:
+    [`client/src/utils/__tests__/mapboxFeatureColorGuard.test.ts`](client/src/utils/__tests__/mapboxFeatureColorGuard.test.ts)
+    scans every module registering a `['get','color']` paint expression and fails any
+    feature `color` assignment that skips the helper. It is named `mapbox*` **on
+    purpose** so it runs under `vitest.maps.config.ts` — the default client config
+    excludes map globs, so the same test named anything else would never run in CI.
 - **Exactly ONE palette class is stamped on `<html>`.** `applyThemePreference` in
   `theme.ts` and the pre-paint boot script in `client/index.html` must resolve
   **identically** or the page visibly swaps themes after hydration. Before 2026-07-24
@@ -764,18 +792,18 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
 
 ## Testing & CI
 
-**⚠️ The single most expensive mistake in this repo is assuming `cd client && npx vitest run` is "the client tests." It is not.** `client/vitest.config.ts` **excludes** `src/utils/pdf/**`, the map globs, and `src/components/desktop/**`. Those run under three *other* configs, as three *other* CI jobs, and **no local hook invokes any of them**. A form-rendering or map change can pass every gate on your machine and still be broken. Measured on `main` 2026-09-15:
+**⚠️ The single most expensive mistake in this repo is assuming `cd client && npx vitest run` is "the client tests." It is not.** `client/vitest.config.ts` **excludes** `src/utils/pdf/**`, the map globs, and `src/components/desktop/**`. Those run under three *other* configs, as three *other* CI jobs, and **no local hook invokes any of them**. A form-rendering or map change can pass every gate on your machine and still be broken. Measured on `main` 2026-09-15, at `2307e8f` (all six re-run on that commit):
 
 | Suite | Command | Size |
 |---|---|---|
-| Client default | `cd client && npx vitest run` | 478 files / 3392 |
+| Client default | `cd client && npx vitest run` | 480 files / 3408 |
 | Client PDF | `cd client && npx vitest run -c vitest.pdf.config.ts` | 111 files / 1644 |
-| Client map | `cd client && npx vitest run -c vitest.maps.config.ts` | 59 files / 419 |
+| Client map | `cd client && npx vitest run -c vitest.maps.config.ts` | 60 files / 438 |
 | Client desktop-shell | `cd client && npx vitest run -c vitest.desktop.config.ts` | 26 files / 220 |
 | Worker | `npx vitest run` | 444 files / 4338 |
-| Worker integration | `npm run test:worker` | 132 files / 832 |
+| Worker integration | `npm run test:worker` | 135 files / 851 |
 
-The default config covers **71%** of the client's 674 test files — the other 196 files and **2,283 tests** run only under the other three. The splits exist for real reasons (documented in each config: the forks pool and an 8 GB heap ceiling, jsdom concurrency, a 30 s map timeout) — they are not accidental and should not be merged back together.
+The default config covers **71%** of the client's 677 test files — the other 197 files and **2,302 tests** run only under the other three. The splits exist for real reasons (documented in each config: the forks pool and an 8 GB heap ceiling, jsdom concurrency, a 30 s map timeout) — they are not accidental and should not be merged back together.
 
 ### The CI jobs
 
