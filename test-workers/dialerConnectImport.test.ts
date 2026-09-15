@@ -118,13 +118,16 @@ describe('POST /api/dialer-connect/import/dial-connect', () => {
   });
 
   it('links an import row to a call already archived by SID instead of duplicating it', async () => {
-    await execute(db(), "INSERT INTO dialer_calls (call_sid, direction, status, from_number, started_at) VALUES ('CA999', 'inbound', 'completed', '+18015559999', '2026-09-01T00:00:00.000Z')");
-    const page = { ...exportPage, callbacks: [], contacts: [], smsConversations: [], calls: [{ ...exportPage.calls[0], id: 'c9', twilioCallSid: 'CA999', recordingUrl: null }] };
+    // Archived live by the bridge with the bare Twilio URL the mirror can never fetch.
+    await execute(db(), "INSERT INTO dialer_calls (call_sid, direction, status, from_number, started_at, recording_source_url) VALUES ('CA999', 'inbound', 'completed', '+18015559999', '2026-09-01T00:00:00.000Z', 'https://api.twilio.com/2010-04-01/Accounts/AC1/Recordings/RE9')");
+    const page = { ...exportPage, callbacks: [], contacts: [], smsConversations: [], calls: [{ ...exportPage.calls[0], id: 'c9', twilioCallSid: 'CA999', recordingUrl: `${BASE}/api/export/audio/c9?kind=recording` }] };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(page), { status: 200 })));
     await makeApp(admin).request('/api/dialer-connect/import/dial-connect', { method: 'POST' }, E());
-    const rows = await query<{ dispatch_app_id: string | null }>(db(), "SELECT dispatch_app_id FROM dialer_calls WHERE call_sid = 'CA999'");
+    const rows = await query<{ dispatch_app_id: string | null; recording_source_url: string | null }>(db(), "SELECT dispatch_app_id, recording_source_url FROM dialer_calls WHERE call_sid = 'CA999'");
     expect(rows).toHaveLength(1);
     expect(rows[0].dispatch_app_id).toBe('c9');
+    // Un-mirrored rows switch to the fetchable export URL so the cron can copy them.
+    expect(rows[0].recording_source_url).toBe(`${BASE}/api/export/audio/c9?kind=recording`);
   });
 
   it('reports not_configured without a service key and 503 when the export is unreachable', async () => {

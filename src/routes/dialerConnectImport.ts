@@ -173,14 +173,18 @@ export async function importCall(db: D1Database, call: ExportCall): Promise<void
         duration_seconds = COALESCE(duration_seconds, ?), disposition = COALESCE(disposition, ?),
         notes = COALESCE(notes, ?), transcript = COALESCE(transcript, ?),
         transcript_status = CASE WHEN transcript IS NULL AND ? IS NOT NULL THEN 'ready' ELSE transcript_status END,
-        recording_source_url = COALESCE(recording_source_url, ?), tags = COALESCE(tags, ?), updated_at = datetime('now')
+        -- A row archived live by the bridge carries the bare Twilio URL, which the
+        -- mirror can never fetch (Basic auth). Until the bytes are in R2, prefer the
+        -- authenticated export URL so the cron can actually copy the recording.
+        recording_source_url = CASE WHEN recording_r2_key IS NULL AND ? IS NOT NULL THEN ? ELSE COALESCE(recording_source_url, ?) END,
+        tags = COALESCE(tags, ?), updated_at = datetime('now')
       WHERE id = ?`,
       call.id, call.twilioCallSid, outbound ? 'outbound' : 'inbound', status,
       outbound ? null : number, outbound ? number : null,
       outbound ? null : call.callerName, outbound ? call.callerName : null,
       agentName, startedAt, endedAt,
       call.durationSeconds, call.dispositionCode, notesFor(call), transcript, transcript,
-      call.recordingUrl, tagsFor(call), existing.id,
+      call.recordingUrl, call.recordingUrl, call.recordingUrl, tagsFor(call), existing.id,
     );
   } else {
     await execute(db, `INSERT INTO dialer_calls (
@@ -205,10 +209,11 @@ export async function importVoicemail(db: D1Database, call: ExportCall): Promise
   if (existing) {
     await execute(db, `UPDATE dialer_voicemails SET
         call_sid = COALESCE(call_sid, ?), from_number = COALESCE(from_number, ?), from_name = COALESCE(from_name, ?),
-        duration_seconds = COALESCE(duration_seconds, ?), recording_source_url = COALESCE(recording_source_url, ?),
+        duration_seconds = COALESCE(duration_seconds, ?),
+        recording_source_url = CASE WHEN recording_r2_key IS NULL THEN ? ELSE COALESCE(recording_source_url, ?) END,
         transcript = COALESCE(transcript, ?), notes = COALESCE(notes, ?), updated_at = datetime('now')
       WHERE id = ?`,
-      call.twilioCallSid, number, call.callerName, call.durationSeconds, call.voicemailUrl,
+      call.twilioCallSid, number, call.callerName, call.durationSeconds, call.voicemailUrl, call.voicemailUrl,
       call.transcript ?? call.aiTranscript, notesFor(call), existing.id);
     return true;
   }
