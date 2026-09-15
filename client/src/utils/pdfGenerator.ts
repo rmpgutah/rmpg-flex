@@ -3718,12 +3718,12 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         const fy_cross = addFieldPair(doc, 'Cross Street', data.cross_street, lx, y, ffw);
         y = fy_cross;
       }
-      // Row 5: Action Taken (when available)
-      if (data.action_taken) {
-        const fy_action = addFieldPair(doc, 'Action Taken', data.action_taken, lx, y, ffw);
-        y = fy_action;
-      }
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+    // Action Taken rendered with page-break-aware addNarrativeSection so
+    // AI-generated or detailed narratives are never truncated at the page bottom.
+    if (data.action_taken) {
+      y = addNarrativeSection(doc, 'Action Taken', data.action_taken, y, data.priority as string | undefined);
     }
   }
 

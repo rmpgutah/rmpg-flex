@@ -22,9 +22,9 @@ const VEHICLE = {
   status: 'in_service', current_mileage: 42000,
 };
 
-function renderPage() {
+function renderPage(initialUrl = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialUrl]}>
       <ToastProvider>
         <FleetPage />
       </ToastProvider>
@@ -112,10 +112,10 @@ describe('FleetPage — tab persistence', () => {
     });
   });
 
-  it('restores the persisted tab on mount instead of forcing overview', async () => {
-    localStorage.setItem('rmpg_fleet_tab', JSON.stringify('fuel'));
+  it('activates the tab specified in the URL param', async () => {
     const user = userEvent.setup();
-    renderPage();
+    // Phase 4: tab state lives in the URL, not localStorage.
+    renderPage('/?tab=fuel');
     await user.click(await screen.findByText('PS-D19'));
 
     await waitFor(() => {
@@ -126,10 +126,9 @@ describe('FleetPage — tab persistence', () => {
     });
   });
 
-  it('still resets to overview when switching to a different vehicle', async () => {
-    localStorage.setItem('rmpg_fleet_tab', JSON.stringify('fuel'));
+  it('resets to overview when switching vehicles (URL tab param is cleared)', async () => {
     const user = userEvent.setup();
-    renderPage();
+    renderPage('/?tab=fuel');
     await user.click(await screen.findByText('PS-D19'));
     await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith(expect.stringContaining('/fleet/1/fuel?')));
 
@@ -141,13 +140,12 @@ describe('FleetPage — tab persistence', () => {
     expect(mockedApiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/fleet/2/fuel?'));
   });
 
-  it('marks the restored Fuel tab active on first selection, then Overview active on switching vehicles', async () => {
-    localStorage.setItem('rmpg_fleet_tab', JSON.stringify('fuel'));
+  it('marks the URL-driven Fuel tab active on first selection, then Overview active on switching vehicles', async () => {
     const user = userEvent.setup();
-    renderPage();
+    // Phase 4: tab is driven by URL param, not localStorage.
+    renderPage('/?tab=fuel');
 
-    // First selection of the first vehicle (null -> A): the restored tab
-    // must stay active, not get clobbered back to Overview.
+    // First selection of the first vehicle: the URL tab must stay active.
     await user.click(await screen.findByText('PS-D19'));
 
     const fuelTab = await screen.findByRole('tab', { name: 'Fuel' });
@@ -155,7 +153,7 @@ describe('FleetPage — tab persistence', () => {
     const overviewTabInitial = screen.getByRole('tab', { name: /overview/i });
     expect(overviewTabInitial).toHaveAttribute('aria-selected', 'false');
 
-    // Switching to a different vehicle (A -> B) must reset to Overview.
+    // Switching vehicles clears the tab URL param, resetting to Overview.
     await user.click(screen.getByText('PS-D20'));
 
     const overviewTab = await screen.findByRole('tab', { name: /overview/i });

@@ -435,13 +435,23 @@ function NetworkTab({ b }: { b: WindowsBridge }) {
   };
   const wifiUp = adapters.data?.ok ? adapters.data.adapters.some((a) => a.isWifi && a.up) : Boolean(detail.data?.ssid);
   const toggleWifi = async (on: boolean) => {
-    const r = await b.toggleWifi(on);
-    setMsg(r.ok ? `Wi-Fi ${on ? 'enabled' : 'disabled'}` : errText(r, 'Could not toggle Wi-Fi (may need administrator rights)'));
+    if (b.extendedAvailable) {
+      const r = await b.toggleWifi(on);
+      setMsg(r.ok ? `Wi-Fi ${on ? 'enabled' : 'disabled'}` : errText(r, 'Could not toggle Wi-Fi (may need administrator rights)'));
+    } else if (b.available) {
+      if (on) {
+        setMsg('Use Windows network settings to re-enable Wi-Fi adapter');
+      } else {
+        const r = await b.wifiDisconnect();
+        setMsg(r ? 'Wi-Fi disconnected' : 'Could not disconnect Wi-Fi');
+      }
+    }
     setTimeout(() => { void adapters.reload(); void detail.reload(); }, 2500);
   };
 
   const d = detail.data;
   const adapterList: NetAdapter[] = adapters.data?.ok ? adapters.data.adapters : [];
+  const canToggleWifi = b.extendedAvailable || (b.available && wifiUp);
 
   return (
     <div className="settings-sections">
@@ -452,14 +462,14 @@ function NetworkTab({ b }: { b: WindowsBridge }) {
           <div className="net-info-item"><span className="net-info-label">Signal</span><span className="net-info-value">{typeof d?.signal === 'number' ? `${d.signal}%` : '—'}</span></div>
           <div className="net-info-item"><span className="net-info-label">IPv4</span><span className="net-info-value">{(d?.ip as string) || '—'}</span></div>
         </div>
-        <Row label="Wi-Fi" desc={wifiUp ? 'Adapter is up' : 'Adapter is down or absent'}>
-          <Toggle label="Wi-Fi" on={wifiUp} disabled={!b.extendedAvailable} onChange={(v) => void toggleWifi(v)} />
+        <Row label="Wi-Fi" desc={wifiUp ? 'Adapter is up' : b.available ? 'Adapter is down or not connected' : 'Not running in desktop app'}>
+          <Toggle label="Wi-Fi" on={wifiUp} disabled={!canToggleWifi} onChange={(v) => void toggleWifi(v)} />
         </Row>
       </Section>
 
       <Section title="Adapters">
         {adapters.loading ? <div className="settings-loading">Reading adapters…</div>
-          : !adapterList.length ? <Note>{b.extendedAvailable ? 'No physical adapters reported.' : NEEDS_UPDATE_NOTE}</Note>
+          : !adapterList.length ? <Note>{b.extendedAvailable ? 'No physical adapters reported.' : b.available ? 'Adapter details available in the next desktop build. Wi-Fi status and scanning still work below.' : NOT_ELECTRON_NOTE}</Note>
           : adapterList.map((a) => (
             <div key={a.name} className="adapter-card">
               <div className="adapter-header">
@@ -504,7 +514,7 @@ function NetworkTab({ b }: { b: WindowsBridge }) {
         <Row label="Ping" desc="Four ICMP echo requests">
           <div className="settings-input-row">
             <input className="settings-input" aria-label="Ping host" value={host} onChange={(e) => setHost(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void doPing(); }} />
-            <button type="button" className="settings-btn-sm" disabled={!b.extendedAvailable || pinging || !host.trim()} onClick={() => void doPing()}><Send size={13} /> {pinging ? 'Pinging…' : 'Ping'}</button>
+            <button type="button" className="settings-btn-sm" disabled={(!b.extendedAvailable && !b.available) || pinging || !host.trim()} onClick={() => void doPing()}><Send size={13} /> {pinging ? 'Pinging…' : 'Ping'}</button>
           </div>
         </Row>
         {ping && (
@@ -528,11 +538,19 @@ function BluetoothTab({ b }: { b: WindowsBridge }) {
     setTimeout(() => void bt.reload(), 2500);
   };
   const devices: BluetoothDevice[] = data?.devices.filter((d) => !d.isRadio) ?? [];
+
+  const radioDesc = (): string => {
+    if (data) return data.radioPresent ? (data.radioEnabled ? 'Radio is on' : 'Radio is off') : 'No Bluetooth radio detected';
+    if (b.extendedAvailable) return 'Reading…';
+    if (b.available) return 'Bluetooth management available in the next desktop build. Use Windows Settings to manage Bluetooth.';
+    return NOT_ELECTRON_NOTE;
+  };
+
   return (
     <div className="settings-sections">
       {msg && <Msg kind="ok">{msg}</Msg>}
       <Section title="Radio">
-        <Row label="Bluetooth" desc={data ? (data.radioPresent ? (data.radioEnabled ? 'Radio is on' : 'Radio is off') : 'No Bluetooth radio detected') : b.extendedAvailable ? 'Reading…' : NEEDS_UPDATE_NOTE}>
+        <Row label="Bluetooth" desc={radioDesc()}>
           <Toggle label="Bluetooth" on={Boolean(data?.radioEnabled)} disabled={!data?.radioPresent} onChange={(v) => void toggle(v)} />
         </Row>
         <Row label="Refresh device list">
@@ -541,7 +559,7 @@ function BluetoothTab({ b }: { b: WindowsBridge }) {
       </Section>
       <Section title="Paired devices">
         {bt.loading ? <div className="settings-loading">Enumerating Bluetooth devices…</div>
-          : !devices.length ? <Note>{data ? 'No paired devices.' : errText(bt.data, 'Bluetooth unavailable.')}</Note>
+          : !devices.length ? <Note>{data ? 'No paired devices.' : b.available && !b.extendedAvailable ? 'Bluetooth device list available in the next desktop build.' : errText(bt.data, 'Bluetooth unavailable.')}</Note>
           : devices.map((d) => (
             <Row key={d.instanceId || d.name} label={d.name} desc={d.instanceId}>
               <span className={`adapter-status ${d.ok ? 'up' : 'down'}`}>{d.status}</span>

@@ -865,3 +865,44 @@ export async function ensureAttachmentEvidenceColumns(db: D1Database): Promise<v
   }
   _attachmentEvidenceColumnsEnsured = await columnExists(db, 'attachments', 'taken_at').catch(() => false);
 }
+
+// ── Delivery-scheduler CAD push columns reconciler ──────────
+// Migration 0289_delivery_ext_columns.sql adds the delivery_* columns to
+// calls_for_service_ext for the rmpgutahps.us delivery-scheduler push
+// (see docs/superpowers/specs/2026-09-14-delivery-scheduler-cad-push-design.md).
+// Same self-heal situation as every other reconciler here (CLAUDE.md rule #5).
+let _deliveryExtColumnsEnsured = false;
+
+const DELIVERY_EXT_COLUMNS: Array<[string, string]> = [
+  ['delivery_slot_id', 'INTEGER'],
+  ['delivery_case_number', 'TEXT'],
+  ['delivery_scheduled_date', 'TEXT'],
+  ['delivery_time_window', 'TEXT'],
+  ['delivery_contact_name', 'TEXT'],
+  ['delivery_contact_phone', 'TEXT'],
+  ['delivery_contact_email', 'TEXT'],
+  ['delivery_subject_name', 'TEXT'],
+  ['delivery_status', 'TEXT'],
+];
+
+export async function ensureDeliveryExtColumns(db: D1Database): Promise<void> {
+  if (_deliveryExtColumnsEnsured) return;
+  for (const [col, type] of DELIVERY_EXT_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'calls_for_service_ext', col))) {
+        await db.prepare(`ALTER TABLE calls_for_service_ext ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  try {
+    await db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_cfs_ext_delivery_slot_id
+         ON calls_for_service_ext(delivery_slot_id) WHERE delivery_slot_id IS NOT NULL`,
+    ).run();
+  } catch {
+    // Tolerated — index may already exist.
+  }
+  _deliveryExtColumnsEnsured = await columnExists(db, 'calls_for_service_ext', 'delivery_slot_id').catch(() => false);
+}

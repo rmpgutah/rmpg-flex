@@ -158,6 +158,16 @@ export const flaggedAuditFixtures: PdfFixture<FlaggedAuditArgs>[] = [
       dateRange: { from: '2026-01-01', to: '2026-12-31' },
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {
+      logs: [fuelLog(1, ['price-spike']), fuelLog(2, ['mpg-anomaly', 'rapid-duplicate'])],
+      scopeLabel: 'Fleet-wide',
+      dateRange: { from: '2026-06-01', to: '2026-06-30' },
+    },
+  },
+
 ];
 
 // ── Fuel Budget Variance (fleetBudgetVariancePdf.ts) ──────────
@@ -216,6 +226,11 @@ export const fleetBudgetVarianceFixtures: PdfFixture<FleetBudgetVarianceArgs>[] 
       scopeLabel: MAXIMAL_NAME,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { summary: budgetSummary(), scopeLabel: '#47 — 2022 Ford Explorer' },
+  },
 ];
 
 // ── Total Cost of Ownership (fleetCostOwnershipPdf.ts) ────────
@@ -262,6 +277,22 @@ export const fleetCostOwnershipFixtures: PdfFixture<FleetCostOwnershipArgs>[] = 
       monthlyTrend: Array.from({ length: 40 }, (_, i) => ({ month: `2026-${String((i % 12) + 1).padStart(2, '0')}`, amount: 800 + i * 15 })),
       totalMiles: 128400,
       monthsOwned: 60,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      categories: [
+        { label: 'Fuel', amount: 4817.5 },
+        { label: 'Maintenance', amount: 2140.0 },
+        { label: 'Insurance', amount: 3200.0 },
+        { label: 'General Expenses', amount: 512.75 },
+      ],
+      monthlyTrend: Array.from({ length: 6 }, (_, i) => ({ month: `2026-0${i + 1}`, amount: 850 + i * 25 })),
+      totalMiles: 42815,
+      monthsOwned: 48,
     },
   },
 ];
@@ -315,6 +346,11 @@ export const fleetDamageReportFixtures: PdfFixture<FleetDamageReportArgs>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { vehicle: baseVehicle(), damages: [damageRecord(1), { ...damageRecord(2), severity: 'minor', repair_status: 'pending' }] },
+  },
 ];
 
 // ── Expenses Report (fleetExpensesReportPdf.ts) ───────────────
@@ -363,6 +399,19 @@ export const fleetExpensesReportFixtures: PdfFixture<FleetExpensesReportArgs>[] 
         amount: 25.5 + i,
       })),
       periodLabel: 'Full Year 2026',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      expenses: [
+        expenseRecord(1),
+        { ...expenseRecord(2), category: 'car_wash', amount: 18.0, vendor: 'Salt Lake Car Wash Co.' },
+        { ...expenseRecord(3), category: 'registration', amount: 220.0, vendor: 'Utah DMV' },
+      ],
+      periodLabel: 'June 2026',
     },
   },
 ];
@@ -424,6 +473,15 @@ export const fleetFuelAnalyticsFixtures: PdfFixture<FleetFuelAnalyticsArgs>[] = 
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      overview: overview(),
+      byOfficer: [{ display_name: 'Marcus Reyes', fill_count: 12, total_gallons: 168.5, total_cost: 576.42, avg_mpg: 19.2, flag_rate: 2.1, avg_cpg: 3.42 }],
+      byCard: [{ card_number: '****4417', provider: 'WEX', vehicle_number: '47', vehicle_make: 'Ford', vehicle_model: 'Explorer', spent: 576.42, monthly_limit: 800, pct_of_limit: 72.1 }],
+    },
+  },
 ];
 
 // ── Per-Vehicle Fuel Report (fleetFuelReport.ts) ──────────────
@@ -461,6 +519,16 @@ export const fleetFuelReportFixtures: PdfFixture<FleetFuelReportArgs>[] = [
       fuelLogs: Array.from({ length: 40 }, (_, i) => fuelLog(i + 1, i % 5 === 0 ? ['mpg-anomaly'] : [])),
       summary: summaryFuel({ log_count: 40, total_gallons: 568.0, total_cost: 1942.16 }),
       periodLabel: 'Full Year 2026',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      fuelLogs: [fuelLog(1, []), fuelLog(2, ['price-spike'])],
+      summary: summaryFuel(),
+      periodLabel: 'Last 30 Days (2026-05-22 to 2026-06-21)',
     },
   },
 ];
@@ -524,6 +592,11 @@ export const fleetInspectionReportFixtures: PdfFixture<FleetInspectionReportArgs
       }),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { vehicle: baseVehicle(), inspection: baseInspection() },
+  },
 ];
 
 // ── Maintenance History (fleetMaintenanceHistoryPdf.ts) ───────
@@ -571,6 +644,15 @@ export const fleetMaintenanceHistoryFixtures: PdfFixture<FleetMaintenanceHistory
       periodLabel: 'Full Year 2026',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      records: [maintenanceRecord(1), { ...maintenanceRecord(2), type: 'tire_rotation', cost: 45.0 }],
+      periodLabel: 'Last 6 Months',
+    },
+  },
 ];
 
 // ── Vehicle Summary (fleetVehicleSummaryPdf.ts) ───────────────
@@ -611,6 +693,20 @@ export const fleetVehicleSummaryFixtures: PdfFixture<FleetVehicleSummaryArgs>[] 
         performed_at: YEAR_BOUNDARY,
         cost: 120.0 + i * 10,
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      assignedOfficer: 'Marcus Reyes',
+      assignedUnit: '4-Adam-12',
+      costTotals: { fuel: 4817.5, maintenance: 2140.0, expenses: 512.75, insurance: 3200.0 },
+      recentMaintenance: [
+        { type: 'oil_change', performed_at: '2026-06-21T09:00:00Z', cost: 84.5 },
+        { type: 'tire_rotation', performed_at: '2026-05-01T09:00:00Z', cost: 45.0 },
+      ],
     },
   },
 ];
@@ -670,6 +766,14 @@ export const fleetStatusReportFixtures: PdfFixture<FleetStatusReportArgs>[] = [
       analytics: fleetAnalyticsSummary({ total_vehicles: 40, vehicles_needing_service: 6, inspections_failing: 3 }),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicles: [baseVehicle(), reportVehicle(1, { status: 'out_of_service' }), reportVehicle(2)],
+      analytics: fleetAnalyticsSummary(),
+    },
+  },
 ];
 
 // ── 2. Fleet Maintenance History Report ───────────────────────
@@ -699,6 +803,14 @@ export const fleetMaintenanceReportFixtures: PdfFixture<FleetMaintenanceReportAr
         performed_at: YEAR_BOUNDARY,
         next_due_date: YEAR_BOUNDARY,
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      records: [maintenanceRecord(1), { ...maintenanceRecord(2), type: 'brake_service', cost: 210.0 }],
     },
   },
 ];
@@ -733,6 +845,16 @@ export const fleetCostReportFixtures: PdfFixture<FleetCostReportArgs>[] = [
         type: (['oil_change', 'tire_rotation', 'brake_service', 'inspection', 'repair', 'other'] as const)[i % 6],
         performed_at: YEAR_BOUNDARY,
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      fuelLogs: [fuelLog(1, []), fuelLog(2, ['price-spike'])],
+      fuelSummary: summaryFuel(),
+      maintenanceRecords: [maintenanceRecord(1), { ...maintenanceRecord(2), type: 'brake_service', cost: 210.0 }],
     },
   },
 ];
@@ -784,6 +906,17 @@ export const fleetLifecycleReportFixtures: PdfFixture<FleetLifecycleReportArgs>[
       assignments: Array.from({ length: 5 }, (_, i) => assignmentRecord(i + 1, { assigned_at: YEAR_BOUNDARY })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      fuelLogs: [fuelLog(1, []), fuelLog(2, [])],
+      maintenanceRecords: [maintenanceRecord(1)],
+      inspections: [baseInspection()],
+      assignments: [assignmentRecord(1)],
+    },
+  },
 ];
 
 // ── 5. Fleet Compliance Report ─────────────────────────────────
@@ -811,6 +944,16 @@ export const fleetComplianceReportFixtures: PdfFixture<FleetComplianceReportArgs
       vehicles: Array.from({ length: 40 }, (_, i) => reportVehicle(i, {
         insurance_expiry: '2026-01-01', registration_expiry: '2026-01-01', last_service_date: '2025-06-01', next_service_due: '2026-01-01',
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicles: [
+        baseVehicle(),
+        reportVehicle(1, { insurance_expiry: '2026-01-01', registration_expiry: '2026-01-01', next_service_due: '2026-01-01' }),
+      ],
     },
   },
 ];
@@ -848,6 +991,17 @@ export const fleetUtilizationReportFixtures: PdfFixture<FleetUtilizationReportAr
       days: 365,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicles: [
+        { ...baseVehicle(), days_used: 27, miles_driven: 2140, fuel_cost: 412.5, daily_avg_miles: 79.3 },
+        { ...reportVehicle(1), days_used: 18, miles_driven: 1120, fuel_cost: 260.1, daily_avg_miles: 62.2 },
+      ],
+      days: 30,
+    },
+  },
 ];
 
 // ── 7. Fleet Fuel Consumption & Emissions Report ──────────────
@@ -882,6 +1036,18 @@ export const fleetFuelConsumptionReportFixtures: PdfFixture<FleetFuelConsumption
       })),
       totalGallons: 8400.0,
       totalCo2: 19200.0,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicles: [
+        { ...baseVehicle(), total_gallons: 168.5, co2_kg: 384.2, co2_lbs: 847.2 },
+        { ...reportVehicle(1), total_gallons: 142.0, co2_kg: 324.1, co2_lbs: 714.6 },
+      ],
+      totalGallons: 310.5,
+      totalCo2: 708.3,
     },
   },
 ];
@@ -936,6 +1102,27 @@ export const fleetAccidentReportFixtures: PdfFixture<FleetAccidentReportArgs>[] 
       },
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicle: baseVehicle(),
+      accident: {
+        accident_date: '2026-06-21T09:00:00Z',
+        location: '1400 S State St, Salt Lake City, UT 84115',
+        severity: 'moderate',
+        weather_conditions: 'clear',
+        road_conditions: 'dry',
+        police_report_number: 'PR-2026-004417',
+        insurance_claim_number: 'CLM-2026-004417',
+        estimated_damage: 4850.0,
+        injuries: 0,
+        fault_determination: 'other_party',
+        status: 'closed',
+        description: 'Rear-ended at a stoplight during a low-speed patrol response; no injuries reported.',
+      },
+    },
+  },
 ];
 
 // ── 9. Fleet Budget Report ──────────────────────────────────────
@@ -968,6 +1155,18 @@ export const fleetBudgetReportFixtures: PdfFixture<FleetBudgetReportArgs>[] = [
         allocated_amount: 1000.0 + i * 50,
         spent_amount: i === 0 ? 5000.0 : 800.0 + i * 40,
       })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      fiscalYear: 2026,
+      budgets: [
+        { category: 'Fuel', allocated_amount: 48000.0, spent_amount: 41200.5 },
+        { category: 'Maintenance', allocated_amount: 24000.0, spent_amount: 15840.0 },
+        { category: 'Insurance', allocated_amount: 36000.0, spent_amount: 36000.0 },
+      ],
     },
   },
 ];
@@ -1007,6 +1206,16 @@ export const fleetReplacementReportFixtures: PdfFixture<FleetReplacementReportAr
     label: '40-vehicle replacement roster, 35-char reason text',
     input: {
       vehicles: Array.from({ length: 40 }, (_, i) => replacementVehicle(i, { replacement_reason: MAXIMAL_NARRATIVE })),
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      vehicles: [
+        replacementVehicle(1, { rp_priority: 'critical' }),
+        replacementVehicle(2, { rp_priority: 'medium' }),
+      ],
     },
   },
 ];
@@ -1055,6 +1264,11 @@ export const fleetDepreciationReportFixtures: PdfFixture<FleetDepreciationReport
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: { vehicles: [depreciationVehicle(1), depreciationVehicle(2)] },
+  },
 ];
 
 // ── 12. Fleet Key Management Report ─────────────────────────────
@@ -1099,6 +1313,13 @@ export const fleetKeyReportFixtures: PdfFixture<FleetKeyReportArgs>[] = [
       })),
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      keys: [keyRecord(1, { status: 'checked_out' }), keyRecord(2, { status: 'available' })],
+    },
+  },
 ];
 
 // ── 13. Fleet Health Scorecard Report ───────────────────────────
@@ -1132,6 +1353,16 @@ export const fleetScorecardReportFixtures: PdfFixture<FleetScorecardReportArgs>[
       expiring_insurance: 9, expiring_registration: 7, open_recalls: 5,
       open_accidents: 4, fuel_this_month: { cost: 24817.5, gallons: 7189.4 },
       maintenance_this_month: { cost: 11240.0, count: 22 }, avg_mpg: 14.1, health_score: 38,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      total: 13, active: 11, in_maintenance: 2, needing_service: 2,
+      expiring_insurance: 1, expiring_registration: 0, open_recalls: 1,
+      open_accidents: 0, fuel_this_month: { cost: 4068.75, gallons: 1189.4 },
+      maintenance_this_month: { cost: 2140.0, count: 3 }, avg_mpg: 19.2, health_score: 84,
     },
   },
 ];
@@ -1184,6 +1415,20 @@ export const personnelProductivityReportFixtures: PdfFixture<PersonnelProductivi
       days: 365,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      rows: [
+        { officer_name: 'Dana Whitlock', call_sign: '4-Adam-12', vehicle_label: '#47 2022 Ford Explorer', total_assignments: 8, total_miles: 3120, total_hours: 210.5, active_assignments: 1 },
+        { officer_name: 'Marcus Reyes', call_sign: '4-Adam-13', vehicle_label: '#101 2021 Ford Explorer', total_assignments: 5, total_miles: 1840, total_hours: 145.0, active_assignments: 0 },
+      ],
+      totalOfficers: 2,
+      totalMiles: 4960,
+      totalHours: 355.5,
+      days: 30,
+    },
+  },
 ];
 
 // ── 15. Inspection Analysis Report ──────────────────────────────
@@ -1233,6 +1478,15 @@ export const inspectionAnalysisReportFixtures: PdfFixture<InspectionAnalysisRepo
       overallPassRate: 71.2,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      rows: [inspectionAnalysisRow(1), inspectionAnalysisRow(2, { pass_rate: 65.0, last_result: 'fail' as const })],
+      totalInspections: 24,
+      overallPassRate: 78.4,
+    },
+  },
 ];
 
 // ── 16. Cost-Per-Mile Report ─────────────────────────────────────
@@ -1278,6 +1532,15 @@ export const costPerMileReportFixtures: PdfFixture<CostPerMileReportArgs>[] = [
       rows: Array.from({ length: 40 }, (_, i) => costPerMileRow(i + 1, { cost_per_mile: 0.5 - i * 0.01 })),
       fleetAverageCpm: 0.198,
       totalCost: 318300.0,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      rows: [costPerMileRow(1), costPerMileRow(2, { cost_per_mile: 0.142, mpg: 22.4 })],
+      fleetAverageCpm: 0.164,
+      totalCost: 15915.0,
     },
   },
 ];
@@ -1329,6 +1592,18 @@ export const maintenanceForecastReportFixtures: PdfFixture<MaintenanceForecastRe
       })),
       overdueCount: 10,
       upcomingCount: 20,
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      rows: [
+        maintenanceForecastRow(1, { urgency: 'overdue' as const, miles_until_service: -320 }),
+        maintenanceForecastRow(2, { urgency: 'warning' as const }),
+      ],
+      overdueCount: 1,
+      upcomingCount: 1,
     },
   },
 ];
@@ -1393,4 +1668,18 @@ export const complianceAuditReportFixtures: PdfFixture<ComplianceAuditReportArgs
       issuesCount: 40,
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      rows: [
+        complianceRow(1),
+        complianceRow(2, { insurance_status: 'expiring' as const, compliance_score: 78 }),
+      ],
+      totalVehicles: 2,
+      fullyCompliant: 1,
+      issuesCount: 1,
+    },
+  },
 ];
+

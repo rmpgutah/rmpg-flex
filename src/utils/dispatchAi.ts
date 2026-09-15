@@ -200,14 +200,43 @@ export async function suggestUnits(
 
 type NarrativeContextType = 'incident' | 'serve_attempt' | 'dispatch_narrative';
 
+/** Controls output length. full_report targets ~3 pages (~2000+ words). */
+export type NarrativeLengthTarget = 'brief' | 'standard' | 'detailed' | 'full_report';
+
+const LENGTH_TOKEN_MAP: Record<NarrativeLengthTarget, number> = {
+  brief: 512,
+  standard: 1200,
+  detailed: 2048,
+  full_report: 3072,
+};
+
+const LENGTH_INSTRUCTION_MAP: Record<NarrativeLengthTarget, string> = {
+  brief:
+    'Write a brief single-paragraph summary (100-200 words). Cover only the essential facts and final disposition.',
+  standard:
+    'Write a standard professional narrative (300-500 words, 2-3 paragraphs). Cover all material facts in chronological order.',
+  detailed:
+    'Write a detailed thorough narrative (600-1000 words, 4-6 paragraphs). Full chronological coverage with all contacts, observations, evidence, and actions.',
+  full_report:
+    'Write a comprehensive multi-page report narrative (1200-2000 words, 7-12 paragraphs). This is a complete official report. ' +
+    'Paragraph 1: Opening — date, time, location, nature of call/incident, how you were notified. ' +
+    'Paragraph 2: Response and arrival — your route, arrival time, initial scene observations, conditions. ' +
+    'Paragraph 3: Initial contact — first persons encountered, physical descriptions, demeanor, statements made. ' +
+    'Paragraphs 4+: Chronological account of all actions taken, each person contacted (with description and statements), ' +
+    'evidence collected, documents served or obtained, searches conducted, use of force if any. ' +
+    'Second-to-last paragraph: Legal notifications — Miranda rights given, consular notification, medical attention offered. ' +
+    'Final paragraph: Disposition — arrest/citations/warnings issued, property impounded, case status, required follow-up actions. ' +
+    'Every material fact from the notes must appear. Separate each paragraph with a blank line.',
+};
+
 const NARRATIVE_SYSTEM_MAP: Record<NarrativeContextType, string> = {
   incident:
-    'You are a veteran police report writer. Given incident notes, incident type, ' +
-    'and location, produce a concise, objective, plain-language incident narrative ' +
-    'suitable for an official police report. Use professional tone, avoid speculation, ' +
-    'include relevant details but omit subjective judgments. Write in first-person past ' +
-    'tense (I observed, I contacted, I attempted). Output ONLY a plain-text narrative ' +
-    'paragraph. No JSON, no formatting, no preamble.',
+    'You are a veteran police report writer. Given incident notes, incident type, and location, ' +
+    'produce an objective, plain-language incident narrative suitable for an official police report. ' +
+    'Use professional tone, avoid speculation, include all relevant details, omit subjective judgments. ' +
+    'Write in first-person past tense (I observed, I contacted, I attempted). ' +
+    'Separate paragraphs with a blank line. ' +
+    'Output ONLY plain-text narrative paragraphs. No JSON, no section headers, no preamble.',
 
   serve_attempt:
     'You are a professional process server writing an official service-attempt narrative ' +
@@ -216,18 +245,21 @@ const NARRATIVE_SYSTEM_MAP: Record<NarrativeContextType, string> = {
     'produce a thorough, chronological, first-person past-tense narrative (I arrived, ' +
     'I observed, I contacted, I was met by). Include: time of arrival, property observations, ' +
     'contact or non-contact details, description of any person encountered (name if given, ' +
-    'demeanor), exact disposition of the documents, and any safety or access concerns. ' +
+    'demeanor, physical description), exact disposition of the documents, and any safety or ' +
+    'access concerns. Separate each phase into its own paragraph with a blank line between them. ' +
     'Language must be precise, objective, and suitable for filing with the court. ' +
-    'Output ONLY the plain-text narrative. No JSON, no headings, no preamble.',
+    'Output ONLY plain-text narrative paragraphs. No JSON, no section headers, no preamble.',
 
   dispatch_narrative:
     'You are a veteran police report writer drafting an official Call for Service narrative ' +
     'and Action Taken summary. Given call context and notes, produce a detailed, chronological, ' +
-    'first-person past-tense incident narrative (I responded, I made contact, I observed). ' +
-    'Include: initial response and arrival observations, all persons contacted, actions taken, ' +
-    'evidence or documents collected, final disposition, and any follow-up required. ' +
-    'Use professional law enforcement language. Output ONLY a plain-text narrative. ' +
-    'No JSON, no headings, no preamble.',
+    'first-person past-tense narrative (I responded, I made contact, I observed). ' +
+    'Each major phase (response, arrival, contact, actions taken, legal notifications, disposition) ' +
+    'must be its own paragraph, separated by a blank line. Include: initial response and arrival ' +
+    'observations, all persons contacted with physical descriptions and statements, actions taken, ' +
+    'evidence or documents collected, legal notifications given, final disposition, and any ' +
+    'follow-up required. Use professional law enforcement language. ' +
+    'Output ONLY plain-text narrative paragraphs. No JSON, no section headers, no preamble.',
 };
 
 export async function narrativeAssist(
@@ -236,16 +268,19 @@ export async function narrativeAssist(
   incidentType?: string,
   locationAddress?: string,
   contextType: NarrativeContextType = 'incident',
+  lengthTarget: NarrativeLengthTarget = 'standard',
+  paragraphGuidance?: string,
 ): Promise<{ narrative: string; provider: string; fallback: boolean }> {
   const systemPrompt = NARRATIVE_SYSTEM_MAP[contextType] ?? NARRATIVE_SYSTEM_MAP.incident;
+  const lengthInstruction = LENGTH_INSTRUCTION_MAP[lengthTarget];
+  const maxTokens = LENGTH_TOKEN_MAP[lengthTarget];
 
   const user =
     `Incident type: ${incidentType ?? 'N/A'}\n` +
     `Location: ${locationAddress ?? 'N/A'}\n` +
-    `Notes: ${notes.slice(0, 3000)}`;
-
-  // Serve-attempt and dispatch narratives need more room — they cover more ground.
-  const maxTokens = contextType === 'incident' ? 600 : 900;
+    `Length and structure requirement: ${lengthInstruction}\n` +
+    (paragraphGuidance ? `Additional paragraph guidance: ${paragraphGuidance}\n` : '') +
+    `Notes:\n${notes.slice(0, 8000)}`;
 
   try {
     const res = (await ai.run(LLM_MODEL, {
@@ -256,12 +291,13 @@ export async function narrativeAssist(
       max_tokens: maxTokens,
       temperature: 0.3,
     } as never)) as { response?: string };
-    const narrative = (res?.response || '').trim().slice(0, 5000);
+    // No hard char cap — officer prose can be as long as the report requires.
+    const narrative = (res?.response || '').trim();
     if (narrative.length >= 20) {
       return { narrative, provider: 'workers-ai', fallback: false };
     }
   } catch (err) {
-    log.error('narrativeAssist LLM failed', { contextType }, err);
+    log.error('narrativeAssist LLM failed', { contextType, lengthTarget }, err);
   }
 
   return {

@@ -101,6 +101,50 @@ export const trespassOrderFixtures: PdfFixture<TrespassOrder>[] = [
       updated_at: '2026-12-31T23:59:00Z',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Repeat violator — prior violation on record, served exclusion order with originating call',
+    input: {
+      id: 1004,
+      order_number: 'TO-2026-004420',
+      subject_first_name: 'Marcus',
+      subject_last_name: 'Reyes-Delgado',
+      subject_dob: '1985-07-19',
+      subject_description:
+        'Subject has two prior trespass warnings at this property. This exclusion order was issued ' +
+        'following a confirmed violation of prior active warning on June 3, 2026.',
+      location: '3900 S 700 E, Suite 100, Millcreek, UT 84107',
+      property_name: 'Millcreek Commerce Park',
+      order_type: 'exclusion_order',
+      status: 'served',
+      reason:
+        'Subject returned to the premises on June 3, 2026 at approximately 14:10 hours, in ' +
+        'violation of Trespass Warning TO-2025-001122, which was still in active effect. ' +
+        'Subject was positively identified by on-site security and escorted from the property.',
+      conditions:
+        'Subject is excluded from the property at 3900 S 700 E and any adjacent parking facilities ' +
+        'under the control of Millcreek Commerce Park LLC. Subject shall not approach within 200 feet ' +
+        'of any entrance. Violation constitutes criminal trespass under Utah Code 76-6-206.',
+      duration_days: 730,
+      effective_date: '2026-06-03',
+      expiration_date: '2028-06-03',
+      served_at: '2026-06-03T15:45:00Z',
+      served_by: 42,
+      served_by_name: 'Officer Dana Whitlock',
+      originating_call_id: '2026-008812',
+      issued_by: 42,
+      issued_by_name: 'Dana Whitlock',
+      issued_by_display: 'Officer Dana Whitlock, Badge 4418',
+      authorized_by: 'Officer Dana Whitlock, Badge 4418',
+      notes:
+        'Subject acknowledged service. Prior order TO-2025-001122 superseded by this exclusion order. ' +
+        'Violation count: 1. Photos preserved under incident 2026-008812.',
+      violation_count: 1,
+      zone_beat: 'B-07',
+      created_at: '2026-06-03T15:45:00Z',
+      updated_at: '2026-06-03T15:45:00Z',
+    },
+  },
 ];
 
 // ── Criminal History ────────────────────────────────────────
@@ -178,6 +222,30 @@ export const criminalHistoryFixtures: PdfFixture<CriminalHistoryInput>[] = [
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
     },
   },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — cross-referenced subject/asset data',
+    input: {
+      subject: {
+        id: 501,
+        first_name: 'Dana',
+        last_name: 'Whitlock',
+        middle_name: 'Marie',
+        date_of_birth: '1990-04-12',
+        sex: 'F',
+        race: 'W',
+        drivers_license: 'W123-4567-8901',
+        dl_state: 'UT',
+        address: '1400 S State St, Salt Lake City, UT 84115',
+        caution_flags: 'None on file',
+        has_active_warrants: false,
+        is_sex_offender: false,
+      },
+      history: [historyEntry(0), historyEntry(1), historyEntry(2)],
+      preparedBy: 'Sgt. Marcus Reyes',
+    },
+  },
+
 ];
 
 // ── Court Appearance ────────────────────────────────────────
@@ -271,6 +339,36 @@ export const courtAppearanceFixtures: PdfFixture<CourtAppearanceInput>[] = [
       officer_confirmations: JSON.stringify({ 'Sgt. Marcus Reyes': 'confirmed', 'Ofc. Dana Whitlock': 'pending' }),
       continuance_count: 40,
       preparedBy: 'Sergeant Marcus Alexander Reyes, Badge 4417',
+    },
+  },
+  {
+    variant: 'enrichment',
+    label: 'Enrichment — typical data with cross-references',
+    input: {
+      id: 701,
+      event_number: 'CE-2026-004417',
+      event_type: 'Preliminary Hearing',
+      status: 'scheduled',
+      event_date: '2026-09-15',
+      event_time: '09:00',
+      court_name: 'Third District Court, State of Utah, County of Salt Lake',
+      courtroom: 'Courtroom 4B',
+      judge_name: 'Hon. Patricia Alvarado',
+      court_case_number: '2026-004417',
+      defendant_name: 'Marcus Reyes',
+      prosecutor: 'ADA Dana Whitlock',
+      defense_attorney: 'Jordan Blake, Esq.',
+      bail_amount: 2500,
+      bond_status: 'posted',
+      witnesses: JSON.stringify([
+        { name: 'Dana Whitlock', role: 'witness', contact_status: 'confirmed', phone: '801-555-0142' },
+      ]),
+      court_fees: JSON.stringify([{ label: 'Filing fee', amount: 75 }]),
+      continuance_count: 0,
+      preparedBy: 'Sgt. Marcus Reyes',
+      notes:
+        'Subject to appear as ordered; hereinafter referred to as "Defendant." Failure to appear ' +
+        'may result in a bench warrant, so help me God.',
     },
   },
 ];

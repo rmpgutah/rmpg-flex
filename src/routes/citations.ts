@@ -17,6 +17,7 @@ import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 import { containsAnyClause } from '../utils/searchText';
+import { evaluateCitationCompleteness } from '../utils/citationCompleteness';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -360,6 +361,36 @@ citations.get('/:id', async (c) => {
   } catch (err) {
     log.error('GET /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation', code: 'GET_ERROR' }, 500);
+  }
+});
+
+// ── GET /:id/completeness — data completeness / readiness ───
+citations.get('/:id/completeness', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id < 1) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const row = await queryFirst<{
+      person_id: number | null; person_name: string | null; violation_description: string | null;
+      issuing_officer_id: number | null; issuing_officer_name: string | null;
+      court_date: string | null; appearance_required: number | null;
+      vehicle_description: string | null; vehicle_plate: string | null;
+    }>(
+      db,
+      `SELECT person_id, person_name, violation_description, issuing_officer_id, issuing_officer_name,
+              court_date, appearance_required, vehicle_description, vehicle_plate
+       FROM citations WHERE id = ?`,
+      id,
+    );
+    if (!row) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
+    const violation_count = (await queryFirst<{ n: number }>(
+      db, 'SELECT COUNT(*) n FROM citation_violations WHERE citation_id = ?', id,
+    ).catch(() => null))?.n ?? 0;
+    const result = evaluateCitationCompleteness({ ...row, violation_count });
+    return c.json({ data: result });
+  } catch (err) {
+    log.error('GET /:id/completeness failed', { src: 'src/routes/citations.ts' }, err);
+    return c.json({ error: 'Failed to evaluate completeness', code: 'COMPLETENESS_ERROR' }, 500);
   }
 });
 

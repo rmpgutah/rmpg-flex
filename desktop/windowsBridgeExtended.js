@@ -310,13 +310,26 @@ function formatNetAdapters(rows) {
 function formatBluetoothDevices(rows) {
   return (rows || [])
     .filter((r) => r && typeof r.FriendlyName === 'string')
-    .map((r) => ({
-      name: r.FriendlyName,
-      status: String(r.Status || 'Unknown'),
-      ok: String(r.Status || '').toUpperCase() === 'OK',
-      instanceId: r.InstanceId || '',
-      isRadio: /radio|adapter/i.test(String(r.FriendlyName)),
-    }));
+    .map((r) => {
+      const name = r.FriendlyName;
+      const instanceId = r.InstanceId || '';
+      // The radio/adapter is the host-side controller (Intel Wireless Bluetooth,
+      // Broadcom Bluetooth Adapter, etc.). Paired peripherals live under
+      // BTHENUM\... instance IDs. Match by name keywords OR by non-BTHENUM
+      // instance path — the latter catches vendor-named radios that don't
+      // include "radio" or "adapter" in their friendly name (common on
+      // Panasonic Toughbook FZ-55 with Intel AX200/AX201).
+      const isRadio = /radio|adapter/i.test(name) ||
+        (/bluetooth/i.test(name) && /intel|broadcom|realtek|qualcomm|mediatek/i.test(name)) ||
+        (instanceId && !/^BTHENUM\\/i.test(instanceId) && /^(USB|PCI|ACPI)\\/i.test(instanceId));
+      return {
+        name,
+        status: String(r.Status || 'Unknown'),
+        ok: String(r.Status || '').toUpperCase() === 'OK',
+        instanceId,
+        isRadio,
+      };
+    });
 }
 
 /** Win32_SoundDevice / MMDevice rows → audio device objects. */
@@ -705,7 +718,16 @@ function registerWindowsBridgeExtended(deps) {
     if (limited) return limited;
     const verb = enabled ? 'Enable-PnpDevice' : 'Disable-PnpDevice';
     try {
-      await ps(`Get-PnpDevice -Class Bluetooth | Where-Object { $_.FriendlyName -match 'Radio|Adapter' } | ${verb} -Confirm:$false`, LONG_TIMEOUT_MS);
+      // Match the radio by name keywords (Radio, Adapter, or vendor+Bluetooth)
+      // OR by non-BTHENUM instance path — same logic as formatBluetoothDevices.
+      await ps(
+        `Get-PnpDevice -Class Bluetooth | Where-Object { ` +
+          `$_.FriendlyName -match 'Radio|Adapter' -or ` +
+          `($_.FriendlyName -match 'Bluetooth' -and $_.FriendlyName -match 'Intel|Broadcom|Realtek|Qualcomm|MediaTek') -or ` +
+          `($_.InstanceId -notmatch '^BTHENUM' -and $_.InstanceId -match '^(USB|PCI|ACPI)') ` +
+        `} | ${verb} -Confirm:$false`,
+        LONG_TIMEOUT_MS
+      );
       return { ok: true, enabled: Boolean(enabled) };
     } catch (err) { return fail('WINEXT:TOGGLE-BLUETOOTH', err); }
   });

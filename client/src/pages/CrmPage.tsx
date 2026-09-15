@@ -1068,7 +1068,7 @@ export default function CrmPage() {
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-rmpg-200">{a.client_name || 'Unknown'}</span>
+                          <span className="font-medium text-rmpg-200">{a.client_name || a.lead_name || 'Unknown'}</span>
                           <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
                         </div>
                         <div className="text-rmpg-300 mt-0.5">
