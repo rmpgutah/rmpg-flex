@@ -764,41 +764,71 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
 
 ## Testing & CI
 
-`.github/workflows/pr-tests.yml` runs on every PR + push to main:
+**⚠️ The single most expensive mistake in this repo is assuming `cd client && npx vitest run` is "the client tests." It is not.** `client/vitest.config.ts` **excludes** `src/utils/pdf/**`, the map globs, and `src/components/desktop/**`. Those run under three *other* configs, as three *other* CI jobs, and **no local hook invokes any of them**. A form-rendering or map change can pass every gate on your machine and still be broken. Measured on `main` 2026-09-15:
 
-1. **`worker-typecheck`** — `npm run typecheck` (tsc on `/src/`)
-2. **`worker-tests`** — `npx vitest run` (the `tests/` suite)
-3. **`worker-integration-tests`** — `npm run test:worker` (Miniflare, `test-workers/`, via `vitest.workers.config.mts`)
-4. **`client-typecheck`** — `cd client && npx tsc --noEmit`
-5. **`client-tests`** — `cd client && npx vitest run`
-6. **`client-build`** — `cd client && npx vite build` (depends on client-typecheck)
+| Suite | Command | Size |
+|---|---|---|
+| Client default | `cd client && npx vitest run` | 478 files / 3392 |
+| Client PDF | `cd client && npx vitest run -c vitest.pdf.config.ts` | 111 files / 1644 |
+| Client map | `cd client && npx vitest run -c vitest.maps.config.ts` | 59 files / 419 |
+| Client desktop-shell | `cd client && npx vitest run -c vitest.desktop.config.ts` | 26 files / 220 |
+| Worker | `npx vitest run` | 444 files / 4338 |
+| Worker integration | `npm run test:worker` | 132 files / 832 |
 
-The Worker **does** have test suites — `tests/` (Node) and `test-workers/` (Miniflare), both gated in CI. Earlier revisions of this file said "no Worker test suite yet — Miniflare is Phase 2 tech debt"; that was already stale when written, contradicted by this file's own 2026-06-24 Session Log entry. When you add a new route, prefer adding a smoke test in the same PR.
+The default config covers **71%** of the client's 674 test files — the other 196 files and **2,283 tests** run only under the other three. The splits exist for real reasons (documented in each config: the forks pool and an 8 GB heap ceiling, jsdom concurrency, a 30 s map timeout) — they are not accidental and should not be merged back together.
+
+### The CI jobs
+
+**`.github/workflows/pr-tests.yml`** (11 jobs, on every PR + push to main):
+
+| Job | Runs |
+|---|---|
+| Worker typecheck | `npm run typecheck` (tsc on `/src/`) |
+| Worker tests | `npx vitest run` (`tests/`) |
+| Worker integration tests | `npm run test:worker` (Miniflare, `test-workers/`, via `vitest.workers.config.mts`) |
+| Proxy typecheck | `cd proxy && npx tsc --noEmit` |
+| Client typecheck | `cd client && npx tsc --noEmit` |
+| Client tests | `cd client && npx vitest run` |
+| Client PDF tests | `… --config vitest.pdf.config.ts` |
+| Client map tests | `… --config vitest.maps.config.ts` |
+| Client desktop tests | `… --config vitest.desktop.config.ts` |
+| Client build | `cd client && npx vite build` |
+| client-entry-size | `vite build --sourcemap` + `scripts/measure-entry.mjs --max-raw 478000` |
+
+**⚠️ "Client desktop tests" is NOT the `desktop/` Electron package.** It runs `client/vitest.desktop.config.ts` — a jsdom suite over `client/src/components/desktop/**` and `DesktopPage.test.tsx`. The Electron app's own `node --test` suite is a separate workflow (below). The names are one word apart and mean different things.
+
+**Other workflows that gate a PR:**
+
+- **`pr-guards.yml`** → one "Static guard checks" job running 8 ratchets: array guard (admin console unguarded `apiFetch`), D1 column cap, `new Date()` timezone, theme hex, `toFixed` false-guard, form-draft ("filler") coverage, button health, React hooks-after-early-return.
+- **`desktop-tests.yml`** → the Electron app's `node --test` suite (`desktop/__tests__` + `desktop/security/__tests__`). Path-filtered to `desktop/**` and on **windows-latest**, because the native modules and Windows-gated IPC paths get zero real coverage on Ubuntu.
+- **`dependency-review.yml`**, **`labeler.yml`**, **`auto-merge-dependabot.yml`** — dependency review, path labelling, Dependabot automerge.
+
+The Worker **does** have test suites — `tests/` (Node) and `test-workers/` (Miniflare), both gated. Earlier revisions of this file said "no Worker test suite yet — Miniflare is Phase 2 tech debt"; that was already stale when written. When you add a new route, prefer adding a smoke test in the same PR.
 
 ### The two gates are NOT the same set — don't assume one covers the other
 
-`.husky/pre-push` runs **four** stages: worker types → client types → client vitest → **desktop tests**. It is *not* a mirror of CI. The sets overlap; neither contains the other:
+`.husky/pre-push` runs **five** stages: worker types → proxy types → client types → client vitest (default config only) → desktop tests. It is *not* a mirror of CI:
 
 | Stage | pre-push | CI |
 |---|---|---|
 | Worker typecheck | ✅ | ✅ |
+| Proxy typecheck | ✅ | ✅ |
 | Client typecheck | ✅ | ✅ |
-| Client vitest | ✅ | ✅ |
-| **Desktop tests** (`cd desktop && npm test`) | ✅ | ❌ **no CI job exists** |
+| Client vitest (default config) | ✅ | ✅ |
+| Desktop tests (`cd desktop && npm test`) | ✅ | ✅ `desktop-tests.yml` (only when the PR touches `desktop/`) |
+| **Client PDF / map / desktop-shell vitest** | ❌ | ✅ **three separate jobs — no local gate at all** |
 | Worker vitest | ❌ | ✅ |
 | Worker integration (Miniflare) | ❌ | ✅ |
-| Client build (`vite build`) | ❌ | ✅ |
+| Client build + entry-size | ❌ | ✅ |
+| Static guard ratchets | ❌ | ✅ |
 
-**Consequence for `git push --no-verify`:** "CI is the next gate" is true for the three shared stages and **false for desktop tests** — this hook is their only gate anywhere. Bypassing is reasonable when your change doesn't touch `desktop/`; it is genuinely unsafe when it does. Check `git diff --name-only origin/main | grep ^desktop/` before deciding.
+**Consequence for `git push --no-verify`:** "CI is the next gate" is now true for every stage — `desktop-tests.yml` closed the one hole where the hook was the only gate anywhere. Bypassing costs you fast local feedback, not coverage.
 
-**Why pre-push is slow (often 5–15 min), and it's usually not your change:** stage [4/4] rebuilds `better-sqlite3` for the Node ABI to run the desktop tests, then restores it to the Electron ABI via an EXIT trap. That's native compilation twice. If `desktop/node_modules` is absent (common in a fresh worktree) it also runs a full `npm install` whose `electron-rebuild` postinstall compiles again. Budget for it rather than assuming the hook has hung, and prefer backgrounding the push over killing it — a killed push leaves the branch unpushed while the commit exists locally.
+**The reverse hole is the live one:** the PDF, map, and desktop-shell suites have **no local gate**, so the hook passing tells you nothing about them. Before pushing a change under `src/utils/pdf/**`, `src/lib/rmpg-pdf-engine/**`, `src/pages/pdf-editor/**`, anything matching `*[Mm]ap*`/`*mapbox*`, or `src/components/desktop/**`, run that suite's config by hand. This is not hypothetical: PR #4394 shipped a `citation_blank` PDF snapshot that its own label-box change had invalidated. Both husky hooks were green and could not have failed, and CI's PDF job never ran because every client job died earlier at `npm ci` on a lockfile break. It reached `main` and went red on the next PR (fixed by #4401).
 
-**Known fail-open in the hook (unfixed as of 2026-07-25):** the "skip when nothing to push" guard is
-`[ "$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo 0)" = "0" ]`. When `origin/main` is
-not present locally, `git rev-list` errors, `|| echo 0` yields `0`, and the **entire gate silently
-skips** while printing "no commits ahead of origin/main" — so a broken ref and a legitimate no-op are
-indistinguishable. If you see that message on a branch you know has commits, the gate did not run;
-verify manually with `npm run typecheck && cd client && npx tsc --noEmit && npx vitest run`.
+**Why pre-push is slow (often 5–15 min), and it's usually not your change:** stage [5/5] rebuilds `better-sqlite3` for the Node ABI to run the desktop tests, then restores it to the Electron ABI via an EXIT trap. That's native compilation twice. If `desktop/node_modules` is absent (common in a fresh worktree) it also runs a full `npm install` whose `electron-rebuild` postinstall compiles again. Budget for it rather than assuming the hook has hung, and prefer backgrounding the push over killing it — a killed push leaves the branch unpushed while the commit exists locally.
+
+> **The old "known fail-open in the hook (unfixed as of 2026-07-25)" warning is RESOLVED — do not act on it.** It described the skip guard swallowing a `git rev-list` error via `|| echo 0` and silently skipping the entire gate when `origin/main` was missing locally. The hook now captures the exit status separately and **fails closed**, printing `⚠ pre-push: origin/main not available locally — running full gate as safety fallback` and running everything. `⤷ no commits ahead of origin/main` now genuinely means the branch has nothing to push.
 
 ## Common Gotchas (CF era)
 
@@ -871,7 +901,7 @@ If you encounter any of these in code comments, docs, or older messages, **do no
 - nginx config tweaks (`/etc/nginx/sites-enabled/rmpgutah.us`, `mime.types`, `brotli.conf`) — Cloudflare handles all edge TLS / compression / caching
 - Manual `CACHE_NAME` bump in `client/public/sw.js` (VPS-era or otherwise) — the value is now auto-stamped from the git short SHA by the `stamp-sw-version` Vite plugin; source stays as the literal placeholder `'rmpg-flex-BUILD'`
 - TOTP / WebAuthn / Evidence-chain Ed25519 setup — those features were VPS-only and have not been ported to the Worker yet
-- Husky `pre-push` instructions about running 461 server tests — that VPS-era Express suite was removed when `/server/` was quarantined. Do **not** generalize this into "pre-push runs no tests": it still runs client vitest **and desktop tests** (see "The two gates are NOT the same set" above).
+- Husky `pre-push` instructions about running 461 server tests — that VPS-era Express suite was removed when `/server/` was quarantined. Do **not** generalize this into "pre-push runs no tests": it runs five stages including client vitest **and desktop tests**. Equally, do not read it as "pre-push covers the client" — its client vitest stage uses the default config only, which excludes the PDF, map and desktop-shell suites (see "The two gates are NOT the same set" above).
 
 When in doubt: `grep` for the actual file under `/src/` or `/client/src/`. The deployed code is always the source of truth, never a comment.
 
