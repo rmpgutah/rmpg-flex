@@ -792,18 +792,18 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
 
 ## Testing & CI
 
-**⚠️ The single most expensive mistake in this repo is assuming `cd client && npx vitest run` is "the client tests." It is not.** `client/vitest.config.ts` **excludes** `src/utils/pdf/**`, the map globs, and `src/components/desktop/**`. Those run under three *other* configs, as three *other* CI jobs, and **no local hook invokes any of them**. A form-rendering or map change can pass every gate on your machine and still be broken. Measured on `main` 2026-09-15:
+**⚠️ The single most expensive mistake in this repo is assuming `cd client && npx vitest run` is "the client tests." It is not.** `client/vitest.config.ts` **excludes** `src/utils/pdf/**`, the map globs, and `src/components/desktop/**`. Those run under three *other* configs, as three *other* CI jobs, and **no local hook invokes any of them**. A form-rendering or map change can pass every gate on your machine and still be broken. Measured on `main` 2026-09-15, at `2307e8f` (all six re-run on that commit):
 
 | Suite | Command | Size |
 |---|---|---|
-| Client default | `cd client && npx vitest run` | 478 files / 3392 |
+| Client default | `cd client && npx vitest run` | 480 files / 3408 |
 | Client PDF | `cd client && npx vitest run -c vitest.pdf.config.ts` | 111 files / 1644 |
-| Client map | `cd client && npx vitest run -c vitest.maps.config.ts` | 59 files / 419 |
+| Client map | `cd client && npx vitest run -c vitest.maps.config.ts` | 60 files / 438 |
 | Client desktop-shell | `cd client && npx vitest run -c vitest.desktop.config.ts` | 26 files / 220 |
 | Worker | `npx vitest run` | 444 files / 4338 |
-| Worker integration | `npm run test:worker` | 132 files / 832 |
+| Worker integration | `npm run test:worker` | 135 files / 851 |
 
-The default config covers **71%** of the client's 674 test files — the other 196 files and **2,283 tests** run only under the other three. The splits exist for real reasons (documented in each config: the forks pool and an 8 GB heap ceiling, jsdom concurrency, a 30 s map timeout) — they are not accidental and should not be merged back together.
+The default config covers **71%** of the client's 677 test files — the other 197 files and **2,302 tests** run only under the other three. The splits exist for real reasons (documented in each config: the forks pool and an 8 GB heap ceiling, jsdom concurrency, a 30 s map timeout) — they are not accidental and should not be merged back together.
 
 ### The CI jobs
 
