@@ -1,40 +1,38 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/dialerConnect';
+import { SoftphoneContext, type SoftphoneContextValue } from './softphoneContext';
 import { dialerApi, type DialerApiError } from './dialerApi';
 import { isIframeDialerForced } from './dialerFlags';
 import { createLeaderElection, isPopoutWindow } from './leaderElection';
 import { INITIAL, reduce, type SoftphoneSnapshot } from './softphoneMachine';
 import { controlCallSid, type DeviceFactory, type SoftphoneCall, type SoftphoneDevice } from './types';
+import { useDialerStream } from './useDialerStream';
 
-const HEARTBEAT_MS = 30_000;
+// dispatch-app treats a dispatcher as online for 150 s after the last beat;
+// 20 s leaves room for background-tab timer throttling (~1/min) without flapping.
+const HEARTBEAT_MS = 20_000;
+const PSTN_FAILURE_STATUSES: Record<string, string> = {
+  failed: 'The call could not be completed — the carrier rejected it. Try again.',
+  busy: 'The line is busy.',
+  'no-answer': 'No answer.',
+};
 const TOKEN_REFRESH_LEAD_MS = 5 * 60_000;
 
-export interface SoftphoneContextValue extends SoftphoneSnapshot {
-  identity: string | null;
-  dial(to: string, opts?: { blockCallerId?: boolean }): Promise<void>;
-  answer(): void;
-  reject(): void;
-  hangup(): void;
-  setMuted(muted: boolean): void;
-  toggleHold(): Promise<void>;
-  sendDigits(digits: string): void;
-  transferBlind(targetDispatcherId: string): Promise<void>;
-  transferWarm(targetDispatcherId: string): Promise<void>;
-  addParty(phoneNumber: string): Promise<void>;
-  toggleRecording(): Promise<void>;
-  duress(): Promise<void>;
-  retry(): void;
-}
-
-const Ctx = createContext<SoftphoneContextValue | null>(null);
+const Ctx = SoftphoneContext;
+export { useSoftphone } from './softphoneContext';
+export type { SoftphoneContextValue } from './softphoneContext';
 
 async function realDeviceFactory(token: string): Promise<SoftphoneDevice> {
   const { Device } = await import('@twilio/voice-sdk');
   return new Device(token, { logLevel: 'error' }) as unknown as SoftphoneDevice;
 }
 
-export function SoftphoneProvider({ children, createDevice, enabled = true }: { children: ReactNode; createDevice?: DeviceFactory; enabled?: boolean }) {
+export function SoftphoneProvider({ children, createDevice, enabled = true, streamEnabled = true }: {
+  children: ReactNode; createDevice?: DeviceFactory; enabled?: boolean; streamEnabled?: boolean;
+}) {
   const [snap, dispatch] = useReducer(reduce, INITIAL);
+  const [dnd, setDndState] = useState<boolean | null>(null);
+  const [lastDuress, setLastDuress] = useState<{ name: string; at: number } | null>(null);
   const deviceRef = useRef<SoftphoneDevice | null>(null);
   const activeCallRef = useRef<SoftphoneCall | null>(null);
   const waitingCallRef = useRef<SoftphoneCall | null>(null);
@@ -45,6 +43,27 @@ export function SoftphoneProvider({ children, createDevice, enabled = true }: { 
   const [, force] = useReducer((n: number) => n + 1, 0);
 
   const dispatcherId = () => identityRef.current?.replace(/^dispatcher_/, '') ?? '';
+
+  // Server-pushed events: the PSTN leg of an outbound call is a separate Twilio
+  // call this browser never sees, so a carrier rejection (SIP 5xx after ringing)
+  // only reaches us here. Without this the dispatcher sits in an empty
+  // conference hearing silence — the "dropped call" report.
+  const registered = snap.status === 'ready' || snap.status === 'incoming' || snap.status === 'in_call' || snap.status === 'call_waiting';
+  useDialerStream((e) => {
+    if (e.type === 'duress_alert') {
+      setLastDuress({ name: String((e as { dispatcherName?: string }).dispatcherName ?? 'A dispatcher'), at: Date.now() });
+      return;
+    }
+    if (e.type !== 'call_status') return;
+    const ev = e as { callSid?: string; status?: string };
+    const active = activeCallRef.current;
+    if (!active || !ev.callSid || ev.callSid !== controlCallSid(active)) return;
+    const failure = ev.status ? PSTN_FAILURE_STATUSES[ev.status] : undefined;
+    if (failure) {
+      dispatch({ type: 'ERROR', message: failure });
+      active.disconnect();
+    }
+  }, streamEnabled && registered);
 
   const archive = useCallback((call: SoftphoneCall | null, status: string) => {
     if (!call) return;
@@ -116,6 +135,7 @@ export function SoftphoneProvider({ children, createDevice, enabled = true }: { 
       dispatch({ type: 'INCOMING', from, callSid: controlCallSid(call) });
     });
     try { await device.register(); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); }
+    dialerApi.getDnd().then((r) => setDndState(Boolean(r.dnd))).catch(() => undefined);
   }, [enabled, createDevice, refreshToken, attachCall]);
 
   useEffect(() => {
@@ -198,13 +218,13 @@ export function SoftphoneProvider({ children, createDevice, enabled = true }: { 
     toggleRecording: () => withSid(async (sid) => { await dialerApi.recording(sid, snap.recording ? 'stop' : 'start'); dispatch({ type: 'RECORDING', recording: !snap.recording }); }),
     duress: async () => { try { await dialerApi.duress(); } catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); } },
     retry: () => { deviceRef.current?.destroy(); deviceRef.current = null; dispatch({ type: 'RESET' }); force(); void register(); },
-  }), [snap, dial, withSid, attachCall, register]);
+    dnd,
+    setDnd: async (next) => {
+      try { const r = await dialerApi.setDnd(next); setDndState(Boolean(r.dnd)); }
+      catch (err) { dispatch({ type: 'ERROR', message: (err as Error).message }); }
+    },
+    lastDuress,
+  }), [snap, dial, withSid, attachCall, register, dnd, lastDuress]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
-
-export function useSoftphone(): SoftphoneContextValue {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useSoftphone must be used inside <SoftphoneProvider>');
-  return v;
 }

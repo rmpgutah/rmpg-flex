@@ -20,19 +20,36 @@ function Probe() {
       <button onClick={() => s.answer()}>answer</button>
       <button onClick={() => s.hangup()}>hangup</button>
       <button onClick={() => { void s.toggleHold(); }}>hold</button>
+      <span data-testid="dnd">{s.dnd === null ? 'unknown' : String(s.dnd)}</span>
+      <button onClick={() => { void s.setDnd(!s.dnd); }}>toggle-dnd</button>
     </div>
   );
 }
-const renderProbe = () => render(<SoftphoneProvider createDevice={createDevice}><Probe /></SoftphoneProvider>);
+const renderProbe = (streamEnabled = false) => render(<SoftphoneProvider createDevice={createDevice} streamEnabled={streamEnabled}><Probe /></SoftphoneProvider>);
+
+/** An SSE body that emits the given events once `release` is called, then stays open until aborted. */
+function sseResponse(events: object[]): { response: Response; release: () => void } {
+  const enc = new TextEncoder();
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      await gate;
+      for (const e of events) controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+    },
+  });
+  return { response: new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }), release };
+}
 
 beforeEach(() => {
   device = null;
   localStorage.clear();
   apiFetch.mockReset();
-  apiFetch.mockImplementation(async (path: string) => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === '/dialer/token') return { token: 'tok', identity: 'dispatcher_abc', expiresAt: new Date(Date.now() + 3600_000).toISOString() };
     if (path === '/dialer/presence/heartbeat') return { ok: true };
     if (path === '/dialer/voice/hold') return { status: 'held' };
+    if (path === '/dialer/dnd') return init?.method === 'PATCH' ? JSON.parse(String(init.body)) : { dnd: true };
     if (path === '/dialer-connect/events') return { ok: true };
     return {};
   });
@@ -89,5 +106,33 @@ describe('SoftphoneProvider', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.getByTestId('status').textContent).toBe('passive');
     expect(apiFetch).not.toHaveBeenCalledWith('/dialer/token', expect.anything());
+  });
+
+  test('loads DND after registering and PATCHes it on toggle', async () => {
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('dnd').textContent).toBe('true'));
+    await act(async () => { screen.getByText('toggle-dnd').click(); });
+    await waitFor(() => expect(screen.getByTestId('dnd').textContent).toBe('false'));
+    expect(apiFetch).toHaveBeenCalledWith('/dialer/dnd', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ dnd: false }) }));
+  });
+
+  test('a carrier failure pushed over SSE for the live call hangs it up and surfaces the reason', async () => {
+    const sse = sseResponse([
+      { type: 'call_status', callSid: 'CAother', status: 'failed' },
+      { type: 'call_status', callSid: 'CAoutbound', status: 'failed' },
+    ]);
+    vi.stubGlobal('fetch', vi.fn(async () => sse.response));
+    try {
+      renderProbe(true);
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('ready'));
+      await act(async () => { screen.getByText('dial').click(); });
+      expect(screen.getByTestId('status').textContent).toBe('in_call');
+      await act(async () => { sse.release(); });
+      await waitFor(() => expect(device!.lastCall!.disconnected).toBe(true));
+      await waitFor(() => expect(screen.getByTestId('error').textContent).toMatch(/carrier rejected/i));
+      expect(screen.getByTestId('status').textContent).toBe('ready');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

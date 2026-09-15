@@ -16,7 +16,13 @@
 name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
-compatibility_flags = ["nodejs_compat"]
+# global_fetch_strictly_public: without it a Worker cannot fetch() another
+# Worker on its own zone (Cloudflare error 1042). Both the Dial Connect OIDC
+# discovery fetch (src/utils/sso.ts) and the native-softphone proxy
+# (src/routes/dialerVoice.ts) call rmpgutah.us/dialer/*, served by Worker
+# `dialer` on this same zone. Miniflare tests stub fetch, so only live traffic
+# ever sees 1042.
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # ─── Smart Placement (enabled 2026-06-12, monitor) ─────────
 # This worker is D1-heavy (most CAD endpoints make several sequential

@@ -90,7 +90,24 @@ export default function SoftphoneCard({ digits, onDigitsChange, dtmfMode, onDtmf
         {live && <span className="text-fg-secondary">{displayPhone(s.remoteNumber)} · {timer}</span>}
         {s.status === 'call_waiting' && <span style={{ color: 'var(--sev-warn)' }}>waiting: {displayPhone(s.waitingFrom)}</span>}
         {s.status === 'error' && <button type="button" className="ml-auto uppercase text-[9px] border border-border-subtle px-1.5" onClick={s.retry}>Retry</button>}
+        {s.dnd !== null && s.status !== 'unlinked' && (
+          <button
+            type="button"
+            aria-pressed={s.dnd}
+            onClick={() => { void s.setDnd(!s.dnd); }}
+            className={`${s.status === 'error' ? '' : 'ml-auto '}uppercase text-[9px] border px-1.5 py-0.5`}
+            style={s.dnd ? sevStyle('warn') : { borderColor: 'var(--border-subtle)' }}
+            title={s.dnd ? 'Do Not Disturb is ON — inbound calls skip you and go to voicemail. Click to go available.' : 'Click to enable Do Not Disturb (inbound calls will skip you)'}
+          >
+            {s.dnd ? 'DND on' : 'DND off'}
+          </button>
+        )}
       </div>
+      {s.dnd && (
+        <div className="text-[10px]" style={{ color: 'var(--sev-warn)' }} role="status">
+          Do Not Disturb is on — inbound calls are routed to voicemail until you turn it off.
+        </div>
+      )}
       {s.error && <div className="text-[10px]" style={{ color: 'var(--sev-critical)' }} role="alert">{s.error}</div>}
 
       {s.status === 'unlinked' ? <LinkDialerGate /> : (
