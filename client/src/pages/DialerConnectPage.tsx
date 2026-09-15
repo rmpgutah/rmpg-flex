@@ -4,18 +4,15 @@ import {
   Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Voicemail,
   History, Search, Star, Printer, Download, Play, Pause, RefreshCw,
   Plus, Trash2, Copy, Archive, CheckCheck, UserPlus, Link2, FileDown, ShieldCheck, CloudOff,
-  ChevronUp, ChevronDown,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch, apiFetchBlob, apiPostForm } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { usePersistedTab } from '../hooks/usePersistedState';
-import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT, DIALER_CHROME_EVENT } from '../components/DialerPanel';
-import { DIALER_HOST_ID } from '../components/dialerConnect';
+import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/dialerConnect';
 import SoftphoneCard from '../dialer/SoftphoneCard';
 import { useSoftphone } from '../dialer/SoftphoneProvider';
-import { isIframeDialerForced } from '../dialer/dialerFlags';
 import {
   DIALER_FUNCTIONS, VOICEMAIL_FUNCTIONS, CALL_HISTORY_FUNCTIONS,
   DISPOSITIONS, PRESENCE_STATUSES, displayPhone, formatDuration, audioFilename,
@@ -135,29 +132,10 @@ export default function DialerConnectPage() {
   const { addToast } = useToast();
   const exportedBy = user?.full_name || user?.username || '';
   const [tab, setTab] = usePersistedTab<TabId>('rmpg_dialer_connect_tab', 'dialer', ['dialer', 'voicemail', 'history']);
-  const [liveOpen, setLiveOpen] = useState(true);
-  // Default collapsed: the embedded Dial Connect iframe is often unusable
-  // (telephony unconfigured, still loading, etc.) and the native tab UI
-  // below covers dialing/voicemail/history on its own. Users can still
-  // expand it via the LIVE toggle when they need the live Twilio dock.
-  const [dockCollapsed, setDockCollapsed] = useState(true);
   const [vmUnread, setVmUnread] = useState(0);
-  // The LIVE dock hosts the legacy Dial Connect iframe; with the native
-  // softphone there is nothing to dock, so it only exists under the kill-switch.
-  const iframeMode = isIframeDialerForced();
-  const dockVisible = iframeMode && liveOpen && !dockCollapsed;
 
   useEffect(() => {
     document.title = 'Dialer Connect — RMPG Flex';
-  }, []);
-
-  useEffect(() => {
-    const onChrome = (event: Event) => {
-      const detail = (event as CustomEvent<{ minimized?: boolean; poppedOut?: boolean }>).detail;
-      setLiveOpen(!detail?.minimized && !detail?.poppedOut);
-    };
-    window.addEventListener(DIALER_CHROME_EVENT, onChrome);
-    return () => window.removeEventListener(DIALER_CHROME_EVENT, onChrome);
   }, []);
 
   useEffect(() => {
@@ -170,19 +148,6 @@ export default function DialerConnectPage() {
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="DIAL CONNECT" icon={PhoneCall} statusLed="var(--sev-ok)">
         <div className="flex items-center gap-1">
-          {iframeMode && (
-            <button
-              type="button"
-              onClick={() => setDockCollapsed((v) => !v)}
-              aria-label={dockVisible ? 'Hide live dialer' : 'Show live dialer'}
-              aria-pressed={!dockCollapsed}
-              title={liveOpen ? (dockVisible ? 'Hide the live Dial Connect dock' : 'Show the live Dial Connect dock') : 'Dial Connect is popped out or minimized'}
-              className="px-2 py-1 text-[10px] font-semibold tracking-wide flex items-center gap-1 border border-border-subtle text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-500 mr-1"
-            >
-              {dockVisible ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              LIVE
-            </button>
-          )}
           {([
             ['dialer', 'Dialer', Phone, null as number | null],
             ['voicemail', 'Voicemail', Voicemail, vmUnread],
@@ -207,16 +172,6 @@ export default function DialerConnectPage() {
           ))}
         </div>
       </PanelTitleBar>
-      {iframeMode && (
-        <div
-          id={DIALER_HOST_ID}
-          data-testid="dialer-connect-host"
-          className="relative w-full shrink-0 overflow-hidden transition-[height,min-height] duration-300 ease-out"
-          style={dockVisible
-            ? { height: 'min(42vh, 680px)', minHeight: 240 }
-            : { height: 0, minHeight: 0 }}
-        />
-      )}
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'dialer' && <DialerTab exportedBy={exportedBy} addToast={addToast} />}
         {tab === 'voicemail' && <VoicemailTab exportedBy={exportedBy} addToast={addToast} />}

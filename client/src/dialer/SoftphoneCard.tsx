@@ -3,7 +3,7 @@ import { Delete, Disc, ExternalLink, Hash, MicOff, Pause as PauseIcon, PhoneCall
 import { useSoftphone } from './SoftphoneProvider';
 import LinkDialerGate from './LinkDialerGate';
 import TransferPicker from './TransferPicker';
-import { openDialerWindow } from '../components/DialerPanel';
+import { openDialerWindow } from './dialerWindow';
 import { normalizeDialTarget } from '../components/dialerConnect';
 import { displayPhone } from '../utils/dialerConnect';
 

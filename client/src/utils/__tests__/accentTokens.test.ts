@@ -799,7 +799,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   //   clickable stats tiles, expanded filter chips, section navigator,
   //   PersonsDashboard panel) uses rmpg-token patterns for secondary labels
   //   and muted control text; tracked, not migrated.
-  const PIN = 10628;
+  // 10628 -> 10625: 3 occurrences removed with the P6 deletion of the legacy
+  //   Dial Connect iframe panel (client/src/components/DialerPanel.tsx).
+  const PIN = 10625;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

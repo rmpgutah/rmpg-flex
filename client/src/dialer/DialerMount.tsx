@@ -1,13 +1,13 @@
 import React, { useState, type ReactNode } from 'react';
 import { lazyRetry } from '../utils/importWithRetry';
-import { isIframeDialerForced } from './dialerFlags';
 import { SoftphoneContext, LOADING_VALUE, type SoftphoneContextValue } from './softphoneContext';
 
-const DialerPanel = lazyRetry(() => import('../components/DialerPanel'));
 const NativeDialerRuntime = lazyRetry(() => import('./NativeDialerRuntime'));
 
 /**
- * Native softphone by default; `rmpg_dialer_iframe=1` restores the legacy iframe.
+ * Mounts the native softphone. The legacy Dial Connect iframe panel and its
+ * `rmpg_dialer_iframe` kill-switch were removed in P6 — this is now the only
+ * telephony runtime.
  *
  * Only this tiny shell is in the entry chunk: children render immediately under
  * an eager SoftphoneContext (placeholder value), and the lazily loaded runtime
@@ -16,14 +16,6 @@ const NativeDialerRuntime = lazyRetry(() => import('./NativeDialerRuntime'));
  */
 export default function DialerMount({ children }: { children: ReactNode }) {
   const [value, setValue] = useState<SoftphoneContextValue>(LOADING_VALUE);
-  if (isIframeDialerForced()) {
-    return (
-      <SoftphoneContext.Provider value={LOADING_VALUE}>
-        {children}
-        <React.Suspense fallback={null}><DialerPanel /></React.Suspense>
-      </SoftphoneContext.Provider>
-    );
-  }
   return (
     <SoftphoneContext.Provider value={value}>
       {children}

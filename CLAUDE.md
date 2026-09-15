@@ -351,9 +351,8 @@ re-pull never re-bills a CarsXE credit. Secret `CARXE_API_KEY`; unset →
 
 ### Dial Connect (Twilio dialer at rmpgutah.us/dialer) — call-archive invariants
 
-The dialer is a separate app embedded as an iframe by
-[`DialerPanel`](client/src/components/DialerPanel.tsx); it talks to the CAD via
-`postMessage` and the CAD archives calls through `POST /api/dialer-connect/events`
+Telephony now runs natively in Flex (see the native-softphone entry below); the
+CAD archives calls through `POST /api/dialer-connect/events`
 ([`src/routes/dialerConnect.ts`](src/routes/dialerConnect.ts)). Hardened 2026-09-05
 after call history showed 10 "unknown" rows with no number, no duration, and a
 `failed` call re-labelled `completed`.
@@ -405,8 +404,15 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   `dialer`). Unlinked users see the "Link Dial Connect" gate — the SSO callback
   links by e-mail on first sign-in. `"Telephony not configured"` in the OLD
   iframe meant ANY non-OK token fetch, not necessarily Twilio secrets.
-  **Kill-switch:** `localStorage.rmpg_dialer_iframe = '1'` restores the legacy
-  iframe (`DialerPanel`) per browser with no deploy; `DialerPanel` is deleted in P6.
+  **P6 (shipped): the legacy iframe is GONE and there is no kill-switch.**
+  `DialerPanel`, its test, and `dialer/dialerFlags.ts` (`rmpg_dialer_iframe`)
+  were deleted; the native softphone is the only telephony runtime. A stale
+  `rmpg_dialer_iframe=1` in a dispatcher's browser is now inert (pinned by
+  regression tests in `client/src/dialer/DialerMount.test.tsx` and
+  `dialerWindow.test.ts`). The reusable pop-out helper survived the delete and
+  lives in [`client/src/dialer/dialerWindow.ts`](client/src/dialer/dialerWindow.ts)
+  (`openDialerWindow`, always same-origin `/dialer-connect?popout=1`). Rolling
+  telephony back now requires a revert + deploy, not a localStorage flag.
   Spec: [`docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md`](docs/superpowers/specs/2026-09-14-native-softphone-p1-design.md).
 - **dispatch-app has no CI.** Its source is `~/Call Center/dispatch-app` (GitHub
   `rmpgutah/dispatch-app`), deployed as Worker `dialer` via `npm run deploy` from

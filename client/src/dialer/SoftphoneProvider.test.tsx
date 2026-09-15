@@ -100,14 +100,6 @@ describe('SoftphoneProvider', () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/dialer/voice/hold', expect.objectContaining({ body: JSON.stringify({ callSid: 'CAcaller1', hold: true }) })));
   });
 
-  test('does nothing when the iframe kill-switch is set', async () => {
-    localStorage.setItem('rmpg_dialer_iframe', '1');
-    renderProbe();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(screen.getByTestId('status').textContent).toBe('passive');
-    expect(apiFetch).not.toHaveBeenCalledWith('/dialer/token', expect.anything());
-  });
-
   test('loads DND after registering and PATCHes it on toggle', async () => {
     renderProbe();
     await waitFor(() => expect(screen.getByTestId('dnd').textContent).toBe('true'));
