@@ -171,6 +171,29 @@ export function matchRules(rawText: string): PlannerOutput | null {
   m = new RegExp(String.raw`^(?:permanently\s+)?(?:delete|purge)\s+(?:call\s+)?${CALL}$`).exec(t);
   if (m) return out('delete_call', '', [{ tool: 'delete_call', params: { call: m[1] } }]);
 
+  // FORCE CLOSE ALL — board-wide. Wording is deliberately explicit ("all") so
+  // no ordinary "close 42" phrasing can reach it; the generic clear/close rule
+  // above already claimed those, and this runs without a confirmation turn.
+  m = /^(?:force\s+)?close\s+(?:out\s+)?all(?:\s+(?:the\s+)?calls?)?(?:\s+(?:as|with|disposition|disp)\s+(.+))?$/.exec(t);
+  if (m) {
+    const disposition = m[1]?.trim().replace(/\s+/g, '_');
+    return out('force_close_all', '', [{ tool: 'force_close_all', params: { ...(disposition ? { disposition } : {}) } }]);
+  }
+
+  // BULK REASSIGN:  "reassign 42, 43 and 44 to 12", "move calls 42 43 to unit 12"
+  m = new RegExp(String.raw`^(?:bulk\s+)?(?:reassign|move|transfer)\s+(?:calls?\s+)?([\w\s,&-]+?)\s+to\s+${UNIT}$`).exec(t);
+  if (m) {
+    const calls = m[1]
+      .split(/\s*(?:,|\band\b|&)\s*|\s+/)
+      .map(s => s.replace(/^(?:call|cfs)\s*#?\s*/, '').trim())
+      .filter(Boolean);
+    // Require >1 call: a single "move 42 to 12" is an ordinary assignment, and
+    // routing it through the admin-only bulk endpoint would 403 a dispatcher.
+    if (calls.length > 1) {
+      return out('bulk_reassign', '', [{ tool: 'bulk_reassign', params: { calls, unit: m[2].toUpperCase() } }]);
+    }
+  }
+
   // ARCHIVE / UNARCHIVE
   m = new RegExp(String.raw`^archive\s+${CALL}$`).exec(t);
   if (m) return out('archive_call', '', [{ tool: 'archive_call', params: { call: m[1] } }]);
