@@ -21,6 +21,7 @@ import * as conversationMemory from './conversationMemory';
 import { resolveReferents } from './referentResolver';
 import { getBrainContext, isBrainEnabled } from './dispatcherBrain';
 import { renderCallNarrative } from './narrativeRenderer';
+import { runDispatcherCommand } from './dispatcherCommandClient';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -332,34 +333,6 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 /**
- * Send recorded audio to the server for Whisper transcription + command parsing.
- * Endpoint: POST /api/voice/command
- */
-async function sendAudioToServer(audioBlob: Blob): Promise<CommandResult> {
-  try {
-    const formData = new FormData();
-    formData.append('audio', audioBlob, 'voice-command.webm');
-
-    const res = await fetch('/api/voice/command', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: formData,
-    });
-
-    if (!res.ok) {
-      if (res.status === 404) {
-        return { success: false, action: 'error', message: 'Voice command endpoint not available yet' };
-      }
-      return { success: false, action: 'error', message: `Server error: ${res.status}` };
-    }
-
-    return await res.json();
-  } catch (err) {
-    return { success: false, action: 'error', message: 'Failed to reach voice command server' };
-  }
-}
-
-/**
  * Send transcript text to the dialogue agent. Primary path for natural-language
  * voice: the agent plans + executes actions and returns a synthesized reply
  * along with a voice_mode the TTS layer should use.
@@ -399,34 +372,6 @@ export async function sendDialogueToServer(
     };
   } catch {
     return { success: false, action: 'error', message: '' };
-  }
-}
-
-/**
- * Send transcript text to the legacy regex/NLU parser.
- * Endpoint: POST /api/voice/parse
- */
-async function sendTextToServer(text: string): Promise<CommandResult> {
-  try {
-    const res = await fetch('/api/voice/parse', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify({ text }),
-    });
-
-    if (!res.ok) {
-      if (res.status === 404) {
-        return { success: false, action: 'error', message: 'Voice parse endpoint not available yet' };
-      }
-      return { success: false, action: 'error', message: `Server error: ${res.status}` };
-    }
-
-    return await res.json();
-  } catch (err) {
-    return { success: false, action: 'error', message: 'Failed to reach voice parse server' };
   }
 }
 
@@ -1011,9 +956,6 @@ export class VoiceChannel {
 
   private async processTranscript(): Promise<void> {
     const transcript = this.lastTranscript;
-    const audioBlob = this.audioChunks.length > 0
-      ? new Blob(this.audioChunks, { type: 'audio/webm' })
-      : null;
 
     // Stop listening hardware
     this.stopListening();
@@ -1125,27 +1067,33 @@ export class VoiceChannel {
       }
     }
 
-    if (!result) {
-      // 2. Try the natural-language dialogue agent first — handles free-form
-      // questions, 10-codes with mileage prompts, and tool-calling.
-      if (effectiveTranscript) {
-        const dlg = await sendDialogueToServer(effectiveTranscript, 'speech');
-        if (dlg.success && dlg.message) {
-          result = dlg;
-        }
+    if (!result && effectiveTranscript) {
+      // 2. Dispatcher Command Engine — any phrasing of any CAD operation
+      // (assign/clear/status/new call/notes/field edits/record checks). It
+      // plans on the Worker and executes here with the officer's JWT; a
+      // destructive plan comes back as a Y/N confirmation turn, and a
+      // spoken "affirmative"/"negative" on the next turn resolves it.
+      const cmd = await runDispatcherCommand(effectiveTranscript, {
+        source: 'speech',
+        selectedCallNumber: getBrainContext().lastCall?.call_number ?? null,
+      });
+      if (cmd.handled) {
+        result = {
+          success: cmd.ok,
+          action: cmd.needsConfirmation ? 'confirm' : cmd.clarify ? 'clarify' : cmd.intent,
+          message: cmd.reply,
+          data: { clientActions: cmd.clientActions as unknown as Record<string, unknown>[], results: cmd.results as unknown as Record<string, unknown>[], planner: cmd.planner },
+          intent: cmd.intent,
+        };
       }
+    }
 
-      // 3. Legacy regex/NLU parser fallback (if dialogue endpoint missing or empty)
-      if ((!result || !result.success) && effectiveTranscript) {
-        result = await sendTextToServer(effectiveTranscript);
-      }
-
-      // 4. If text path failed and we have audio, try audio endpoint
-      if ((!result || !result.success) && audioBlob && audioBlob.size > 1000) {
-        const audioResult = await sendAudioToServer(audioBlob);
-        if (audioResult.success) {
-          result = audioResult;
-        }
+    if (!result && effectiveTranscript) {
+      // 3. Not a command → the conversational dialogue persona (questions,
+      // chatter, radio-style exchanges).
+      const dlg = await sendDialogueToServer(effectiveTranscript, 'speech');
+      if (dlg.success && dlg.message) {
+        result = dlg;
       }
     }
 

@@ -158,6 +158,7 @@ import tesseractTraining from './routes/tesseractTraining';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
+import dispatcherCommand from './routes/dispatcherCommand';
 import forensics from './routes/forensics';
 import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
@@ -453,6 +454,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
     note: 'Voice dialogue agent (/dialogue) + dispatch read-aloud (/read-aloud) for the AI dispatcher.' },
+  { prefix: '/api/dispatcher', router: dispatcherCommand, auth: 'required',
+    note: 'Dispatcher Command Engine: POST /command turns free-form typed/spoken instructions into validated CAD steps (rules → callAi planner → catalog/compile); POST /command/:id/result records outcomes; GET /command/recent (supervisor+). Design: docs/superpowers/specs/2026-09-14-dispatcher-command-engine-design.md' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
   { prefix: '/api/mdt', router: mdt, auth: 'required' },
