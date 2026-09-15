@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks, columnExists } from '../utils/db';
 import { log, logErrorToDb } from '../utils/logger';
 import { stateFromSourceKey } from '../utils/warrantSourceState';
 
@@ -44,6 +44,42 @@ function chunkIds(ids: number[]): number[][] {
   return chunks;
 }
 
+// Runtime reconciler for poller-sync columns that migration 0288 could not
+// add (D1 blocks ADD COLUMN IF NOT EXISTS). Runs once per isolate boot on
+// the first request, using the same columnExists + try/catch pattern as
+// serveIntake.ts's reconcileScheduleSchema.
+let warrantsSchemaReconciled = false;
+async function reconcileWarrantsSchema(db: D1Database): Promise<void> {
+  if (warrantsSchemaReconciled) return;
+  warrantsSchemaReconciled = true;
+  const cols: Array<[string, string]> = [
+    ['subject_first_name', 'TEXT'],
+    ['subject_last_name', 'TEXT'],
+    ['subject_dob', 'TEXT'],
+    ['issued_date', 'TEXT'],
+    ['confirmed', 'INTEGER NOT NULL DEFAULT 0'],
+    ['auto_created', 'INTEGER NOT NULL DEFAULT 0'],
+    ['scraped_source', 'TEXT'],
+    ['scraped_raw', 'TEXT'],
+    ['external_warrant_id', 'TEXT'],
+    ['external_source_key', 'TEXT'],
+    ['last_checked_at', 'TEXT'],
+    ['last_check_result', 'TEXT'],
+    ['priority', 'INTEGER'],
+    ['jurisdiction', 'TEXT'],
+    ['issuing_agency', 'TEXT'],
+  ];
+  for (const [name, def] of cols) {
+    try {
+      if (!(await columnExists(db, 'warrants', name))) {
+        await db.prepare(`ALTER TABLE warrants ADD COLUMN ${name} ${def}`).run();
+      }
+    } catch (err) {
+      log.warn(`[warrants] reconcile column ${name} failed`, { name, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+}
+
 // Warrant data (active warrants, per-person profiles) is sworn-side law
 // enforcement data — not everyone with a valid session should see it.
 // client_viewer is this system's external/business-facing role (see
@@ -51,6 +87,7 @@ function chunkIds(ids: number[]): number[][] {
 warrants.use('*', async (c, next) => {
   const user = c.get('user') as { role: string } | undefined;
   if (user?.role === 'client_viewer') return c.json({ error: 'Forbidden' }, 403);
+  try { await reconcileWarrantsSchema(getDb(c.env)); } catch { /* non-fatal */ }
   await next();
 });
 
@@ -1932,16 +1969,41 @@ warrants.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), async
     const where: string[] = ['1=1'];
     const params: unknown[] = [];
 
+    const baseSql = `SELECT w.warrant_number, w.subject_name, w.subject_dob, w.status, w.priority,
+              w.offense_level, w.charge_description, w.issuing_court, w.bail_amount,
+              w.issued_date, w.expiry_date, w.created_at,
+              u.full_name as assigned_officer
+       FROM warrants w
+       LEFT JOIN users u ON w.assigned_officer_id = u.id`;
+
+    let rows: Record<string, unknown>[];
+
     if (idsParam) {
       const ids = idsParam.split(',').map(Number).filter(Number.isFinite).slice(0, 500);
-      if (ids.length > 0) {
-        where.push(`w.id IN (${ids.map(() => '?').join(',')})`);
-        params.push(...ids);
+      if (ids.length === 0) {
+        return c.text('', 200);
       }
+      const allRows: Record<string, unknown>[] = [];
+      for (const chunk of chunkIds(ids)) {
+        const placeholders = chunk.map(() => '?').join(',');
+        const chunkRows = await query<Record<string, unknown>>(
+          db,
+          `${baseSql} WHERE w.id IN (${placeholders}) ORDER BY w.created_at DESC`,
+          ...chunk,
+        );
+        allRows.push(...chunkRows);
+      }
+      rows = allRows;
     } else {
       if (status) { where.push('w.status = ?'); params.push(status); }
       if (dateFrom) { where.push('w.created_at >= ?'); params.push(dateFrom); }
       if (dateTo) { where.push('w.created_at <= ?'); params.push(dateTo); }
+
+      rows = await query<Record<string, unknown>>(
+        db,
+        `${baseSql} WHERE ${where.join(' AND ')} ORDER BY w.created_at DESC LIMIT 10000`,
+        ...params,
+      );
     }
 
     function csvEsc(v: unknown): string {
@@ -1949,19 +2011,6 @@ warrants.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), async
       const s = typeof v === 'string' ? v : String(v);
       return `"${s.replace(/"/g, '""')}"`;
     }
-
-    const rows = await query<Record<string, unknown>>(
-      db,
-      `SELECT w.warrant_number, w.subject_name, w.subject_dob, w.status, w.priority,
-              w.offense_level, w.charge_description, w.issuing_court, w.bail_amount,
-              w.issued_date, w.expiry_date, w.created_at,
-              u.full_name as assigned_officer
-       FROM warrants w
-       LEFT JOIN users u ON w.assigned_officer_id = u.id
-       WHERE ${where.join(' AND ')}
-       ORDER BY w.created_at DESC LIMIT 10000`,
-      ...params,
-    );
 
     const headers = [
       { key: 'warrant_number', label: 'Warrant #' },

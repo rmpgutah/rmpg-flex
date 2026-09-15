@@ -191,6 +191,7 @@ export default function EvidencePropertyPage() {
   const [confirmDispose, setConfirmDispose] = useState(false);
   const [confirmApproveRelease, setConfirmApproveRelease] = useState(false);
   const [pendingReleaseAction, setPendingReleaseAction] = useState<'approve' | 'deny' | null>(null);
+  const [confirmBulkDisposition, setConfirmBulkDisposition] = useState<string | null>(null);
 
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
@@ -730,8 +731,8 @@ export default function EvidencePropertyPage() {
         {selectedEvidenceIds.size > 0 && canDispose && (
           <div className="px-3 py-1.5 border-b border-brand-700/40 bg-brand-900/20 flex items-center gap-2 flex-shrink-0 flex-wrap">
             <span className="text-[10px] font-semibold text-brand-300">{selectedEvidenceIds.size} selected</span>
-            <button type="button" onClick={() => void handleBulkDisposition('return_to_owner')} className="toolbar-btn text-[9px]">Release to Owner</button>
-            <button type="button" onClick={() => void handleBulkDisposition('destroy')} className="toolbar-btn text-[9px]">Destroy</button>
+            <button type="button" onClick={() => setConfirmBulkDisposition('return_to_owner')} className="toolbar-btn text-[9px]">Release to Owner</button>
+            <button type="button" onClick={() => setConfirmBulkDisposition('destroy')} className="toolbar-btn text-[9px]">Destroy</button>
             <button type="button" onClick={() => void handleBulkDisposition('pending')} className="toolbar-btn text-[9px]">Mark Pending</button>
             <button type="button" onClick={() => setSelectedEvidenceIds(new Set())} className="toolbar-btn text-[9px]"><X style={{ width: 9, height: 9 }} /></button>
           </div>
@@ -1595,6 +1596,22 @@ export default function EvidencePropertyPage() {
         confirmLabel={pendingReleaseAction === 'approve' ? 'Approve' : 'Deny'}
         confirmVariant={pendingReleaseAction === 'approve' ? 'warning' : 'danger'}
         isLoading={releaseSubmitting}
+      />
+
+      {/* ── Confirm: bulk disposition (destroy / release) ── */}
+      <ConfirmDialog
+        isOpen={!!confirmBulkDisposition}
+        onClose={() => setConfirmBulkDisposition(null)}
+        onConfirm={() => {
+          if (confirmBulkDisposition) {
+            void handleBulkDisposition(confirmBulkDisposition);
+            setConfirmBulkDisposition(null);
+          }
+        }}
+        title={`Bulk ${confirmBulkDisposition === 'destroy' ? 'Destroy' : 'Release'} Evidence`}
+        message={`${confirmBulkDisposition === 'destroy' ? 'Destroy' : 'Release'} ${selectedEvidenceIds.size} selected item${selectedEvidenceIds.size > 1 ? 's' : ''}? This is irreversible and will be logged in the chain of custody.`}
+        confirmLabel={confirmBulkDisposition === 'destroy' ? 'Destroy All' : 'Release All'}
+        confirmVariant="danger"
       />
     </div>
   );
