@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { normalizeDialTarget, DIALER_PLACE_CALL_EVENT } from '../components/dialerConnect';
+import { SoftphoneContext, type SoftphoneContextValue } from './softphoneContext';
 import { dialerApi, type DialerApiError } from './dialerApi';
 import { isIframeDialerForced } from './dialerFlags';
 import { createLeaderElection, isPopoutWindow } from './leaderElection';
@@ -17,28 +18,9 @@ const PSTN_FAILURE_STATUSES: Record<string, string> = {
 };
 const TOKEN_REFRESH_LEAD_MS = 5 * 60_000;
 
-export interface SoftphoneContextValue extends SoftphoneSnapshot {
-  identity: string | null;
-  dial(to: string, opts?: { blockCallerId?: boolean }): Promise<void>;
-  answer(): void;
-  reject(): void;
-  hangup(): void;
-  setMuted(muted: boolean): void;
-  toggleHold(): Promise<void>;
-  sendDigits(digits: string): void;
-  transferBlind(targetDispatcherId: string): Promise<void>;
-  transferWarm(targetDispatcherId: string): Promise<void>;
-  addParty(phoneNumber: string): Promise<void>;
-  toggleRecording(): Promise<void>;
-  duress(): Promise<void>;
-  retry(): void;
-  /** Do Not Disturb on the dispatch-app side: null until known. While true, inbound calls skip this dispatcher. */
-  dnd: boolean | null;
-  setDnd(dnd: boolean): Promise<void>;
-  lastDuress: { name: string; at: number } | null;
-}
-
-const Ctx = createContext<SoftphoneContextValue | null>(null);
+const Ctx = SoftphoneContext;
+export { useSoftphone } from './softphoneContext';
+export type { SoftphoneContextValue } from './softphoneContext';
 
 async function realDeviceFactory(token: string): Promise<SoftphoneDevice> {
   const { Device } = await import('@twilio/voice-sdk');
@@ -245,10 +227,4 @@ export function SoftphoneProvider({ children, createDevice, enabled = true, stre
   }), [snap, dial, withSid, attachCall, register, dnd, lastDuress]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
-
-export function useSoftphone(): SoftphoneContextValue {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useSoftphone must be used inside <SoftphoneProvider>');
-  return v;
 }

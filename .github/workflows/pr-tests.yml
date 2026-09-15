@@ -264,10 +264,15 @@ jobs:
       # CI (token embedded) before this PR — regression from a prior merge
       # (#4231 dispatch-ai wiring). This PR's 2-file change touches only lazy
       # chunks; raising ceiling to restore headroom without adding eager imports.
+      # 476,000 → 478,000: native softphone (Dial Connect port P1). The Twilio
+      # runtime, provider, toasts and keypad are all lazy (client/src/dialer/
+      # NativeDialerRuntime.tsx); the only eager additions are the ~2 KB
+      # SoftphoneContext shell + DialerMount so pages can read call state
+      # without remounting when the runtime chunk arrives. Measured 476,039 B.
       # If a change legitimately needs more, raise this deliberately in the
       # same PR and say why; do not silently bump it. `node scripts/measure-entry.mjs`
       # (no flag) prints the top 25 eager modules, which is usually enough to
       # see what got pulled in.
       - name: Assert entry chunk under ceiling
         working-directory: client
-        run: node scripts/measure-entry.mjs --max-raw 476000
+        run: node scripts/measure-entry.mjs --max-raw 478000

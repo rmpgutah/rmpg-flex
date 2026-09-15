@@ -407,6 +407,13 @@ after call history showed 10 "unknown" rows with no number, no duration, and a
   that directory — a merged PR there changes nothing until someone deploys. Every
   browser URL in that app must go through `apiUrl()` (Next `basePath` `/dialer`
   does not prefix `fetch()`/`EventSource`; 2026-09-14 outage).
+- **Worker→Worker fetch on the same zone needs `global_fetch_strictly_public`**
+  (`wrangler.toml` compatibility_flags). Without it Cloudflare returns error
+  1042 and every `fetch('https://rmpgutah.us/dialer/...')` from `rmpg-flex-api`
+  fails — SSO discovery (`src/utils/sso.ts`) and the `/api/dialer/*` proxy both
+  silently degrade to "not configured"/`dialer_unreachable`. Miniflare tests
+  stub `fetch`, so only live traffic exposes it. `oidc-provider` on Workers also
+  needs `shimWorkerSocket()` (dispatch-app) — Koa reads `socket.encrypted`.
 
 ### Legal Data Hunter (manual warrant-charge validation)
 
